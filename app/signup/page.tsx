@@ -78,16 +78,16 @@ export default function SignUpPage() {
 
       {/* Main Section */}
       <Center style={{ flex: 1, paddingTop: 48, paddingBottom: 96 }}>
-        <Container size={420}>
-          <Stack align="center" spacing={16}>
+        <Container size={520}>
+          <Stack align="center" gap="md">
             <Title
               order={1}
-              align="center"
+              ta="center"
               style={{ fontWeight: 700, color: "#1A237E" }}
             >
               Create Your Account
             </Title>
-            <Text color="#6B7280" size="l" align="center">
+            <Text c="#6B7280" size="lg" ta="center">
               Join Keep PH and manage your mail from anywhere.
             </Text>
           </Stack>
@@ -95,7 +95,7 @@ export default function SignUpPage() {
           <Box mt="xl">
             <Paper withBorder shadow="md" p="xl" radius="xl">
               <form onSubmit={handleSubmit}>
-                <Stack spacing="md">
+                <Stack gap="md">
                   <TextInput
                     label="Email"
                     placeholder="you@example.com"
@@ -134,7 +134,7 @@ export default function SignUpPage() {
               </form>
 
               <Center mt="md">
-                <Text size="sm" color="#6B7280">
+                <Text size="sm" c="#6B7280">
                   Already have an account?{" "}
                   <Anchor
                     href="/signin"

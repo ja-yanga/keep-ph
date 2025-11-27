@@ -77,16 +77,17 @@ export default function SignInPage() {
 
       {/* Main Section - styled to match signup */}
       <Center style={{ flex: 1, paddingTop: 48, paddingBottom: 96 }}>
-        <Container size={420}>
-          <Stack align="center" gap={16}>
+        <Container size={520}>
+          {" "}
+          {/* Changed from 420 */}
+          <Stack align="center" gap="md">
             <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
               Login
             </Title>
-            <Text color="#6B7280" size="l">
+            <Text c="#6B7280" size="lg">
               Sign in to access your account
             </Text>
           </Stack>
-
           <Box mt="xl">
             <Paper
               withBorder
@@ -141,7 +142,7 @@ export default function SignInPage() {
               </form>
 
               <Center mt="md">
-                <Text size="sm" color="#6B7280">
+                <Text size="sm" c="#6B7280">
                   Don't have an account?{" "}
                   <Anchor
                     href="/signup"

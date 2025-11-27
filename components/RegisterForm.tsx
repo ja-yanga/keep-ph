@@ -17,6 +17,7 @@ import {
   ScrollArea,
   Title,
   Text,
+  SimpleGrid,
 } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/components/SessionProvider";
@@ -38,8 +39,8 @@ export default function RegisterForm() {
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [lockerQty, setLockerQty] = useState<number | undefined>(1);
-  const [months, setMonths] = useState<number | undefined>(12);
+  const [lockerQty, setLockerQty] = useState<number | string>(1);
+  const [months, setMonths] = useState<number | string>(12);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -78,8 +79,8 @@ export default function RegisterForm() {
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
   const pricePerMonth = selectedPlan ? Number(selectedPlan.price) : 0;
-  const qty = lockerQty ?? 1;
-  const duration = months ?? 1;
+  const qty = typeof lockerQty === "number" ? lockerQty : 1;
+  const duration = typeof months === "number" ? months : 1;
   const monthlyTotal = pricePerMonth * qty;
   const totalCost = monthlyTotal * duration;
   const format = (n: number) =>
@@ -107,10 +108,10 @@ export default function RegisterForm() {
         full_name: `${firstName} ${lastName}`.trim() || null,
         email,
         mobile,
-        locationId: selectedLocation, // <-- camelCase
-        planId: selectedPlanId, // <-- camelCase
-        lockerQty,
-        months,
+        locationId: selectedLocation,
+        planId: selectedPlanId,
+        lockerQty: qty,
+        months: duration,
         notes,
       };
 
@@ -143,25 +144,27 @@ export default function RegisterForm() {
       <form onSubmit={handleSubmit}>
         <Paper withBorder p="lg" radius="md" mb="md">
           <Group mb="md">
-            <Badge color="blue">1</Badge>
+            <Badge color="blue" size="lg" circle>
+              1
+            </Badge>
             <Title order={4}>User Info</Title>
           </Group>
-          <Grid>
-            <Grid.Col>
+          <Grid gutter="md">
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput
                 label="First Name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.currentTarget.value)}
               />
             </Grid.Col>
-            <Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput
                 label="Last Name"
                 value={lastName}
                 onChange={(e) => setLastName(e.currentTarget.value)}
               />
             </Grid.Col>
-            <Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput
                 label="Email"
                 value={email}
@@ -169,7 +172,7 @@ export default function RegisterForm() {
                 type="email"
               />
             </Grid.Col>
-            <Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput
                 label="Mobile Number"
                 value={mobile}
@@ -181,124 +184,171 @@ export default function RegisterForm() {
 
         <Paper withBorder p="lg" radius="md" mb="md">
           <Group mb="md">
-            <Badge color="blue">2</Badge>
+            <Badge color="blue" size="lg" circle>
+              2
+            </Badge>
             <Title order={4}>Location & Plan</Title>
           </Group>
 
           <Stack gap="lg">
             <Box>
-              <Text mb="sm">Select Mailroom Location</Text>
-              <ScrollArea style={{ maxHeight: 220 }}>
+              <Text fw={600} mb="sm">
+                Select Mailroom Location
+              </Text>
+              <ScrollArea style={{ maxHeight: 220 }} type="auto">
                 <Table verticalSpacing="sm" highlightOnHover>
-                  <tbody>
+                  <Table.Tbody>
                     {locations.map((loc) => (
-                      <tr key={loc.id}>
-                        <td style={{ width: 40 }}>
+                      <Table.Tr
+                        key={loc.id}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedLocation(loc.id)}
+                      >
+                        <Table.Td style={{ width: 40 }}>
                           <Radio
                             checked={selectedLocation === loc.id}
                             onChange={() => setSelectedLocation(loc.id)}
                             value={loc.id}
                             name="mailroom-location"
+                            style={{ cursor: "pointer" }}
                           />
-                        </td>
-                        <td>{loc.name}</td>
-                        <td>{loc.city ?? loc.region}</td>
-                      </tr>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text fw={500}>{loc.name}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c="dimmed">
+                            {loc.city ?? loc.region}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
                     ))}
-                  </tbody>
+                  </Table.Tbody>
                 </Table>
               </ScrollArea>
             </Box>
 
             <Box>
-              <Text mb="sm">Select Your Plan</Text>
-              <Grid>
+              <Text fw={600} mb="sm">
+                Select Your Plan
+              </Text>
+              <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
                 {plans.map((p) => (
-                  <Grid.Col key={p.id}>
-                    <Card
-                      withBorder
-                      style={{
-                        borderColor:
-                          selectedPlanId === p.id ? "#26316D" : undefined,
-                      }}
-                    >
-                      <Stack>
-                        {p.name === "Personal" ? (
+                  <Card
+                    key={p.id}
+                    withBorder
+                    padding="lg"
+                    radius="md"
+                    style={{
+                      borderColor:
+                        selectedPlanId === p.id ? "#26316D" : undefined,
+                      borderWidth: selectedPlanId === p.id ? 2 : 1,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setSelectedPlanId(p.id)}
+                  >
+                    <Stack gap="xs">
+                      <Group justify="space-between">
+                        <Text fw={700}>{p.name}</Text>
+                        {p.name === "Personal" && (
                           <Badge color="blue">Popular</Badge>
-                        ) : null}
-                        <Text>{p.name}</Text>
-                        <Text size="xl">{format(Number(p.price))}/month</Text>
-                        <Button
-                          variant={
-                            selectedPlanId === p.id ? "filled" : "outline"
-                          }
-                          onClick={() => setSelectedPlanId(p.id)}
-                        >
-                          Select
-                        </Button>
-                      </Stack>
-                    </Card>
-                  </Grid.Col>
+                        )}
+                      </Group>
+                      <Text size="xl" fw={700} c="#26316D">
+                        {format(Number(p.price))}
+                        <Text span size="sm" c="dimmed" fw={400}>
+                          /mo
+                        </Text>
+                      </Text>
+                      <Button
+                        fullWidth
+                        variant={selectedPlanId === p.id ? "filled" : "light"}
+                        color={selectedPlanId === p.id ? "blue" : "gray"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPlanId(p.id);
+                        }}
+                        mt="sm"
+                      >
+                        {selectedPlanId === p.id ? "Selected" : "Select"}
+                      </Button>
+                    </Stack>
+                  </Card>
                 ))}
-              </Grid>
+              </SimpleGrid>
             </Box>
           </Stack>
         </Paper>
 
         <Paper withBorder p="lg" radius="md" mb="md">
           <Group mb="md">
-            <Badge color="blue">3</Badge>
+            <Badge color="blue" size="lg" circle>
+              3
+            </Badge>
             <Title order={4}>Locker Info & Summary</Title>
           </Group>
 
-          <Grid>
-            <Grid.Col>
+          <Grid gutter="md">
+            <Grid.Col span={{ base: 12, sm: 4 }}>
               <NumberInput
                 label="Locker Quantity"
                 min={1}
                 value={lockerQty}
-                // onChange={(val) => setLockerQty(val)}
+                onChange={(val) => setLockerQty(val)}
               />
             </Grid.Col>
-            <Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 4 }}>
               <NumberInput
                 label="Number of Months"
                 min={1}
                 value={months}
-                // onChange={(val) => setMonths(val)}
+                onChange={(val) => setMonths(val)}
               />
             </Grid.Col>
-            <Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 4 }}>
               <TextInput label="Expiration" value="Calculated date" readOnly />
             </Grid.Col>
           </Grid>
 
           <Box mt="md">
             <Textarea
-              placeholder="Notes"
+              label="Notes"
+              placeholder="Additional instructions..."
               value={notes}
               onChange={(e) => setNotes(e.currentTarget.value)}
               minRows={3}
             />
           </Box>
 
-          <Box mt="md">
-            <Text>
-              Price per locker / month:{" "}
-              <Text component="span">{format(pricePerMonth)}</Text>
-            </Text>
-            <Text>
-              Monthly total:{" "}
-              <Text component="span">{format(monthlyTotal)}</Text>
-            </Text>
-            <Text>
-              Total: <Text component="span">{format(totalCost)}</Text>
-            </Text>
-          </Box>
+          <Paper withBorder p="md" radius="md" mt="lg" bg="gray.0">
+            <Stack gap="xs">
+              <Group justify="space-between">
+                <Text c="dimmed">Price per locker / month:</Text>
+                <Text fw={500}>{format(pricePerMonth)}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text c="dimmed">Monthly total:</Text>
+                <Text fw={500}>{format(monthlyTotal)}</Text>
+              </Group>
+              <Group
+                justify="space-between"
+                mt="sm"
+                style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8 }}
+              >
+                <Text size="lg" fw={700}>
+                  Total Due:
+                </Text>
+                <Text size="lg" fw={700} c="#26316D">
+                  {format(totalCost)}
+                </Text>
+              </Group>
+            </Stack>
+          </Paper>
 
-          <Group align="right" mt="md">
+          <Group justify="flex-end" mt="xl">
             <Button
               type="submit"
+              size="lg"
               loading={loading}
               style={{ backgroundColor: "#26316D", color: "#fff" }}
             >

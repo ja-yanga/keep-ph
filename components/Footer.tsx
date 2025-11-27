@@ -7,7 +7,7 @@ export default function SiteFooter() {
     <Box component="footer" py="md" style={{ borderTop: "1px solid #e5e7eb" }}>
       <Center>
         <Text size="sm" color="#6B7280">
-          © 2024 Keep PH. All rights reserved.
+          © 2025 Keep PH. All rights reserved.
         </Text>
       </Center>
     </Box>

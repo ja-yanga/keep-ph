@@ -77,46 +77,32 @@ export default function DashboardPage() {
           </Container>
         ) : (
           <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
-            <Container
-              size="lg"
-              style={{ textAlign: "center", paddingLeft: 16, paddingRight: 16 }}
-            >
-              <Title
-                order={2}
-                style={{ fontSize: 36, color: "#1A202C", fontWeight: 700 }}
-              >
+            <Container size="lg" style={{ textAlign: "center" }} px="md">
+              <Title order={2} fz={36} c="#1A202C" fw={700}>
                 Welcome, {loading ? "Loading…" : displayName}!
               </Title>
 
               <Text
-                style={{
-                  marginTop: 16,
-                  color: "#718096",
-                  fontSize: 18,
-                  maxWidth: 880,
-                  marginLeft: "auto",
-                  marginRight: "auto",
-                }}
+                mt="md"
+                c="#718096"
+                size="lg"
+                style={{ maxWidth: 880 }}
+                mx="auto"
               >
                 Ready to manage your mail effortlessly? Register for our
                 mailroom service to get a dedicated address, receive
                 notifications, and manage your packages and letters online.
               </Text>
 
-              <Box style={{ marginTop: 28 }}>
+              <Box mt={28}>
                 <Button
                   component="a"
                   href="/register"
-                  style={{
-                    backgroundColor: "#26316D",
-                    color: "#FFFFFF",
-                    fontWeight: 700,
-                    paddingLeft: 32,
-                    paddingRight: 32,
-                    paddingTop: 12,
-                    paddingBottom: 12,
-                    borderRadius: 12,
-                  }}
+                  bg="#26316D"
+                  c="white"
+                  fw={700}
+                  size="lg"
+                  radius="md"
                 >
                   Register Mailroom Service
                 </Button>

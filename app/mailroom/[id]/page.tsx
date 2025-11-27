@@ -140,7 +140,7 @@ export default function MailroomPackagePage() {
       >
         <DashboardNav />
         <Container py="xl">
-          <Text color="red">{error ?? "Not found"}</Text>
+          <Text c="red">{error ?? "Not found"}</Text>
           <Group mt="md">
             <Link href="/dashboard">
               <Button leftSection={<IconArrowLeft size={16} />}>
@@ -174,7 +174,7 @@ export default function MailroomPackagePage() {
       <DashboardNav />
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
-          <Group position="apart" align="center" mb="md">
+          <Group justify="space-between" align="center" mb="md">
             <Group>
               <Link href="/dashboard">
                 <Button leftSection={<IconArrowLeft size={16} />}>Back</Button>
@@ -194,17 +194,17 @@ export default function MailroomPackagePage() {
             </Title>
           </Group>
 
-          <Stack spacing="md">
-            <Group position="apart">
-              <Text color="dimmed">Locker Status</Text>
+          <Stack gap="md">
+            <Group justify="space-between">
+              <Text c="dimmed">Locker Status</Text>
               <Badge color={item.locker_status ? "gray" : "yellow"}>
                 {item.locker_status ?? "—"}
               </Badge>
             </Group>
 
-            <Group position="apart">
-              <Text color="dimmed">Subscription Expiry</Text>
-              <Text weight={700}>
+            <Group justify="space-between">
+              <Text c="dimmed">Subscription Expiry</Text>
+              <Text fw={700}>
                 {expiry ? new Date(expiry).toLocaleDateString() : "—"}
               </Text>
             </Group>
@@ -218,43 +218,43 @@ export default function MailroomPackagePage() {
                   Mailroom Details
                 </Accordion.Control>
                 <Accordion.Panel>
-                  <Stack spacing="sm">
-                    <Group position="apart">
-                      <Text color="dimmed">Date Created</Text>
+                  <Stack gap="sm">
+                    <Group justify="space-between">
+                      <Text c="dimmed">Date Created</Text>
                       <Text>
                         {item.created_at
                           ? new Date(item.created_at).toLocaleString()
                           : "—"}
                       </Text>
                     </Group>
-                    <Group position="apart">
-                      <Text color="dimmed">Locker Quantity</Text>
+                    <Group justify="space-between">
+                      <Text c="dimmed">Locker Quantity</Text>
                       <Text>
                         {item.locker_qty ?? item.lockers?.length ?? "—"}
                       </Text>
                     </Group>
 
                     <Paper withBorder p="sm">
-                      <Text weight={700} mb="xs">
+                      <Text fw={700} mb="xs">
                         Lockers
                       </Text>
                       <ScrollArea style={{ maxHeight: 260 }}>
-                        <Table verticalSpacing="xs" sx={{ fontSize: 13 }}>
-                          <thead>
-                            <tr>
-                              <th>Label</th>
-                              <th>Status</th>
-                              <th>Removal</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                        <Table verticalSpacing="xs" style={{ fontSize: 13 }}>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th>Label</Table.Th>
+                              <Table.Th>Status</Table.Th>
+                              <Table.Th>Removal</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
                             {Array.isArray(item.lockers) &&
                             item.lockers.length > 0 ? (
                               item.lockers.map((L: any) => (
-                                <tr key={L.id}>
-                                  <td>{L.label}</td>
-                                  <td>{L.status}</td>
-                                  <td>
+                                <Table.Tr key={L.id}>
+                                  <Table.Td>{L.label}</Table.Td>
+                                  <Table.Td>{L.status}</Table.Td>
+                                  <Table.Td>
                                     {L.status !== "REMOVED" ? (
                                       <Button
                                         size="xs"
@@ -264,7 +264,7 @@ export default function MailroomPackagePage() {
                                         Remove
                                       </Button>
                                     ) : (
-                                      <Text size="xs" color="dimmed">
+                                      <Text size="xs" c="dimmed">
                                         {L.removal_date
                                           ? new Date(
                                               L.removal_date
@@ -272,20 +272,20 @@ export default function MailroomPackagePage() {
                                           : "Removed"}
                                       </Text>
                                     )}
-                                  </td>
-                                </tr>
+                                  </Table.Td>
+                                </Table.Tr>
                               ))
                             ) : (
-                              <tr>
-                                <td colSpan={3}>
-                                  <Text color="dimmed">No lockers</Text>
-                                </td>
-                              </tr>
+                              <Table.Tr>
+                                <Table.Td colSpan={3}>
+                                  <Text c="dimmed">No lockers</Text>
+                                </Table.Td>
+                              </Table.Tr>
                             )}
-                          </tbody>
+                          </Table.Tbody>
                         </Table>
                       </ScrollArea>
-                      <Group position="right" mt="xs">
+                      <Group justify="flex-end" mt="xs">
                         <Button size="xs" onClick={addLocker}>
                           Add Locker
                         </Button>
@@ -300,16 +300,16 @@ export default function MailroomPackagePage() {
                   User Details
                 </Accordion.Control>
                 <Accordion.Panel>
-                  <Stack spacing="xs">
-                    <Group direction="column" spacing={4}>
-                      <Text color="dimmed">Account Number</Text>
-                      <Text weight={700}>{accountNumber}</Text>
-                    </Group>
+                  <Stack gap="xs">
+                    <Stack gap={4}>
+                      <Text c="dimmed">Account Number</Text>
+                      <Text fw={700}>{accountNumber}</Text>
+                    </Stack>
 
-                    <Group position="apart">
+                    <Group justify="space-between">
                       <div>
-                        <Text color="dimmed">Full Name</Text>
-                        <Text weight={700}>
+                        <Text c="dimmed">Full Name</Text>
+                        <Text fw={700}>
                           {item.user_name ??
                             (`${item.first_name ?? ""} ${
                               item.last_name ?? ""
@@ -318,23 +318,23 @@ export default function MailroomPackagePage() {
                         </Text>
                       </div>
                       <div>
-                        <Text color="dimmed">Email</Text>
-                        <Text weight={700}>{item.email ?? "—"}</Text>
+                        <Text c="dimmed">Email</Text>
+                        <Text fw={700}>{item.email ?? "—"}</Text>
                       </div>
                     </Group>
 
-                    <Group position="apart">
+                    <Group justify="space-between">
                       <div>
-                        <Text color="dimmed">Mobile</Text>
-                        <Text weight={700}>{item.mobile ?? "—"}</Text>
+                        <Text c="dimmed">Mobile</Text>
+                        <Text fw={700}>{item.mobile ?? "—"}</Text>
                       </div>
                       <div>
-                        <Text color="dimmed">Telephone</Text>
-                        <Text weight={700}>{item.telephone ?? "—"}</Text>
+                        <Text c="dimmed">Telephone</Text>
+                        <Text fw={700}>{item.telephone ?? "—"}</Text>
                       </div>
                     </Group>
 
-                    <Group position="right">
+                    <Group justify="flex-end">
                       <Button size="xs" variant="outline">
                         Edit User Details
                       </Button>
@@ -348,26 +348,26 @@ export default function MailroomPackagePage() {
                   Plan Details
                 </Accordion.Control>
                 <Accordion.Panel>
-                  <Stack spacing="sm">
-                    <Text weight={700}>
+                  <Stack gap="sm">
+                    <Text fw={700}>
                       {item.mailroom_plans?.name ?? item.plan ?? "—"}
                     </Text>
-                    <Text color="dimmed">
+                    <Text c="dimmed">
                       {item.mailroom_plans?.description ??
                         item.plan_description ??
                         "—"}
                     </Text>
 
-                    <Group position="apart">
+                    <Group justify="space-between">
                       <div>
-                        <Text color="dimmed">Registration Location</Text>
-                        <Text weight={700}>
+                        <Text c="dimmed">Registration Location</Text>
+                        <Text fw={700}>
                           {item.mailroom_locations?.name ?? "—"}
                         </Text>
                       </div>
                       <div>
-                        <Text color="dimmed">Location Address</Text>
-                        <Text weight={700}>
+                        <Text c="dimmed">Location Address</Text>
+                        <Text fw={700}>
                           {`${accountNumber} ${
                             item.mailroom_locations?.city ?? ""
                           } ${item.mailroom_locations?.region ?? ""}`.trim() ||
@@ -385,7 +385,7 @@ export default function MailroomPackagePage() {
             <Title order={5}>Packages</Title>
             <Paper withBorder p="sm">
               <ScrollArea style={{ maxHeight: 320 }}>
-                <Table verticalSpacing="xs" sx={{ fontSize: 13 }}>
+                <Table verticalSpacing="xs" style={{ fontSize: 13 }}>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Package</Table.Th>
@@ -417,7 +417,7 @@ export default function MailroomPackagePage() {
                               {date ? new Date(date).toLocaleDateString() : "—"}
                             </Table.Td>
                             <Table.Td>
-                              <Group spacing="xs">
+                              <Group gap="xs">
                                 {status === "STORED" && (
                                   <>
                                     <Button size="xs" variant="outline">
@@ -446,7 +446,7 @@ export default function MailroomPackagePage() {
                                   "REQUEST_TO_DISPOSE",
                                   "REQUEST_TO_SCAN",
                                 ].includes(status) && (
-                                  <Text size="xs" color="dimmed">
+                                  <Text size="xs" c="dimmed">
                                     {status}
                                   </Text>
                                 )}
@@ -458,7 +458,7 @@ export default function MailroomPackagePage() {
                     ) : (
                       <Table.Tr>
                         <Table.Td colSpan={5}>
-                          <Text color="dimmed">No packages</Text>
+                          <Text c="dimmed">No packages</Text>
                         </Table.Td>
                       </Table.Tr>
                     )}

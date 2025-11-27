@@ -99,7 +99,7 @@ export default function OnboardingPage() {
               <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
                 Complete Your Profile
               </Title>
-              <Text color="#6B7280" size="l">
+              <Text c="#6B7280" size="lg">
                 Just a few more details to get you started.
               </Text>
             </Box>
@@ -144,8 +144,8 @@ export default function OnboardingPage() {
                   <TextInput label="Email Address" value={email} readOnly />
 
                   {/* Row 3: two columns - First Name | Last Name */}
-                  <Grid>
-                    <Grid.Col>
+                  <Grid gutter="md">
+                    <Grid.Col span={{ base: 12, sm: 6 }}>
                       <TextInput
                         label="First Name"
                         placeholder="Juan"
@@ -153,7 +153,7 @@ export default function OnboardingPage() {
                         onChange={(e) => setFirstName(e.currentTarget.value)}
                       />
                     </Grid.Col>
-                    <Grid.Col>
+                    <Grid.Col span={{ base: 12, sm: 6 }}>
                       <TextInput
                         label="Last Name"
                         placeholder="Dela Cruz"
@@ -163,7 +163,13 @@ export default function OnboardingPage() {
                     </Grid.Col>
                   </Grid>
 
-                  <Button fullWidth size="lg" type="submit">
+                  <Button
+                    fullWidth
+                    size="lg"
+                    type="submit"
+                    bg="#1A237E"
+                    c="white"
+                  >
                     Save and Continue
                   </Button>
                 </Stack>
