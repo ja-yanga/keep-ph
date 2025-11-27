@@ -1,41 +1,69 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
-  const { email, password, first_name = "", last_name = "" } = await req.json();
+  try {
+    const { email, password, first_name, last_name } = await req.json();
 
-  // redirect URL the user will land on after confirming email
-  // set NEXT_PUBLIC_APP_URL in your project env (e.g. https://your-app.com or http://localhost:3000)
-  const redirectTo = process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL}/signin`
-    : undefined;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  // ask Supabase to send confirmation email
-  const { data, error } = await supabase.auth.signUp(
-    { email, password },
-    { redirectTo }
-  );
+    // 1. Initialize Clients
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-  if (error)
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    // Use Service Key for DB inserts if available (bypasses RLS), otherwise fallback to Anon Key
+    const supabaseAdmin = supabaseServiceKey
+      ? createClient(supabaseUrl, supabaseServiceKey)
+      : supabase;
 
-  // Insert into users table — allow empty first/last if client didn't send them
-  const { error: insertError } = await supabase.from("users").insert({
-    id: data.user?.id,
-    email,
-    first_name,
-    last_name,
-    role: "user",
-  });
+    const redirectTo = process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/signin`
+      : undefined;
 
-  if (insertError) {
-    console.error("users insert error:", insertError);
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
+    // 2. Sign Up (Auth)
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: redirectTo,
+        // Storing metadata here is a good backup
+        data: { first_name, last_name },
+      },
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // 3. Create Profile
+    if (data.user) {
+      const { error: insertError } = await supabaseAdmin
+        .from("profiles") // Ensure this matches your DB table name
+        .insert({
+          id: data.user.id,
+          email,
+          first_name: first_name || "",
+          last_name: last_name || "",
+          role: "user",
+          needs_onboarding: true,
+        });
+
+      if (insertError) {
+        console.error("Profile insert error:", insertError);
+        // We don't return 500 here because the Auth User was successfully created.
+        // The user can likely fix their profile later via onboarding.
+      }
+    }
+
+    return NextResponse.json({
+      message: "Signup successful. Please check your email.",
+      user: data,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Something went wrong." },
+      { status: 500 }
+    );
   }
-
-  // Tell client that signup succeeded and verification email was sent
-  return NextResponse.json({
-    message: "Signup successful. A confirmation email has been sent.",
-    user: data.user,
-  });
 }

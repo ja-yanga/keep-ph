@@ -316,6 +316,7 @@ export default function MailroomList() {
           />
           <Tooltip label="Advanced filters">
             <Button
+              disabled
               variant="outline"
               leftSection={<IconSettings size={16} />}
               onClick={() => setAdvancedOpen(true)}
@@ -332,7 +333,9 @@ export default function MailroomList() {
             Refresh
           </Button>
         </Group>
-        <Button variant="outline">Export</Button>
+        <Button disabled variant="outline">
+          Export
+        </Button>
       </Group>
 
       <Divider />

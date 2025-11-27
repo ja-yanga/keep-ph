@@ -14,7 +14,7 @@ import {
   Anchor,
   Center,
 } from "@mantine/core";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
 import { supabase } from "@/lib/supabaseClient";
@@ -22,6 +22,9 @@ import { useSession } from "@/components/SessionProvider";
 
 export default function SignInPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next"); // Get the return URL if it exists
+
   const { refresh } = useSession(); // Get the refresh function
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,6 +45,7 @@ export default function SignInPage() {
 
       if (!res.ok) {
         alert(data?.error || "Signin failed");
+        setLoading(false);
         return;
       }
 
@@ -51,18 +55,29 @@ export default function SignInPage() {
       // Force the session provider to update before redirecting
       await refresh();
 
-      // if backend indicates onboarding required, redirect there first
+      // 1. Priority: API mandated redirect (e.g. onboarding)
+      if (data?.redirectTo) {
+        router.push(data.redirectTo);
+        return;
+      }
+
+      // Fallback for older API response structure
       if (data?.needsOnboarding) {
         router.push("/onboarding");
         return;
       }
 
-      // otherwise go to dashboard
+      // 2. Priority: User intended destination (from middleware redirect)
+      if (next) {
+        router.push(next);
+        return;
+      }
+
+      // 3. Default: Dashboard
       router.push("/dashboard");
     } catch (err) {
       console.error(err);
       alert("An unexpected error occurred");
-    } finally {
       setLoading(false);
     }
   };

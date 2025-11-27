@@ -18,7 +18,10 @@ import {
   Title,
   Text,
   SimpleGrid,
+  Modal,
+  Divider,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/components/SessionProvider";
 
@@ -30,6 +33,9 @@ const supabase = createClient(
 export default function RegisterForm() {
   const router = useRouter();
   const { session } = useSession();
+
+  // Modal state
+  const [opened, { open, close }] = useDisclosure(false);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -51,10 +57,12 @@ export default function RegisterForm() {
         .from("mailroom_locations")
         .select("id,name,region,city,barangay,zip")
         .order("name", { ascending: true });
+
+      // CHANGED: Order by price ascending (lowest to highest)
       const { data: plns } = await supabase
         .from("mailroom_plans")
         .select("id,name,price")
-        .order("name", { ascending: true });
+        .order("price", { ascending: true });
 
       if (!mounted) return;
       if (locs) {
@@ -78,11 +86,15 @@ export default function RegisterForm() {
   }, []);
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
+  const selectedLocationObj =
+    locations.find((l) => l.id === selectedLocation) ?? null;
+
   const pricePerMonth = selectedPlan ? Number(selectedPlan.price) : 0;
   const qty = typeof lockerQty === "number" ? lockerQty : 1;
   const duration = typeof months === "number" ? months : 1;
   const monthlyTotal = pricePerMonth * qty;
   const totalCost = monthlyTotal * duration;
+
   const format = (n: number) =>
     n.toLocaleString("en-PH", {
       style: "currency",
@@ -90,8 +102,10 @@ export default function RegisterForm() {
       maximumFractionDigits: 0,
     });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // 1. Triggered by the form "Submit" button
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!session?.user?.id) {
       router.push("/signin");
       return;
@@ -101,10 +115,16 @@ export default function RegisterForm() {
       return;
     }
 
+    // Open the confirmation modal
+    open();
+  };
+
+  // 2. Triggered by the "Confirm" button inside the modal
+  const confirmRegistration = async () => {
     setLoading(true);
     try {
       const payload = {
-        userId: session.user.id,
+        userId: session?.user?.id,
         full_name: `${firstName} ${lastName}`.trim() || null,
         email,
         mobile,
@@ -126,14 +146,17 @@ export default function RegisterForm() {
       if (!res.ok) {
         console.error("register error:", data);
         window.alert(data?.error || "Failed to register");
+        close(); // Close modal on error
         return;
       }
 
+      close(); // Close modal on success
       window.alert("Registered successfully");
       router.push("/dashboard");
     } catch (err) {
       console.error(err);
       window.alert("Unexpected error");
+      close();
     } finally {
       setLoading(false);
     }
@@ -141,7 +164,69 @@ export default function RegisterForm() {
 
   return (
     <Box>
-      <form onSubmit={handleSubmit}>
+      {/* Confirmation Modal */}
+      <Modal
+        opened={opened}
+        onClose={close}
+        title={<Title order={3}>Confirm Subscription</Title>}
+        centered
+        size="md"
+      >
+        <Stack gap="md">
+          <Text c="dimmed">
+            Please review your subscription details before confirming.
+          </Text>
+
+          <Paper withBorder p="md" bg="gray.0">
+            <Stack gap="xs">
+              <Group justify="space-between">
+                <Text fw={600}>Location:</Text>
+                <Text>{selectedLocationObj?.name}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text fw={600}>Plan:</Text>
+                <Text>{selectedPlan?.name}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text fw={600}>Duration:</Text>
+                <Text>
+                  {duration} Month{duration > 1 ? "s" : ""}
+                </Text>
+              </Group>
+              <Group justify="space-between">
+                <Text fw={600}>Quantity:</Text>
+                <Text>
+                  {qty} Locker{qty > 1 ? "s" : ""}
+                </Text>
+              </Group>
+              <Divider my="xs" />
+              <Group justify="space-between">
+                <Text size="lg" fw={700}>
+                  Total Due:
+                </Text>
+                <Text size="lg" fw={700} c="#26316D">
+                  {format(totalCost)}
+                </Text>
+              </Group>
+            </Stack>
+          </Paper>
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={close} disabled={loading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmRegistration}
+              loading={loading}
+              style={{ backgroundColor: "#26316D", color: "#fff" }}
+            >
+              Confirm & Pay
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <form onSubmit={handleFormSubmit}>
         <Paper withBorder p="lg" radius="md" mb="md">
           <Group mb="md">
             <Badge color="blue" size="lg" circle>
@@ -155,6 +240,7 @@ export default function RegisterForm() {
                 label="First Name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.currentTarget.value)}
+                required // CHANGED: Added required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -162,6 +248,7 @@ export default function RegisterForm() {
                 label="Last Name"
                 value={lastName}
                 onChange={(e) => setLastName(e.currentTarget.value)}
+                required // CHANGED: Added required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -170,6 +257,7 @@ export default function RegisterForm() {
                 value={email}
                 onChange={(e) => setEmail(e.currentTarget.value)}
                 type="email"
+                required // CHANGED: Added required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -177,6 +265,7 @@ export default function RegisterForm() {
                 label="Mobile Number"
                 value={mobile}
                 onChange={(e) => setMobile(e.currentTarget.value)}
+                required // CHANGED: Added required
               />
             </Grid.Col>
           </Grid>
@@ -193,7 +282,10 @@ export default function RegisterForm() {
           <Stack gap="lg">
             <Box>
               <Text fw={600} mb="sm">
-                Select Mailroom Location
+                Select Mailroom Location{" "}
+                <Text span c="red">
+                  *
+                </Text>
               </Text>
               <ScrollArea style={{ maxHeight: 220 }} type="auto">
                 <Table verticalSpacing="sm" highlightOnHover>
@@ -230,7 +322,10 @@ export default function RegisterForm() {
 
             <Box>
               <Text fw={600} mb="sm">
-                Select Your Plan
+                Select Your Plan{" "}
+                <Text span c="red">
+                  *
+                </Text>
               </Text>
               <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
                 {plans.map((p) => (
@@ -295,6 +390,7 @@ export default function RegisterForm() {
                 min={1}
                 value={lockerQty}
                 onChange={(val) => setLockerQty(val)}
+                required // CHANGED: Added required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -303,6 +399,7 @@ export default function RegisterForm() {
                 min={1}
                 value={months}
                 onChange={(val) => setMonths(val)}
+                required // CHANGED: Added required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -317,6 +414,7 @@ export default function RegisterForm() {
               value={notes}
               onChange={(e) => setNotes(e.currentTarget.value)}
               minRows={3}
+              // Notes remains optional
             />
           </Box>
 
@@ -349,7 +447,7 @@ export default function RegisterForm() {
             <Button
               type="submit"
               size="lg"
-              loading={loading}
+              // loading removed here, moved to modal button
               style={{ backgroundColor: "#26316D", color: "#fff" }}
             >
               Submit Registration
