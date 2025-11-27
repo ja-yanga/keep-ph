@@ -346,20 +346,30 @@ export default function MailroomList() {
         }}
       >
         <Table verticalSpacing="sm" highlightOnHover>
-          <thead>
-            <tr>
-              {visibleColumns.name && <th>Name</th>}
+          <Table.Thead>
+            <Table.Tr>
+              {visibleColumns.name && (
+                <Table.Th
+                  style={{ cursor: "pointer" }}
+                  onClick={() => toggleSort("name")}
+                >
+                  Name{" "}
+                  {sortBy === "name" ? (sortDir === "asc" ? "▲" : "▼") : null}
+                </Table.Th>
+              )}
+
               {visibleColumns.plan && (
-                <th
+                <Table.Th
                   style={{ cursor: "pointer" }}
                   onClick={() => toggleSort("plan")}
                 >
                   Plan{" "}
                   {sortBy === "plan" ? (sortDir === "asc" ? "▲" : "▼") : null}
-                </th>
+                </Table.Th>
               )}
+
               {visibleColumns.location && (
-                <th
+                <Table.Th
                   style={{ cursor: "pointer" }}
                   onClick={() => toggleSort("location")}
                 >
@@ -369,10 +379,11 @@ export default function MailroomList() {
                       ? "▲"
                       : "▼"
                     : null}
-                </th>
+                </Table.Th>
               )}
+
               {visibleColumns.created_at && (
-                <th
+                <Table.Th
                   style={{ cursor: "pointer" }}
                   onClick={() => toggleSort("created_at")}
                 >
@@ -382,10 +393,11 @@ export default function MailroomList() {
                       ? "▲"
                       : "▼"
                     : null}
-                </th>
+                </Table.Th>
               )}
+
               {visibleColumns.expiry_at && (
-                <th
+                <Table.Th
                   style={{ cursor: "pointer" }}
                   onClick={() => toggleSort("expiry_at")}
                 >
@@ -395,11 +407,15 @@ export default function MailroomList() {
                       ? "▲"
                       : "▼"
                     : null}
-                </th>
+                </Table.Th>
               )}
-              {visibleColumns.mailroom_status && <th>Mailroom Status</th>}
+
+              {visibleColumns.mailroom_status && (
+                <Table.Th>Mailroom Status</Table.Th>
+              )}
+
               {visibleColumns.locker_status && (
-                <th
+                <Table.Th
                   style={{ cursor: "pointer" }}
                   onClick={() => toggleSort("locker_status")}
                 >
@@ -409,59 +425,62 @@ export default function MailroomList() {
                       ? "▲"
                       : "▼"
                     : null}
-                </th>
+                </Table.Th>
               )}
-              {visibleColumns.view && <th>View</th>}
-            </tr>
-          </thead>
 
-          <tbody>
+              {visibleColumns.view && <Table.Th>View</Table.Th>}
+            </Table.Tr>
+          </Table.Thead>
+
+          <Table.Tbody>
             {loading || rows === null ? (
-              <tr>
-                <td colSpan={8}>
+              <Table.Tr>
+                <Table.Td colSpan={8}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
                     <Loader />
                   </Box>
-                </td>
-              </tr>
+                </Table.Td>
+              </Table.Tr>
             ) : error ? (
-              <tr>
-                <td colSpan={8}>
+              <Table.Tr>
+                <Table.Td colSpan={8}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
                     <Text color="red">{error}</Text>
                   </Box>
-                </td>
-              </tr>
+                </Table.Td>
+              </Table.Tr>
             ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={8}>
+              <Table.Tr>
+                <Table.Td colSpan={8}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
                     <Text color="dimmed">No results</Text>
                   </Box>
-                </td>
-              </tr>
+                </Table.Td>
+              </Table.Tr>
             ) : (
               filtered.map((r) => (
-                <tr key={r.id}>
-                  {visibleColumns.name && <td>{r.name}</td>}
-                  {visibleColumns.plan && <td>{r.plan ?? "—"}</td>}
-                  {visibleColumns.location && <td>{r.location ?? "—"}</td>}
+                <Table.Tr key={r.id}>
+                  {visibleColumns.name && <Table.Td>{r.name}</Table.Td>}
+                  {visibleColumns.plan && <Table.Td>{r.plan ?? "—"}</Table.Td>}
+                  {visibleColumns.location && (
+                    <Table.Td>{r.location ?? "—"}</Table.Td>
+                  )}
                   {visibleColumns.created_at && (
-                    <td>
+                    <Table.Td>
                       {r.created_at
                         ? new Date(r.created_at).toLocaleDateString()
                         : "—"}
-                    </td>
+                    </Table.Td>
                   )}
                   {visibleColumns.expiry_at && (
-                    <td>
+                    <Table.Td>
                       {r.expiry_at
                         ? new Date(r.expiry_at).toLocaleDateString()
                         : "—"}
-                    </td>
+                    </Table.Td>
                   )}
                   {visibleColumns.mailroom_status && (
-                    <td>
+                    <Table.Td>
                       {r.mailroom_status ? (
                         (() => {
                           const s = String(r.mailroom_status).toUpperCase();
@@ -476,19 +495,19 @@ export default function MailroomList() {
                       ) : (
                         <Text color="dimmed">—</Text>
                       )}
-                    </td>
+                    </Table.Td>
                   )}
                   {visibleColumns.locker_status && (
-                    <td>
+                    <Table.Td>
                       {r.locker_status ? (
                         <Badge color="gray">{r.locker_status}</Badge>
                       ) : (
                         <Text color="dimmed">—</Text>
                       )}
-                    </td>
+                    </Table.Td>
                   )}
                   {visibleColumns.view && (
-                    <td>
+                    <Table.Td>
                       <Group gap="xs">
                         <Link
                           href={`/mailroom/${r.id}`}
@@ -503,12 +522,12 @@ export default function MailroomList() {
                           </Button>
                         </Link>
                       </Group>
-                    </td>
+                    </Table.Td>
                   )}
-                </tr>
+                </Table.Tr>
               ))
             )}
-          </tbody>
+          </Table.Tbody>
         </Table>
       </Box>
     </Stack>

@@ -386,31 +386,37 @@ export default function MailroomPackagePage() {
             <Paper withBorder p="sm">
               <ScrollArea style={{ maxHeight: 320 }}>
                 <Table verticalSpacing="xs" sx={{ fontSize: 13 }}>
-                  <thead>
-                    <tr>
-                      <th>Package</th>
-                      <th>Locker</th>
-                      <th>Status</th>
-                      <th>Date</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Package</Table.Th>
+                      <Table.Th>Locker</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Date</Table.Th>
+                      <Table.Th>Action</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+
+                  <Table.Tbody>
                     {Array.isArray(item.packages) &&
                     item.packages.length > 0 ? (
                       item.packages.map((p: any) => {
                         const status = p.status ?? p.state ?? "PENDING";
                         const date =
                           p.status_date ?? p.created_at ?? p.updated_at;
+
                         return (
-                          <tr key={p.id ?? p.label ?? Math.random()}>
-                            <td>{p.name ?? p.package_name ?? "—"}</td>
-                            <td>{p.locker_label ?? p.locker ?? "—"}</td>
-                            <td>{status}</td>
-                            <td>
+                          <Table.Tr key={p.id ?? p.label ?? Math.random()}>
+                            <Table.Td>
+                              {p.name ?? p.package_name ?? "—"}
+                            </Table.Td>
+                            <Table.Td>
+                              {p.locker_label ?? p.locker ?? "—"}
+                            </Table.Td>
+                            <Table.Td>{status}</Table.Td>
+                            <Table.Td>
                               {date ? new Date(date).toLocaleDateString() : "—"}
-                            </td>
-                            <td>
+                            </Table.Td>
+                            <Table.Td>
                               <Group spacing="xs">
                                 {status === "STORED" && (
                                   <>
@@ -445,18 +451,18 @@ export default function MailroomPackagePage() {
                                   </Text>
                                 )}
                               </Group>
-                            </td>
-                          </tr>
+                            </Table.Td>
+                          </Table.Tr>
                         );
                       })
                     ) : (
-                      <tr>
-                        <td colSpan={5}>
+                      <Table.Tr>
+                        <Table.Td colSpan={5}>
                           <Text color="dimmed">No packages</Text>
-                        </td>
-                      </tr>
+                        </Table.Td>
+                      </Table.Tr>
                     )}
-                  </tbody>
+                  </Table.Tbody>
                 </Table>
               </ScrollArea>
             </Paper>
