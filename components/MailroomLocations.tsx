@@ -17,7 +17,7 @@ import {
   NumberInput,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconRefresh, IconEye, IconEdit } from "@tabler/icons-react";
 
 type Location = {
   id: string;
@@ -39,7 +39,26 @@ export default function MailroomLocations() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  // view/edit modal state
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewLocation, setViewLocation] = useState<Location | null>(null);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLocation, setEditLocation] = useState<Location | null>(null);
+  const [editing, setEditing] = useState(false);
+
   const form = useForm({
+    initialValues: {
+      name: "",
+      region: "",
+      city: "",
+      barangay: "",
+      zip: "",
+      total_lockers: 0,
+    },
+  });
+
+  const editForm = useForm({
     initialValues: {
       name: "",
       region: "",
@@ -174,10 +193,68 @@ export default function MailroomLocations() {
       refresh();
     } catch (err: any) {
       console.error("create error", err);
-      // minimal feedback — replace with proper notifications if desired
       alert(err?.message ?? "Failed to create location");
     } finally {
       setCreating(false);
+    }
+  });
+
+  // open view modal
+  const openView = (loc: Location) => {
+    setViewLocation(loc);
+    setViewOpen(true);
+  };
+
+  // open edit modal and populate form
+  const openEdit = (loc: Location) => {
+    setEditLocation(loc);
+    editForm.setValues({
+      name: loc.name ?? "",
+      region: loc.region ?? "",
+      city: loc.city ?? "",
+      barangay: loc.barangay ?? "",
+      zip: loc.zip ?? "",
+      total_lockers: loc.total_lockers ?? 0,
+    });
+    setEditOpen(true);
+  };
+
+  // edit handler
+  const handleEdit = editForm.onSubmit(async (values) => {
+    if (!editLocation) return;
+    if (!editLocation.id) {
+      console.error("editLocation missing id", editLocation);
+      alert("Missing location id. Cannot save changes.");
+      return;
+    }
+
+    setEditing(true);
+    try {
+      const payload = {
+        name: values.name,
+        region: values.region || null,
+        city: values.city || null,
+        barangay: values.barangay || null,
+        zip: values.zip || null,
+        total_lockers: values.total_lockers ?? 0,
+      };
+      const res = await fetch(`/api/mailroom/locations/${editLocation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || "Failed to update location");
+      }
+      setEditOpen(false);
+      setEditLocation(null);
+      refresh();
+    } catch (err: any) {
+      console.error("edit error", err);
+      alert(err?.message ?? "Failed to update location");
+    } finally {
+      setEditing(false);
     }
   });
 
@@ -205,7 +282,7 @@ export default function MailroomLocations() {
           <Space w="sm" />
         </Group>
 
-        {/* removed Export button; added Create */}
+        {/* Create */}
         <Button variant="outline" onClick={() => setCreateOpen(true)}>
           Create
         </Button>
@@ -269,13 +346,14 @@ export default function MailroomLocations() {
                     : "▼"
                   : null}
               </Table.Th>
+              <Table.Th>Actions</Table.Th>
             </Table.Tr>
           </Table.Thead>
 
           <Table.Tbody>
             {loading || locations === null ? (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
                     <Loader />
                   </Box>
@@ -283,7 +361,7 @@ export default function MailroomLocations() {
               </Table.Tr>
             ) : error ? (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
                     <Text color="red">{error}</Text>
                   </Box>
@@ -291,7 +369,7 @@ export default function MailroomLocations() {
               </Table.Tr>
             ) : filtered.length === 0 ? (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
                     <Text color="dimmed">No locations found</Text>
                   </Box>
@@ -307,6 +385,26 @@ export default function MailroomLocations() {
                   <Table.Td>{loc.zip ?? "—"}</Table.Td>
                   <Table.Td>
                     <Badge color="blue">{loc.total_lockers ?? 0}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group spacing="xs" position="right" noWrap>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        leftIcon={<IconEye size={14} />}
+                        onClick={() => openView(loc)}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        leftIcon={<IconEdit size={14} />}
+                        onClick={() => openEdit(loc)}
+                      >
+                        Edit
+                      </Button>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))
@@ -361,6 +459,66 @@ export default function MailroomLocations() {
               </Button>
               <Button type="submit" loading={creating}>
                 Create
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {/* View modal */}
+      <Modal
+        opened={viewOpen}
+        onClose={() => setViewOpen(false)}
+        title="Location"
+        centered
+      >
+        <Stack spacing="xs">
+          <Text weight={700}>{viewLocation?.name}</Text>
+          <Text color="dimmed">Region: {viewLocation?.region ?? "—"}</Text>
+          <Text color="dimmed">City: {viewLocation?.city ?? "—"}</Text>
+          <Text color="dimmed">Barangay: {viewLocation?.barangay ?? "—"}</Text>
+          <Text color="dimmed">Zip: {viewLocation?.zip ?? "—"}</Text>
+          <Text color="dimmed">
+            Total lockers: {viewLocation?.total_lockers ?? 0}
+          </Text>
+          <Group position="right" mt="sm">
+            <Button onClick={() => setViewOpen(false)}>Close</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Edit modal */}
+      <Modal
+        opened={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Location"
+        centered
+      >
+        <form onSubmit={handleEdit}>
+          <Stack>
+            <TextInput
+              label="Name"
+              required
+              {...editForm.getInputProps("name")}
+            />
+            <TextInput label="Region" {...editForm.getInputProps("region")} />
+            <TextInput label="City" {...editForm.getInputProps("city")} />
+            <TextInput
+              label="Barangay"
+              {...editForm.getInputProps("barangay")}
+            />
+            <TextInput label="Zip" {...editForm.getInputProps("zip")} />
+            <NumberInput
+              label="Total Lockers"
+              min={0}
+              {...editForm.getInputProps("total_lockers")}
+            />
+            <Group position="right" mt="sm">
+              <Button variant="default" onClick={() => setEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={editing}>
+                Save
               </Button>
             </Group>
           </Stack>
