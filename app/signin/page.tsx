@@ -61,12 +61,6 @@ export default function SignInPage() {
         return;
       }
 
-      // Fallback for older API response structure
-      if (data?.needsOnboarding) {
-        router.push("/onboarding");
-        return;
-      }
-
       // 2. Priority: User intended destination (from middleware redirect)
       if (next) {
         router.push(next);

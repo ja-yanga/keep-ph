@@ -12,6 +12,8 @@ type Profile = {
   first_name?: string | null;
   last_name?: string | null;
   role?: string | null;
+  needs_onboarding?: string | null;
+  avatar_url?: string | null;
 } | null;
 
 type SessionPayload = {

@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     try {
       const { data: profileData, error: profileErr } = await supabaseAdmin
         .from("users")
-        .select("first_name, last_name, role, needs_onboarding")
+        .select("first_name, last_name, role, needs_onboarding, avatar_url")
         .eq("id", userData.user.id)
         .maybeSingle();
 
@@ -56,7 +56,6 @@ export async function GET(req: Request) {
       user: userData.user,
       profile,
       role: profile?.role ?? null,
-      needs_onboarding,
     });
   } catch (err) {
     console.error("session GET error:", err);

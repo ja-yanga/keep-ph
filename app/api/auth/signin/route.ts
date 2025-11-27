@@ -54,9 +54,9 @@ export async function POST(req: Request) {
       ok: true,
       needsOnboarding,
       // Only force redirect if onboarding is needed.
-      // Otherwise, let the
-      redirectTo: needsOnboarding ? "/onboarding" : "/dashboard",
-      user: session.user, // Return user info for client convenience
+      // Otherwise, let the client decide (usually dashboard, but could be previous page)
+      redirectTo: needsOnboarding ? "/onboarding" : null,
+      user: session,
     });
 
     // 3. Set Cookies
