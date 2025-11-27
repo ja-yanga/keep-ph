@@ -11,36 +11,18 @@ export async function PATCH(
   { params }: { params: { id?: string } }
 ) {
   try {
-    // parse body (if any)
     const body = await req.json().catch(() => ({}));
 
-    // Prefer route params, fallback to body.id, then try to extract from req.url
     let id = params?.id ?? body?.id;
     if (!id) {
       try {
         const parsed = new URL(req.url);
         const parts = parsed.pathname.split("/").filter(Boolean);
-        // Attempt to locate the "locations" segment and take the next segment as id
         const idx = parts.lastIndexOf("locations");
-        if (idx >= 0 && parts.length > idx + 1) {
-          id = parts[idx + 1];
-        } else {
-          // fallback to last segment
-          id = parts[parts.length - 1];
-        }
-      } catch (e) {
-        // ignore URL parse errors
-      }
+        if (idx >= 0 && parts.length > idx + 1) id = parts[idx + 1];
+        else id = parts[parts.length - 1];
+      } catch {}
     }
-
-    console.log(
-      "PATCH /api/mailroom/locations/[id] - params:",
-      params,
-      "extractedId:",
-      id,
-      "body:",
-      body
-    );
 
     if (!id) {
       return NextResponse.json(
@@ -67,6 +49,24 @@ export async function PATCH(
       );
     }
 
+    // Fetch current location first to compare total_lockers
+    const { data: current, error: fetchError } = await supabaseAdmin
+      .from("mailroom_locations")
+      .select("total_lockers")
+      .eq("id", id)
+      .single();
+
+    if (fetchError || !current) {
+      return NextResponse.json(
+        { error: "Location not found" },
+        { status: 404 }
+      );
+    }
+
+    const oldTotal = current.total_lockers ?? 0;
+    const newTotal = updates.total_lockers ?? oldTotal;
+
+    // Update the location
     const { data, error } = await supabaseAdmin
       .from("mailroom_locations")
       .update(updates)
@@ -79,11 +79,26 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    if (!data) {
-      return NextResponse.json(
-        { error: "Location not found" },
-        { status: 404 }
-      );
+    // If total_lockers increased, generate new lockers
+    if (newTotal > oldTotal) {
+      const lockersToCreate = [];
+      for (let i = oldTotal + 1; i <= newTotal; i++) {
+        lockersToCreate.push({
+          location_id: id,
+          locker_code: `L${i.toString().padStart(3, "0")}`,
+          is_available: true,
+        });
+      }
+
+      if (lockersToCreate.length > 0) {
+        const { error: lockerError } = await supabaseAdmin
+          .from("location_lockers")
+          .insert(lockersToCreate);
+
+        if (lockerError) {
+          console.error("Error creating new lockers:", lockerError);
+        }
+      }
     }
 
     return NextResponse.json(

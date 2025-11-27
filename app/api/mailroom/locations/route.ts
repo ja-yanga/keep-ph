@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
+    // Insert location
     const { data, error } = await supabaseAdmin
       .from("mailroom_locations")
       .insert([
@@ -53,13 +54,39 @@ export async function POST(req: Request) {
       ])
       .select();
 
-    if (error) {
+    if (error || !data || data.length === 0) {
       console.error("Error creating location:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: error?.message || "Failed to create location" },
+        { status: 500 }
+      );
+    }
+
+    const locationId = data[0].id;
+    const lockersToCreate = total_lockers ?? 0;
+
+    if (lockersToCreate > 0) {
+      const lockers = [];
+      for (let i = 1; i <= lockersToCreate; i++) {
+        lockers.push({
+          location_id: locationId,
+          locker_code: `L${i.toString().padStart(3, "0")}`,
+          is_available: true,
+        });
+      }
+
+      const { error: lockerError } = await supabaseAdmin
+        .from("location_lockers")
+        .insert(lockers);
+
+      if (lockerError) {
+        console.error("Error creating lockers:", lockerError);
+        // you might still return 201 for location but log locker failure
+      }
     }
 
     return NextResponse.json(
-      { message: "Location created", data },
+      { message: "Location created with lockers", data },
       { status: 201 }
     );
   } catch (err) {
