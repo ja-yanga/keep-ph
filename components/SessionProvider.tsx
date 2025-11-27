@@ -40,14 +40,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
 
-  const fetchSession = async () => {
+  const fetchSession = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/onboarding", {
+      const res = await fetch("/api/session", {
         method: "GET",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
+        signal,
       });
 
       // debug: log status and headers info
@@ -72,7 +73,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // debug: log session payload (don't leak secrets in prod)
       console.log("[SessionProvider] session payload:", data);
       setSession(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("[SessionProvider] session fetch error:", err);
       setSession(null);
       setError(err);
