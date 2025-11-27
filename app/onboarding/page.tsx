@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Box,
   Container,
@@ -18,6 +19,8 @@ import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
 
 export default function OnboardingPage() {
+  const router = useRouter();
+  const { refresh } = useSession();
   const [avatar, setAvatar] = useState<File | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -48,24 +51,32 @@ export default function OnboardingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // convert file to data URL before JSON
     const avatarDataUrl = avatar ? await fileToDataUrl(avatar) : null;
 
     const payload = {
       first_name: firstName,
       last_name: lastName,
       email,
-      avatar: avatarDataUrl, // data:<mime>;base64,...
+      avatar: avatarDataUrl,
     };
 
     const res = await fetch("/api/onboarding", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include", // ensure cookies are sent
+      credentials: "include",
       body: JSON.stringify(payload),
     });
 
-    // handle response...
+    if (!res.ok) {
+      // handle error (show toast / message)
+      return;
+    }
+
+    // refresh global session so needs_onboarding updates
+    await refresh();
+
+    // navigate to dashboard
+    router.push("/dashboard");
   };
 
   const handleUploadClick = () => {

@@ -94,6 +94,8 @@ export async function POST(req: Request) {
     const updatePayload: Record<string, any> = {
       first_name,
       last_name,
+      // mark onboarding completed
+      needs_onboarding: false,
     };
     if (publicAvatarUrl) updatePayload.avatar_url = publicAvatarUrl;
 
@@ -111,7 +113,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, needs_onboarding: false });
   } catch (err) {
     console.error(err);
     return NextResponse.json(
