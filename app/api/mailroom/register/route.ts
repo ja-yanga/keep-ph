@@ -3,11 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY; // optional server key
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// anon client (used for lookups if service role not provided)
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-// admin client (preferred for server-side writes if you have service role key)
 const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   : supabase;
@@ -19,8 +17,12 @@ const isUuid = (s: unknown) =>
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
     let {
       userId,
+      full_name,
+      email,
+      mobile,
       locationId,
       planId,
       lockerQty = 1,
@@ -32,60 +34,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
-    // Resolve locationId if a slug/name was sent (e.g. "bgc" or "greenhills")
+    // --- Resolve locationId ---
     if (!isUuid(locationId)) {
       const q = String(locationId ?? "").trim();
-      // try name match (case-insensitive)
-      const { data: locs, error: locErr } = await supabase
+      const { data: locs } = await supabase
         .from("mailroom_locations")
-        .select("id,name,city,region,barangay")
+        .select("id")
         .or(
           `name.ilike.%${q}%,city.ilike.%${q}%,region.ilike.%${q}%,barangay.ilike.%${q}%`
         )
         .limit(1);
 
-      if (locErr) {
-        console.error("location lookup error:", locErr);
-        return NextResponse.json(
-          { error: "Location lookup failed" },
-          { status: 500 }
-        );
-      }
-      if (!locs || locs.length === 0) {
+      if (!locs?.length)
         return NextResponse.json(
           { error: `Unknown mailroom location "${locationId}"` },
           { status: 400 }
         );
-      }
+
       locationId = locs[0].id;
     }
 
-    // Resolve planId if a name was sent (e.g. "Personal")
+    // --- Resolve planId ---
     if (!isUuid(planId)) {
       const q = String(planId ?? "").trim();
-      const { data: plans, error: planErr } = await supabase
+      const { data: plans } = await supabase
         .from("mailroom_plans")
-        .select("id,name,price")
+        .select("id")
         .ilike("name", `%${q}%`)
         .limit(1);
 
-      if (planErr) {
-        console.error("plan lookup error:", planErr);
-        return NextResponse.json(
-          { error: "Plan lookup failed" },
-          { status: 500 }
-        );
-      }
-      if (!plans || plans.length === 0) {
+      if (!plans?.length)
         return NextResponse.json(
           { error: `Unknown plan "${planId}"` },
           { status: 400 }
         );
-      }
+
       planId = plans[0].id;
     }
 
-    // Final validation
     if (!isUuid(locationId) || !isUuid(planId)) {
       return NextResponse.json(
         { error: "Failed to resolve locationId or planId to UUIDs" },
@@ -93,8 +79,12 @@ export async function POST(req: Request) {
       );
     }
 
+    // --- Final record ---
     const record = {
       user_id: userId,
+      full_name: full_name || null,
+      email: email || null,
+      mobile: mobile || null,
       location_id: locationId,
       plan_id: planId,
       locker_qty: Number(lockerQty) || 1,
@@ -102,20 +92,16 @@ export async function POST(req: Request) {
       notes: notes ?? null,
     };
 
-    // Use admin client when available (bypass RLS). Otherwise use anon client (requires permissive policies).
     const client = supabaseAdmin;
 
     const { data, error } = await client
       .from("mailroom_registrations")
       .insert([record])
-      .select();
+      .select("*");
 
     if (error) {
       console.error("mailroom register error:", error);
-      return NextResponse.json(
-        { error: error.message || "Failed to register" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     return NextResponse.json(
