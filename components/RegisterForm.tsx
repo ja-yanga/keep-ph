@@ -147,21 +147,21 @@ export default function RegisterForm() {
             <Title order={4}>User Info</Title>
           </Group>
           <Grid>
-            <Grid.Col md={6}>
+            <Grid.Col>
               <TextInput
                 label="First Name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.currentTarget.value)}
               />
             </Grid.Col>
-            <Grid.Col md={6}>
+            <Grid.Col>
               <TextInput
                 label="Last Name"
                 value={lastName}
                 onChange={(e) => setLastName(e.currentTarget.value)}
               />
             </Grid.Col>
-            <Grid.Col md={6}>
+            <Grid.Col>
               <TextInput
                 label="Email"
                 value={email}
@@ -169,7 +169,7 @@ export default function RegisterForm() {
                 type="email"
               />
             </Grid.Col>
-            <Grid.Col md={6}>
+            <Grid.Col>
               <TextInput
                 label="Mobile Number"
                 value={mobile}
@@ -185,11 +185,9 @@ export default function RegisterForm() {
             <Title order={4}>Location & Plan</Title>
           </Group>
 
-          <Stack spacing="lg">
+          <Stack gap="lg">
             <Box>
-              <Text weight={600} mb="sm">
-                Select Mailroom Location
-              </Text>
+              <Text mb="sm">Select Mailroom Location</Text>
               <ScrollArea style={{ maxHeight: 220 }}>
                 <Table verticalSpacing="sm" highlightOnHover>
                   <tbody>
@@ -213,12 +211,10 @@ export default function RegisterForm() {
             </Box>
 
             <Box>
-              <Text weight={600} mb="sm">
-                Select Your Plan
-              </Text>
+              <Text mb="sm">Select Your Plan</Text>
               <Grid>
                 {plans.map((p) => (
-                  <Grid.Col key={p.id} xs={12} md={6} lg={4}>
+                  <Grid.Col key={p.id}>
                     <Card
                       withBorder
                       style={{
@@ -230,10 +226,8 @@ export default function RegisterForm() {
                         {p.name === "Personal" ? (
                           <Badge color="blue">Popular</Badge>
                         ) : null}
-                        <Text weight={700}>{p.name}</Text>
-                        <Text weight={700} size="xl">
-                          {format(Number(p.price))}/month
-                        </Text>
+                        <Text>{p.name}</Text>
+                        <Text size="xl">{format(Number(p.price))}/month</Text>
                         <Button
                           variant={
                             selectedPlanId === p.id ? "filled" : "outline"
@@ -258,23 +252,23 @@ export default function RegisterForm() {
           </Group>
 
           <Grid>
-            <Grid.Col md={4}>
+            <Grid.Col>
               <NumberInput
                 label="Locker Quantity"
                 min={1}
                 value={lockerQty}
-                onChange={(val) => setLockerQty(val)}
+                // onChange={(val) => setLockerQty(val)}
               />
             </Grid.Col>
-            <Grid.Col md={4}>
+            <Grid.Col>
               <NumberInput
                 label="Number of Months"
                 min={1}
                 value={months}
-                onChange={(val) => setMonths(val)}
+                // onChange={(val) => setMonths(val)}
               />
             </Grid.Col>
-            <Grid.Col md={4}>
+            <Grid.Col>
               <TextInput label="Expiration" value="Calculated date" readOnly />
             </Grid.Col>
           </Grid>
@@ -291,25 +285,18 @@ export default function RegisterForm() {
           <Box mt="md">
             <Text>
               Price per locker / month:{" "}
-              <Text component="span" weight={700}>
-                {format(pricePerMonth)}
-              </Text>
+              <Text component="span">{format(pricePerMonth)}</Text>
             </Text>
             <Text>
               Monthly total:{" "}
-              <Text component="span" weight={700}>
-                {format(monthlyTotal)}
-              </Text>
+              <Text component="span">{format(monthlyTotal)}</Text>
             </Text>
             <Text>
-              Total:{" "}
-              <Text component="span" weight={700}>
-                {format(totalCost)}
-              </Text>
+              Total: <Text component="span">{format(totalCost)}</Text>
             </Text>
           </Box>
 
-          <Group position="right" mt="md">
+          <Group align="right" mt="md">
             <Button
               type="submit"
               loading={loading}

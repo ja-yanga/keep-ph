@@ -79,7 +79,7 @@ export default function DashboardNav() {
                 marginLeft: 16,
               }}
             >
-              <Group spacing="md" className="nav-links-desktop">
+              <Group gap="md" className="nav-links-desktop">
                 <Anchor
                   href="/dashboard"
                   style={linkColor("/dashboard")}

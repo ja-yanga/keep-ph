@@ -8,6 +8,7 @@ import {
   Table,
   Text,
   TextInput,
+  Title,
   Group,
   Badge,
   Divider,
@@ -261,12 +262,12 @@ export default function MailroomLocations() {
   return (
     <Stack gap="lg">
       <Box>
-        <Text weight={700} size="xl">
+        <Title order={1} size="xl">
           Mailroom Locations
-        </Text>
+        </Title>
       </Box>
 
-      <Group align="apart" spacing="sm">
+      <Group align="apart" gap="sm">
         <Group gap="sm" style={{ flex: 1 }}>
           <TextInput
             placeholder="Search by name, region, city, barangay or zip..."
@@ -275,7 +276,7 @@ export default function MailroomLocations() {
             style={{ flex: 1, minWidth: 280 }}
           />
           <Tooltip label="Refresh list">
-            <Button leftIcon={<IconRefresh size={16} />} onClick={refresh}>
+            <Button leftSection={<IconRefresh size={16} />} onClick={refresh}>
               Refresh
             </Button>
           </Tooltip>
@@ -387,11 +388,11 @@ export default function MailroomLocations() {
                     <Badge color="blue">{loc.total_lockers ?? 0}</Badge>
                   </Table.Td>
                   <Table.Td>
-                    <Group spacing="xs" position="right" noWrap>
+                    <Group gap="xs" align="right">
                       <Button
                         size="xs"
                         variant="light"
-                        leftIcon={<IconEye size={14} />}
+                        leftSection={<IconEye size={14} />}
                         onClick={() => openView(loc)}
                       >
                         View
@@ -399,7 +400,7 @@ export default function MailroomLocations() {
                       <Button
                         size="xs"
                         variant="outline"
-                        leftIcon={<IconEdit size={14} />}
+                        leftSection={<IconEdit size={14} />}
                         onClick={() => openEdit(loc)}
                       >
                         Edit
@@ -453,7 +454,7 @@ export default function MailroomLocations() {
               min={0}
               {...form.getInputProps("total_lockers")}
             />
-            <Group position="right" mt="sm">
+            <Group align="right" mt="sm">
               <Button variant="default" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
@@ -472,8 +473,8 @@ export default function MailroomLocations() {
         title="Location"
         centered
       >
-        <Stack spacing="xs">
-          <Text weight={700}>{viewLocation?.name}</Text>
+        <Stack gap="xs">
+          <Text>{viewLocation?.name}</Text>
           <Text color="dimmed">Region: {viewLocation?.region ?? "—"}</Text>
           <Text color="dimmed">City: {viewLocation?.city ?? "—"}</Text>
           <Text color="dimmed">Barangay: {viewLocation?.barangay ?? "—"}</Text>
@@ -481,7 +482,7 @@ export default function MailroomLocations() {
           <Text color="dimmed">
             Total lockers: {viewLocation?.total_lockers ?? 0}
           </Text>
-          <Group position="right" mt="sm">
+          <Group align="right" mt="sm">
             <Button onClick={() => setViewOpen(false)}>Close</Button>
           </Group>
         </Stack>
@@ -513,7 +514,7 @@ export default function MailroomLocations() {
               min={0}
               {...editForm.getInputProps("total_lockers")}
             />
-            <Group position="right" mt="sm">
+            <Group align="right" mt="sm">
               <Button variant="default" onClick={() => setEditOpen(false)}>
                 Cancel
               </Button>

@@ -78,15 +78,11 @@ export default function SignInPage() {
       {/* Main Section - styled to match signup */}
       <Center style={{ flex: 1, paddingTop: 48, paddingBottom: 96 }}>
         <Container size={420}>
-          <Stack align="center" spacing={16}>
-            <Title
-              order={1}
-              align="center"
-              style={{ fontWeight: 700, color: "#1A237E" }}
-            >
+          <Stack align="center" gap={16}>
+            <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
               Login
             </Title>
-            <Text color="#6B7280" size="l" align="center">
+            <Text color="#6B7280" size="l">
               Sign in to access your account
             </Text>
           </Stack>
@@ -100,7 +96,7 @@ export default function SignInPage() {
               style={{ width: "100%" }} /* ensures same width as signup */
             >
               <form onSubmit={handleSubmit}>
-                <Stack spacing="md">
+                <Stack gap="md">
                   <TextInput
                     label="Email"
                     placeholder="you@example.com"

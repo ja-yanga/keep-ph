@@ -11,6 +11,7 @@ import {
   Stack,
   Table,
   Text,
+  Title,
   TextInput,
   Tooltip,
 } from "@mantine/core";
@@ -299,13 +300,13 @@ export default function MailroomList() {
     <Stack gap="lg">
       {/* Header */}
       <Box>
-        <Text weight={700} size="xl">
+        <Title order={1} size="xl">
           Mailroom Service List
-        </Text>
+        </Title>
       </Box>
 
       {/* Search + Filters + Actions */}
-      <Group align="apart" align="center" spacing="sm">
+      <Group align="apart" gap="sm">
         <Group gap="sm" style={{ flex: 1 }}>
           <TextInput
             placeholder="Search by name, plan or location..."

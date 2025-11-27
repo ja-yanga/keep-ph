@@ -92,39 +92,24 @@ export default function OnboardingPage() {
     <>
       <DashboardNav />
 
-      <Box
-        component="main"
-        sx={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          paddingTop: 64,
-          paddingBottom: 64,
-          width: "100%",
-        }}
-      >
+      <Box component="main">
         <Container size="sm" p="xl" my="lg">
-          <Stack spacing="xl" align="center">
-            <Box sx={{ textAlign: "center" }}>
-              <Title
-                order={1}
-                align="center"
-                style={{ fontWeight: 700, color: "#1A237E" }}
-              >
+          <Stack gap="xl" align="center">
+            <Box>
+              <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
                 Complete Your Profile
               </Title>
-              <Text color="#6B7280" size="l" align="center">
+              <Text color="#6B7280" size="l">
                 Just a few more details to get you started.
               </Text>
             </Box>
 
             <Paper radius="md" withBorder p="lg" style={{ width: "100%" }}>
               <form onSubmit={handleSubmit}>
-                <Stack spacing="lg">
+                <Stack gap="lg">
                   {/* Row 1: Avatar (centered) + Upload button that opens native file picker */}
-                  <Stack align="center" spacing="sm">
-                    <Box sx={{ position: "relative" }}>
+                  <Stack align="center" gap="sm">
+                    <Box>
                       <Avatar
                         src={avatarUrl ?? undefined}
                         radius="xl"
@@ -138,14 +123,6 @@ export default function OnboardingPage() {
                         variant="filled"
                         color="blue"
                         radius="xl"
-                        sx={{
-                          position: "absolute",
-                          right: -6,
-                          bottom: -6,
-                          minWidth: 34,
-                          height: 34,
-                          padding: 0,
-                        }}
                         type="button"
                         onClick={handleUploadClick}
                       >
@@ -168,7 +145,7 @@ export default function OnboardingPage() {
 
                   {/* Row 3: two columns - First Name | Last Name */}
                   <Grid>
-                    <Grid.Col xs={12} sm={6}>
+                    <Grid.Col>
                       <TextInput
                         label="First Name"
                         placeholder="Juan"
@@ -176,7 +153,7 @@ export default function OnboardingPage() {
                         onChange={(e) => setFirstName(e.currentTarget.value)}
                       />
                     </Grid.Col>
-                    <Grid.Col xs={12} sm={6}>
+                    <Grid.Col>
                       <TextInput
                         label="Last Name"
                         placeholder="Dela Cruz"
@@ -186,12 +163,7 @@ export default function OnboardingPage() {
                     </Grid.Col>
                   </Grid>
 
-                  <Button
-                    fullWidth
-                    size="lg"
-                    type="submit"
-                    sx={{ backgroundColor: "#1A237E" }}
-                  >
+                  <Button fullWidth size="lg" type="submit">
                     Save and Continue
                   </Button>
                 </Stack>

@@ -26,7 +26,7 @@ export default function Nav() {
 
           {/* Center: navigation links */}
           <Box style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-            <Group spacing="md">
+            <Group gap="md">
               <Anchor href="#" style={{ color: "#1A237E", fontWeight: 500 }}>
                 Services
               </Anchor>
