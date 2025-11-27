@@ -103,15 +103,13 @@ export default function RegisterForm() {
     setLoading(true);
     try {
       const payload = {
-        // include the camelCase key the server expects, keep snake_case for DB compatibility
         userId: session.user.id,
-        user_id: session.user.id,
         full_name: `${firstName} ${lastName}`.trim() || null,
         email,
         mobile,
-        location_id: selectedLocation,
-        plan_id: selectedPlanId,
-        locker_qty: lockerQty,
+        locationId: selectedLocation, // <-- camelCase
+        planId: selectedPlanId, // <-- camelCase
+        lockerQty,
         months,
         notes,
       };

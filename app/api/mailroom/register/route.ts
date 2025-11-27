@@ -79,39 +79,90 @@ export async function POST(req: Request) {
       );
     }
 
-    // --- Final record ---
-    const record = {
+    const client = supabaseAdmin;
+
+    // --- Fetch available lockers ---
+    const { data: availableLockers, error: lockerError } = await client
+      .from("location_lockers")
+      .select("*")
+      .eq("location_id", locationId)
+      .eq("is_available", true)
+      .order("id", { ascending: true })
+      .limit(lockerQty);
+
+    if (lockerError) throw lockerError;
+
+    if (!availableLockers || availableLockers.length < lockerQty) {
+      return NextResponse.json(
+        { error: "Not enough available lockers at this location" },
+        { status: 400 }
+      );
+    }
+
+    // --- Create registration ---
+    const registrationRecord = {
       user_id: userId,
       full_name: full_name || null,
       email: email || null,
       mobile: mobile || null,
       location_id: locationId,
       plan_id: planId,
-      locker_qty: Number(lockerQty) || 1,
+      locker_qty: lockerQty,
       months: Number(months) || 1,
       notes: notes ?? null,
     };
 
-    const client = supabaseAdmin;
-
-    const { data, error } = await client
+    const { data: registration, error: regError } = await client
       .from("mailroom_registrations")
-      .insert([record])
-      .select("*");
+      .insert([registrationRecord])
+      .select("*")
+      .single();
 
-    if (error) {
-      console.error("mailroom register error:", error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (regError) {
+      console.error("mailroom register error:", regError);
+      return NextResponse.json({ error: regError.message }, { status: 400 });
+    }
+
+    // --- Assign lockers ---
+    const assignedLockerRecords = availableLockers.map((l) => ({
+      registration_id: registration.id,
+      locker_id: l.id,
+      assigned_at: new Date().toISOString(),
+    }));
+
+    const { error: assignError } = await client
+      .from("mailroom_assigned_lockers")
+      .insert(assignedLockerRecords);
+
+    if (assignError) {
+      console.error("Failed to assign lockers:", assignError);
+      return NextResponse.json({ error: assignError.message }, { status: 400 });
+    }
+
+    // --- Mark lockers as unavailable ---
+    const lockerIds = availableLockers.map((l) => l.id);
+    const { error: updateLockerError } = await client
+      .from("location_lockers")
+      .update({ is_available: false })
+      .in("id", lockerIds);
+
+    if (updateLockerError) {
+      console.error("Failed to update locker availability:", updateLockerError);
+      // optional: rollback registration or assignment
     }
 
     return NextResponse.json(
-      { message: "Registered successfully", data },
+      {
+        message: "Registered successfully",
+        registration,
+        assignedLockers: assignedLockerRecords,
+      },
       { status: 200 }
     );
   } catch (err: any) {
     console.error("mailroom register unexpected error:", err);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: err.message || "Internal Server Error" },
       { status: 500 }
     );
   }
