@@ -3,8 +3,14 @@
 import { Box, Container, Title, Button, Center, Text } from "@mantine/core";
 import DashboardNav from "../../components/DashboardNav";
 import Footer from "@/components/Footer";
+import { useSession } from "@/components/SessionProvider";
 
 export default function DashboardPage() {
+  const { session, loading, error } = useSession();
+  console.log("dashboard session:", { session, loading, error });
+  const firstName = session?.profile?.first_name ?? null;
+  const displayName = firstName ?? session?.user?.email ?? "User";
+
   return (
     <Box
       style={{
@@ -29,7 +35,7 @@ export default function DashboardPage() {
             order={2}
             style={{ fontSize: 36, color: "#1A202C", fontWeight: 700 }}
           >
-            Welcome, User!
+            Welcome, {loading ? "Loading…" : displayName}!
           </Title>
 
           <Text

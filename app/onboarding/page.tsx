@@ -15,41 +15,27 @@ import {
 } from "@mantine/core";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
+import { useSession } from "@/components/SessionProvider";
 
 export default function OnboardingPage() {
   const [avatar, setAvatar] = useState<File | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [session, setSession] = useState<any>(null);
   const avatarUrl = avatar ? URL.createObjectURL(avatar) : null;
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // use global session provider instead of manual fetch
+  const { session: providerSession, loading } = useSession();
+
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/onboarding", {
-          method: "GET",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-        });
-
-        if (!res.ok) {
-          const txt = await res.text().catch(() => null);
-          console.log("onboarding GET failed:", res.status, txt);
-          return;
-        }
-
-        const data = await res.json();
-        console.log("session from /api/onboarding:", data);
-        setSession(data);
-        // set email from returned user object
-        if (data?.user?.email) setEmail(data.user.email);
-      } catch (err) {
-        console.error("failed to fetch session", err);
-      }
-    })();
-  }, []);
+    if (!providerSession) return;
+    if (providerSession.user?.email) setEmail(providerSession.user.email);
+    if (providerSession.profile?.first_name)
+      setFirstName(providerSession.profile.first_name);
+    if (providerSession.profile?.last_name)
+      setLastName(providerSession.profile.last_name);
+  }, [providerSession]);
 
   // helper: convert File -> data URL
   const fileToDataUrl = (file: File) =>
@@ -94,20 +80,6 @@ export default function OnboardingPage() {
   return (
     <>
       <DashboardNav />
-
-      {/* show session for debugging */}
-      {session && (
-        <pre
-          style={{
-            maxWidth: 800,
-            overflow: "auto",
-            background: "#f6f8fa",
-            padding: 8,
-          }}
-        >
-          {JSON.stringify(session, null, 2)}
-        </pre>
-      )}
 
       <Box
         component="main"
