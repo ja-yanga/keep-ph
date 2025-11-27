@@ -18,9 +18,11 @@ import { useRouter } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
 import { supabase } from "@/lib/supabaseClient";
+import { useSession } from "@/components/SessionProvider";
 
 export default function SignInPage() {
   const router = useRouter();
+  const { refresh } = useSession(); // Get the refresh function
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,9 @@ export default function SignInPage() {
 
       // client supabase also holds session; optional fetch:
       await supabase.auth.getSession();
+
+      // Force the session provider to update before redirecting
+      await refresh();
 
       // if backend indicates onboarding required, redirect there first
       if (data?.needsOnboarding) {

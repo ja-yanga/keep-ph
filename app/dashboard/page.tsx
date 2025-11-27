@@ -23,6 +23,8 @@ export default function DashboardPage() {
   const [hasMailroom, setHasMailroom] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (loading) return; // Wait for session to load
+
     let mounted = true;
     async function load() {
       if (!session?.user?.id) {
@@ -49,7 +51,7 @@ export default function DashboardPage() {
     return () => {
       mounted = false;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, loading]);
 
   return (
     <Box
@@ -67,7 +69,7 @@ export default function DashboardPage() {
 
       {/* Page content */}
       <Box style={{ flex: 1, paddingTop: 32, paddingBottom: 32 }}>
-        {hasMailroom === null ? (
+        {loading || hasMailroom === null ? (
           <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
             <Loader />
           </Center>
