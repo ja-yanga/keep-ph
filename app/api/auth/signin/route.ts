@@ -1,83 +1,90 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// server-side admin client to read protected tables
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export async function POST(req: Request) {
   try {
     const { email, password } = await req.json();
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error)
-      return NextResponse.json({ error: error.message }, { status: 400 });
-
-    // set HttpOnly cookies for server-side usage
-    const res = NextResponse.json({ user: data.user });
-    if (data.session) {
-      res.cookies.set("sb-access-token", data.session.access_token, {
-        httpOnly: true,
-        path: "/",
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-      });
-      res.cookies.set("sb-refresh-token", data.session.refresh_token, {
-        httpOnly: true,
-        path: "/",
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-      });
-
-      // make the server supabase client use the newly created session so RLS sees the user
-      await supabase.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-      });
-
-      // now query the users table for role and profile fields
-      const userId = data.user?.id ?? data.session.user?.id ?? null;
-      if (userId) {
-        const { data: userRow, error: userRowError } = await supabase
-          .from("users")
-          .select("role, first_name, last_name, avatar_url")
-          .eq("id", userId)
-          .single();
-
-        if (userRowError) {
-          console.warn("Could not read users row:", userRowError);
-        } else {
-          console.log("signed-in user role:", userRow.role);
-
-          // determine if onboarding is needed: missing first/last name or avatar
-          const needsOnboarding =
-            !userRow.first_name || !userRow.last_name || !userRow.avatar_url;
-
-          // include role, session and onboarding flag in response
-          return NextResponse.json({
-            user: data.user,
-            role: userRow.role,
-            session: data.session,
-            needsOnboarding,
-          });
-        }
-      }
+    if (error || !data?.session) {
+      return NextResponse.json(
+        { error: error?.message || "Signin failed" },
+        { status: 401 }
+      );
     }
 
-    // fallback: if no session or userRow wasn't found, infer from auth user metadata
-    const meta = data.user?.user_metadata ?? {};
-    const needsOnboardingFallback =
-      !meta.first_name || !meta.last_name || !meta.avatar_url;
+    const session = data.session;
+    const userId = session.user?.id;
 
-    return NextResponse.json({
-      user: data.user,
-      session: data.session,
-      needsOnboarding: needsOnboardingFallback,
+    // check users table for profile fields (server-side using service role)
+    let needsOnboarding = true;
+    try {
+      if (userId) {
+        const { data: profile, error: profileErr } = await supabaseAdmin
+          .from("users")
+          .select("first_name, last_name")
+          .eq("id", userId)
+          .limit(1)
+          .maybeSingle();
+
+        if (!profileErr && profile && profile.first_name && profile.last_name) {
+          needsOnboarding = false;
+        } else {
+          needsOnboarding = true;
+        }
+      }
+    } catch (e) {
+      // on any error keep onboarding required (safe default)
+      needsOnboarding = true;
+      console.error("profile lookup error:", e);
+    }
+
+    const res = NextResponse.json({
+      ok: true,
+      needsOnboarding,
+      sessionDebug: {
+        access_token_preview: session.access_token.slice(0, 32) + "...",
+        expires_at: session.expires_at,
+      },
     });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Unexpected error" },
-      { status: 500 }
+
+    // set HttpOnly cookies so browser sends them on subsequent requests
+    const cookieOpts = {
+      httpOnly: true,
+      maxAge: session.expires_in ?? 60 * 60 * 24 * 7,
+      path: "/",
+      sameSite: "lax" as const,
+      secure: process.env.NODE_ENV === "production",
+    };
+
+    res.cookies.set(
+      "sb-access-token",
+      encodeURIComponent(session.access_token),
+      cookieOpts
     );
+    res.cookies.set(
+      "sb-refresh-token",
+      encodeURIComponent(session.refresh_token ?? ""),
+      {
+        ...cookieOpts,
+        maxAge: 60 * 60 * 24 * 30,
+      }
+    );
+
+    return res;
+  } catch (err) {
+    console.error("signin route error:", err);
+    return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }

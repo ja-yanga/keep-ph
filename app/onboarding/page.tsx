@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   Box,
   Container,
@@ -20,13 +20,66 @@ export default function OnboardingPage() {
   const [avatar, setAvatar] = useState<File | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email] = useState("user@email.com");
+  const [email, setEmail] = useState("");
+  const [session, setSession] = useState<any>(null);
   const avatarUrl = avatar ? URL.createObjectURL(avatar) : null;
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/onboarding", {
+          method: "GET",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (!res.ok) {
+          const txt = await res.text().catch(() => null);
+          console.log("onboarding GET failed:", res.status, txt);
+          return;
+        }
+
+        const data = await res.json();
+        console.log("session from /api/onboarding:", data);
+        setSession(data);
+        // set email from returned user object
+        if (data?.user?.email) setEmail(data.user.email);
+      } catch (err) {
+        console.error("failed to fetch session", err);
+      }
+    })();
+  }, []);
+
+  // helper: convert File -> data URL
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // implement save logic
+    // convert file to data URL before JSON
+    const avatarDataUrl = avatar ? await fileToDataUrl(avatar) : null;
+
+    const payload = {
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      avatar: avatarDataUrl, // data:<mime>;base64,...
+    };
+
+    const res = await fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // ensure cookies are sent
+      body: JSON.stringify(payload),
+    });
+
+    // handle response...
   };
 
   const handleUploadClick = () => {
@@ -41,6 +94,20 @@ export default function OnboardingPage() {
   return (
     <>
       <DashboardNav />
+
+      {/* show session for debugging */}
+      {session && (
+        <pre
+          style={{
+            maxWidth: 800,
+            overflow: "auto",
+            background: "#f6f8fa",
+            padding: 8,
+          }}
+        >
+          {JSON.stringify(session, null, 2)}
+        </pre>
+      )}
 
       <Box
         component="main"

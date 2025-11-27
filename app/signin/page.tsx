@@ -32,6 +32,7 @@ export default function SignInPage() {
       const res = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // <-- required for Set-Cookie to be stored by browser
         body: JSON.stringify({ email, password }),
       });
 
