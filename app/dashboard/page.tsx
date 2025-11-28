@@ -99,7 +99,7 @@ export default function DashboardPage() {
               <Box mt={28}>
                 <Button
                   component="a"
-                  href="/register"
+                  href="/mailroom/register"
                   bg="#26316D"
                   c="white"
                   fw={700}

@@ -93,7 +93,6 @@ export default function SignInPage() {
       <Center style={{ flex: 1, paddingTop: 48, paddingBottom: 96 }}>
         <Container size={520}>
           {" "}
-          {/* Changed from 420 */}
           <Stack align="center" gap="md">
             <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
               Login
@@ -108,7 +107,7 @@ export default function SignInPage() {
               shadow="md"
               p="xl"
               radius="xl"
-              style={{ width: "100%" }} /* ensures same width as signup */
+              style={{ width: "100%" }}
             >
               <form onSubmit={handleSubmit}>
                 <Stack gap="md">

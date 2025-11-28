@@ -267,7 +267,8 @@ export default function MailroomLocations() {
         </Title>
       </Box>
 
-      <Group align="apart" gap="sm">
+      {/* CHANGED: align="apart" -> justify="space-between" */}
+      <Group justify="space-between" gap="sm">
         <Group gap="sm" style={{ flex: 1 }}>
           <TextInput
             placeholder="Search by name, region, city, barangay or zip..."
@@ -364,7 +365,8 @@ export default function MailroomLocations() {
               <Table.Tr>
                 <Table.Td colSpan={7}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Text color="red">{error}</Text>
+                    {/* CHANGED: color -> c */}
+                    <Text c="red">{error}</Text>
                   </Box>
                 </Table.Td>
               </Table.Tr>
@@ -372,7 +374,8 @@ export default function MailroomLocations() {
               <Table.Tr>
                 <Table.Td colSpan={7}>
                   <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Text color="dimmed">No locations found</Text>
+                    {/* CHANGED: color -> c */}
+                    <Text c="dimmed">No locations found</Text>
                   </Box>
                 </Table.Td>
               </Table.Tr>
@@ -388,7 +391,7 @@ export default function MailroomLocations() {
                     <Badge color="blue">{loc.total_lockers ?? 0}</Badge>
                   </Table.Td>
                   <Table.Td>
-                    <Group gap="xs" align="right">
+                    <Group gap="xs" justify="flex-start">
                       <Button
                         size="xs"
                         variant="light"
@@ -454,7 +457,8 @@ export default function MailroomLocations() {
               min={0}
               {...form.getInputProps("total_lockers")}
             />
-            <Group align="right" mt="sm">
+            {/* CHANGED: align="right" -> justify="flex-end" */}
+            <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
@@ -475,14 +479,16 @@ export default function MailroomLocations() {
       >
         <Stack gap="xs">
           <Text>{viewLocation?.name}</Text>
-          <Text color="dimmed">Region: {viewLocation?.region ?? "—"}</Text>
-          <Text color="dimmed">City: {viewLocation?.city ?? "—"}</Text>
-          <Text color="dimmed">Barangay: {viewLocation?.barangay ?? "—"}</Text>
-          <Text color="dimmed">Zip: {viewLocation?.zip ?? "—"}</Text>
-          <Text color="dimmed">
+          {/* CHANGED: color -> c */}
+          <Text c="dimmed">Region: {viewLocation?.region ?? "—"}</Text>
+          <Text c="dimmed">City: {viewLocation?.city ?? "—"}</Text>
+          <Text c="dimmed">Barangay: {viewLocation?.barangay ?? "—"}</Text>
+          <Text c="dimmed">Zip: {viewLocation?.zip ?? "—"}</Text>
+          <Text c="dimmed">
             Total lockers: {viewLocation?.total_lockers ?? 0}
           </Text>
-          <Group align="right" mt="sm">
+          {/* CHANGED: align="right" -> justify="flex-end" */}
+          <Group justify="flex-end" mt="sm">
             <Button onClick={() => setViewOpen(false)}>Close</Button>
           </Group>
         </Stack>
@@ -514,7 +520,8 @@ export default function MailroomLocations() {
               min={0}
               {...editForm.getInputProps("total_lockers")}
             />
-            <Group align="right" mt="sm">
+            {/* CHANGED: align="right" -> justify="flex-end" */}
+            <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setEditOpen(false)}>
                 Cancel
               </Button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Container, Title, Group, Anchor, Button, Box } from "@mantine/core";
+import Link from "next/link";
 
 export default function Nav() {
   return (
@@ -20,20 +21,34 @@ export default function Nav() {
       <Container size="xxl">
         <Group align="center" style={{ width: "100%" }}>
           {/* Left: Brand */}
-          <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
-            Keep PH
-          </Title>
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
+              Keep PH
+            </Title>
+          </Link>
 
           {/* Center: navigation links */}
           <Box style={{ flex: 1, display: "flex", justifyContent: "center" }}>
             <Group gap="md">
-              <Anchor href="#" style={{ color: "#1A237E", fontWeight: 500 }}>
+              <Anchor
+                component={Link}
+                href="/#services"
+                style={{ color: "#1A237E", fontWeight: 500 }}
+              >
                 Services
               </Anchor>
-              <Anchor href="#" style={{ color: "#1A237E", fontWeight: 500 }}>
+              <Anchor
+                component={Link}
+                href="/#pricing"
+                style={{ color: "#1A237E", fontWeight: 500 }}
+              >
                 Pricing
               </Anchor>
-              <Anchor href="#" style={{ color: "#1A237E", fontWeight: 500 }}>
+              <Anchor
+                component={Link}
+                href="/signin"
+                style={{ color: "#1A237E", fontWeight: 500 }}
+              >
                 Login
               </Anchor>
             </Group>
@@ -42,8 +57,8 @@ export default function Nav() {
           {/* Right: Call to action */}
           <Box>
             <Button
-              component="a"
-              href="#"
+              component={Link}
+              href="/signup"
               style={{
                 minWidth: 120,
                 backgroundColor: "#1A237E",

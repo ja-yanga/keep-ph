@@ -102,7 +102,7 @@ export default function Home() {
             </Grid>
 
             {/* SERVICES */}
-            <Box py="xl">
+            <Box py="xl" id="services">
               <Stack align="center" gap="sm" mb="md">
                 <Title order={2} size="h3">
                   Everything You Need to Go Virtual
@@ -159,7 +159,7 @@ export default function Home() {
             </Box>
 
             {/* PRICING */}
-            <Box py="xl">
+            <Box py="xl" id="pricing">
               <Stack align="center" gap="sm" mb="md">
                 <Title order={2}>Find the Perfect Plan</Title>
                 <Text c="dimmed" ta="center" style={{ maxWidth: 720 }}>
@@ -204,9 +204,9 @@ export default function Home() {
 
                   <Text fw={600} c={billing === "annual" ? "dark" : "gray"}>
                     Annual{" "}
-                    <Badge color="yellow" ml="xs">
+                    {/* <Badge color="yellow" ml="xs">
                       Save 20%
-                    </Badge>
+                    </Badge> */}
                   </Text>
                 </Group>
               </Stack>

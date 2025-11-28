@@ -9,17 +9,25 @@ import {
   Anchor,
   Button,
   ActionIcon,
+  Tooltip,
 } from "@mantine/core";
-import { IconBell } from "@tabler/icons-react";
+import { IconBell, IconUser } from "@tabler/icons-react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
+import { useSession } from "@/components/SessionProvider";
 
 export default function DashboardNav() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
+  // Get session and role from the provider
+  const { session } = useSession();
+  const role = session?.role;
+
   const showLinks = !pathname.startsWith("/onboarding");
+  const isAdmin = role === "admin";
 
   const linkColor = (href: string) => {
     const active = pathname === href || pathname.startsWith(href + "/");
@@ -65,12 +73,14 @@ export default function DashboardNav() {
       <Container size="xxl">
         <Group align="center" style={{ width: "100%" }}>
           {/* Brand */}
-          <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
-            Keep PH
-          </Title>
+          <Link href="/dashboard" style={{ textDecoration: "none" }}>
+            <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
+              Keep PH
+            </Title>
+          </Link>
 
-          {/* Nav links - hidden on onboarding */}
-          {showLinks && (
+          {/* Nav links - hidden on onboarding, wait for session */}
+          {showLinks && session && (
             <Box
               style={{
                 flex: 1,
@@ -81,33 +91,79 @@ export default function DashboardNav() {
             >
               <Group gap="md" className="nav-links-desktop">
                 <Anchor
+                  component={Link}
                   href="/dashboard"
                   style={linkColor("/dashboard")}
                   aria-current={pathname === "/dashboard" ? "page" : undefined}
                 >
                   Dashboard
                 </Anchor>
-                <Anchor
-                  href="/register"
-                  style={linkColor("/register")}
-                  aria-current={pathname === "/register" ? "page" : undefined}
-                >
-                  Register Mail Service
-                </Anchor>
-                <Anchor
-                  href="/referrals"
-                  style={linkColor("/referrals")}
-                  aria-current={pathname === "/referrals" ? "page" : undefined}
-                >
-                  Referrals
-                </Anchor>
-                <Anchor
-                  href="/account"
-                  style={linkColor("/account")}
-                  aria-current={pathname === "/account" ? "page" : undefined}
-                >
-                  Account
-                </Anchor>
+
+                {isAdmin ? (
+                  <>
+                    <Anchor
+                      component={Link}
+                      href="#"
+                      style={linkColor("/admin/mailroom")}
+                    >
+                      Mailroom Services
+                    </Anchor>
+                    <Anchor
+                      component={Link}
+                      href="#"
+                      style={linkColor("/admin/packages")}
+                    >
+                      Packages
+                    </Anchor>
+                    <Anchor
+                      component={Link}
+                      href="/admin/plans"
+                      style={linkColor("/admin/plans")}
+                    >
+                      Service Plans
+                    </Anchor>
+                    <Anchor
+                      component={Link}
+                      href="/admin/locations"
+                      style={linkColor("/admin/locations")}
+                    >
+                      Registration Locations
+                    </Anchor>
+                  </>
+                ) : (
+                  <>
+                    <Anchor
+                      component={Link}
+                      href="/mailroom/register"
+                      style={linkColor("/mailroom/register")}
+                      aria-current={
+                        pathname === "/register" ? "page" : undefined
+                      }
+                    >
+                      Register Mail Service
+                    </Anchor>
+                    <Anchor
+                      component={Link}
+                      href="/referrals"
+                      style={linkColor("/referrals")}
+                      aria-current={
+                        pathname === "/referrals" ? "page" : undefined
+                      }
+                    >
+                      Referrals
+                    </Anchor>
+                    <Anchor
+                      component={Link}
+                      href="/account"
+                      style={linkColor("/account")}
+                      aria-current={
+                        pathname === "/account" ? "page" : undefined
+                      }
+                    >
+                      Account
+                    </Anchor>
+                  </>
+                )}
               </Group>
             </Box>
           )}
@@ -128,9 +184,27 @@ export default function DashboardNav() {
                 radius="xl"
                 size="lg"
                 aria-label="notifications"
+                disabled
               >
                 <IconBell size={20} />
               </ActionIcon>
+            )}
+
+            {/* Admin Account Icon (placed between Bell and Logout) */}
+            {showLinks && isAdmin && (
+              <Tooltip label="Account">
+                <ActionIcon
+                  component={Link}
+                  href="/account"
+                  variant="subtle"
+                  color="gray"
+                  radius="xl"
+                  size="lg"
+                  aria-label="account"
+                >
+                  <IconUser size={20} />
+                </ActionIcon>
+              </Tooltip>
             )}
 
             <Button

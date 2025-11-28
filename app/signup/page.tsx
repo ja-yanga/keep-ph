@@ -28,6 +28,17 @@ export default function SignUpPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert("Please enter a valid email address");
+      return;
+    }
+    if (password.length < 8) {
+      alert("Password must be at least 8 characters long");
+      return;
+    }
     if (password !== confirmPassword) {
       alert("Passwords do not match");
       return;
@@ -52,7 +63,7 @@ export default function SignUpPage() {
         return;
       }
 
-      // On successful signup redirect to signin (or dashboard)
+      // On successful signup redirect to signin
       router.push("/signin");
     } catch (err) {
       console.error(err);

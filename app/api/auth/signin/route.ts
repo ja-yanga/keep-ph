@@ -33,11 +33,17 @@ export async function POST(req: Request) {
     let needsOnboarding = true;
 
     if (session.user?.id) {
-      const { data: profile } = await supabaseAdmin
-        .from("profiles")
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from("users")
         .select("first_name, last_name, needs_onboarding")
         .eq("id", session.user.id)
         .single();
+
+      console.log("DEBUG: Signin Profile Check", {
+        userId: session.user.id,
+        profile,
+        error: profileError,
+      });
 
       if (profile) {
         // If the flag is explicitly set in DB, use it

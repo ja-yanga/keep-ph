@@ -38,16 +38,14 @@ export async function POST(req: Request) {
 
     // 3. Create Profile
     if (data.user) {
-      const { error: insertError } = await supabaseAdmin
-        .from("profiles") // Ensure this matches your DB table name
-        .insert({
-          id: data.user.id,
-          email,
-          first_name: first_name || "",
-          last_name: last_name || "",
-          role: "user",
-          needs_onboarding: true,
-        });
+      const { error: insertError } = await supabaseAdmin.from("users").insert({
+        id: data.user.id,
+        email,
+        first_name: first_name || "",
+        last_name: last_name || "",
+        role: "user",
+        needs_onboarding: true,
+      });
 
       if (insertError) {
         console.error("Profile insert error:", insertError);

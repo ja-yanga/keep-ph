@@ -87,30 +87,6 @@ export default function MailroomPackagePage() {
     };
   }, [id]);
 
-  // local locker management (UI only)
-  const addLocker = () => {
-    if (!item) return;
-    const lockers = item.lockers ?? [];
-    const newLocker = {
-      id: `local-${Date.now()}`,
-      label: `L${String(Date.now()).slice(-4)}`,
-      status: "AVAILABLE",
-      removal_date: null,
-    };
-    item.lockers = [...lockers, newLocker];
-    setItem({ ...item });
-  };
-
-  const removeLocker = (lockerId: string) => {
-    if (!item?.lockers) return;
-    item.lockers = item.lockers.map((L: any) =>
-      L.id === lockerId
-        ? { ...L, status: "REMOVED", removal_date: new Date().toISOString() }
-        : L
-    );
-    setItem({ ...item });
-  };
-
   if (loading) {
     return (
       <Box
@@ -254,25 +230,6 @@ export default function MailroomPackagePage() {
                                 <Table.Tr key={L.id}>
                                   <Table.Td>{L.label}</Table.Td>
                                   <Table.Td>{L.status}</Table.Td>
-                                  <Table.Td>
-                                    {L.status !== "REMOVED" ? (
-                                      <Button
-                                        size="xs"
-                                        variant="outline"
-                                        onClick={() => removeLocker(L.id)}
-                                      >
-                                        Remove
-                                      </Button>
-                                    ) : (
-                                      <Text size="xs" c="dimmed">
-                                        {L.removal_date
-                                          ? new Date(
-                                              L.removal_date
-                                            ).toLocaleDateString()
-                                          : "Removed"}
-                                      </Text>
-                                    )}
-                                  </Table.Td>
                                 </Table.Tr>
                               ))
                             ) : (
@@ -285,11 +242,6 @@ export default function MailroomPackagePage() {
                           </Table.Tbody>
                         </Table>
                       </ScrollArea>
-                      <Group justify="flex-end" mt="xs">
-                        <Button size="xs" onClick={addLocker}>
-                          Add Locker
-                        </Button>
-                      </Group>
                     </Paper>
                   </Stack>
                 </Accordion.Panel>
@@ -310,34 +262,38 @@ export default function MailroomPackagePage() {
                       <div>
                         <Text c="dimmed">Full Name</Text>
                         <Text fw={700}>
-                          {item.user_name ??
-                            (`${item.first_name ?? ""} ${
-                              item.last_name ?? ""
+                          {item.full_name ??
+                            item.user_name ??
+                            item.users?.full_name ??
+                            (`${
+                              item.first_name ?? item.users?.first_name ?? ""
+                            } ${
+                              item.last_name ?? item.users?.last_name ?? ""
                             }`.trim() ||
                               "—")}
                         </Text>
                       </div>
                       <div>
                         <Text c="dimmed">Email</Text>
-                        <Text fw={700}>{item.email ?? "—"}</Text>
+                        <Text fw={700}>
+                          {item.email ?? item.users?.email ?? "—"}
+                        </Text>
                       </div>
                     </Group>
 
                     <Group justify="space-between">
                       <div>
                         <Text c="dimmed">Mobile</Text>
-                        <Text fw={700}>{item.mobile ?? "—"}</Text>
+                        <Text fw={700}>
+                          {item.mobile ?? item.users?.mobile ?? "—"}
+                        </Text>
                       </div>
                       <div>
                         <Text c="dimmed">Telephone</Text>
-                        <Text fw={700}>{item.telephone ?? "—"}</Text>
+                        <Text fw={700}>
+                          {item.telephone ?? item.users?.telephone ?? "—"}
+                        </Text>
                       </div>
-                    </Group>
-
-                    <Group justify="flex-end">
-                      <Button size="xs" variant="outline">
-                        Edit User Details
-                      </Button>
                     </Group>
                   </Stack>
                 </Accordion.Panel>
@@ -350,12 +306,8 @@ export default function MailroomPackagePage() {
                 <Accordion.Panel>
                   <Stack gap="sm">
                     <Text fw={700}>
+                      <Text c="dimmed">Subscription Plan</Text>
                       {item.mailroom_plans?.name ?? item.plan ?? "—"}
-                    </Text>
-                    <Text c="dimmed">
-                      {item.mailroom_plans?.description ??
-                        item.plan_description ??
-                        "—"}
                     </Text>
 
                     <Group justify="space-between">
@@ -368,10 +320,13 @@ export default function MailroomPackagePage() {
                       <div>
                         <Text c="dimmed">Location Address</Text>
                         <Text fw={700}>
-                          {`${accountNumber} ${
-                            item.mailroom_locations?.city ?? ""
-                          } ${item.mailroom_locations?.region ?? ""}`.trim() ||
-                            "—"}
+                          {[
+                            item.mailroom_locations?.address,
+                            item.mailroom_locations?.city,
+                            item.mailroom_locations?.region,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") || "—"}
                         </Text>
                       </div>
                     </Group>

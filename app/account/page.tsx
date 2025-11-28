@@ -16,7 +16,6 @@ import {
   Text,
   FileButton,
   Modal,
-  LoadingOverlay,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { createClient } from "@supabase/supabase-js";
@@ -32,19 +31,30 @@ const supabase = createClient(
 export default function AccountPage() {
   const { session, refresh } = useSession();
 
-  // Modal state
+  // Modal state for Profile
   const [opened, { open, close }] = useDisclosure(false);
+  // Modal state for Password
+  const [
+    passwordOpened,
+    { open: openPasswordModal, close: closePasswordModal },
+  ] = useDisclosure(false);
+
   const [saving, setSaving] = useState(false);
 
-  // Form State
+  // Profile Form State
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-
   const [avatar, setAvatar] = useState<File | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
     "https://lh3.googleusercontent.com/aida-public/AB6AXuDJsdZ9uDbcolOcnMDxQTiA6vxMfSUGQqFHxbijFNSP6Vmp22EOqMCZ3r7hdfpBuFXb_digYU675pokgl_HLjoxj1hdPsgaXcmRvAY4xup2Hx9MEI6PTOOI_5yizPen6aLsW8ExgaIAfHiIqmxpIpzyv252JGnOzJ7mXVViCb5Jlv9K_tRiCbQRmKlGOfHpXYSnerWkBwcFTRUnsHdQ9nx94TO949a6EOb8MNFyQNguRi90Ihl-kXuT0Mrj4aOc8Jsblx6k7lAm4c4"
   );
+
+  // Password Form State
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   // Fetch data from session
   useEffect(() => {
@@ -74,45 +84,96 @@ export default function AccountPage() {
     setSaving(true);
 
     try {
-      let publicUrl = session.profile?.avatar_url;
+      let avatarDataUrl: string | null = null;
 
-      // 1. Upload new avatar if selected
+      // 1. Convert avatar to Base64 if a new file is selected
       if (avatar) {
-        const ext = avatar.name.split(".").pop();
-        const fileName = `${session.user.id}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(fileName, avatar, { upsert: true });
-
-        if (!uploadError) {
-          const { data } = supabase.storage
-            .from("avatars")
-            .getPublicUrl(fileName);
-          publicUrl = data.publicUrl;
-        }
+        avatarDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(avatar);
+        });
       }
 
-      // 2. Update Profile
-      const { error } = await supabase
-        .from("profiles")
-        .update({
+      // 2. Call API to Update Profile (sending the file data)
+      const res = await fetch("/api/auth/update-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           first_name: firstName,
           last_name: lastName,
-          avatar_url: publicUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", session.user.id);
+          avatar_data_url: avatarDataUrl, // Send the data URL
+        }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update profile");
+      }
 
       await refresh(); // Refresh session to update UI
       close();
       alert("Profile updated successfully!");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to update profile.");
+      alert(err.message || "Failed to update profile.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 1. Validate password inputs and open modal
+  const handlePasswordSubmit = () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      alert("Please fill in all password fields.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert("New passwords do not match.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      alert("Password must be at least 6 characters.");
+      return;
+    }
+
+    openPasswordModal();
+  };
+
+  // 2. Execute API call
+  const confirmUpdatePassword = async () => {
+    setPasswordLoading(true);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update password");
+      }
+
+      closePasswordModal();
+      alert("Password updated successfully!");
+      // Clear fields
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to update password");
+      closePasswordModal();
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -127,13 +188,8 @@ export default function AccountPage() {
     >
       <DashboardNav />
 
-      {/* Confirmation Modal */}
-      <Modal
-        opened={opened}
-        onClose={close}
-        title={<Title order={4}>Save Changes?</Title>}
-        centered
-      >
+      {/* Profile Confirmation Modal */}
+      <Modal opened={opened} onClose={close} title="Save Changes?" centered>
         <Text size="sm" mb="lg">
           Are you sure you want to update your profile information?
         </Text>
@@ -151,6 +207,35 @@ export default function AccountPage() {
         </Group>
       </Modal>
 
+      {/* Password Confirmation Modal */}
+      <Modal
+        opened={passwordOpened}
+        onClose={closePasswordModal}
+        title="Change Password?"
+        centered
+      >
+        <Text size="sm" mb="lg">
+          Are you sure you want to update your password? You will need to use
+          the new password next time you sign in.
+        </Text>
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            onClick={closePasswordModal}
+            disabled={passwordLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={confirmUpdatePassword}
+            loading={passwordLoading}
+            style={{ backgroundColor: "#26316D", color: "white" }}
+          >
+            Confirm Update
+          </Button>
+        </Group>
+      </Modal>
+
       <Box component="main" style={{ flex: 1 }} py="xl">
         <Container size="md">
           {/* Profile Information Section */}
@@ -162,11 +247,6 @@ export default function AccountPage() {
             mb="xl"
             pos="relative"
           >
-            <LoadingOverlay
-              visible={saving}
-              overlayProps={{ radius: "sm", blur: 2 }}
-            />
-
             <Title order={2} mb="lg" style={{ color: "#1A202C" }}>
               Profile Information
             </Title>
@@ -257,14 +337,28 @@ export default function AccountPage() {
             </Title>
 
             <Stack gap="md">
-              <PasswordInput label="Current Password" />
-              <PasswordInput label="New Password" />
-              <PasswordInput label="Confirm New Password" />
+              <PasswordInput
+                label="Current Password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.currentTarget.value)}
+              />
+              <PasswordInput
+                label="New Password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.currentTarget.value)}
+              />
+              <PasswordInput
+                label="Confirm New Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+              />
             </Stack>
 
             <Group justify="flex-end" mt="xl">
               <Button
                 size="md"
+                onClick={handlePasswordSubmit}
+                loading={passwordLoading}
                 style={{ backgroundColor: "#26316D", color: "white" }}
               >
                 Update Password

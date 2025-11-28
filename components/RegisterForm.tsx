@@ -48,6 +48,7 @@ export default function RegisterForm() {
   const [lockerQty, setLockerQty] = useState<number | string>(1);
   const [months, setMonths] = useState<number | string>(12);
   const [notes, setNotes] = useState("");
+  const [referralCode, setReferralCode] = useState(""); // New State
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function RegisterForm() {
       // CHANGED: Order by price ascending (lowest to highest)
       const { data: plns } = await supabase
         .from("mailroom_plans")
-        .select("id,name,price")
+        .select("id,name,price,description")
         .order("price", { ascending: true });
 
       if (!mounted) return;
@@ -95,6 +96,15 @@ export default function RegisterForm() {
   const monthlyTotal = pricePerMonth * qty;
   const totalCost = monthlyTotal * duration;
 
+  // Calculate expiration date
+  const expirationDate = new Date();
+  expirationDate.setMonth(expirationDate.getMonth() + duration);
+  const formattedExpiration = expirationDate.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   const format = (n: number) =>
     n.toLocaleString("en-PH", {
       style: "currency",
@@ -123,6 +133,7 @@ export default function RegisterForm() {
   const confirmRegistration = async () => {
     setLoading(true);
     try {
+      // 1. Register the subscription
       const payload = {
         userId: session?.user?.id,
         full_name: `${firstName} ${lastName}`.trim() || null,
@@ -150,6 +161,25 @@ export default function RegisterForm() {
         return;
       }
 
+      // 2. Handle Referral (if code provided)
+      if (referralCode.trim()) {
+        try {
+          // CHANGED: Send code directly to API instead of looking up ID on client
+          await fetch("/api/referrals/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              referral_code: referralCode.trim(), // Send code
+              referred_email: email,
+              service_type: "Mailroom Subscription",
+            }),
+          });
+        } catch (refErr) {
+          console.error("Error processing referral:", refErr);
+          // Don't block success flow if referral fails
+        }
+      }
+
       close(); // Close modal on success
       window.alert("Registered successfully");
       router.push("/dashboard");
@@ -168,7 +198,7 @@ export default function RegisterForm() {
       <Modal
         opened={opened}
         onClose={close}
-        title={<Title order={3}>Confirm Subscription</Title>}
+        title="Confirm Subscription"
         centered
         size="md"
       >
@@ -199,6 +229,12 @@ export default function RegisterForm() {
                   {qty} Locker{qty > 1 ? "s" : ""}
                 </Text>
               </Group>
+              {referralCode && (
+                <Group justify="space-between">
+                  <Text fw={600}>Referral Code:</Text>
+                  <Badge color="teal">{referralCode}</Badge>
+                </Group>
+              )}
               <Divider my="xs" />
               <Group justify="space-between">
                 <Text size="lg" fw={700}>
@@ -355,6 +391,7 @@ export default function RegisterForm() {
                           /mo
                         </Text>
                       </Text>
+                      <Text>{p.description}</Text>
                       <Button
                         fullWidth
                         variant={selectedPlanId === p.id ? "filled" : "light"}
@@ -384,7 +421,7 @@ export default function RegisterForm() {
           </Group>
 
           <Grid gutter="md">
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <NumberInput
                 label="Locker Quantity"
                 min={1}
@@ -393,19 +430,28 @@ export default function RegisterForm() {
                 required // CHANGED: Added required
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <NumberInput
                 label="Number of Months"
                 min={1}
                 value={months}
                 onChange={(val) => setMonths(val)}
-                required // CHANGED: Added required
+                required
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            {/* <Grid.Col span={{ base: 12, sm: 4 }}>
               <TextInput label="Expiration" value="Calculated date" readOnly />
-            </Grid.Col>
+            </Grid.Col> */}
           </Grid>
+
+          <Box mt="md">
+            <TextInput
+              label="Referral Code (Optional)"
+              placeholder="Enter code if you have one"
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.currentTarget.value)}
+            />
+          </Box>
 
           <Box mt="md">
             <Textarea

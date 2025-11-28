@@ -141,7 +141,12 @@ export default function OnboardingPage() {
                   </Stack>
 
                   {/* Row 2: Email Address */}
-                  <TextInput label="Email Address" value={email} readOnly />
+                  <TextInput
+                    label="Email Address"
+                    value={email}
+                    readOnly
+                    disabled
+                  />
 
                   {/* Row 3: two columns - First Name | Last Name */}
                   <Grid gutter="md">
@@ -151,6 +156,7 @@ export default function OnboardingPage() {
                         placeholder="Juan"
                         value={firstName}
                         onChange={(e) => setFirstName(e.currentTarget.value)}
+                        required
                       />
                     </Grid.Col>
                     <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -159,6 +165,7 @@ export default function OnboardingPage() {
                         placeholder="Dela Cruz"
                         value={lastName}
                         onChange={(e) => setLastName(e.currentTarget.value)}
+                        required
                       />
                     </Grid.Col>
                   </Grid>
