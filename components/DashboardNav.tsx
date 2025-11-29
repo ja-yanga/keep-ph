@@ -103,6 +103,13 @@ export default function DashboardNav() {
                   <>
                     <Anchor
                       component={Link}
+                      href="/admin/lockers"
+                      style={linkColor("/admin/lockers")}
+                    >
+                      Lockers
+                    </Anchor>
+                    <Anchor
+                      component={Link}
                       href="#"
                       style={linkColor("/admin/mailroom")}
                     >

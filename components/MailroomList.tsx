@@ -3,19 +3,30 @@ import {
   Badge,
   Box,
   Button,
-  Container,
-  Divider,
   Group,
   Loader,
-  Space,
+  Paper,
   Stack,
   Table,
   Text,
   Title,
   TextInput,
   Tooltip,
+  ActionIcon,
+  ScrollArea,
+  ThemeIcon,
 } from "@mantine/core";
-import { IconRefresh, IconSettings, IconEye } from "@tabler/icons-react";
+import {
+  IconRefresh,
+  IconSettings,
+  IconEye,
+  IconSearch,
+  IconFilter,
+  IconDownload,
+  IconInbox,
+  IconSortAscending,
+  IconSortDescending,
+} from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 
@@ -48,7 +59,6 @@ export default function MailroomList() {
   // UI state
   const [search, setSearch] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [columnsOpen, setColumnsOpen] = useState(false);
   const [filters, setFilters] = useState({
     plan: null as string | null,
     location: null as string | null,
@@ -148,30 +158,6 @@ export default function MailroomList() {
       mounted = false;
     };
   }, [session?.user?.id]);
-
-  const plans = useMemo(() => {
-    const s = new Set<string>();
-    (rows ?? []).forEach((r) => r.plan && s.add(r.plan));
-    return Array.from(s);
-  }, [rows]);
-
-  const locations = useMemo(() => {
-    const s = new Set<string>();
-    (rows ?? []).forEach((r) => r.location && s.add(r.location));
-    return Array.from(s);
-  }, [rows]);
-
-  const mailroomStatuses = useMemo(() => {
-    const s = new Set<string>();
-    (rows ?? []).forEach((r) => r.mailroom_status && s.add(r.mailroom_status));
-    return Array.from(s);
-  }, [rows]);
-
-  const lockerStatuses = useMemo(() => {
-    const s = new Set<string>();
-    (rows ?? []).forEach((r) => r.locker_status && s.add(r.locker_status));
-    return Array.from(s);
-  }, [rows]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -296,244 +282,228 @@ export default function MailroomList() {
     })();
   };
 
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortBy !== col) return null;
+    return sortDir === "asc" ? (
+      <IconSortAscending size={14} />
+    ) : (
+      <IconSortDescending size={14} />
+    );
+  };
+
+  const ThSortable = ({ col, label }: { col: string; label: string }) => (
+    <Table.Th
+      style={{ cursor: "pointer", whiteSpace: "nowrap" }}
+      onClick={() => toggleSort(col)}
+    >
+      <Group gap={4}>
+        {label}
+        <SortIcon col={col} />
+      </Group>
+    </Table.Th>
+  );
+
   return (
     <Stack gap="lg">
-      {/* Header */}
-      <Box>
-        <Title order={1} size="xl">
-          Mailroom Service List
-        </Title>
-      </Box>
-
-      {/* Search + Filters + Actions */}
-      <Group align="apart" gap="sm">
-        <Group gap="sm" style={{ flex: 1 }}>
-          <TextInput
-            placeholder="Search by name, plan or location..."
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, minWidth: 280 }}
-          />
-          <Tooltip label="Advanced filters">
-            <Button
-              disabled
-              variant="outline"
-              leftSection={<IconSettings size={16} />}
-              onClick={() => setAdvancedOpen(true)}
-            >
-              Advanced Filter
-            </Button>
-          </Tooltip>
-          <Space w="sm" />
-          <Button
-            leftSection={<IconRefresh size={16} />}
-            variant="default"
-            onClick={refresh}
-          >
-            Refresh
-          </Button>
-        </Group>
-        <Button disabled variant="outline">
-          Export
-        </Button>
+      <Group justify="space-between" align="flex-end">
+        <Box>
+          <Title order={2} c="dark.8">
+            Mailroom Service List
+          </Title>
+          <Text c="dimmed" size="sm">
+            Manage your mailroom subscriptions and packages
+          </Text>
+        </Box>
       </Group>
 
-      <Divider />
+      <Paper p="md" radius="md" withBorder shadow="sm">
+        <Group justify="space-between" mb="md">
+          <TextInput
+            placeholder="Search by name, plan or location..."
+            leftSection={<IconSearch size={16} />}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            style={{ flex: 1, maxWidth: 400 }}
+          />
+          <Group gap="xs">
+            <Tooltip label="Refresh List">
+              <ActionIcon variant="light" size="lg" onClick={refresh}>
+                <IconRefresh size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Advanced Filters">
+              <ActionIcon
+                variant="light"
+                size="lg"
+                onClick={() => setAdvancedOpen(true)}
+                disabled
+              >
+                <IconFilter size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Button
+              leftSection={<IconDownload size={16} />}
+              variant="outline"
+              size="sm"
+              disabled
+            >
+              Export
+            </Button>
+          </Group>
+        </Group>
 
-      {/* Table */}
-      <Box
-        style={{
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.06)",
-          background: "white",
-          overflow: "hidden",
-        }}
-      >
-        <Table verticalSpacing="sm" highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              {visibleColumns.name && (
-                <Table.Th
-                  style={{ cursor: "pointer" }}
-                  onClick={() => toggleSort("name")}
-                >
-                  Name{" "}
-                  {sortBy === "name" ? (sortDir === "asc" ? "▲" : "▼") : null}
-                </Table.Th>
-              )}
-
-              {visibleColumns.plan && (
-                <Table.Th
-                  style={{ cursor: "pointer" }}
-                  onClick={() => toggleSort("plan")}
-                >
-                  Plan{" "}
-                  {sortBy === "plan" ? (sortDir === "asc" ? "▲" : "▼") : null}
-                </Table.Th>
-              )}
-
-              {visibleColumns.location && (
-                <Table.Th
-                  style={{ cursor: "pointer" }}
-                  onClick={() => toggleSort("location")}
-                >
-                  Location{" "}
-                  {sortBy === "location"
-                    ? sortDir === "asc"
-                      ? "▲"
-                      : "▼"
-                    : null}
-                </Table.Th>
-              )}
-
-              {visibleColumns.created_at && (
-                <Table.Th
-                  style={{ cursor: "pointer" }}
-                  onClick={() => toggleSort("created_at")}
-                >
-                  Date Created{" "}
-                  {sortBy === "created_at"
-                    ? sortDir === "asc"
-                      ? "▲"
-                      : "▼"
-                    : null}
-                </Table.Th>
-              )}
-
-              {visibleColumns.expiry_at && (
-                <Table.Th
-                  style={{ cursor: "pointer" }}
-                  onClick={() => toggleSort("expiry_at")}
-                >
-                  Date Expiry{" "}
-                  {sortBy === "expiry_at"
-                    ? sortDir === "asc"
-                      ? "▲"
-                      : "▼"
-                    : null}
-                </Table.Th>
-              )}
-
-              {visibleColumns.mailroom_status && (
-                <Table.Th>Mailroom Status</Table.Th>
-              )}
-
-              {visibleColumns.locker_status && (
-                <Table.Th
-                  style={{ cursor: "pointer" }}
-                  onClick={() => toggleSort("locker_status")}
-                >
-                  Locker Status{" "}
-                  {sortBy === "locker_status"
-                    ? sortDir === "asc"
-                      ? "▲"
-                      : "▼"
-                    : null}
-                </Table.Th>
-              )}
-
-              {visibleColumns.view && <Table.Th>View</Table.Th>}
-            </Table.Tr>
-          </Table.Thead>
-
-          <Table.Tbody>
-            {loading || rows === null ? (
+        <ScrollArea>
+          <Table verticalSpacing="sm" striped highlightOnHover withTableBorder>
+            <Table.Thead>
               <Table.Tr>
-                <Table.Td colSpan={8}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Loader />
-                  </Box>
-                </Table.Td>
+                {visibleColumns.name && <ThSortable col="name" label="Name" />}
+                {visibleColumns.plan && <ThSortable col="plan" label="Plan" />}
+                {visibleColumns.location && (
+                  <ThSortable col="location" label="Location" />
+                )}
+                {visibleColumns.created_at && (
+                  <ThSortable col="created_at" label="Date Created" />
+                )}
+                {visibleColumns.expiry_at && (
+                  <ThSortable col="expiry_at" label="Date Expiry" />
+                )}
+                {visibleColumns.mailroom_status && (
+                  <Table.Th>Mailroom Status</Table.Th>
+                )}
+                {visibleColumns.locker_status && (
+                  <ThSortable col="locker_status" label="Locker Status" />
+                )}
+                {visibleColumns.view && (
+                  <Table.Th style={{ width: 80 }}>Action</Table.Th>
+                )}
               </Table.Tr>
-            ) : error ? (
-              <Table.Tr>
-                <Table.Td colSpan={8}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Text color="red">{error}</Text>
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : filtered.length === 0 ? (
-              <Table.Tr>
-                <Table.Td colSpan={8}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Text color="dimmed">No results</Text>
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : (
-              filtered.map((r) => (
-                <Table.Tr key={r.id}>
-                  {visibleColumns.name && <Table.Td>{r.name}</Table.Td>}
-                  {visibleColumns.plan && <Table.Td>{r.plan ?? "—"}</Table.Td>}
-                  {visibleColumns.location && (
-                    <Table.Td>{r.location ?? "—"}</Table.Td>
-                  )}
-                  {visibleColumns.created_at && (
-                    <Table.Td>
-                      {r.created_at
-                        ? new Date(r.created_at).toLocaleDateString()
-                        : "—"}
-                    </Table.Td>
-                  )}
-                  {visibleColumns.expiry_at && (
-                    <Table.Td>
-                      {r.expiry_at
-                        ? new Date(r.expiry_at).toLocaleDateString()
-                        : "—"}
-                    </Table.Td>
-                  )}
-                  {visibleColumns.mailroom_status && (
-                    <Table.Td>
-                      {r.mailroom_status ? (
-                        (() => {
-                          const s = String(r.mailroom_status).toUpperCase();
-                          const color =
-                            s === "ACTIVE"
-                              ? "green"
-                              : s === "EXPIRING"
-                              ? "yellow"
-                              : "gray";
-                          return <Badge color={color}>{s}</Badge>;
-                        })()
-                      ) : (
-                        <Text color="dimmed">—</Text>
-                      )}
-                    </Table.Td>
-                  )}
-                  {visibleColumns.locker_status && (
-                    <Table.Td>
-                      {r.locker_status ? (
-                        <Badge color="gray">{r.locker_status}</Badge>
-                      ) : (
-                        <Text color="dimmed">—</Text>
-                      )}
-                    </Table.Td>
-                  )}
-                  {visibleColumns.view && (
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Link
-                          href={`/mailroom/${r.id}`}
-                          style={{ textDecoration: "none" }}
-                        >
-                          <Button
-                            size="xs"
-                            variant="subtle"
-                            leftSection={<IconEye size={14} />}
-                          >
-                            View
-                          </Button>
-                        </Link>
-                      </Group>
-                    </Table.Td>
-                  )}
+            </Table.Thead>
+
+            <Table.Tbody>
+              {loading || rows === null ? (
+                <Table.Tr>
+                  <Table.Td colSpan={8}>
+                    <Stack align="center" py="xl">
+                      <Loader size="sm" />
+                      <Text size="sm" c="dimmed">
+                        Loading registrations...
+                      </Text>
+                    </Stack>
+                  </Table.Td>
                 </Table.Tr>
-              ))
-            )}
-          </Table.Tbody>
-        </Table>
-      </Box>
+              ) : error ? (
+                <Table.Tr>
+                  <Table.Td colSpan={8}>
+                    <Stack align="center" py="xl">
+                      <Text c="red">{error}</Text>
+                    </Stack>
+                  </Table.Td>
+                </Table.Tr>
+              ) : filtered.length === 0 ? (
+                <Table.Tr>
+                  <Table.Td colSpan={8}>
+                    <Stack align="center" py="xl">
+                      <ThemeIcon
+                        size={48}
+                        radius="xl"
+                        color="gray"
+                        variant="light"
+                      >
+                        <IconInbox size={24} />
+                      </ThemeIcon>
+                      <Text c="dimmed">No registrations found</Text>
+                    </Stack>
+                  </Table.Td>
+                </Table.Tr>
+              ) : (
+                filtered.map((r) => (
+                  <Table.Tr key={r.id}>
+                    {visibleColumns.name && (
+                      <Table.Td>
+                        <Text fw={500} size="sm">
+                          {r.name}
+                        </Text>
+                      </Table.Td>
+                    )}
+                    {visibleColumns.plan && (
+                      <Table.Td>
+                        <Text size="sm">{r.plan ?? "—"}</Text>
+                      </Table.Td>
+                    )}
+                    {visibleColumns.location && (
+                      <Table.Td>
+                        <Text size="sm">{r.location ?? "—"}</Text>
+                      </Table.Td>
+                    )}
+                    {visibleColumns.created_at && (
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">
+                          {r.created_at
+                            ? new Date(r.created_at).toLocaleDateString()
+                            : "—"}
+                        </Text>
+                      </Table.Td>
+                    )}
+                    {visibleColumns.expiry_at && (
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">
+                          {r.expiry_at
+                            ? new Date(r.expiry_at).toLocaleDateString()
+                            : "—"}
+                        </Text>
+                      </Table.Td>
+                    )}
+                    {visibleColumns.mailroom_status && (
+                      <Table.Td>
+                        {r.mailroom_status ? (
+                          (() => {
+                            const s = String(r.mailroom_status).toUpperCase();
+                            const color =
+                              s === "ACTIVE"
+                                ? "green"
+                                : s === "EXPIRING"
+                                ? "yellow"
+                                : "gray";
+                            return (
+                              <Badge color={color} variant="light">
+                                {s}
+                              </Badge>
+                            );
+                          })()
+                        ) : (
+                          <Text c="dimmed">—</Text>
+                        )}
+                      </Table.Td>
+                    )}
+                    {visibleColumns.locker_status && (
+                      <Table.Td>
+                        {r.locker_status ? (
+                          <Badge color="gray" variant="outline">
+                            {r.locker_status}
+                          </Badge>
+                        ) : (
+                          <Text c="dimmed">—</Text>
+                        )}
+                      </Table.Td>
+                    )}
+                    {visibleColumns.view && (
+                      <Table.Td>
+                        <Tooltip label="View Details">
+                          <Link href={`/mailroom/${r.id}`}>
+                            <ActionIcon variant="subtle" color="blue">
+                              <IconEye size={18} />
+                            </ActionIcon>
+                          </Link>
+                        </Tooltip>
+                      </Table.Td>
+                    )}
+                  </Table.Tr>
+                ))
+              )}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      </Paper>
     </Stack>
   );
 }

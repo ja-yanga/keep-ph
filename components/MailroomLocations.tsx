@@ -237,7 +237,6 @@ export default function MailroomLocations() {
         city: values.city || null,
         barangay: values.barangay || null,
         zip: values.zip || null,
-        total_lockers: values.total_lockers ?? 0,
       };
       const res = await fetch(`/api/mailroom/locations/${editLocation.id}`, {
         method: "PATCH",
@@ -515,11 +514,6 @@ export default function MailroomLocations() {
               {...editForm.getInputProps("barangay")}
             />
             <TextInput label="Zip" {...editForm.getInputProps("zip")} />
-            <NumberInput
-              label="Total Lockers"
-              min={0}
-              {...editForm.getInputProps("total_lockers")}
-            />
             {/* CHANGED: align="right" -> justify="flex-end" */}
             <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setEditOpen(false)}>
