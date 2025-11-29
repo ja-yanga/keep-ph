@@ -43,7 +43,7 @@ export async function GET(
       .select(
         `
         *,
-        locker:mailroom_lockers (*)
+        locker:location_lockers (*)
       `
       )
       .eq("registration_id", id);
