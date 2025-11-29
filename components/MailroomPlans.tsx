@@ -1,25 +1,34 @@
 "use client";
-import React, { useEffect, useState, useMemo } from "react";
+
+import "mantine-datatable/styles.layer.css";
+
+import React, { useEffect, useState } from "react";
 import {
-  Box,
+  ActionIcon,
+  Badge,
   Button,
-  Loader,
+  Group,
+  Modal,
+  Paper,
   Stack,
-  Table,
-  Text,
   TextInput,
   Title,
-  Group,
-  Badge,
-  Divider,
-  Space,
   Tooltip,
-  Modal,
+  Box,
   NumberInput,
   Textarea,
+  Text,
+  SimpleGrid,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { IconRefresh, IconEye, IconEdit } from "@tabler/icons-react";
+import {
+  IconEdit,
+  IconEye,
+  IconRefresh,
+  IconSearch,
+} from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import { DataTable } from "mantine-datatable";
 
 type Plan = {
   id: string;
@@ -29,15 +38,19 @@ type Plan = {
 };
 
 export default function MailroomPlans() {
-  const [plans, setPlans] = useState<Plan[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // view/edit modal state
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // View modal state
   const [viewOpen, setViewOpen] = useState(false);
   const [viewPlan, setViewPlan] = useState<Plan | null>(null);
 
+  // Edit modal state
   const [editOpen, setEditOpen] = useState(false);
   const [editPlan, setEditPlan] = useState<Plan | null>(null);
   const [editing, setEditing] = useState(false);
@@ -50,92 +63,35 @@ export default function MailroomPlans() {
     },
   });
 
-  // sorting
-  const [sortBy, setSortBy] = useState<string | null>("price");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
   useEffect(() => {
-    let mounted = true;
-    const loadPlans = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/mailroom/plans");
-        if (!mounted) return;
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          setError(json?.error || "Failed to load plans");
-          setPlans([]);
-          return;
-        }
-        const json = await res.json();
-        setPlans(json.data ?? []);
-      } catch (err) {
-        console.error("Load error", err);
-        setError("Failed to load plans");
-        setPlans([]);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    loadPlans();
-    return () => {
-      mounted = false;
-    };
+    fetchData();
   }, []);
 
-  const toggleSort = (col: string) => {
-    if (sortBy === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(col);
-      setSortDir("asc");
-    }
-  };
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
-  const filtered = useMemo(() => {
-    if (!plans) return [];
-    const q = search.trim().toLowerCase();
-    const out = plans.filter((p) => {
-      if (!q) return true;
-      return (
-        String(p.name ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(p.description ?? "")
-          .toLowerCase()
-          .includes(q)
-      );
-    });
-
-    if (!sortBy) return out;
-    const sorted = out.slice().sort((a, b) => {
-      const va = (a as any)[sortBy];
-      const vb = (b as any)[sortBy];
-      if (va == null && vb == null) return 0;
-      if (va == null) return sortDir === "asc" ? -1 : 1;
-      if (vb == null) return sortDir === "asc" ? 1 : -1;
-      if (sortBy === "price") {
-        const na = Number(va ?? 0);
-        const nb = Number(vb ?? 0);
-        return sortDir === "asc" ? na - nb : nb - na;
-      }
-      const sa = String(va).toLowerCase();
-      const sb = String(vb).toLowerCase();
-      return sortDir === "asc" ? sa.localeCompare(sb) : sb.localeCompare(sa);
-    });
-    return sorted;
-  }, [plans, search, sortBy, sortDir]);
-
-  const refresh = () => {
-    setPlans(null);
-    setError(null);
+  const fetchData = async () => {
     setLoading(true);
-    fetch("/api/mailroom/plans")
-      .then((res) => res.json())
-      .then((json) => setPlans(json.data ?? []))
-      .catch(() => setPlans([]))
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch("/api/mailroom/plans");
+      if (!res.ok) {
+        throw new Error("Failed to load plans");
+      }
+      const json = await res.json();
+      setPlans(json.data ?? []);
+    } catch (err) {
+      console.error("Load error", err);
+      notifications.show({
+        title: "Error",
+        message: "Failed to load plans",
+        color: "red",
+      });
+      setPlans([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // open view modal
@@ -158,11 +114,6 @@ export default function MailroomPlans() {
   // edit handler
   const handleEdit = editForm.onSubmit(async (values) => {
     if (!editPlan) return;
-    if (!editPlan.id) {
-      console.error("editPlan missing id", editPlan);
-      alert("Missing plan id. Cannot save changes.");
-      return;
-    }
 
     setEditing(true);
     try {
@@ -176,16 +127,27 @@ export default function MailroomPlans() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error || "Failed to update plan");
+        throw new Error("Failed to update plan");
       }
+
+      notifications.show({
+        title: "Success",
+        message: "Plan updated successfully",
+        color: "green",
+      });
+
       setEditOpen(false);
       setEditPlan(null);
-      refresh();
+      fetchData();
     } catch (err: any) {
       console.error("edit error", err);
-      alert(err?.message ?? "Failed to update plan");
+      notifications.show({
+        title: "Error",
+        message: err?.message ?? "Failed to update plan",
+        color: "red",
+      });
     } finally {
       setEditing(false);
     }
@@ -197,139 +159,119 @@ export default function MailroomPlans() {
       currency: "PHP",
     }).format(val);
 
-  return (
-    <Stack gap="lg">
-      <Box>
-        <Title order={1} size="xl">
-          Service Plans
-        </Title>
-      </Box>
+  const filteredPlans = plans.filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(p.name ?? "")
+        .toLowerCase()
+        .includes(q) ||
+      String(p.description ?? "")
+        .toLowerCase()
+        .includes(q)
+    );
+  });
 
-      <Group align="apart" gap="sm">
-        <Group gap="sm" style={{ flex: 1 }}>
+  const paginatedPlans = filteredPlans.slice(
+    (page - 1) * pageSize,
+    page * pageSize
+  );
+
+  return (
+    <Stack>
+      <Paper p="md" radius="md" withBorder shadow="sm">
+        <Group justify="space-between" mb="md">
           <TextInput
-            placeholder="Search by name or description..."
+            placeholder="Search plans..."
+            leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, minWidth: 280 }}
+            style={{ flex: 1, maxWidth: 400 }}
           />
           <Tooltip label="Refresh list">
-            <Button leftSection={<IconRefresh size={16} />} onClick={refresh}>
+            <Button
+              variant="light"
+              leftSection={<IconRefresh size={16} />}
+              onClick={fetchData}
+            >
               Refresh
             </Button>
           </Tooltip>
         </Group>
-      </Group>
 
-      <Divider />
-
-      <Box
-        style={{
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.06)",
-          background: "white",
-          overflow: "hidden",
-        }}
-      >
-        <Table verticalSpacing="sm" highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("name")}
-              >
-                Name{" "}
-                {sortBy === "name" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("price")}
-              >
-                Price{" "}
-                {sortBy === "price" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("description")}
-              >
-                Description{" "}
-                {sortBy === "description"
-                  ? sortDir === "asc"
-                    ? "▲"
-                    : "▼"
-                  : null}
-              </Table.Th>
-              <Table.Th>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-
-          <Table.Tbody>
-            {loading || plans === null ? (
-              <Table.Tr>
-                <Table.Td colSpan={4}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Loader />
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : error ? (
-              <Table.Tr>
-                <Table.Td colSpan={4}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Text c="red">{error}</Text>
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : filtered.length === 0 ? (
-              <Table.Tr>
-                <Table.Td colSpan={4}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Text c="dimmed">No plans found</Text>
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : (
-              filtered.map((p) => (
-                <Table.Tr key={p.id}>
-                  <Table.Td>
-                    <Text fw={500}>{p.name}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color="green" variant="light" size="lg">
-                      {formatCurrency(p.price)}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text lineClamp={1} size="sm" c="dimmed">
-                      {p.description ?? "—"}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" align="right">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        leftSection={<IconEye size={14} />}
-                        onClick={() => openView(p)}
-                      >
-                        View
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        leftSection={<IconEdit size={14} />}
-                        onClick={() => openEdit(p)}
-                      >
-                        Edit
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))
-            )}
-          </Table.Tbody>
-        </Table>
-      </Box>
+        <DataTable
+          withTableBorder
+          borderRadius="sm"
+          withColumnBorders
+          striped
+          highlightOnHover
+          records={paginatedPlans}
+          fetching={loading}
+          minHeight={200}
+          totalRecords={filteredPlans.length}
+          recordsPerPage={pageSize}
+          page={page}
+          onPageChange={(p) => setPage(p)}
+          recordsPerPageOptions={[10, 20, 50]}
+          onRecordsPerPageChange={setPageSize}
+          columns={[
+            {
+              accessor: "name",
+              title: "Name",
+              width: 200,
+              render: ({ name }: Plan) => <Text fw={500}>{name}</Text>,
+            },
+            {
+              accessor: "price",
+              title: "Price",
+              width: 150,
+              render: ({ price }: Plan) => (
+                <Badge color="green" variant="light" size="lg">
+                  {formatCurrency(price)}
+                </Badge>
+              ),
+            },
+            {
+              accessor: "description",
+              title: "Description",
+              render: ({ description }: Plan) => (
+                <Text lineClamp={1} size="sm" c="dimmed">
+                  {description ?? "—"}
+                </Text>
+              ),
+            },
+            {
+              accessor: "actions",
+              title: "Actions",
+              width: 100,
+              textAlign: "right",
+              render: (plan: Plan) => (
+                <Group gap="xs" justify="flex-end">
+                  <Tooltip label="View Details">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => openView(plan)}
+                    >
+                      <IconEye size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Edit">
+                    <ActionIcon
+                      variant="subtle"
+                      color="blue"
+                      onClick={() => openEdit(plan)}
+                    >
+                      <IconEdit size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              ),
+            },
+          ]}
+          noRecordsText="No plans found"
+        />
+      </Paper>
 
       {/* View modal */}
       <Modal
@@ -337,34 +279,43 @@ export default function MailroomPlans() {
         onClose={() => setViewOpen(false)}
         title="Plan Details"
         centered
+        size="lg"
       >
-        <Stack gap="md">
-          <Box>
-            <Text size="sm" c="dimmed">
-              Name
-            </Text>
-            <Text fw={600} size="lg">
-              {viewPlan?.name}
-            </Text>
-          </Box>
-          <Box>
-            <Text size="sm" c="dimmed">
-              Price
-            </Text>
-            <Text fw={600} size="lg" c="green.7">
-              {viewPlan ? formatCurrency(viewPlan.price) : "—"}
-            </Text>
-          </Box>
-          <Box>
-            <Text size="sm" c="dimmed">
-              Description
-            </Text>
-            <Text>{viewPlan?.description ?? "—"}</Text>
-          </Box>
-          <Group justify="flex-end" mt="sm">
-            <Button onClick={() => setViewOpen(false)}>Close</Button>
-          </Group>
-        </Stack>
+        {viewPlan && (
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Box>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  Plan Name
+                </Text>
+                <Title order={3}>{viewPlan.name}</Title>
+              </Box>
+              <Badge size="lg" variant="light" color="green">
+                {formatCurrency(viewPlan.price)}
+              </Badge>
+            </Group>
+
+            <Paper
+              withBorder
+              p="md"
+              radius="md"
+              bg="var(--mantine-color-gray-0)"
+            >
+              <Stack gap="xs">
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  Description
+                </Text>
+                <Text size="sm">{viewPlan.description || "—"}</Text>
+              </Stack>
+            </Paper>
+
+            <Group justify="flex-end" mt="sm">
+              <Button variant="default" onClick={() => setViewOpen(false)}>
+                Close
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
 
       {/* Edit modal */}

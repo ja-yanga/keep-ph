@@ -1,24 +1,34 @@
 "use client";
+
+import "mantine-datatable/styles.layer.css";
+
 import React, { useEffect, useState, useMemo } from "react";
 import {
   Box,
   Button,
-  Loader,
+  Group,
+  Modal,
+  Paper,
   Stack,
-  Table,
-  Text,
   TextInput,
   Title,
-  Group,
-  Badge,
-  Divider,
-  Space,
   Tooltip,
-  Modal,
   NumberInput,
+  Text,
+  Badge,
+  ActionIcon,
+  SimpleGrid,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { IconRefresh, IconEye, IconEdit } from "@tabler/icons-react";
+import {
+  IconRefresh,
+  IconEye,
+  IconEdit,
+  IconSearch,
+  IconPlus,
+} from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import { DataTable } from "mantine-datatable";
 
 type Location = {
   id: string;
@@ -31,10 +41,13 @@ type Location = {
 };
 
 export default function MailroomLocations() {
-  const [locations, setLocations] = useState<Location[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // create modal state
   const [createOpen, setCreateOpen] = useState(false);
@@ -70,101 +83,35 @@ export default function MailroomLocations() {
     },
   });
 
-  // sorting
-  const [sortBy, setSortBy] = useState<string | null>("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
   useEffect(() => {
-    let mounted = true;
-    const loadLocations = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/mailroom/locations");
-        if (!mounted) return;
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          setError(json?.error || "Failed to load locations");
-          setLocations([]);
-          return;
-        }
-        const json = await res.json();
-        setLocations(json.data ?? []);
-      } catch (err) {
-        console.error("Load error", err);
-        setError("Failed to load locations");
-        setLocations([]);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    loadLocations();
-    return () => {
-      mounted = false;
-    };
+    fetchData();
   }, []);
 
-  const toggleSort = (col: string) => {
-    if (sortBy === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(col);
-      setSortDir("asc");
-    }
-  };
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
-  const filtered = useMemo(() => {
-    if (!locations) return [];
-    const q = search.trim().toLowerCase();
-    const out = locations.filter((loc) => {
-      if (!q) return true;
-      return (
-        String(loc.name ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.region ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.city ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.barangay ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.zip ?? "")
-          .toLowerCase()
-          .includes(q)
-      );
-    });
-
-    if (!sortBy) return out;
-    const sorted = out.slice().sort((a, b) => {
-      const va = (a as any)[sortBy];
-      const vb = (b as any)[sortBy];
-      if (va == null && vb == null) return 0;
-      if (va == null) return sortDir === "asc" ? -1 : 1;
-      if (vb == null) return sortDir === "asc" ? 1 : -1;
-      if (sortBy === "total_lockers") {
-        const na = Number(va ?? 0);
-        const nb = Number(vb ?? 0);
-        return sortDir === "asc" ? na - nb : nb - na;
-      }
-      const sa = String(va).toLowerCase();
-      const sb = String(vb).toLowerCase();
-      return sortDir === "asc" ? sa.localeCompare(sb) : sb.localeCompare(sa);
-    });
-    return sorted;
-  }, [locations, search, sortBy, sortDir]);
-
-  const refresh = () => {
-    setLocations(null);
-    setError(null);
+  const fetchData = async () => {
     setLoading(true);
-    fetch("/api/mailroom/locations")
-      .then((res) => res.json())
-      .then((json) => setLocations(json.data ?? []))
-      .catch(() => setLocations([]))
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch("/api/mailroom/locations");
+      if (!res.ok) {
+        throw new Error("Failed to load locations");
+      }
+      const json = await res.json();
+      setLocations(json.data ?? []);
+    } catch (err) {
+      console.error("Load error", err);
+      notifications.show({
+        title: "Error",
+        message: "Failed to load locations",
+        color: "red",
+      });
+      setLocations([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // create handler
@@ -188,13 +135,23 @@ export default function MailroomLocations() {
         const json = await res.json().catch(() => ({}));
         throw new Error(json?.error || "Failed to create location");
       }
-      // created successfully
+
+      notifications.show({
+        title: "Success",
+        message: "Location created successfully",
+        color: "green",
+      });
+
       setCreateOpen(false);
       form.reset();
-      refresh();
+      fetchData();
     } catch (err: any) {
       console.error("create error", err);
-      alert(err?.message ?? "Failed to create location");
+      notifications.show({
+        title: "Error",
+        message: err?.message ?? "Failed to create location",
+        color: "red",
+      });
     } finally {
       setCreating(false);
     }
@@ -224,8 +181,11 @@ export default function MailroomLocations() {
   const handleEdit = editForm.onSubmit(async (values) => {
     if (!editLocation) return;
     if (!editLocation.id) {
-      console.error("editLocation missing id", editLocation);
-      alert("Missing location id. Cannot save changes.");
+      notifications.show({
+        title: "Error",
+        message: "Missing location id. Cannot save changes.",
+        color: "red",
+      });
       return;
     }
 
@@ -247,174 +207,164 @@ export default function MailroomLocations() {
         const json = await res.json().catch(() => ({}));
         throw new Error(json?.error || "Failed to update location");
       }
+
+      notifications.show({
+        title: "Success",
+        message: "Location updated successfully",
+        color: "green",
+      });
+
       setEditOpen(false);
       setEditLocation(null);
-      refresh();
+      fetchData();
     } catch (err: any) {
       console.error("edit error", err);
-      alert(err?.message ?? "Failed to update location");
+      notifications.show({
+        title: "Error",
+        message: err?.message ?? "Failed to update location",
+        color: "red",
+      });
     } finally {
       setEditing(false);
     }
   });
 
-  return (
-    <Stack gap="lg">
-      <Box>
-        <Title order={1} size="xl">
-          Mailroom Locations
-        </Title>
-      </Box>
+  const filteredLocations = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return locations.filter((loc) => {
+      if (!q) return true;
+      return (
+        String(loc.name ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(loc.region ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(loc.city ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(loc.barangay ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(loc.zip ?? "")
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [locations, search]);
 
-      {/* CHANGED: align="apart" -> justify="space-between" */}
-      <Group justify="space-between" gap="sm">
-        <Group gap="sm" style={{ flex: 1 }}>
+  const paginatedLocations = filteredLocations.slice(
+    (page - 1) * pageSize,
+    page * pageSize
+  );
+
+  return (
+    <Stack>
+      <Paper p="md" radius="md" withBorder shadow="sm">
+        <Group justify="space-between" mb="md">
           <TextInput
             placeholder="Search by name, region, city, barangay or zip..."
+            leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, minWidth: 280 }}
+            style={{ flex: 1, maxWidth: 400 }}
           />
-          <Tooltip label="Refresh list">
-            <Button leftSection={<IconRefresh size={16} />} onClick={refresh}>
-              Refresh
+          <Group>
+            <Tooltip label="Refresh list">
+              <Button variant="light" onClick={fetchData}>
+                <IconRefresh size={16} />
+              </Button>
+            </Tooltip>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setCreateOpen(true)}
+            >
+              Create
             </Button>
-          </Tooltip>
-          <Space w="sm" />
+          </Group>
         </Group>
 
-        {/* Create */}
-        <Button variant="outline" onClick={() => setCreateOpen(true)}>
-          Create
-        </Button>
-      </Group>
-
-      <Divider />
-
-      <Box
-        style={{
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.06)",
-          background: "white",
-          overflow: "hidden",
-        }}
-      >
-        <Table verticalSpacing="sm" highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("name")}
-              >
-                Name{" "}
-                {sortBy === "name" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("region")}
-              >
-                Region{" "}
-                {sortBy === "region" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("city")}
-              >
-                City{" "}
-                {sortBy === "city" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("barangay")}
-              >
-                Barangay{" "}
-                {sortBy === "barangay" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("zip")}
-              >
-                Zip {sortBy === "zip" ? (sortDir === "asc" ? "▲" : "▼") : null}
-              </Table.Th>
-              <Table.Th
-                style={{ cursor: "pointer" }}
-                onClick={() => toggleSort("total_lockers")}
-              >
-                Total Lockers{" "}
-                {sortBy === "total_lockers"
-                  ? sortDir === "asc"
-                    ? "▲"
-                    : "▼"
-                  : null}
-              </Table.Th>
-              <Table.Th>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-
-          <Table.Tbody>
-            {loading || locations === null ? (
-              <Table.Tr>
-                <Table.Td colSpan={7}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    <Loader />
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : error ? (
-              <Table.Tr>
-                <Table.Td colSpan={7}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    {/* CHANGED: color -> c */}
-                    <Text c="red">{error}</Text>
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : filtered.length === 0 ? (
-              <Table.Tr>
-                <Table.Td colSpan={7}>
-                  <Box style={{ padding: 24, textAlign: "center" }}>
-                    {/* CHANGED: color -> c */}
-                    <Text c="dimmed">No locations found</Text>
-                  </Box>
-                </Table.Td>
-              </Table.Tr>
-            ) : (
-              filtered.map((loc) => (
-                <Table.Tr key={loc.id}>
-                  <Table.Td>{loc.name}</Table.Td>
-                  <Table.Td>{loc.region ?? "—"}</Table.Td>
-                  <Table.Td>{loc.city ?? "—"}</Table.Td>
-                  <Table.Td>{loc.barangay ?? "—"}</Table.Td>
-                  <Table.Td>{loc.zip ?? "—"}</Table.Td>
-                  <Table.Td>
-                    <Badge color="blue">{loc.total_lockers ?? 0}</Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" justify="flex-start">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        leftSection={<IconEye size={14} />}
-                        onClick={() => openView(loc)}
-                      >
-                        View
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        leftSection={<IconEdit size={14} />}
-                        onClick={() => openEdit(loc)}
-                      >
-                        Edit
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))
-            )}
-          </Table.Tbody>
-        </Table>
-      </Box>
+        <DataTable
+          withTableBorder
+          borderRadius="sm"
+          withColumnBorders
+          striped
+          highlightOnHover
+          records={paginatedLocations}
+          fetching={loading}
+          minHeight={200}
+          totalRecords={filteredLocations.length}
+          recordsPerPage={pageSize}
+          page={page}
+          onPageChange={(p) => setPage(p)}
+          recordsPerPageOptions={[10, 20, 50]}
+          onRecordsPerPageChange={setPageSize}
+          columns={[
+            { accessor: "name", title: "Name", width: 200 },
+            {
+              accessor: "region",
+              title: "Region",
+              render: ({ region }: Location) => region ?? "—",
+            },
+            {
+              accessor: "city",
+              title: "City",
+              render: ({ city }: Location) => city ?? "—",
+            },
+            {
+              accessor: "barangay",
+              title: "Barangay",
+              render: ({ barangay }: Location) => barangay ?? "—",
+            },
+            {
+              accessor: "zip",
+              title: "Zip",
+              width: 100,
+              render: ({ zip }: Location) => zip ?? "—",
+            },
+            {
+              accessor: "total_lockers",
+              title: "Total Lockers",
+              width: 120,
+              textAlign: "center",
+              render: ({ total_lockers }: Location) => (
+                <Badge color="blue" variant="light">
+                  {total_lockers ?? 0}
+                </Badge>
+              ),
+            },
+            {
+              accessor: "actions",
+              title: "Actions",
+              width: 100,
+              textAlign: "right",
+              render: (loc: Location) => (
+                <Group gap="xs" justify="flex-end">
+                  <Tooltip label="View">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => openView(loc)}
+                    >
+                      <IconEye size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Edit">
+                    <ActionIcon
+                      variant="subtle"
+                      color="blue"
+                      onClick={() => openEdit(loc)}
+                    >
+                      <IconEdit size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              ),
+            },
+          ]}
+          noRecordsText="No locations found"
+        />
+      </Paper>
 
       {/* Create modal */}
       <Modal
@@ -456,7 +406,6 @@ export default function MailroomLocations() {
               min={0}
               {...form.getInputProps("total_lockers")}
             />
-            {/* CHANGED: align="right" -> justify="flex-end" */}
             <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setCreateOpen(false)}>
                 Cancel
@@ -473,24 +422,73 @@ export default function MailroomLocations() {
       <Modal
         opened={viewOpen}
         onClose={() => setViewOpen(false)}
-        title="Location"
+        title="Location Details"
         centered
+        size="lg"
       >
-        <Stack gap="xs">
-          <Text>{viewLocation?.name}</Text>
-          {/* CHANGED: color -> c */}
-          <Text c="dimmed">Region: {viewLocation?.region ?? "—"}</Text>
-          <Text c="dimmed">City: {viewLocation?.city ?? "—"}</Text>
-          <Text c="dimmed">Barangay: {viewLocation?.barangay ?? "—"}</Text>
-          <Text c="dimmed">Zip: {viewLocation?.zip ?? "—"}</Text>
-          <Text c="dimmed">
-            Total lockers: {viewLocation?.total_lockers ?? 0}
-          </Text>
-          {/* CHANGED: align="right" -> justify="flex-end" */}
-          <Group justify="flex-end" mt="sm">
-            <Button onClick={() => setViewOpen(false)}>Close</Button>
-          </Group>
-        </Stack>
+        {viewLocation && (
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Box>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  Location Name
+                </Text>
+                <Title order={3}>{viewLocation.name}</Title>
+              </Box>
+              <Badge size="lg" variant="light" color="blue">
+                {viewLocation.total_lockers ?? 0} Lockers
+              </Badge>
+            </Group>
+
+            <Paper
+              withBorder
+              p="md"
+              radius="md"
+              bg="var(--mantine-color-gray-0)"
+            >
+              <SimpleGrid cols={2} spacing="md" verticalSpacing="lg">
+                <Box>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    Region
+                  </Text>
+                  <Text fw={500} size="sm">
+                    {viewLocation.region || "—"}
+                  </Text>
+                </Box>
+                <Box>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    City
+                  </Text>
+                  <Text fw={500} size="sm">
+                    {viewLocation.city || "—"}
+                  </Text>
+                </Box>
+                <Box>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    Barangay
+                  </Text>
+                  <Text fw={500} size="sm">
+                    {viewLocation.barangay || "—"}
+                  </Text>
+                </Box>
+                <Box>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    Zip Code
+                  </Text>
+                  <Text fw={500} size="sm">
+                    {viewLocation.zip || "—"}
+                  </Text>
+                </Box>
+              </SimpleGrid>
+            </Paper>
+
+            <Group justify="flex-end" mt="sm">
+              <Button variant="default" onClick={() => setViewOpen(false)}>
+                Close
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
 
       {/* Edit modal */}
@@ -514,7 +512,6 @@ export default function MailroomLocations() {
               {...editForm.getInputProps("barangay")}
             />
             <TextInput label="Zip" {...editForm.getInputProps("zip")} />
-            {/* CHANGED: align="right" -> justify="flex-end" */}
             <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setEditOpen(false)}>
                 Cancel

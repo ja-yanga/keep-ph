@@ -206,8 +206,8 @@ export default function MailroomLockers() {
   );
 
   return (
-    <Stack>
-      <Paper p="md" radius="md" withBorder shadow="sm">
+    <Stack align="center">
+      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
           <TextInput
             placeholder="Search lockers..."
@@ -303,6 +303,7 @@ export default function MailroomLockers() {
         opened={opened}
         onClose={close}
         title={editingLocker ? "Edit Locker" : "Add Locker"}
+        centered
       >
         <Stack>
           <TextInput
