@@ -95,7 +95,7 @@ export default function MailroomLocations() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/mailroom/locations");
+      const res = await fetch("/api/admin/mailroom/locations");
       if (!res.ok) {
         throw new Error("Failed to load locations");
       }
@@ -126,7 +126,7 @@ export default function MailroomLocations() {
         zip: values.zip || null,
         total_lockers: values.total_lockers || 0,
       };
-      const res = await fetch("/api/mailroom/locations", {
+      const res = await fetch("/api/admin/mailroom/locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -198,11 +198,14 @@ export default function MailroomLocations() {
         barangay: values.barangay || null,
         zip: values.zip || null,
       };
-      const res = await fetch(`/api/mailroom/locations/${editLocation.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(
+        `/api/admin/mailroom/locations/${editLocation.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json?.error || "Failed to update location");

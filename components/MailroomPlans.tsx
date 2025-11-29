@@ -75,7 +75,7 @@ export default function MailroomPlans() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/mailroom/plans");
+      const res = await fetch("/api/admin/mailroom/plans");
       if (!res.ok) {
         throw new Error("Failed to load plans");
       }
@@ -122,7 +122,7 @@ export default function MailroomPlans() {
         price: values.price,
         description: values.description || null,
       };
-      const res = await fetch(`/api/mailroom/plans/${editPlan.id}`, {
+      const res = await fetch(`/api/admin/mailroom/plans/${editPlan.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

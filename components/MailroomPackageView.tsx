@@ -243,10 +243,11 @@ export default function MailroomPackageView({
                     >
                       <Table.Thead>
                         <Table.Tr>
-                          <Table.Th>Package / Tracking</Table.Th>
+                          <Table.Th>Tracking #</Table.Th>
+                          <Table.Th>Type</Table.Th>
                           <Table.Th>Locker</Table.Th>
                           <Table.Th>Status</Table.Th>
-                          <Table.Th>Date</Table.Th>
+                          <Table.Th>Received</Table.Th>
                           <Table.Th>Action</Table.Th>
                         </Table.Tr>
                       </Table.Thead>
@@ -254,68 +255,100 @@ export default function MailroomPackageView({
                         {Array.isArray(item.packages) &&
                         item.packages.length > 0 ? (
                           item.packages.map((p: any) => {
-                            const status = p.status ?? p.state ?? "PENDING";
-                            const date =
-                              p.status_date ??
-                              p.created_at ??
-                              p.updated_at ??
-                              p.received_at;
+                            const tracking = p.tracking_number || "—";
+                            const type = p.package_type || "Parcel";
+
+                            // Resolve locker code: Check direct relation first, then fallback to assigned lockers list
+                            let lockerCode = p.locker?.locker_code;
+
+                            if (
+                              !lockerCode &&
+                              p.locker_id &&
+                              Array.isArray(item.lockers)
+                            ) {
+                              const assigned = item.lockers.find(
+                                (l: any) =>
+                                  l.id === p.locker_id ||
+                                  l.locker_id === p.locker_id ||
+                                  l.locker?.id === p.locker_id
+                              );
+                              if (assigned) {
+                                lockerCode =
+                                  assigned.locker_code ||
+                                  assigned.locker?.locker_code;
+                              }
+                            }
+
+                            lockerCode = lockerCode || "—";
+
+                            const status = p.status || "STORED";
+                            const receivedDate = p.received_at;
+
+                            let statusColor = "blue";
+                            if (["RELEASED", "RETRIEVED"].includes(status))
+                              statusColor = "green";
+                            else if (status === "DISPOSED") statusColor = "red";
+                            else if (status.includes("REQUEST"))
+                              statusColor = "orange";
 
                             return (
-                              <Table.Tr key={p.id ?? p.label ?? Math.random()}>
+                              <Table.Tr key={p.id}>
                                 <Table.Td>
-                                  <Text fw={500}>
-                                    {p.name ??
-                                      p.package_name ??
-                                      p.tracking_number ??
-                                      "—"}
+                                  <Text fw={500} size="sm">
+                                    {tracking}
                                   </Text>
                                 </Table.Td>
                                 <Table.Td>
-                                  <Badge variant="dot" color="gray">
-                                    {p.locker_label ?? p.locker ?? "—"}
+                                  <Badge variant="light" color="gray" size="sm">
+                                    {type}
                                   </Badge>
                                 </Table.Td>
                                 <Table.Td>
+                                  {lockerCode !== "—" ? (
+                                    <Badge
+                                      variant="outline"
+                                      color="gray"
+                                      size="sm"
+                                      leftSection={<IconLock size={10} />}
+                                    >
+                                      {lockerCode}
+                                    </Badge>
+                                  ) : (
+                                    <Text size="sm" c="dimmed">
+                                      —
+                                    </Text>
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
                                   <Badge
-                                    color={
-                                      status === "STORED"
-                                        ? "green"
-                                        : status === "PENDING"
-                                        ? "orange"
-                                        : "blue"
-                                    }
+                                    color={statusColor}
+                                    variant="light"
+                                    size="sm"
                                   >
-                                    {status}
+                                    {status.replace(/_/g, " ")}
                                   </Badge>
                                 </Table.Td>
                                 <Table.Td>
                                   <Text size="sm" c="dimmed">
-                                    {date
-                                      ? new Date(date).toLocaleDateString()
+                                    {receivedDate
+                                      ? new Date(
+                                          receivedDate
+                                        ).toLocaleDateString()
                                       : "—"}
                                   </Text>
                                 </Table.Td>
                                 <Table.Td>
                                   <Group gap="xs">
                                     {status === "STORED" && (
-                                      <>
-                                        <Tooltip label="Request Release">
-                                          <ActionIcon
-                                            variant="light"
-                                            color="blue"
-                                            size="sm"
-                                          >
-                                            <IconBox size={14} />
-                                          </ActionIcon>
-                                        </Tooltip>
-                                      </>
-                                    )}
-                                    {/* Simplified actions for UI cleanliness */}
-                                    {status !== "STORED" && (
-                                      <Text size="xs" c="dimmed">
-                                        —
-                                      </Text>
+                                      <Tooltip label="Request Release">
+                                        <ActionIcon
+                                          variant="light"
+                                          color="blue"
+                                          size="sm"
+                                        >
+                                          <IconBox size={14} />
+                                        </ActionIcon>
+                                      </Tooltip>
                                     )}
                                   </Group>
                                 </Table.Td>
@@ -324,7 +357,7 @@ export default function MailroomPackageView({
                           })
                         ) : (
                           <Table.Tr>
-                            <Table.Td colSpan={5}>
+                            <Table.Td colSpan={6}>
                               <Stack align="center" py="xl">
                                 <IconBox
                                   size={40}

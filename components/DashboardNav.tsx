@@ -117,7 +117,7 @@ export default function DashboardNav() {
                     </Anchor>
                     <Anchor
                       component={Link}
-                      href="#"
+                      href="/admin/packages"
                       style={linkColor("/admin/packages")}
                     >
                       Packages

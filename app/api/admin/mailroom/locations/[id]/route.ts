@@ -107,7 +107,7 @@ export async function PATCH(
     );
   } catch (err) {
     console.error(
-      "Unexpected error in PATCH /api/mailroom/locations/[id]:",
+      "Unexpected error in PATCH /api/admin/mailroom/locations/[id]:",
       err
     );
     return NextResponse.json(

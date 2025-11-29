@@ -78,7 +78,7 @@ export default function MailroomLockers() {
     try {
       const [lockersRes, locationsRes] = await Promise.all([
         fetch("/api/admin/mailroom/lockers"),
-        fetch("/api/mailroom/locations"),
+        fetch("/api/admin/mailroom/locations"),
       ]);
 
       if (lockersRes.ok) {

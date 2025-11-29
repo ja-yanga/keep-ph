@@ -53,7 +53,10 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (err) {
-    console.error("Unexpected error in PATCH /api/mailroom/plans/[id]:", err);
+    console.error(
+      "Unexpected error in PATCH /api/admin/mailroom/plans/[id]:",
+      err
+    );
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }
