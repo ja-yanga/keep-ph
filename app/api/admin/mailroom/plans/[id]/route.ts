@@ -21,12 +21,13 @@ export async function PATCH(
       );
     }
 
-    const { name, price, description } = body;
+    const { name, price, description, storage_limit } = body;
 
     const updates: Record<string, any> = {};
     if (name !== undefined) updates.name = name;
     if (price !== undefined) updates.price = Number(price);
     if (description !== undefined) updates.description = description || null;
+    if (storage_limit !== undefined) updates.storage_limit = storage_limit;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(

@@ -17,6 +17,7 @@ import {
   Switch,
   Textarea,
   Text,
+  FileInput,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -28,6 +29,8 @@ import {
   IconFileText,
   IconLock,
   IconAlertCircle,
+  IconScan,
+  IconUpload,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -109,6 +112,12 @@ export default function MailroomPackages() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // --- NEW STATE FOR SCANNING ---
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scanFile, setScanFile] = useState<File | null>(null);
+  const [packageToScan, setPackageToScan] = useState<any | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -135,7 +144,7 @@ export default function MailroomPackages() {
           fetch("/api/admin/mailroom/packages"),
           fetch("/api/mailroom/registrations"),
           fetch("/api/admin/mailroom/lockers"),
-          fetch("/api/admin/mailroom/assigned-lockers"), // You might need to create this endpoint or include it in registrations
+          fetch("/api/admin/mailroom/assigned-lockers"),
         ]);
 
       if (packagesRes.ok) {
@@ -287,6 +296,51 @@ export default function MailroomPackages() {
         message: "Failed to delete package",
         color: "red",
       });
+    }
+  };
+
+  // --- SCAN HANDLERS ---
+  const handleOpenScan = (pkg: any) => {
+    setPackageToScan(pkg);
+    setScanFile(null);
+    setScanModalOpen(true);
+  };
+
+  const handleSubmitScan = async () => {
+    if (!scanFile || !packageToScan) return;
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", scanFile);
+      formData.append("packageId", packageToScan.id);
+
+      const res = await fetch("/api/admin/mailroom/scans", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Upload failed");
+      }
+
+      notifications.show({
+        title: "Success",
+        message: "Document scanned and uploaded successfully",
+        color: "green",
+      });
+
+      setScanModalOpen(false);
+      fetchData();
+    } catch (error: any) {
+      notifications.show({
+        title: "Error",
+        message: error.message,
+        color: "red",
+      });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -495,6 +549,18 @@ export default function MailroomPackages() {
                       <IconTrash size={16} />
                     </ActionIcon>
                   </Tooltip>
+                  {pkg.status === "REQUEST_TO_SCAN" && (
+                    <Tooltip label="Upload Scanned PDF">
+                      <Button
+                        size="xs"
+                        color="violet"
+                        leftSection={<IconScan size={14} />}
+                        onClick={() => handleOpenScan(pkg)}
+                      >
+                        Upload Scan
+                      </Button>
+                    </Tooltip>
+                  )}
                 </Group>
               ),
             },
@@ -616,6 +682,44 @@ export default function MailroomPackages() {
             </Button>
             <Button onClick={handleSubmit} loading={submitting}>
               Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* --- SCAN UPLOAD MODAL --- */}
+      <Modal
+        opened={scanModalOpen}
+        onClose={() => setScanModalOpen(false)}
+        title="Upload Scanned Document"
+        centered
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Upload the PDF scan for package:{" "}
+            <b>{packageToScan?.tracking_number}</b>
+          </Text>
+
+          <FileInput
+            label="Select PDF File"
+            placeholder="Click to select file"
+            accept="application/pdf"
+            leftSection={<IconUpload size={14} />}
+            value={scanFile}
+            onChange={setScanFile}
+            clearable
+          />
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => setScanModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              color="violet"
+              onClick={handleSubmitScan}
+              loading={isUploading}
+            >
+              Upload Scan
             </Button>
           </Group>
         </Stack>

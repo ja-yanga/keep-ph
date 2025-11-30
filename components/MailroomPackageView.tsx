@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react"; // Add imports
+import { useState, useMemo } from "react";
 import {
   Badge,
   Box,
@@ -10,7 +10,6 @@ import {
   Group,
   Loader,
   Paper,
-  ScrollArea,
   Stack,
   Table,
   Text,
@@ -24,17 +23,17 @@ import {
 import {
   IconArrowLeft,
   IconRefresh,
-  IconBox,
   IconUser,
   IconMapPin,
   IconCalendar,
   IconLock,
   IconCreditCard,
-  IconPackage,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
+import UserPackages from "./UserPackages";
+import UserScans from "./UserScans"; // <--- Import the component
 
 function addMonths(iso?: string | null, months = 0) {
   if (!iso) return null;
@@ -64,7 +63,6 @@ export default function MailroomPackageView({
     if (!selectedLockerId) return pkgs;
 
     return pkgs.filter((p: any) => {
-      // Find which locker entry in item.lockers corresponds to this package
       if (!Array.isArray(item?.lockers)) return false;
 
       const assigned = item.lockers.find(
@@ -74,7 +72,6 @@ export default function MailroomPackageView({
           l.locker?.id === p.locker_id
       );
 
-      // Check if the assigned locker matches the selected one
       return assigned && assigned.id === selectedLockerId;
     });
   }, [item, selectedLockerId]);
@@ -144,6 +141,9 @@ export default function MailroomPackageView({
       {item.title}
     </Anchor>
   ));
+
+  // Plan Capabilities
+  const plan = item.mailroom_plans || {};
 
   return (
     <Box
@@ -247,7 +247,7 @@ export default function MailroomPackageView({
                   </Grid.Col>
                 </Grid>
 
-                {/* Lockers Section (Moved Up) */}
+                {/* Lockers Section */}
                 <Paper p="lg" radius="md" withBorder shadow="sm">
                   <Group justify="space-between" mb="md">
                     <Group gap="xs">
@@ -339,154 +339,20 @@ export default function MailroomPackageView({
                   </Table>
                 </Paper>
 
-                {/* Packages Section (Moved Down) */}
-                <Paper p="lg" radius="md" withBorder shadow="sm">
-                  <Group justify="space-between" mb="md">
-                    <Group gap="xs">
-                      <IconPackage size={20} color="gray" />
-                      <Title order={4}>Packages</Title>
-                    </Group>
-                    <Badge variant="light" size="lg">
-                      {filteredPackages.length} Items
-                    </Badge>
-                  </Group>
-                  <ScrollArea style={{ maxHeight: 400 }}>
-                    <Table
-                      verticalSpacing="sm"
-                      striped
-                      highlightOnHover
-                      withTableBorder
-                    >
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Tracking #</Table.Th>
-                          <Table.Th>Type</Table.Th>
-                          <Table.Th>Locker</Table.Th>
-                          <Table.Th>Status</Table.Th>
-                          <Table.Th>Received</Table.Th>
-                          <Table.Th>Action</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {filteredPackages.length > 0 ? (
-                          filteredPackages.map((p: any) => {
-                            const tracking = p.tracking_number || "—";
-                            const type = p.package_type || "Parcel";
+                {/* Packages Section */}
+                <UserPackages
+                  packages={filteredPackages}
+                  lockers={item.lockers}
+                  planCapabilities={{
+                    can_receive_mail: plan.can_receive_mail === true,
+                    can_receive_parcels: plan.can_receive_parcels === true,
+                    can_digitize: plan.can_digitize === true,
+                  }}
+                  onRefresh={onRefresh}
+                />
 
-                            // Resolve locker code: Check direct relation first, then fallback to assigned lockers list
-                            let lockerCode = p.locker?.locker_code;
-
-                            if (
-                              !lockerCode &&
-                              p.locker_id &&
-                              Array.isArray(item.lockers)
-                            ) {
-                              const assigned = item.lockers.find(
-                                (l: any) =>
-                                  l.id === p.locker_id ||
-                                  l.locker_id === p.locker_id ||
-                                  l.locker?.id === p.locker_id
-                              );
-                              if (assigned) {
-                                lockerCode =
-                                  assigned.locker_code ||
-                                  assigned.locker?.locker_code;
-                              }
-                            }
-
-                            lockerCode = lockerCode || "—";
-
-                            const status = p.status || "STORED";
-                            const receivedDate = p.received_at;
-
-                            let statusColor = "blue";
-                            if (["RELEASED", "RETRIEVED"].includes(status))
-                              statusColor = "green";
-                            else if (status === "DISPOSED") statusColor = "red";
-                            else if (status.includes("REQUEST"))
-                              statusColor = "orange";
-
-                            return (
-                              <Table.Tr key={p.id}>
-                                <Table.Td>
-                                  <Text fw={500} size="sm">
-                                    {tracking}
-                                  </Text>
-                                </Table.Td>
-                                <Table.Td>
-                                  <Badge variant="light" color="gray" size="sm">
-                                    {type}
-                                  </Badge>
-                                </Table.Td>
-                                <Table.Td>
-                                  {lockerCode !== "—" ? (
-                                    <Badge
-                                      variant="outline"
-                                      color="gray"
-                                      size="sm"
-                                      leftSection={<IconLock size={10} />}
-                                    >
-                                      {lockerCode}
-                                    </Badge>
-                                  ) : (
-                                    <Text size="sm" c="dimmed">
-                                      —
-                                    </Text>
-                                  )}
-                                </Table.Td>
-                                <Table.Td>
-                                  <Badge
-                                    color={statusColor}
-                                    variant="light"
-                                    size="sm"
-                                  >
-                                    {status.replace(/_/g, " ")}
-                                  </Badge>
-                                </Table.Td>
-                                <Table.Td>
-                                  <Text size="sm" c="dimmed">
-                                    {receivedDate
-                                      ? new Date(
-                                          receivedDate
-                                        ).toLocaleDateString()
-                                      : "—"}
-                                  </Text>
-                                </Table.Td>
-                                <Table.Td>
-                                  <Group gap="xs">
-                                    {status === "STORED" && (
-                                      <Tooltip label="Request Release">
-                                        <ActionIcon
-                                          variant="light"
-                                          color="blue"
-                                          size="sm"
-                                        >
-                                          <IconBox size={14} />
-                                        </ActionIcon>
-                                      </Tooltip>
-                                    )}
-                                  </Group>
-                                </Table.Td>
-                              </Table.Tr>
-                            );
-                          })
-                        ) : (
-                          <Table.Tr>
-                            <Table.Td colSpan={6}>
-                              <Stack align="center" py="xl">
-                                <IconBox
-                                  size={40}
-                                  color="var(--mantine-color-gray-3)"
-                                />
-                                <Text c="dimmed">No packages found</Text>
-                              </Stack>
-                            </Table.Td>
-                          </Table.Tr>
-                        )}
-                      </Table.Tbody>
-                    </Table>
-                  </ScrollArea>
-                </Paper>
+                {/* Digital Storage Section (Only if plan allows) */}
+                {plan.can_digitize && <UserScans registrationId={item.id} />}
               </Stack>
             </Grid.Col>
 

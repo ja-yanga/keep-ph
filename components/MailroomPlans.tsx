@@ -19,7 +19,9 @@ import {
   Textarea,
   Text,
   SimpleGrid,
-  Select, // Add Select
+  Select,
+  Switch, // Add Switch
+  ThemeIcon, // Add ThemeIcon
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -27,6 +29,12 @@ import {
   IconEye,
   IconRefresh,
   IconSearch,
+  IconDatabase,
+  IconMail, // Add icons
+  IconPackage,
+  IconScan,
+  IconCheck,
+  IconX,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -36,6 +44,10 @@ type Plan = {
   name: string;
   price: number;
   description?: string | null;
+  storage_limit?: number | null;
+  can_receive_mail: boolean;
+  can_receive_parcels: boolean;
+  can_digitize: boolean;
 };
 
 export default function MailroomPlans() {
@@ -63,6 +75,10 @@ export default function MailroomPlans() {
       name: "",
       price: 0,
       description: "",
+      storage_limit: 0,
+      can_receive_mail: true,
+      can_receive_parcels: false,
+      can_digitize: true,
     },
   });
 
@@ -77,7 +93,6 @@ export default function MailroomPlans() {
 
   const clearFilters = () => {
     setSearch("");
-
     setSortBy(null);
   };
 
@@ -114,10 +129,21 @@ export default function MailroomPlans() {
   // open edit modal and populate form
   const openEdit = (p: Plan) => {
     setEditPlan(p);
+
+    // Convert stored MB to GB for the form
+    let limitGB = 0;
+    if (p.storage_limit) {
+      limitGB = p.storage_limit / 1024;
+    }
+
     editForm.setValues({
       name: p.name ?? "",
       price: p.price ?? 0,
       description: p.description ?? "",
+      storage_limit: limitGB,
+      can_receive_mail: p.can_receive_mail ?? true,
+      can_receive_parcels: p.can_receive_parcels ?? false,
+      can_digitize: p.can_digitize ?? true,
     });
     setEditOpen(true);
   };
@@ -128,10 +154,20 @@ export default function MailroomPlans() {
 
     setEditing(true);
     try {
+      // Convert form GB back to MB for storage
+      let finalStorageMB = null;
+      if (values.storage_limit && values.storage_limit > 0) {
+        finalStorageMB = values.storage_limit * 1024;
+      }
+
       const payload = {
         name: values.name,
         price: values.price,
         description: values.description || null,
+        storage_limit: finalStorageMB,
+        can_receive_mail: values.can_receive_mail,
+        can_receive_parcels: values.can_receive_parcels,
+        can_digitize: values.can_digitize,
       };
       const res = await fetch(`/api/admin/mailroom/plans/${editPlan.id}`, {
         method: "PATCH",
@@ -169,6 +205,51 @@ export default function MailroomPlans() {
       style: "currency",
       currency: "PHP",
     }).format(val);
+
+  // Helper to format storage for display
+  const formatStorage = (mb: number | null | undefined) => {
+    if (!mb) return "Unlimited";
+    // Always display in GB if >= 1GB (which is 1024 MB)
+    if (mb >= 1024) {
+      const gb = mb / 1024;
+      // Show up to 2 decimal places, remove trailing zeros
+      return `${parseFloat(gb.toFixed(2))} GB`;
+    }
+    return `${mb} MB`;
+  };
+
+  // Helper to render capability icons
+  const renderCapabilities = (plan: Plan) => (
+    <Group gap="xs">
+      <Tooltip label="Receives Mail">
+        <ThemeIcon
+          variant="light"
+          color={plan.can_receive_mail ? "blue" : "gray"}
+          size="sm"
+        >
+          <IconMail size={12} />
+        </ThemeIcon>
+      </Tooltip>
+      <Tooltip label="Receives Parcels">
+        <ThemeIcon
+          variant="light"
+          color={plan.can_receive_parcels ? "blue" : "gray"}
+          size="sm"
+        >
+          <IconPackage size={12} />
+        </ThemeIcon>
+      </Tooltip>
+      <Tooltip label="Digitization">
+        <ThemeIcon
+          variant="light"
+          color={plan.can_digitize ? "blue" : "gray"}
+          size="sm"
+        >
+          <IconScan size={12} />
+        </ThemeIcon>
+      </Tooltip>
+    </Group>
+  );
 
   const filteredPlans = plans
     .filter((p) => {
@@ -261,8 +342,14 @@ export default function MailroomPlans() {
             {
               accessor: "name",
               title: "Name",
-              width: 200,
+              width: 180,
               render: ({ name }: Plan) => <Text fw={500}>{name}</Text>,
+            },
+            {
+              accessor: "capabilities", // Virtual column
+              title: "Capabilities",
+              width: 120,
+              render: (plan: Plan) => renderCapabilities(plan),
             },
             {
               accessor: "price",
@@ -272,6 +359,17 @@ export default function MailroomPlans() {
                 <Badge color="green" variant="light" size="lg">
                   {formatCurrency(price)}
                 </Badge>
+              ),
+            },
+            {
+              accessor: "storage_limit",
+              title: "Storage Limit",
+              width: 150,
+              render: ({ storage_limit }: Plan) => (
+                <Group gap={4}>
+                  <IconDatabase size={14} color="gray" />
+                  <Text size="sm">{formatStorage(storage_limit)}</Text>
+                </Group>
               ),
             },
             {
@@ -338,6 +436,27 @@ export default function MailroomPlans() {
               </Badge>
             </Group>
 
+            <SimpleGrid cols={2}>
+              <Paper
+                withBorder
+                p="md"
+                radius="md"
+                bg="var(--mantine-color-gray-0)"
+              >
+                <Stack gap="xs">
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    Storage Limit
+                  </Text>
+                  <Group gap="xs">
+                    <IconDatabase size={20} />
+                    <Text size="lg" fw={600}>
+                      {formatStorage(viewPlan.storage_limit)}
+                    </Text>
+                  </Group>
+                </Stack>
+              </Paper>
+            </SimpleGrid>
+
             <Paper
               withBorder
               p="md"
@@ -349,6 +468,38 @@ export default function MailroomPlans() {
                   Description
                 </Text>
                 <Text size="sm">{viewPlan.description || "—"}</Text>
+              </Stack>
+            </Paper>
+
+            <Paper withBorder p="md" radius="md">
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700} mb="sm">
+                Capabilities
+              </Text>
+              <Stack gap="xs">
+                <Group>
+                  {viewPlan.can_receive_mail ? (
+                    <IconCheck size={18} color="green" />
+                  ) : (
+                    <IconX size={18} color="gray" />
+                  )}
+                  <Text size="sm">Receive Mail</Text>
+                </Group>
+                <Group>
+                  {viewPlan.can_receive_parcels ? (
+                    <IconCheck size={18} color="green" />
+                  ) : (
+                    <IconX size={18} color="gray" />
+                  )}
+                  <Text size="sm">Receive Parcels</Text>
+                </Group>
+                <Group>
+                  {viewPlan.can_digitize ? (
+                    <IconCheck size={18} color="green" />
+                  ) : (
+                    <IconX size={18} color="gray" />
+                  )}
+                  <Text size="sm">Digitization Service</Text>
+                </Group>
               </Stack>
             </Paper>
 
@@ -367,31 +518,89 @@ export default function MailroomPlans() {
         onClose={() => setEditOpen(false)}
         title="Edit Plan"
         centered
+        size="lg"
       >
         <form onSubmit={handleEdit}>
-          <Stack>
+          <Stack gap="md">
             <TextInput
-              label="Name"
+              label="Plan Name"
+              placeholder="e.g. Personal Plan"
               required
               {...editForm.getInputProps("name")}
             />
-            <NumberInput
-              label="Price (PHP)"
-              min={0}
-              required
-              {...editForm.getInputProps("price")}
-            />
+
+            <SimpleGrid cols={2}>
+              <NumberInput
+                label="Price"
+                placeholder="0.00"
+                min={0}
+                required
+                leftSection={
+                  <Text size="sm" c="dimmed">
+                    ₱
+                  </Text>
+                }
+                {...editForm.getInputProps("price")}
+              />
+
+              <NumberInput
+                label="Storage Limit (GB)"
+                placeholder="1"
+                min={1}
+                decimalScale={2}
+                fixedDecimalScale={false}
+                {...editForm.getInputProps("storage_limit")}
+                required
+              />
+            </SimpleGrid>
+
             <Textarea
               label="Description"
-              minRows={3}
+              placeholder="Plan features and details..."
+              minRows={4}
               {...editForm.getInputProps("description")}
             />
-            <Group justify="flex-end" mt="sm">
+
+            <Paper
+              withBorder
+              p="md"
+              radius="md"
+              bg="var(--mantine-color-gray-0)"
+            >
+              <Text size="sm" fw={500} mb="md">
+                Plan Capabilities
+              </Text>
+              <Stack gap="sm">
+                <Switch
+                  label="Can Receive Mail"
+                  description="Allows receiving letters and documents"
+                  {...editForm.getInputProps("can_receive_mail", {
+                    type: "checkbox",
+                  })}
+                />
+                <Switch
+                  label="Can Receive Parcels"
+                  description="Allows receiving packages and boxes"
+                  {...editForm.getInputProps("can_receive_parcels", {
+                    type: "checkbox",
+                  })}
+                />
+                <Switch
+                  label="Digitization Service"
+                  description="Allows scanning and uploading mail contents"
+                  {...editForm.getInputProps("can_digitize", {
+                    type: "checkbox",
+                  })}
+                />
+              </Stack>
+            </Paper>
+
+            <Group justify="flex-end" mt="md">
               <Button variant="default" onClick={() => setEditOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={editing}>
-                Save
+              <Button type="submit" loading={editing} color="blue">
+                Save Changes
               </Button>
             </Group>
           </Stack>

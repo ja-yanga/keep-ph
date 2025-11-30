@@ -27,6 +27,7 @@ CREATE TABLE public.mailroom_locations (
   barangay text,
   zip text,
   total_lockers integer NOT NULL DEFAULT 0,
+  code text,
   CONSTRAINT mailroom_locations_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.mailroom_packages (
@@ -39,14 +40,20 @@ CREATE TABLE public.mailroom_packages (
   image_url text,
   mailroom_full boolean DEFAULT false,
   received_at timestamp with time zone DEFAULT now(),
+  locker_id uuid,
   CONSTRAINT mailroom_packages_pkey PRIMARY KEY (id),
-  CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id)
+  CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
+  CONSTRAINT mailroom_packages_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)
 );
 CREATE TABLE public.mailroom_plans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
   price numeric NOT NULL,
   description text,
+  storage_limit numeric,
+  can_receive_mail boolean DEFAULT true,
+  can_receive_parcels boolean DEFAULT false,
+  can_digitize boolean DEFAULT true,
   CONSTRAINT mailroom_plans_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.mailroom_registrations (
@@ -61,10 +68,22 @@ CREATE TABLE public.mailroom_registrations (
   full_name text NOT NULL,
   email text NOT NULL,
   mobile numeric NOT NULL,
+  telephone numeric,
   CONSTRAINT mailroom_registrations_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT mailroom_registrations_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.mailroom_locations(id),
   CONSTRAINT mailroom_registrations_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.mailroom_plans(id)
+);
+CREATE TABLE public.mailroom_scans (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  package_id uuid NOT NULL,
+  file_name text NOT NULL,
+  file_url text NOT NULL,
+  file_size_mb numeric NOT NULL DEFAULT 0,
+  mime_type text,
+  uploaded_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT mailroom_scans_pkey PRIMARY KEY (id),
+  CONSTRAINT mailroom_scans_package_id_fkey FOREIGN KEY (package_id) REFERENCES public.mailroom_packages(id)
 );
 CREATE TABLE public.referrals_table (
   referrals_id integer NOT NULL DEFAULT nextval('referrals_table_referrals_id_seq'::regclass),
