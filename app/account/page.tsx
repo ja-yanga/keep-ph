@@ -16,12 +16,14 @@ import {
   Text,
   FileButton,
   Modal,
+  Alert, // Add Alert
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { createClient } from "@supabase/supabase-js";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
+import { IconAlertCircle, IconCheck } from "@tabler/icons-react"; // Add Icons
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -50,11 +52,19 @@ export default function AccountPage() {
     "https://lh3.googleusercontent.com/aida-public/AB6AXuDJsdZ9uDbcolOcnMDxQTiA6vxMfSUGQqFHxbijFNSP6Vmp22EOqMCZ3r7hdfpBuFXb_digYU675pokgl_HLjoxj1hdPsgaXcmRvAY4xup2Hx9MEI6PTOOI_5yizPen6aLsW8ExgaIAfHiIqmxpIpzyv252JGnOzJ7mXVViCb5Jlv9K_tRiCbQRmKlGOfHpXYSnerWkBwcFTRUnsHdQ9nx94TO949a6EOb8MNFyQNguRi90Ihl-kXuT0Mrj4aOc8Jsblx6k7lAm4c4"
   );
 
+  // Profile Feedback
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
+
   // Password Form State
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
+
+  // Password Feedback
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   // Fetch data from session
   useEffect(() => {
@@ -76,12 +86,16 @@ export default function AccountPage() {
   // Triggered by form submit (validates required fields first)
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setProfileError(null);
+    setProfileSuccess(null);
     open(); // Open confirmation modal
   };
 
   const handleConfirmSave = async () => {
     if (!session?.user) return;
     setSaving(true);
+    setProfileError(null);
+    setProfileSuccess(null);
 
     try {
       let avatarDataUrl: string | null = null;
@@ -114,10 +128,11 @@ export default function AccountPage() {
 
       await refresh(); // Refresh session to update UI
       close();
-      alert("Profile updated successfully!");
+      setProfileSuccess("Profile updated successfully!");
     } catch (err: any) {
       console.error(err);
-      alert(err.message || "Failed to update profile.");
+      setProfileError(err.message || "Failed to update profile.");
+      close();
     } finally {
       setSaving(false);
     }
@@ -125,18 +140,21 @@ export default function AccountPage() {
 
   // 1. Validate password inputs and open modal
   const handlePasswordSubmit = () => {
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
     if (!currentPassword || !newPassword || !confirmPassword) {
-      alert("Please fill in all password fields.");
+      setPasswordError("Please fill in all password fields.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      alert("New passwords do not match.");
+      setPasswordError("New passwords do not match.");
       return;
     }
 
     if (newPassword.length < 6) {
-      alert("Password must be at least 6 characters.");
+      setPasswordError("Password must be at least 6 characters.");
       return;
     }
 
@@ -146,6 +164,9 @@ export default function AccountPage() {
   // 2. Execute API call
   const confirmUpdatePassword = async () => {
     setPasswordLoading(true);
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
     try {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
@@ -163,14 +184,14 @@ export default function AccountPage() {
       }
 
       closePasswordModal();
-      alert("Password updated successfully!");
+      setPasswordSuccess("Password updated successfully!");
       // Clear fields
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
       console.error(err);
-      alert(err.message || "Failed to update password");
+      setPasswordError(err.message || "Failed to update password");
       closePasswordModal();
     } finally {
       setPasswordLoading(false);
@@ -250,6 +271,31 @@ export default function AccountPage() {
             <Title order={2} mb="lg" style={{ color: "#1A202C" }}>
               Profile Information
             </Title>
+
+            {profileError && (
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                title="Error"
+                color="red"
+                mb="md"
+                withCloseButton
+                onClose={() => setProfileError(null)}
+              >
+                {profileError}
+              </Alert>
+            )}
+            {profileSuccess && (
+              <Alert
+                icon={<IconCheck size={16} />}
+                title="Success"
+                color="teal"
+                mb="md"
+                withCloseButton
+                onClose={() => setProfileSuccess(null)}
+              >
+                {profileSuccess}
+              </Alert>
+            )}
 
             <form onSubmit={handleFormSubmit}>
               <Grid gutter="xl">
@@ -335,6 +381,31 @@ export default function AccountPage() {
             <Title order={2} mb="lg" style={{ color: "#1A202C" }}>
               Change Password
             </Title>
+
+            {passwordError && (
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                title="Error"
+                color="red"
+                mb="md"
+                withCloseButton
+                onClose={() => setPasswordError(null)}
+              >
+                {passwordError}
+              </Alert>
+            )}
+            {passwordSuccess && (
+              <Alert
+                icon={<IconCheck size={16} />}
+                title="Success"
+                color="teal"
+                mb="md"
+                withCloseButton
+                onClose={() => setPasswordSuccess(null)}
+              >
+                {passwordSuccess}
+              </Alert>
+            )}
 
             <Stack gap="md">
               <PasswordInput

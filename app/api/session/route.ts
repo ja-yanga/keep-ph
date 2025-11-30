@@ -30,7 +30,9 @@ export async function GET(req: Request) {
     try {
       const { data: profileData, error: profileErr } = await supabaseAdmin
         .from("users")
-        .select("first_name, last_name, role, needs_onboarding, avatar_url")
+        .select(
+          "first_name, last_name, role, needs_onboarding, avatar_url, referral_code"
+        ) // Added referral_code
         .eq("id", userData.user.id)
         .maybeSingle();
 

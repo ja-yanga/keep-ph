@@ -32,7 +32,7 @@ export default function DashboardNav() {
   const linkColor = (href: string) => {
     const active = pathname === href || pathname.startsWith(href + "/");
     return {
-      color: active ? "#1A237E" : "#6B7280",
+      color: "#1A237E", // Consistent color with Nav
       fontWeight: active ? 700 : 500,
     };
   };
@@ -70,8 +70,8 @@ export default function DashboardNav() {
       }}
       py="md"
     >
-      <Container size="xxl">
-        <Group align="center" style={{ width: "100%" }}>
+      <Container size="xl">
+        <Group justify="space-between" align="center" style={{ width: "100%" }}>
           {/* Brand */}
           <Link href="/dashboard" style={{ textDecoration: "none" }}>
             <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
@@ -81,109 +81,98 @@ export default function DashboardNav() {
 
           {/* Nav links - hidden on onboarding, wait for session */}
           {showLinks && session && (
-            <Box
-              style={{
-                flex: 1,
-                display: "flex",
-                justifyContent: "flex-start",
-                marginLeft: 16,
-              }}
-            >
-              <Group gap="md" className="nav-links-desktop">
-                <Anchor
-                  component={Link}
-                  href="/dashboard"
-                  style={linkColor("/dashboard")}
-                  aria-current={pathname === "/dashboard" ? "page" : undefined}
-                >
-                  Dashboard
-                </Anchor>
+            <Group gap="lg" visibleFrom="sm">
+              <Anchor
+                component={Link}
+                href="/dashboard"
+                style={linkColor("/dashboard")}
+                underline="hover"
+                aria-current={pathname === "/dashboard" ? "page" : undefined}
+              >
+                Dashboard
+              </Anchor>
 
-                {isAdmin ? (
-                  <>
-                    <Anchor
-                      component={Link}
-                      href="/admin/lockers"
-                      style={linkColor("/admin/lockers")}
-                    >
-                      Lockers
-                    </Anchor>
-                    <Anchor
-                      component={Link}
-                      href="#"
-                      style={linkColor("/admin/mailroom")}
-                    >
-                      Mailroom Services
-                    </Anchor>
-                    <Anchor
-                      component={Link}
-                      href="/admin/packages"
-                      style={linkColor("/admin/packages")}
-                    >
-                      Packages
-                    </Anchor>
-                    <Anchor
-                      component={Link}
-                      href="/admin/plans"
-                      style={linkColor("/admin/plans")}
-                    >
-                      Service Plans
-                    </Anchor>
-                    <Anchor
-                      component={Link}
-                      href="/admin/locations"
-                      style={linkColor("/admin/locations")}
-                    >
-                      Registration Locations
-                    </Anchor>
-                  </>
-                ) : (
-                  <>
-                    <Anchor
-                      component={Link}
-                      href="/mailroom/register"
-                      style={linkColor("/mailroom/register")}
-                      aria-current={
-                        pathname === "/register" ? "page" : undefined
-                      }
-                    >
-                      Register Mail Service
-                    </Anchor>
-                    <Anchor
-                      component={Link}
-                      href="/referrals"
-                      style={linkColor("/referrals")}
-                      aria-current={
-                        pathname === "/referrals" ? "page" : undefined
-                      }
-                    >
-                      Referrals
-                    </Anchor>
-                    <Anchor
-                      component={Link}
-                      href="/account"
-                      style={linkColor("/account")}
-                      aria-current={
-                        pathname === "/account" ? "page" : undefined
-                      }
-                    >
-                      Account
-                    </Anchor>
-                  </>
-                )}
-              </Group>
-            </Box>
+              {isAdmin ? (
+                <>
+                  <Anchor
+                    component={Link}
+                    href="/admin/lockers"
+                    style={linkColor("/admin/lockers")}
+                    underline="hover"
+                  >
+                    Lockers
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="#"
+                    style={linkColor("/admin/mailroom")}
+                    underline="hover"
+                  >
+                    Mailroom Services
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/admin/packages"
+                    style={linkColor("/admin/packages")}
+                    underline="hover"
+                  >
+                    Packages
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/admin/plans"
+                    style={linkColor("/admin/plans")}
+                    underline="hover"
+                  >
+                    Service Plans
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/admin/locations"
+                    style={linkColor("/admin/locations")}
+                    underline="hover"
+                  >
+                    Registration Locations
+                  </Anchor>
+                </>
+              ) : (
+                <>
+                  <Anchor
+                    component={Link}
+                    href="/mailroom/register"
+                    style={linkColor("/mailroom/register")}
+                    underline="hover"
+                    aria-current={pathname === "/register" ? "page" : undefined}
+                  >
+                    Register Mail Service
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/referrals"
+                    style={linkColor("/referrals")}
+                    underline="hover"
+                    aria-current={
+                      pathname === "/referrals" ? "page" : undefined
+                    }
+                  >
+                    Referrals
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/account"
+                    style={linkColor("/account")}
+                    underline="hover"
+                    aria-current={pathname === "/account" ? "page" : undefined}
+                  >
+                    Account
+                  </Anchor>
+                </>
+              )}
+            </Group>
           )}
 
           {/* Right: optionally show notifications, always show logout */}
-          <Box
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginLeft: showLinks ? 0 : "auto",
-            }}
-          >
+          <Group gap="sm">
             {showLinks && (
               <ActionIcon
                 variant="subtle"
@@ -230,20 +219,9 @@ export default function DashboardNav() {
             >
               Logout
             </Button>
-          </Box>
+          </Group>
         </Group>
       </Container>
-
-      <style jsx>{`
-        .nav-links-desktop {
-          display: none;
-        }
-        @media (min-width: 768px) {
-          .nav-links-desktop {
-            display: flex !important;
-          }
-        }
-      `}</style>
     </Box>
   );
 }

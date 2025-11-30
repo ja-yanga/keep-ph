@@ -2,8 +2,24 @@
 
 import { Container, Title, Group, Anchor, Button, Box } from "@mantine/core";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function Nav() {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const handleScroll = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    if (pathname === "/") {
+      const element = document.getElementById(id);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    } else {
+      router.push(`/#${id}`);
+    }
+  };
+
   return (
     <Box
       component="header"
@@ -18,8 +34,8 @@ export default function Nav() {
       }}
       py="md"
     >
-      <Container size="xxl">
-        <Group align="center" style={{ width: "100%" }}>
+      <Container size="xl">
+        <Group justify="space-between" align="center" style={{ width: "100%" }}>
           {/* Left: Brand */}
           <Link href="/" style={{ textDecoration: "none" }}>
             <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
@@ -28,47 +44,46 @@ export default function Nav() {
           </Link>
 
           {/* Center: navigation links */}
-          <Box style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-            <Group gap="md">
-              <Anchor
-                component={Link}
-                href="/#services"
-                style={{ color: "#1A237E", fontWeight: 500 }}
-              >
-                Services
-              </Anchor>
-              <Anchor
-                component={Link}
-                href="/#pricing"
-                style={{ color: "#1A237E", fontWeight: 500 }}
-              >
-                Pricing
-              </Anchor>
-              <Anchor
-                component={Link}
-                href="/signin"
-                style={{ color: "#1A237E", fontWeight: 500 }}
-              >
-                Login
-              </Anchor>
-            </Group>
-          </Box>
+          <Group gap="lg" visibleFrom="sm">
+            <Anchor
+              href="/#services"
+              onClick={(e) => handleScroll(e, "services")}
+              style={{ color: "#1A237E", fontWeight: 500 }}
+              underline="hover"
+            >
+              Services
+            </Anchor>
+            <Anchor
+              href="/#pricing"
+              onClick={(e) => handleScroll(e, "pricing")}
+              style={{ color: "#1A237E", fontWeight: 500 }}
+              underline="hover"
+            >
+              Pricing
+            </Anchor>
+            <Anchor
+              component={Link}
+              href="/signin"
+              style={{ color: "#1A237E", fontWeight: 500 }}
+              underline="hover"
+            >
+              Login
+            </Anchor>
+          </Group>
 
           {/* Right: Call to action */}
-          <Box>
-            <Button
-              component={Link}
-              href="/signup"
-              style={{
-                minWidth: 120,
-                backgroundColor: "#1A237E",
-                color: "#fff",
-                fontWeight: 700,
-              }}
-            >
-              Sign Up
-            </Button>
-          </Box>
+          <Button
+            component={Link}
+            href="/signup"
+            style={{
+              minWidth: 120,
+              backgroundColor: "#1A237E",
+              color: "#fff",
+              fontWeight: 700,
+            }}
+          >
+            Sign Up
+          </Button>
         </Group>
       </Container>
     </Box>

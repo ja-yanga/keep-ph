@@ -13,7 +13,10 @@ import {
   Button,
   Anchor,
   Center,
+  Alert,
+  rem,
 } from "@mantine/core";
+import { IconAlertCircle, IconAt, IconLock } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
@@ -25,22 +28,24 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
 
     // email validation regex
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      alert("Please enter a valid email address");
+      setError("Please enter a valid email address");
       return;
     }
     if (password.length < 8) {
-      alert("Password must be at least 8 characters long");
+      setError("Password must be at least 8 characters long");
       return;
     }
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      setError("Passwords do not match");
       return;
     }
 
@@ -58,7 +63,7 @@ export default function SignUpPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data?.error || "Signup failed");
+        setError(data?.error || "Signup failed");
         setLoading(false);
         return;
       }
@@ -67,7 +72,7 @@ export default function SignUpPage() {
       router.push("/signin");
     } catch (err) {
       console.error(err);
-      alert("An unexpected error occurred");
+      setError("An unexpected error occurred");
     } finally {
       setLoading(false);
     }
@@ -77,9 +82,8 @@ export default function SignUpPage() {
     <Box
       style={{
         minHeight: "100dvh",
-        backgroundColor: "#F5F6FA",
+        backgroundColor: "#F8F9FA",
         fontFamily: "Manrope, sans-serif",
-        color: "#1A237E",
         display: "flex",
         flexDirection: "column",
       }}
@@ -88,31 +92,57 @@ export default function SignUpPage() {
       <Nav />
 
       {/* Main Section */}
-      <Center style={{ flex: 1, paddingTop: 48, paddingBottom: 96 }}>
-        <Container size={520}>
-          <Stack align="center" gap="md">
-            <Title
-              order={1}
-              ta="center"
-              style={{ fontWeight: 700, color: "#1A237E" }}
-            >
-              Create Your Account
-            </Title>
-            <Text c="#6B7280" size="lg" ta="center">
-              Join Keep PH and manage your mail from anywhere.
-            </Text>
-          </Stack>
+      <Center style={{ flex: 1, padding: "4rem 1rem" }}>
+        <Container size="xs" w="100%">
+          <Stack gap="lg">
+            <Stack gap={4} align="center">
+              <Title
+                order={1}
+                ta="center"
+                style={{
+                  fontWeight: 800,
+                  color: "#1A237E",
+                  fontSize: rem(32),
+                }}
+              >
+                Create Account
+              </Title>
+              <Text c="dimmed" size="md" ta="center">
+                Join Keep PH and manage your mail from anywhere.
+              </Text>
+            </Stack>
 
-          <Box mt="xl">
-            <Paper withBorder shadow="md" p="xl" radius="xl">
+            <Paper
+              withBorder
+              shadow="xl"
+              p={30}
+              radius="md"
+              style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
+            >
               <form onSubmit={handleSubmit}>
                 <Stack gap="md">
+                  {error && (
+                    <Alert
+                      variant="light"
+                      color="red"
+                      title="Registration Error"
+                      icon={<IconAlertCircle size={16} />}
+                      radius="md"
+                    >
+                      {error}
+                    </Alert>
+                  )}
+
                   <TextInput
                     label="Email"
                     placeholder="you@example.com"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    error={!!error && error.includes("email")}
+                    size="md"
+                    radius="md"
+                    leftSection={<IconAt size={16} color="#868e96" />}
                   />
                   <PasswordInput
                     label="Password"
@@ -120,6 +150,10 @@ export default function SignUpPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    error={!!error && error.includes("Password")}
+                    size="md"
+                    radius="md"
+                    leftSection={<IconLock size={16} color="#868e96" />}
                   />
                   <PasswordInput
                     label="Confirm Password"
@@ -127,36 +161,35 @@ export default function SignUpPage() {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    error={!!error && error.includes("match")}
+                    size="md"
+                    radius="md"
+                    leftSection={<IconLock size={16} color="#868e96" />}
                   />
                   <Button
                     type="submit"
                     fullWidth
-                    disabled={loading}
+                    size="md"
+                    radius="md"
+                    loading={loading}
                     style={{
-                      height: 48,
                       backgroundColor: "#1A237E",
-                      color: "#fff",
-                      fontWeight: 700,
+                      fontWeight: 600,
                     }}
                   >
-                    {loading ? "Signing up..." : "Sign Up"}
+                    Sign Up
                   </Button>
                 </Stack>
               </form>
 
-              <Center mt="md">
-                <Text size="sm" c="#6B7280">
-                  Already have an account?{" "}
-                  <Anchor
-                    href="/signin"
-                    style={{ color: "#1A237E", fontWeight: 500 }}
-                  >
-                    Log In
-                  </Anchor>
-                </Text>
-              </Center>
+              <Text ta="center" mt="xl" size="sm" c="dimmed">
+                Already have an account?{" "}
+                <Anchor href="/signin" fw={600} c="#1A237E">
+                  Log In
+                </Anchor>
+              </Text>
             </Paper>
-          </Box>
+          </Stack>
         </Container>
       </Center>
 

@@ -20,10 +20,12 @@ import {
   SimpleGrid,
   Modal,
   Divider,
+  Alert, // Add Alert
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/components/SessionProvider";
+import { IconAlertCircle, IconCheck } from "@tabler/icons-react"; // Add Icons
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,6 +43,7 @@ export default function RegisterForm() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
+  const [telephone, setTelephone] = useState(""); // Add telephone state
   const [locations, setLocations] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
@@ -50,6 +53,10 @@ export default function RegisterForm() {
   const [notes, setNotes] = useState("");
   const [referralCode, setReferralCode] = useState(""); // New State
   const [loading, setLoading] = useState(false);
+
+  // UI States
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -115,13 +122,29 @@ export default function RegisterForm() {
   // 1. Triggered by the form "Submit" button
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
 
     if (!session?.user?.id) {
       router.push("/signin");
       return;
     }
     if (!selectedLocation || !selectedPlanId) {
-      window.alert("Choose location and plan.");
+      setError("Please choose a location and a plan.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    // Check if user is trying to use their own referral code
+    // Cast to any to bypass strict type check for referral_code
+    const profile = session?.profile as any;
+    if (
+      referralCode.trim() &&
+      profile?.referral_code &&
+      referralCode.trim() === profile.referral_code
+    ) {
+      setError("You cannot use your own referral code.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -132,6 +155,7 @@ export default function RegisterForm() {
   // 2. Triggered by the "Confirm" button inside the modal
   const confirmRegistration = async () => {
     setLoading(true);
+    setError(null);
     try {
       // 1. Register the subscription
       const payload = {
@@ -139,6 +163,7 @@ export default function RegisterForm() {
         full_name: `${firstName} ${lastName}`.trim() || null,
         email,
         mobile,
+        telephone, // Add telephone to payload
         locationId: selectedLocation,
         planId: selectedPlanId,
         lockerQty: qty,
@@ -156,8 +181,9 @@ export default function RegisterForm() {
       const data = await res.json();
       if (!res.ok) {
         console.error("register error:", data);
-        window.alert(data?.error || "Failed to register");
+        setError(data?.error || "Failed to register");
         close(); // Close modal on error
+        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
 
@@ -181,12 +207,18 @@ export default function RegisterForm() {
       }
 
       close(); // Close modal on success
-      window.alert("Registered successfully");
-      router.push("/dashboard");
+      setSuccess("Registered successfully! Redirecting to dashboard...");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      // Delay redirect so user sees the success message
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 2000);
     } catch (err) {
       console.error(err);
-      window.alert("Unexpected error");
+      setError("An unexpected error occurred");
       close();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setLoading(false);
     }
@@ -194,6 +226,29 @@ export default function RegisterForm() {
 
   return (
     <Box>
+      {error && (
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          title="Error"
+          color="red"
+          mb="md"
+          withCloseButton
+          onClose={() => setError(null)}
+        >
+          {error}
+        </Alert>
+      )}
+      {success && (
+        <Alert
+          icon={<IconCheck size={16} />}
+          title="Success"
+          color="teal"
+          mb="md"
+        >
+          {success}
+        </Alert>
+      )}
+
       {/* Confirmation Modal */}
       <Modal
         opened={opened}
@@ -276,7 +331,7 @@ export default function RegisterForm() {
                 label="First Name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.currentTarget.value)}
-                required // CHANGED: Added required
+                required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -284,7 +339,7 @@ export default function RegisterForm() {
                 label="Last Name"
                 value={lastName}
                 onChange={(e) => setLastName(e.currentTarget.value)}
-                required // CHANGED: Added required
+                required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -293,7 +348,7 @@ export default function RegisterForm() {
                 value={email}
                 onChange={(e) => setEmail(e.currentTarget.value)}
                 type="email"
-                required // CHANGED: Added required
+                required
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -301,7 +356,15 @@ export default function RegisterForm() {
                 label="Mobile Number"
                 value={mobile}
                 onChange={(e) => setMobile(e.currentTarget.value)}
-                required // CHANGED: Added required
+                required
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <TextInput
+                label="Telephone (Optional)"
+                value={telephone}
+                onChange={(e) => setTelephone(e.currentTarget.value)}
+                placeholder="Landline or alternative number"
               />
             </Grid.Col>
           </Grid>

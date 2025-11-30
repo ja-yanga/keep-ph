@@ -23,6 +23,7 @@ export async function POST(req: Request) {
       full_name,
       email,
       mobile,
+      telephone, // Destructure telephone
       locationId,
       planId,
       lockerQty = 1,
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
       full_name: full_name || null,
       email: email || null,
       mobile: mobile || null,
+      telephone: telephone || null, // Add telephone to record
       location_id: locationId,
       plan_id: planId,
       locker_qty: lockerQty,

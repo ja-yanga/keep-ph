@@ -13,7 +13,11 @@ import {
   Button,
   Anchor,
   Center,
+  Alert,
+  Group,
+  rem,
 } from "@mantine/core";
+import { IconAlertCircle, IconAt, IconLock } from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
@@ -29,10 +33,13 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null); // Add error state
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null); // Clear previous errors
+
     try {
       const res = await fetch("/api/auth/signin", {
         method: "POST",
@@ -44,7 +51,7 @@ export default function SignInPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data?.error || "Signin failed");
+        setError(data?.error || "Signin failed"); // Set error state instead of alert
         setLoading(false);
         return;
       }
@@ -71,7 +78,7 @@ export default function SignInPage() {
       router.push("/dashboard");
     } catch (err) {
       console.error(err);
-      alert("An unexpected error occurred");
+      setError("An unexpected error occurred. Please try again."); // Set error state
       setLoading(false);
     }
   };
@@ -80,93 +87,109 @@ export default function SignInPage() {
     <Box
       style={{
         minHeight: "100dvh",
-        backgroundColor: "#F5F6FA",
+        backgroundColor: "#F8F9FA",
         fontFamily: "Manrope, sans-serif",
-        color: "#1A237E",
         display: "flex",
         flexDirection: "column",
       }}
     >
       <Nav />
 
-      {/* Main Section - styled to match signup */}
-      <Center style={{ flex: 1, paddingTop: 48, paddingBottom: 96 }}>
-        <Container size={520}>
-          {" "}
-          <Stack align="center" gap="md">
-            <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
-              Login
-            </Title>
-            <Text c="#6B7280" size="lg">
-              Sign in to access your account
-            </Text>
-          </Stack>
-          <Box mt="xl">
+      <Center style={{ flex: 1, padding: "4rem 1rem" }}>
+        <Container size="xs" w="100%">
+          <Stack gap="lg">
+            <Stack gap={4} align="center">
+              <Title
+                order={1}
+                style={{
+                  fontWeight: 800,
+                  color: "#1A237E",
+                  fontSize: rem(32),
+                }}
+              >
+                Login
+              </Title>
+              <Text c="dimmed" size="md">
+                Sign in to access your account
+              </Text>
+            </Stack>
+
             <Paper
               withBorder
-              shadow="md"
-              p="xl"
-              radius="xl"
-              style={{ width: "100%" }}
+              shadow="xl"
+              p={30}
+              radius="md"
+              style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
             >
               <form onSubmit={handleSubmit}>
                 <Stack gap="md">
+                  {error && (
+                    <Alert
+                      variant="light"
+                      color="red"
+                      title="Authentication Error"
+                      icon={<IconAlertCircle size={16} />}
+                      radius="md"
+                    >
+                      {error}
+                    </Alert>
+                  )}
+
                   <TextInput
                     label="Email"
                     placeholder="you@example.com"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    error={!!error}
+                    size="md"
+                    radius="md"
+                    leftSection={<IconAt size={16} color="#868e96" />}
                   />
-                  <PasswordInput
-                    label="Password"
-                    placeholder="••••••••"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <Box style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Anchor
-                      href="#"
-                      style={{
-                        color: "#1A237E",
-                        fontWeight: 500,
-                        fontSize: 14,
-                      }}
-                    >
-                      Forgot Password?
-                    </Anchor>
-                  </Box>
+
+                  <Stack gap={4}>
+                    <PasswordInput
+                      label="Password"
+                      placeholder="••••••••"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      error={!!error}
+                      size="md"
+                      radius="md"
+                      leftSection={<IconLock size={16} color="#868e96" />}
+                    />
+                    <Group justify="flex-end">
+                      <Anchor href="#" size="sm" fw={500} c="#1A237E">
+                        Forgot Password?
+                      </Anchor>
+                    </Group>
+                  </Stack>
 
                   <Button
                     type="submit"
                     fullWidth
-                    disabled={loading}
+                    size="md"
+                    radius="md"
+                    loading={loading}
                     style={{
-                      height: 48,
                       backgroundColor: "#1A237E",
-                      color: "#fff",
-                      fontWeight: 700,
+                      fontWeight: 600,
                     }}
                   >
-                    {loading ? "Signing in..." : "Sign In"}
+                    Sign In
                   </Button>
                 </Stack>
               </form>
 
-              <Center mt="md">
-                <Text size="sm" c="#6B7280">
-                  Don't have an account?{" "}
-                  <Anchor
-                    href="/signup"
-                    style={{ color: "#1A237E", fontWeight: 500 }}
-                  >
-                    Sign Up
-                  </Anchor>
-                </Text>
-              </Center>
+              <Text ta="center" mt="xl" size="sm" c="dimmed">
+                Don't have an account?{" "}
+                <Anchor href="/signup" fw={600} c="#1A237E">
+                  Sign Up
+                </Anchor>
+              </Text>
             </Paper>
-          </Box>
+          </Stack>
         </Container>
       </Center>
 
