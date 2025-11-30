@@ -33,7 +33,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, region, city, barangay, zip, total_lockers } = body;
+    const { name, code, region, city, barangay, zip, total_lockers } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -45,6 +45,7 @@ export async function POST(req: Request) {
       .insert([
         {
           name,
+          code: code || null, // Save the code
           region: region || null,
           city: city || null,
           barangay: barangay || null,
@@ -66,11 +67,14 @@ export async function POST(req: Request) {
     const lockersToCreate = total_lockers ?? 0;
 
     if (lockersToCreate > 0) {
+      // Determine prefix: "MKT-" or fallback to "L"
+      const prefix = code ? `${code}-` : "L";
+
       const lockers = [];
       for (let i = 1; i <= lockersToCreate; i++) {
         lockers.push({
           location_id: locationId,
-          locker_code: `L${i.toString().padStart(3, "0")}`,
+          locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
           is_available: true,
         });
       }
@@ -81,7 +85,6 @@ export async function POST(req: Request) {
 
       if (lockerError) {
         console.error("Error creating lockers:", lockerError);
-        // you might still return 201 for location but log locker failure
       }
     }
 

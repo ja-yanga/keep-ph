@@ -50,6 +50,10 @@ export default function MailroomLockers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
+  // New Filter States
+  const [filterLocation, setFilterLocation] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -71,7 +75,15 @@ export default function MailroomLockers() {
   // Reset page when search changes
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, filterLocation, filterStatus]); // Add filters to dependency
+
+  const clearFilters = () => {
+    setSearch("");
+    setFilterLocation(null);
+    setFilterStatus(null);
+  };
+
+  const hasFilters = search || filterLocation || filterStatus;
 
   const fetchData = async () => {
     setLoading(true);
@@ -194,10 +206,22 @@ export default function MailroomLockers() {
 
   const filteredLockers = lockers.filter((l) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch =
       l.locker_code.toLowerCase().includes(q) ||
-      l.location?.name.toLowerCase().includes(q)
-    );
+      l.location?.name.toLowerCase().includes(q);
+
+    const matchesLocation = filterLocation
+      ? l.location_id === filterLocation
+      : true;
+
+    const matchesStatus =
+      filterStatus === "available"
+        ? l.is_available
+        : filterStatus === "occupied"
+        ? !l.is_available
+        : true;
+
+    return matchesSearch && matchesLocation && matchesStatus;
   });
 
   const paginatedLockers = filteredLockers.slice(
@@ -209,13 +233,44 @@ export default function MailroomLockers() {
     <Stack align="center">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search lockers..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, maxWidth: 400 }}
-          />
+          <Group style={{ flex: 1 }}>
+            <TextInput
+              placeholder="Search lockers..."
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              style={{ width: 250 }}
+            />
+            <Select
+              placeholder="Filter by Location"
+              data={locations.map((l) => ({ value: l.id, label: l.name }))}
+              value={filterLocation}
+              onChange={setFilterLocation}
+              clearable
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="Filter by Status"
+              data={[
+                { value: "available", label: "Available" },
+                { value: "occupied", label: "Occupied" },
+              ]}
+              value={filterStatus}
+              onChange={setFilterStatus}
+              clearable
+              style={{ width: 150 }}
+            />
+            {hasFilters && (
+              <Button
+                variant="subtle"
+                color="red"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </Group>
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => handleOpenModal()}

@@ -39,7 +39,6 @@ type Row = {
   created_at?: string | null;
   expiry_at?: string | null;
   mailroom_status?: string | null;
-  locker_status?: string | null;
   raw?: RawRow;
 };
 
@@ -63,7 +62,6 @@ export default function MailroomList() {
     plan: null as string | null,
     location: null as string | null,
     mailroomStatus: null as string | null,
-    lockerStatus: null as string | null,
   });
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
     {
@@ -73,7 +71,6 @@ export default function MailroomList() {
       created_at: true,
       expiry_at: true,
       mailroom_status: true,
-      locker_status: true,
       view: true,
     }
   );
@@ -124,7 +121,7 @@ export default function MailroomList() {
             computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
           }
           const mailroom_status = computedStatus;
-          const locker_status = r.locker_status ?? null;
+
           const name =
             userName ??
             planName ??
@@ -139,7 +136,6 @@ export default function MailroomList() {
             created_at: created,
             expiry_at: expiry,
             mailroom_status,
-            locker_status,
             raw: r,
           };
         });
@@ -181,8 +177,6 @@ export default function MailroomList() {
           filters.mailroomStatus &&
           r.mailroom_status !== filters.mailroomStatus
         )
-          return false;
-        if (filters.lockerStatus && r.locker_status !== filters.lockerStatus)
           return false;
         return true;
       })
@@ -252,7 +246,7 @@ export default function MailroomList() {
             computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
           }
           const mailroom_status = computedStatus;
-          const locker_status = r.locker_status ?? null;
+
           const name =
             userName ??
             planName ??
@@ -267,7 +261,6 @@ export default function MailroomList() {
             created_at: created,
             expiry_at: expiry,
             mailroom_status,
-            locker_status,
             raw: r,
           };
         });
@@ -370,9 +363,6 @@ export default function MailroomList() {
                 {visibleColumns.mailroom_status && (
                   <Table.Th>Mailroom Status</Table.Th>
                 )}
-                {visibleColumns.locker_status && (
-                  <ThSortable col="locker_status" label="Locker Status" />
-                )}
                 {visibleColumns.view && (
                   <Table.Th style={{ width: 80 }}>Action</Table.Th>
                 )}
@@ -382,7 +372,7 @@ export default function MailroomList() {
             <Table.Tbody>
               {loading || rows === null ? (
                 <Table.Tr>
-                  <Table.Td colSpan={8}>
+                  <Table.Td colSpan={7}>
                     <Stack align="center" py="xl">
                       <Loader size="sm" />
                       <Text size="sm" c="dimmed">
@@ -393,7 +383,7 @@ export default function MailroomList() {
                 </Table.Tr>
               ) : error ? (
                 <Table.Tr>
-                  <Table.Td colSpan={8}>
+                  <Table.Td colSpan={7}>
                     <Stack align="center" py="xl">
                       <Text c="red">{error}</Text>
                     </Stack>
@@ -401,7 +391,7 @@ export default function MailroomList() {
                 </Table.Tr>
               ) : filtered.length === 0 ? (
                 <Table.Tr>
-                  <Table.Td colSpan={8}>
+                  <Table.Td colSpan={7}>
                     <Stack align="center" py="xl">
                       <ThemeIcon
                         size={48}
@@ -470,17 +460,6 @@ export default function MailroomList() {
                               </Badge>
                             );
                           })()
-                        ) : (
-                          <Text c="dimmed">—</Text>
-                        )}
-                      </Table.Td>
-                    )}
-                    {visibleColumns.locker_status && (
-                      <Table.Td>
-                        {r.locker_status ? (
-                          <Badge color="gray" variant="outline">
-                            {r.locker_status}
-                          </Badge>
                         ) : (
                           <Text c="dimmed">—</Text>
                         )}

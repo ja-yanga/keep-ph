@@ -87,6 +87,10 @@ export default function MailroomPackages() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
+  // New Filter States
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string | null>(null);
+
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -112,7 +116,15 @@ export default function MailroomPackages() {
   // Reset page when search changes
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, filterStatus, filterType]);
+
+  const clearFilters = () => {
+    setSearch("");
+    setFilterStatus(null);
+    setFilterType(null);
+  };
+
+  const hasFilters = search || filterStatus || filterType;
 
   const fetchData = async () => {
     setLoading(true);
@@ -280,13 +292,17 @@ export default function MailroomPackages() {
 
   const filteredPackages = packages.filter((p) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch =
       p.tracking_number.toLowerCase().includes(q) ||
       p.registration?.full_name.toLowerCase().includes(q) ||
       p.registration?.email.toLowerCase().includes(q) ||
       p.status.toLowerCase().includes(q) ||
-      p.locker?.locker_code.toLowerCase().includes(q)
-    );
+      p.locker?.locker_code.toLowerCase().includes(q);
+
+    const matchesStatus = filterStatus ? p.status === filterStatus : true;
+    const matchesType = filterType ? p.package_type === filterType : true;
+
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   const paginatedPackages = filteredPackages.slice(
@@ -312,13 +328,44 @@ export default function MailroomPackages() {
     <Stack align="center">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search packages..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, maxWidth: 400 }}
-          />
+          <Group style={{ flex: 1 }}>
+            <TextInput
+              placeholder="Search packages..."
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              style={{ width: 250 }}
+            />
+            <Select
+              placeholder="Filter by Status"
+              data={STATUSES.map((s) => ({
+                value: s,
+                label: s.replace(/_/g, " "),
+              }))}
+              value={filterStatus}
+              onChange={setFilterStatus}
+              clearable
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="Filter by Type"
+              data={PACKAGE_TYPES}
+              value={filterType}
+              onChange={setFilterType}
+              clearable
+              style={{ width: 150 }}
+            />
+            {hasFilters && (
+              <Button
+                variant="subtle"
+                color="red"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </Group>
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => handleOpenModal()}

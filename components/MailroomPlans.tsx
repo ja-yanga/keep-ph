@@ -19,6 +19,7 @@ import {
   Textarea,
   Text,
   SimpleGrid,
+  Select, // Add Select
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -41,6 +42,8 @@ export default function MailroomPlans() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  const [sortBy, setSortBy] = useState<string | null>(null);
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -70,7 +73,15 @@ export default function MailroomPlans() {
   // Reset page when search changes
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, sortBy]);
+
+  const clearFilters = () => {
+    setSearch("");
+
+    setSortBy(null);
+  };
+
+  const hasFilters = search || sortBy;
 
   const fetchData = async () => {
     setLoading(true);
@@ -159,18 +170,26 @@ export default function MailroomPlans() {
       currency: "PHP",
     }).format(val);
 
-  const filteredPlans = plans.filter((p) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      String(p.name ?? "")
-        .toLowerCase()
-        .includes(q) ||
-      String(p.description ?? "")
-        .toLowerCase()
-        .includes(q)
-    );
-  });
+  const filteredPlans = plans
+    .filter((p) => {
+      const q = search.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        String(p.name ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(p.description ?? "")
+          .toLowerCase()
+          .includes(q);
+
+      return matchesSearch;
+    })
+    .sort((a, b) => {
+      if (sortBy === "name_asc") return a.name.localeCompare(b.name);
+      if (sortBy === "price_asc") return a.price - b.price;
+      if (sortBy === "price_desc") return b.price - a.price;
+      return 0;
+    });
 
   const paginatedPlans = filteredPlans.slice(
     (page - 1) * pageSize,
@@ -181,13 +200,37 @@ export default function MailroomPlans() {
     <Stack>
       <Paper p="md" radius="md" withBorder shadow="sm">
         <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search plans..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, maxWidth: 400 }}
-          />
+          <Group style={{ flex: 1 }}>
+            <TextInput
+              placeholder="Search plans..."
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              style={{ width: 250 }}
+            />
+            <Select
+              placeholder="Sort By"
+              data={[
+                { value: "name_asc", label: "Name (A-Z)" },
+                { value: "price_asc", label: "Price (Low-High)" },
+                { value: "price_desc", label: "Price (High-Low)" },
+              ]}
+              value={sortBy}
+              onChange={setSortBy}
+              clearable
+              style={{ width: 180 }}
+            />
+            {hasFilters && (
+              <Button
+                variant="subtle"
+                color="red"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </Group>
           <Tooltip label="Refresh list">
             <Button
               variant="light"

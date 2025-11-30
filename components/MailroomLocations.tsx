@@ -18,6 +18,7 @@ import {
   Badge,
   ActionIcon,
   SimpleGrid,
+  Select, // Ensure Select is imported
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -33,6 +34,7 @@ import { DataTable } from "mantine-datatable";
 type Location = {
   id: string;
   name: string;
+  code?: string | null; // Add this
   region?: string | null;
   city?: string | null;
   barangay?: string | null;
@@ -44,6 +46,11 @@ export default function MailroomLocations() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // New Filter States
+  const [filterRegion, setFilterRegion] = useState<string | null>(null);
+  const [filterCity, setFilterCity] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<string | null>(null);
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -64,6 +71,7 @@ export default function MailroomLocations() {
   const form = useForm({
     initialValues: {
       name: "",
+      code: "", // Add this
       region: "",
       city: "",
       barangay: "",
@@ -75,6 +83,7 @@ export default function MailroomLocations() {
   const editForm = useForm({
     initialValues: {
       name: "",
+      code: "", // Add this
       region: "",
       city: "",
       barangay: "",
@@ -87,10 +96,19 @@ export default function MailroomLocations() {
     fetchData();
   }, []);
 
-  // Reset page when search changes
+  // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, filterRegion, filterCity, sortBy]);
+
+  const clearFilters = () => {
+    setSearch("");
+    setFilterRegion(null);
+    setFilterCity(null);
+    setSortBy(null);
+  };
+
+  const hasFilters = search || filterRegion || filterCity || sortBy;
 
   const fetchData = async () => {
     setLoading(true);
@@ -120,6 +138,7 @@ export default function MailroomLocations() {
     try {
       const payload = {
         name: values.name,
+        code: values.code || null, // Add this
         region: values.region || null,
         city: values.city || null,
         barangay: values.barangay || null,
@@ -157,6 +176,17 @@ export default function MailroomLocations() {
     }
   });
 
+  // Get unique regions and cities for filter dropdowns
+  const regions = useMemo(() => {
+    const unique = new Set(locations.map((l) => l.region).filter(Boolean));
+    return Array.from(unique).sort() as string[];
+  }, [locations]);
+
+  const cities = useMemo(() => {
+    const unique = new Set(locations.map((l) => l.city).filter(Boolean));
+    return Array.from(unique).sort() as string[];
+  }, [locations]);
+
   // open view modal
   const openView = (loc: Location) => {
     setViewLocation(loc);
@@ -168,6 +198,7 @@ export default function MailroomLocations() {
     setEditLocation(loc);
     editForm.setValues({
       name: loc.name ?? "",
+      code: loc.code ?? "", // Add this
       region: loc.region ?? "",
       city: loc.city ?? "",
       barangay: loc.barangay ?? "",
@@ -193,6 +224,7 @@ export default function MailroomLocations() {
     try {
       const payload = {
         name: values.name,
+        code: values.code || null, // Add this
         region: values.region || null,
         city: values.city || null,
         barangay: values.barangay || null,
@@ -234,27 +266,44 @@ export default function MailroomLocations() {
 
   const filteredLocations = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return locations.filter((loc) => {
-      if (!q) return true;
-      return (
-        String(loc.name ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.region ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.city ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.barangay ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(loc.zip ?? "")
-          .toLowerCase()
-          .includes(q)
-      );
-    });
-  }, [locations, search]);
+    return locations
+      .filter((loc) => {
+        const matchesSearch =
+          !q ||
+          String(loc.name ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(loc.code ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(loc.region ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(loc.city ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(loc.barangay ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(loc.zip ?? "")
+            .toLowerCase()
+            .includes(q);
+
+        const matchesRegion = filterRegion ? loc.region === filterRegion : true;
+        const matchesCity = filterCity ? loc.city === filterCity : true;
+
+        return matchesSearch && matchesRegion && matchesCity;
+      })
+      .sort((a, b) => {
+        if (sortBy === "name_asc")
+          return (a.name || "").localeCompare(b.name || "");
+        if (sortBy === "lockers_desc")
+          return (b.total_lockers || 0) - (a.total_lockers || 0);
+        if (sortBy === "lockers_asc")
+          return (a.total_lockers || 0) - (b.total_lockers || 0);
+        return 0;
+      });
+  }, [locations, search, filterRegion, filterCity, sortBy]);
 
   const paginatedLocations = filteredLocations.slice(
     (page - 1) * pageSize,
@@ -265,13 +314,55 @@ export default function MailroomLocations() {
     <Stack>
       <Paper p="md" radius="md" withBorder shadow="sm">
         <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search by name, region, city, barangay or zip..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, maxWidth: 400 }}
-          />
+          <Group style={{ flex: 1 }}>
+            <TextInput
+              placeholder="Search..."
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="Region"
+              data={regions}
+              value={filterRegion}
+              onChange={setFilterRegion}
+              clearable
+              searchable
+              style={{ width: 150 }}
+            />
+            <Select
+              placeholder="City"
+              data={cities}
+              value={filterCity}
+              onChange={setFilterCity}
+              clearable
+              searchable
+              style={{ width: 150 }}
+            />
+            <Select
+              placeholder="Sort By"
+              data={[
+                { value: "name_asc", label: "Name (A-Z)" },
+                { value: "lockers_desc", label: "Lockers (High-Low)" },
+                { value: "lockers_asc", label: "Lockers (Low-High)" },
+              ]}
+              value={sortBy}
+              onChange={setSortBy}
+              clearable
+              style={{ width: 180 }}
+            />
+            {hasFilters && (
+              <Button
+                variant="subtle"
+                color="red"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </Group>
           <Group>
             <Tooltip label="Refresh list">
               <Button variant="light" onClick={fetchData}>
@@ -304,6 +395,13 @@ export default function MailroomLocations() {
           onRecordsPerPageChange={setPageSize}
           columns={[
             { accessor: "name", title: "Name", width: 200 },
+            {
+              accessor: "code",
+              title: "Code",
+              width: 100,
+              render: ({ code }: Location) =>
+                code ? <Badge variant="outline">{code}</Badge> : "—",
+            }, // Add Code column
             {
               accessor: "region",
               title: "Region",
@@ -385,29 +483,41 @@ export default function MailroomLocations() {
               {...form.getInputProps("name")}
             />
             <TextInput
+              required
+              label="Location Code"
+              placeholder="MKT"
+              description="Used as prefix for lockers (e.g. MKT-001...100)"
+              {...form.getInputProps("code")}
+            />
+            <TextInput
+              required
               label="Region"
               placeholder="NCR"
               {...form.getInputProps("region")}
             />
             <TextInput
+              required
               label="City"
               placeholder="Makati"
               {...form.getInputProps("city")}
             />
             <TextInput
+              required
               label="Barangay"
               placeholder="Bel-Air"
               {...form.getInputProps("barangay")}
             />
             <TextInput
+              required
               label="Zip"
               placeholder="1227"
               {...form.getInputProps("zip")}
             />
             <NumberInput
               label="Total Lockers"
-              min={0}
+              min={1}
               {...form.getInputProps("total_lockers")}
+              required
             />
             <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setCreateOpen(false)}>
@@ -436,7 +546,14 @@ export default function MailroomLocations() {
                 <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                   Location Name
                 </Text>
-                <Title order={3}>{viewLocation.name}</Title>
+                <Group gap="xs">
+                  <Title order={3}>{viewLocation.name}</Title>
+                  {viewLocation.code && (
+                    <Badge variant="outline" size="lg">
+                      {viewLocation.code}
+                    </Badge>
+                  )}
+                </Group>
               </Box>
               <Badge size="lg" variant="light" color="blue">
                 {viewLocation.total_lockers ?? 0} Lockers
@@ -508,13 +625,38 @@ export default function MailroomLocations() {
               required
               {...editForm.getInputProps("name")}
             />
-            <TextInput label="Region" {...editForm.getInputProps("region")} />
-            <TextInput label="City" {...editForm.getInputProps("city")} />
+            <TextInput
+              label="Location Code"
+              required
+              {...editForm.getInputProps("code")}
+              readOnly
+            />
+            <TextInput
+              label="Region"
+              required
+              {...editForm.getInputProps("region")}
+            />
+            <TextInput
+              label="City"
+              required
+              {...editForm.getInputProps("city")}
+            />
             <TextInput
               label="Barangay"
+              required
               {...editForm.getInputProps("barangay")}
             />
-            <TextInput label="Zip" {...editForm.getInputProps("zip")} />
+            <TextInput
+              label="Zip"
+              required
+              {...editForm.getInputProps("zip")}
+            />
+            <TextInput
+              label="Total Lockers"
+              required
+              {...editForm.getInputProps("total_lockers")}
+              readOnly
+            />
             <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setEditOpen(false)}>
                 Cancel

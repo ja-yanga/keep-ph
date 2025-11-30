@@ -31,10 +31,11 @@ export async function PATCH(
       );
     }
 
-    const { name, region, city, barangay, zip, total_lockers } = body;
+    const { name, code, region, city, barangay, zip, total_lockers } = body;
 
     const updates: Record<string, any> = {};
     if (name !== undefined) updates.name = name;
+    if (code !== undefined) updates.code = code || null; // Update code
     if (region !== undefined) updates.region = region || null;
     if (city !== undefined) updates.city = city || null;
     if (barangay !== undefined) updates.barangay = barangay || null;
@@ -49,10 +50,10 @@ export async function PATCH(
       );
     }
 
-    // Fetch current location first to compare total_lockers
+    // Fetch current location first to compare total_lockers and get current code
     const { data: current, error: fetchError } = await supabaseAdmin
       .from("mailroom_locations")
-      .select("total_lockers")
+      .select("total_lockers, code")
       .eq("id", id)
       .single();
 
@@ -65,6 +66,9 @@ export async function PATCH(
 
     const oldTotal = current.total_lockers ?? 0;
     const newTotal = updates.total_lockers ?? oldTotal;
+
+    // Determine which code to use for new lockers (newly updated code OR existing code)
+    const activeCode = updates.code !== undefined ? updates.code : current.code;
 
     // Update the location
     const { data, error } = await supabaseAdmin
@@ -81,11 +85,13 @@ export async function PATCH(
 
     // If total_lockers increased, generate new lockers
     if (newTotal > oldTotal) {
+      const prefix = activeCode ? `${activeCode}-` : "L";
+
       const lockersToCreate = [];
       for (let i = oldTotal + 1; i <= newTotal; i++) {
         lockersToCreate.push({
           location_id: id,
-          locker_code: `L${i.toString().padStart(3, "0")}`,
+          locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
           is_available: true,
         });
       }

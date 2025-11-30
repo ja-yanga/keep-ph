@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useMemo } from "react"; // Add imports
 import {
   Badge,
   Box,
@@ -55,6 +56,29 @@ export default function MailroomPackageView({
   error,
   onRefresh,
 }: MailroomPackageViewProps) {
+  const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
+
+  // Filter packages based on selected locker
+  const filteredPackages = useMemo(() => {
+    const pkgs = Array.isArray(item?.packages) ? item.packages : [];
+    if (!selectedLockerId) return pkgs;
+
+    return pkgs.filter((p: any) => {
+      // Find which locker entry in item.lockers corresponds to this package
+      if (!Array.isArray(item?.lockers)) return false;
+
+      const assigned = item.lockers.find(
+        (l: any) =>
+          l.id === p.locker_id ||
+          l.locker_id === p.locker_id ||
+          l.locker?.id === p.locker_id
+      );
+
+      // Check if the assigned locker matches the selected one
+      return assigned && assigned.id === selectedLockerId;
+    });
+  }, [item, selectedLockerId]);
+
   if (loading) {
     return (
       <Box
@@ -223,7 +247,99 @@ export default function MailroomPackageView({
                   </Grid.Col>
                 </Grid>
 
-                {/* Packages Section */}
+                {/* Lockers Section (Moved Up) */}
+                <Paper p="lg" radius="md" withBorder shadow="sm">
+                  <Group justify="space-between" mb="md">
+                    <Group gap="xs">
+                      <IconLock size={20} color="gray" />
+                      <Title order={4}>Assigned Lockers</Title>
+                    </Group>
+                    <Group>
+                      {selectedLockerId && (
+                        <Button
+                          variant="subtle"
+                          size="xs"
+                          color="red"
+                          onClick={() => setSelectedLockerId(null)}
+                        >
+                          Clear Filter
+                        </Button>
+                      )}
+                      <Badge variant="light">
+                        {item.locker_qty ?? item.lockers?.length ?? 0} Assigned
+                      </Badge>
+                    </Group>
+                  </Group>
+                  <Table highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Locker Code</Table.Th>
+                        <Table.Th>Availability</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {Array.isArray(item.lockers) &&
+                      item.lockers.length > 0 ? (
+                        item.lockers.map((L: any) => (
+                          <Table.Tr
+                            key={L.id}
+                            style={{ cursor: "pointer" }}
+                            bg={
+                              selectedLockerId === L.id
+                                ? "var(--mantine-color-blue-0)"
+                                : undefined
+                            }
+                            onClick={() =>
+                              setSelectedLockerId((curr) =>
+                                curr === L.id ? null : L.id
+                              )
+                            }
+                          >
+                            <Table.Td fw={500}>
+                              {L.locker_code ??
+                                L.locker?.locker_code ??
+                                L.locker?.name ??
+                                L.locker?.label ??
+                                L.label ??
+                                "—"}
+                            </Table.Td>
+                            <Table.Td>
+                              {(() => {
+                                const isAvail =
+                                  L.is_available !== undefined
+                                    ? L.is_available
+                                    : L.locker?.is_available !== undefined
+                                    ? L.locker?.is_available
+                                    : null;
+
+                                if (isAvail === null)
+                                  return <Text size="sm">—</Text>;
+                                return (
+                                  <Badge
+                                    color={isAvail ? "green" : "red"}
+                                    variant="light"
+                                  >
+                                    {isAvail ? "Available" : "Occupied"}
+                                  </Badge>
+                                );
+                              })()}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))
+                      ) : (
+                        <Table.Tr>
+                          <Table.Td colSpan={2}>
+                            <Text c="dimmed" size="sm">
+                              No lockers assigned
+                            </Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      )}
+                    </Table.Tbody>
+                  </Table>
+                </Paper>
+
+                {/* Packages Section (Moved Down) */}
                 <Paper p="lg" radius="md" withBorder shadow="sm">
                   <Group justify="space-between" mb="md">
                     <Group gap="xs">
@@ -231,7 +347,7 @@ export default function MailroomPackageView({
                       <Title order={4}>Packages</Title>
                     </Group>
                     <Badge variant="light" size="lg">
-                      {item.packages?.length ?? 0} Items
+                      {filteredPackages.length} Items
                     </Badge>
                   </Group>
                   <ScrollArea style={{ maxHeight: 400 }}>
@@ -252,9 +368,8 @@ export default function MailroomPackageView({
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
-                        {Array.isArray(item.packages) &&
-                        item.packages.length > 0 ? (
-                          item.packages.map((p: any) => {
+                        {filteredPackages.length > 0 ? (
+                          filteredPackages.map((p: any) => {
                             const tracking = p.tracking_number || "—";
                             const type = p.package_type || "Parcel";
 
@@ -371,73 +486,6 @@ export default function MailroomPackageView({
                       </Table.Tbody>
                     </Table>
                   </ScrollArea>
-                </Paper>
-
-                {/* Lockers Section */}
-                <Paper p="lg" radius="md" withBorder shadow="sm">
-                  <Group justify="space-between" mb="md">
-                    <Group gap="xs">
-                      <IconLock size={20} color="gray" />
-                      <Title order={4}>Assigned Lockers</Title>
-                    </Group>
-                    <Badge variant="light">
-                      {item.locker_qty ?? item.lockers?.length ?? 0} Assigned
-                    </Badge>
-                  </Group>
-                  <Table>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Locker Code</Table.Th>
-                        <Table.Th>Availability</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {Array.isArray(item.lockers) &&
-                      item.lockers.length > 0 ? (
-                        item.lockers.map((L: any) => (
-                          <Table.Tr key={L.id}>
-                            <Table.Td fw={500}>
-                              {L.locker_code ??
-                                L.locker?.locker_code ??
-                                L.locker?.name ??
-                                L.locker?.label ??
-                                L.label ??
-                                "—"}
-                            </Table.Td>
-                            <Table.Td>
-                              {(() => {
-                                const isAvail =
-                                  L.is_available !== undefined
-                                    ? L.is_available
-                                    : L.locker?.is_available !== undefined
-                                    ? L.locker?.is_available
-                                    : null;
-
-                                if (isAvail === null)
-                                  return <Text size="sm">—</Text>;
-                                return (
-                                  <Badge
-                                    color={isAvail ? "green" : "red"}
-                                    variant="light"
-                                  >
-                                    {isAvail ? "Available" : "Occupied"}
-                                  </Badge>
-                                );
-                              })()}
-                            </Table.Td>
-                          </Table.Tr>
-                        ))
-                      ) : (
-                        <Table.Tr>
-                          <Table.Td colSpan={2}>
-                            <Text c="dimmed" size="sm">
-                              No lockers assigned
-                            </Text>
-                          </Table.Td>
-                        </Table.Tr>
-                      )}
-                    </Table.Tbody>
-                  </Table>
                 </Paper>
               </Stack>
             </Grid.Col>
