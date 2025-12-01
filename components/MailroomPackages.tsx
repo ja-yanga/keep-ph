@@ -31,6 +31,7 @@ import {
   IconAlertCircle,
   IconScan,
   IconUpload,
+  IconTruckDelivery, // Add this icon
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -117,6 +118,14 @@ export default function MailroomPackages() {
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [packageToScan, setPackageToScan] = useState<any | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // --- NEW STATE FOR RELEASE PROOF ---
+  const [releaseModalOpen, setReleaseModalOpen] = useState(false);
+  const [releaseFile, setReleaseFile] = useState<File | null>(null);
+  const [packageToRelease, setPackageToRelease] = useState<Package | null>(
+    null
+  );
+  const [isReleasing, setIsReleasing] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -299,6 +308,51 @@ export default function MailroomPackages() {
     }
   };
 
+  // --- NEW HANDLER FOR DISPOSAL ---
+  const handleConfirmDisposal = async (pkg: Package) => {
+    if (
+      !confirm(
+        `Are you sure you want to confirm disposal for ${pkg.tracking_number}? This will mark it as DISPOSED.`
+      )
+    )
+      return;
+
+    try {
+      // Construct payload with updated status
+      const payload = {
+        tracking_number: pkg.tracking_number,
+        registration_id: pkg.registration_id,
+        locker_id: pkg.locker_id,
+        package_type: pkg.package_type,
+        status: "DISPOSED",
+        notes: pkg.notes,
+        mailroom_full: pkg.mailroom_full,
+      };
+
+      const res = await fetch(`/api/admin/mailroom/packages/${pkg.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error("Failed to update status");
+
+      notifications.show({
+        title: "Success",
+        message: "Package marked as DISPOSED",
+        color: "green",
+      });
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      notifications.show({
+        title: "Error",
+        message: "Failed to dispose package",
+        color: "red",
+      });
+    }
+  };
+
   // --- SCAN HANDLERS ---
   const handleOpenScan = (pkg: any) => {
     setPackageToScan(pkg);
@@ -341,6 +395,51 @@ export default function MailroomPackages() {
       });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // --- RELEASE HANDLERS ---
+  const handleOpenRelease = (pkg: Package) => {
+    setPackageToRelease(pkg);
+    setReleaseFile(null);
+    setReleaseModalOpen(true);
+  };
+
+  const handleSubmitRelease = async () => {
+    if (!releaseFile || !packageToRelease) return;
+    setIsReleasing(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", releaseFile);
+      formData.append("packageId", packageToRelease.id);
+
+      const res = await fetch("/api/admin/mailroom/release", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Release failed");
+      }
+
+      notifications.show({
+        title: "Success",
+        message: "Package released and proof uploaded",
+        color: "green",
+      });
+
+      setReleaseModalOpen(false);
+      fetchData();
+    } catch (error: any) {
+      notifications.show({
+        title: "Error",
+        message: error.message,
+        color: "red",
+      });
+    } finally {
+      setIsReleasing(false);
     }
   };
 
@@ -527,7 +626,7 @@ export default function MailroomPackages() {
             {
               accessor: "actions",
               title: "Actions",
-              width: 100,
+              width: 180, // Increased width to fit buttons
               textAlign: "right",
               render: (pkg: Package) => (
                 <Group gap="xs" justify="flex-end">
@@ -549,15 +648,46 @@ export default function MailroomPackages() {
                       <IconTrash size={16} />
                     </ActionIcon>
                   </Tooltip>
+
+                  {/* Scan Button */}
                   {pkg.status === "REQUEST_TO_SCAN" && (
                     <Tooltip label="Upload Scanned PDF">
                       <Button
-                        size="xs"
+                        size="compact-xs"
                         color="violet"
                         leftSection={<IconScan size={14} />}
                         onClick={() => handleOpenScan(pkg)}
                       >
-                        Upload Scan
+                        Scan
+                      </Button>
+                    </Tooltip>
+                  )}
+
+                  {/* Release Button */}
+                  {pkg.status === "REQUEST_TO_RELEASE" && (
+                    <Tooltip label="Confirm Release & Upload Proof">
+                      <Button
+                        size="compact-xs"
+                        color="teal"
+                        leftSection={<IconTruckDelivery size={14} />}
+                        onClick={() => handleOpenRelease(pkg)}
+                      >
+                        Release
+                      </Button>
+                    </Tooltip>
+                  )}
+
+                  {/* Disposal Button */}
+                  {pkg.status === "REQUEST_TO_DISPOSE" && (
+                    <Tooltip label="Confirm Disposal">
+                      <Button
+                        size="compact-xs"
+                        color="red"
+                        variant="light"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => handleConfirmDisposal(pkg)}
+                      >
+                        Dispose
                       </Button>
                     </Tooltip>
                   )}
@@ -695,21 +825,17 @@ export default function MailroomPackages() {
         centered
       >
         <Stack>
-          <Text size="sm" c="dimmed">
-            Upload the PDF scan for package:{" "}
-            <b>{packageToScan?.tracking_number}</b>
+          <Text size="sm">
+            Upload the PDF scan for <b>{packageToScan?.tracking_number}</b>.
           </Text>
-
           <FileInput
-            label="Select PDF File"
+            label="Select PDF"
             placeholder="Click to select file"
             accept="application/pdf"
-            leftSection={<IconUpload size={14} />}
             value={scanFile}
             onChange={setScanFile}
-            clearable
+            leftSection={<IconUpload size={16} />}
           />
-
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setScanModalOpen(false)}>
               Cancel
@@ -718,8 +844,48 @@ export default function MailroomPackages() {
               color="violet"
               onClick={handleSubmitScan}
               loading={isUploading}
+              disabled={!scanFile}
             >
-              Upload Scan
+              Upload & Complete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Release Proof Modal */}
+      <Modal
+        opened={releaseModalOpen}
+        onClose={() => setReleaseModalOpen(false)}
+        title="Confirm Release"
+        centered
+      >
+        <Stack>
+          <Text size="sm">
+            Upload Proof of Release (Photo/Signature) for{" "}
+            <b>{packageToRelease?.tracking_number}</b>.
+          </Text>
+          <FileInput
+            label="Proof Image"
+            placeholder="Select image"
+            accept="image/png,image/jpeg,image/jpg"
+            value={releaseFile}
+            onChange={setReleaseFile}
+            leftSection={<IconUpload size={16} />}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="default"
+              onClick={() => setReleaseModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="teal"
+              onClick={handleSubmitRelease}
+              loading={isReleasing}
+              disabled={!releaseFile}
+            >
+              Upload Proof & Complete
             </Button>
           </Group>
         </Stack>

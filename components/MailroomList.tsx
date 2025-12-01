@@ -15,6 +15,9 @@ import {
   ActionIcon,
   ScrollArea,
   ThemeIcon,
+  SimpleGrid,
+  RingProgress,
+  Center,
 } from "@mantine/core";
 import {
   IconRefresh,
@@ -26,6 +29,9 @@ import {
   IconInbox,
   IconSortAscending,
   IconSortDescending,
+  IconBox,
+  IconTruckDelivery,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
@@ -296,6 +302,17 @@ export default function MailroomList() {
     </Table.Th>
   );
 
+  // Calculate these safely handling nulls
+  const activePackages =
+    rows?.filter((p) => p.mailroom_status === "ACTIVE").length ?? 0;
+
+  const pendingRequests =
+    rows?.filter((p) => p.mailroom_status?.includes("REQUEST") ?? false)
+      .length ?? 0;
+
+  const readyForPickup =
+    rows?.filter((p) => p.mailroom_status === "RELEASED").length ?? 0;
+
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end">
@@ -308,6 +325,64 @@ export default function MailroomList() {
           </Text>
         </Box>
       </Group>
+
+      <SimpleGrid cols={{ base: 1, sm: 3 }} mb="lg">
+        <Paper withBorder p="md" radius="md">
+          <Group>
+            <RingProgress
+              size={80}
+              roundCaps
+              thickness={8}
+              sections={[{ value: 100, color: "blue" }]}
+              label={
+                <Center>
+                  <IconBox style={{ width: 20, height: 20 }} stroke={1.5} />
+                </Center>
+              }
+            />
+            <div>
+              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+                In Storage
+              </Text>
+              <Text fw={700} size="xl">
+                {activePackages}
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+
+        <Paper withBorder p="md" radius="md">
+          <Group>
+            <ThemeIcon size={80} radius="100%" variant="light" color="teal">
+              <IconTruckDelivery size={40} />
+            </ThemeIcon>
+            <div>
+              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+                Ready for Pickup
+              </Text>
+              <Text fw={700} size="xl">
+                {readyForPickup}
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+
+        <Paper withBorder p="md" radius="md">
+          <Group>
+            <ThemeIcon size={80} radius="100%" variant="light" color="orange">
+              <IconAlertCircle size={40} />
+            </ThemeIcon>
+            <div>
+              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+                Pending Requests
+              </Text>
+              <Text fw={700} size="xl">
+                {pendingRequests}
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+      </SimpleGrid>
 
       <Paper p="md" radius="md" withBorder shadow="sm">
         <Group justify="space-between" mb="md">

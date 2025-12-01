@@ -18,15 +18,19 @@ import {
 } from "@mantine/core";
 import {
   IconPackage,
+  IconFileText,
   IconTruckDelivery,
   IconTrash,
   IconScan,
+  IconEye, // <--- Import IconEye
+  IconLock,
   IconCheck,
   IconPhoto,
   IconBox,
-  IconLock,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
+import { DataTable } from "mantine-datatable";
+import dayjs from "dayjs";
 
 interface UserPackagesProps {
   packages: any[];
@@ -37,6 +41,15 @@ interface UserPackagesProps {
     can_digitize: boolean;
   };
   onRefresh: () => void;
+}
+
+interface Package {
+  id: string;
+  tracking_number: string;
+  sender: string;
+  package_type: string;
+  status: string;
+  release_proof_url?: string | null; // <--- Add this field
 }
 
 export default function UserPackages({
@@ -131,6 +144,20 @@ export default function UserPackages({
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "STORED":
+        return "blue";
+      case "RELEASED":
+      case "RETRIEVED":
+        return "green";
+      case "DISPOSED":
+        return "red";
+      default:
+        return "orange";
     }
   };
 
@@ -288,39 +315,47 @@ export default function UserPackages({
                               >
                                 Confirm
                               </Button>
-                              {p.image_url && (
-                                <Tooltip label="Proof of Release">
+
+                              {/* FIXED: Check for proof_url instead of image_url */}
+                              {(p.release_proof_url || p.image_url) && (
+                                <Tooltip label="View Proof of Release">
                                   <ActionIcon
-                                    variant="subtle"
-                                    color="gray"
+                                    variant="light"
+                                    color="teal"
                                     size="sm"
                                     onClick={() => {
-                                      setPreviewImage(p.image_url);
+                                      // Use proof_url if available, fallback to image_url
+                                      setPreviewImage(
+                                        p.release_proof_url || p.image_url
+                                      );
                                       setImageModalOpen(true);
                                     }}
                                   >
-                                    <IconPhoto size={14} />
+                                    <IconEye size={14} />
                                   </ActionIcon>
                                 </Tooltip>
                               )}
                             </>
                           )}
 
-                          {status === "RETRIEVED" && p.image_url && (
-                            <Tooltip label="Proof of Release">
-                              <ActionIcon
-                                variant="subtle"
-                                color="gray"
-                                size="sm"
-                                onClick={() => {
-                                  setPreviewImage(p.image_url);
-                                  setImageModalOpen(true);
-                                }}
-                              >
-                                <IconPhoto size={14} />
-                              </ActionIcon>
-                            </Tooltip>
-                          )}
+                          {status === "RETRIEVED" &&
+                            (p.release_proof_url || p.image_url) && (
+                              <Tooltip label="View Proof of Release">
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="gray"
+                                  size="sm"
+                                  onClick={() => {
+                                    setPreviewImage(
+                                      p.release_proof_url || p.image_url
+                                    );
+                                    setImageModalOpen(true);
+                                  }}
+                                >
+                                  <IconPhoto size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
 
                           {status.includes("REQUEST") && (
                             <Badge size="sm" color="orange" variant="light">
