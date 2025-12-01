@@ -13,6 +13,7 @@ import {
   Paper,
   Select,
   Stack,
+  Text,
   TextInput,
   Title,
   Tooltip,
@@ -27,6 +28,7 @@ import {
   IconTrash,
   IconLock,
   IconLockOpen,
+  IconUser,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -44,9 +46,26 @@ interface Locker {
   location?: Location;
 }
 
+interface AssignedLocker {
+  id: string;
+  registration_id: string;
+  locker_id: string;
+  status: "Empty" | "Normal" | "Near Full" | "Full"; // <--- Updated to include Empty
+  locker?: {
+    id: string;
+    locker_code: string;
+  };
+  registration?: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+}
+
 export default function MailroomLockers() {
   const [lockers, setLockers] = useState<Locker[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -229,6 +248,11 @@ export default function MailroomLockers() {
     page * pageSize
   );
 
+  // Helper to find assignment for the current locker being edited
+  const activeAssignment = editingLocker
+    ? assignedLockers.find((a) => a.locker_id === editingLocker.id)
+    : null;
+
   return (
     <Stack align="center">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
@@ -354,6 +378,7 @@ export default function MailroomLockers() {
         />
       </Paper>
 
+      {/* Add/Edit Locker Modal */}
       <Modal
         opened={opened}
         onClose={close}
@@ -361,6 +386,40 @@ export default function MailroomLockers() {
         centered
       >
         <Stack>
+          {/* NEW: Show Status if Locker is Assigned */}
+          {activeAssignment && (
+            <Paper
+              withBorder
+              p="sm"
+              radius="md"
+              bg="var(--mantine-color-gray-0)"
+            >
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <Text size="sm" fw={600}>
+                    Capacity Status:
+                  </Text>
+                  <Badge
+                    color={
+                      activeAssignment.status === "Full"
+                        ? "red"
+                        : activeAssignment.status === "Near Full"
+                        ? "orange"
+                        : activeAssignment.status === "Empty"
+                        ? "gray"
+                        : "blue"
+                    }
+                  >
+                    {activeAssignment.status || "Normal"}
+                  </Badge>
+                </Group>
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>
+                Assigned to: {activeAssignment.registration?.full_name}
+              </Text>
+            </Paper>
+          )}
+
           <TextInput
             label="Locker Code"
             placeholder="e.g. A-101"
@@ -372,24 +431,13 @@ export default function MailroomLockers() {
           />
           <Select
             label="Location"
-            placeholder="Select mailroom location"
-            required
+            placeholder="Select location"
             data={locations.map((l) => ({ value: l.id, label: l.name }))}
             value={formData.location_id}
             onChange={(val) =>
               setFormData({ ...formData, location_id: val || "" })
             }
-            disabled={!!editingLocker} // Disable location change on edit to simplify logic
-          />
-          <Switch
-            label="Available"
-            checked={formData.is_available}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                is_available: e.currentTarget.checked,
-              })
-            }
+            required
           />
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={close}>

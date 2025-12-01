@@ -35,7 +35,10 @@ export default function RootLayout({
       <head>
         <ColorSchemeScript />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
+      >
         <MantineProvider>
           <SessionProvider>{children}</SessionProvider>
         </MantineProvider>

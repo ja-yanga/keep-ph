@@ -49,8 +49,17 @@ export async function GET(
       .eq("registration_id", id);
 
     // 3. Format the response
+    // Update: Merge the assignment status into the locker object
     const lockers =
-      assignedLockers?.map((a: any) => a.locker).filter(Boolean) || [];
+      assignedLockers
+        ?.map((a: any) => {
+          if (!a.locker) return null;
+          return {
+            ...a.locker,
+            status: a.status, // <--- Pass the status from the assignment to the locker object
+          };
+        })
+        .filter(Boolean) || [];
 
     const responseData = {
       ...registration,

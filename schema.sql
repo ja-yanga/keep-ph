@@ -15,6 +15,7 @@ CREATE TABLE public.mailroom_assigned_lockers (
   registration_id uuid NOT NULL,
   locker_id uuid NOT NULL UNIQUE,
   assigned_at timestamp with time zone DEFAULT now(),
+  status text NOT NULL DEFAULT 'Normal'::text CHECK (status = ANY (ARRAY['Normal'::text, 'Near Full'::text, 'Full'::text])),
   CONSTRAINT mailroom_assigned_lockers_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_assigned_lockers_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
   CONSTRAINT mailroom_assigned_lockers_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)

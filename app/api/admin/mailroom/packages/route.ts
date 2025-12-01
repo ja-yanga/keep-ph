@@ -26,6 +26,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = await request.json();
 
+  // 1. Insert Package
   const { data, error } = await supabase
     .from("mailroom_packages")
     .insert({
@@ -42,6 +43,21 @@ export async function POST(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // 2. Update Locker Status (if locker is assigned and status is provided)
+  if (body.locker_id && body.locker_status) {
+    const { error: lockerError } = await supabase
+      .from("mailroom_assigned_lockers")
+      .update({ status: body.locker_status })
+      .eq("locker_id", body.locker_id)
+      .eq("registration_id", body.registration_id);
+
+    if (lockerError) {
+      console.error("Failed to update locker status:", lockerError);
+      // We don't return an error here to avoid failing the package creation,
+      // but you could if strict consistency is required.
+    }
   }
 
   return NextResponse.json(data);

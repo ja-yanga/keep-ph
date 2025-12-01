@@ -274,7 +274,7 @@ export default function MailroomPackageView({
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>Locker Code</Table.Th>
-                        <Table.Th>Availability</Table.Th>
+                        <Table.Th>Capacity Status</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
@@ -304,25 +304,21 @@ export default function MailroomPackageView({
                                 "—"}
                             </Table.Td>
                             <Table.Td>
-                              {(() => {
-                                const isAvail =
-                                  L.is_available !== undefined
-                                    ? L.is_available
-                                    : L.locker?.is_available !== undefined
-                                    ? L.locker?.is_available
-                                    : null;
-
-                                if (isAvail === null)
-                                  return <Text size="sm">—</Text>;
-                                return (
-                                  <Badge
-                                    color={isAvail ? "green" : "red"}
-                                    variant="light"
-                                  >
-                                    {isAvail ? "Available" : "Occupied"}
-                                  </Badge>
-                                );
-                              })()}
+                              {/* Render Capacity Status */}
+                              <Badge
+                                variant="light"
+                                color={
+                                  L.status === "Full"
+                                    ? "red"
+                                    : L.status === "Near Full"
+                                    ? "orange"
+                                    : L.status === "Empty"
+                                    ? "gray"
+                                    : "blue"
+                                }
+                              >
+                                {L.status || "Normal"}
+                              </Badge>
                             </Table.Td>
                           </Table.Tr>
                         ))

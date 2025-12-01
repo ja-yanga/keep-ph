@@ -65,13 +65,14 @@ interface Locker {
   id: string;
   locker_code: string;
   is_available: boolean;
+  location_id?: string;
 }
 
 interface AssignedLocker {
   id: string;
   registration_id: string;
   locker_id: string;
-  locker?: Locker;
+  status?: "Empty" | "Normal" | "Near Full" | "Full"; // <--- Add this field
 }
 
 export default function MailroomRegistrations() {
@@ -238,12 +239,14 @@ export default function MailroomRegistrations() {
     );
 
     return userAssignments.map((a) => {
-      if (a.locker?.locker_code)
-        return { code: a.locker.locker_code, assignmentId: a.id };
+      // Fix: Look up the locker from the 'lockers' state array using the ID reference
       const foundLocker = lockers.find((l) => l.id === a.locker_id);
+      const code = foundLocker ? foundLocker.locker_code : "Unknown";
+
       return {
-        code: foundLocker ? foundLocker.locker_code : "Unknown",
+        code,
         assignmentId: a.id,
+        status: a.status || "Unknown",
       };
     });
   };
@@ -493,6 +496,7 @@ export default function MailroomRegistrations() {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Locker Code</Table.Th>
+                      <Table.Th>Capacity Status</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -505,6 +509,22 @@ export default function MailroomRegistrations() {
                             leftSection={<IconKey size={12} />}
                           >
                             {l.code}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge
+                            variant="light"
+                            color={
+                              l.status === "Full"
+                                ? "red"
+                                : l.status === "Near Full"
+                                ? "orange"
+                                : l.status === "Empty"
+                                ? "gray"
+                                : "blue"
+                            }
+                          >
+                            {l.status}
                           </Badge>
                         </Table.Td>
                       </Table.Tr>

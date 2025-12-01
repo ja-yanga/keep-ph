@@ -77,7 +77,8 @@ export async function GET(req: Request) {
         email,
         mobile,
         mailroom_locations ( id, name, city, region, barangay, zip ),
-        mailroom_plans ( id, name, price )
+        mailroom_plans ( id, name, price ),
+        packages:mailroom_packages ( id, status ) 
       `
       )
       .eq("user_id", userId)

@@ -302,16 +302,40 @@ export default function UserDashboard() {
     </Table.Th>
   );
 
-  // Calculate these safely handling nulls
-  const activePackages =
-    rows?.filter((p) => p.mailroom_status === "ACTIVE").length ?? 0;
+  // UPDATED: Calculate stats based on actual packages inside the registrations
+  const stats = useMemo(() => {
+    if (!rows) return { stored: 0, requests: 0, released: 0 };
 
-  const pendingRequests =
-    rows?.filter((p) => p.mailroom_status?.includes("REQUEST") ?? false)
-      .length ?? 0;
+    let stored = 0;
+    let requests = 0;
+    let released = 0;
 
-  const readyForPickup =
-    rows?.filter((p) => p.mailroom_status === "RELEASED").length ?? 0;
+    rows.forEach((row) => {
+      // Access packages from the raw data
+      // Ensure your API /api/mailroom/registrations selects 'packages:mailroom_packages(id, status)'
+      const packages = row.raw?.packages;
+
+      if (Array.isArray(packages)) {
+        // Use a Set to ensure we don't double count if the API returns duplicates
+        const uniqueIds = new Set();
+
+        packages.forEach((p: any) => {
+          if (uniqueIds.has(p.id)) return;
+          uniqueIds.add(p.id);
+
+          if (p.status === "STORED") stored++;
+          else if (p.status === "RELEASED") released++;
+          else if (p.status?.includes("REQUEST")) requests++;
+        });
+      }
+    });
+
+    return { stored, requests, released };
+  }, [rows]);
+
+  const activePackages = stats.stored;
+  const pendingRequests = stats.requests;
+  const readyForPickup = stats.released;
 
   return (
     <Stack gap="lg">

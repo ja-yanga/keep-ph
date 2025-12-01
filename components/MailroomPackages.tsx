@@ -18,8 +18,9 @@ import {
   Textarea,
   Text,
   FileInput,
-  Tabs, // Import Tabs
+  Tabs,
   rem,
+  SegmentedControl,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -57,6 +58,7 @@ interface AssignedLocker {
   id: string;
   registration_id: string;
   locker_id: string;
+  status?: "Empty" | "Normal" | "Near Full" | "Full"; // <--- Add this
   locker?: Locker;
 }
 
@@ -132,6 +134,11 @@ export default function MailroomPackages() {
   // Tab State
   const [activeTab, setActiveTab] = useState<string | null>("requests");
 
+  // New state for locker capacity
+  const [lockerCapacity, setLockerCapacity] = useState<
+    "Empty" | "Normal" | "Near Full" | "Full"
+  >("Normal");
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -154,7 +161,7 @@ export default function MailroomPackages() {
       const [packagesRes, registrationsRes, lockersRes, assignedRes] =
         await Promise.all([
           fetch("/api/admin/mailroom/packages"),
-          fetch("/api/mailroom/registrations"),
+          fetch("/api/admin/mailroom/registrations"), // <--- Updated to admin route
           fetch("/api/admin/mailroom/lockers"),
           fetch("/api/admin/mailroom/assigned-lockers"),
         ]);
@@ -190,6 +197,18 @@ export default function MailroomPackages() {
   const handleOpenModal = (pkg?: Package) => {
     if (pkg) {
       setEditingPackage(pkg);
+
+      // 2. Pre-fill locker capacity from existing assignment if available
+      const assignment = assignedLockers.find(
+        (a) => a.registration_id === pkg.registration_id
+      );
+      if (assignment && assignment.status) {
+        setLockerCapacity(assignment.status);
+      } else {
+        // Fallback
+        setLockerCapacity(pkg.mailroom_full ? "Full" : "Normal");
+      }
+
       setFormData({
         tracking_number: pkg.tracking_number,
         registration_id: pkg.registration_id,
@@ -201,6 +220,7 @@ export default function MailroomPackages() {
       });
     } else {
       setEditingPackage(null);
+      setLockerCapacity("Normal");
       setFormData({
         tracking_number: "",
         registration_id: "",
@@ -254,10 +274,22 @@ export default function MailroomPackages() {
 
       const method = editingPackage ? "PUT" : "POST";
 
+      // 3. Create payload
+      // We cast to 'any' to allow adding the optional locker_status field
+      const payload: any = {
+        ...formData,
+        mailroom_full: lockerCapacity === "Full", // Sync boolean
+      };
+
+      // Only send locker_status when ADDING a package
+      if (!editingPackage) {
+        payload.locker_status = lockerCapacity;
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error("Failed to save");
@@ -783,15 +815,33 @@ export default function MailroomPackages() {
             data={lockers
               .filter((l) => {
                 if (!formData.registration_id) return false;
-                const isAssigned = assignedLockers.some(
+
+                // Find the assignment for this locker and user
+                const assignment = assignedLockers.find(
                   (a) =>
                     a.locker_id === l.id &&
                     a.registration_id === formData.registration_id
                 );
-                const isSelected = l.id === formData.locker_id;
-                return isAssigned || isSelected;
+
+                // Must be assigned to this user
+                return !!assignment;
               })
-              .map((l) => ({ value: l.id, label: l.locker_code }))}
+              .map((l) => {
+                const assignment = assignedLockers.find(
+                  (a) =>
+                    a.locker_id === l.id &&
+                    a.registration_id === formData.registration_id
+                );
+
+                const isFull = assignment?.status === "Full";
+                const isCurrent = l.id === formData.locker_id;
+
+                return {
+                  value: l.id,
+                  label: `${l.locker_code}${isFull ? " (Full)" : ""}`,
+                  disabled: isFull && !isCurrent, // Show but disable if full (unless it's the one currently
+                };
+              })}
             value={formData.locker_id}
             onChange={(val) =>
               setFormData({ ...formData, locker_id: val || "" })
@@ -815,6 +865,44 @@ export default function MailroomPackages() {
               setFormData({ ...formData, status: val || "STORED" })
             }
           />
+
+          {/* Locker Capacity Control - Only show when ADDING a package */}
+          {!editingPackage && (
+            <Stack gap={4} mt="xs">
+              <Text size="sm" fw={500}>
+                Update Locker Capacity Status
+              </Text>
+              <SegmentedControl
+                value={lockerCapacity}
+                onChange={(val) =>
+                  setLockerCapacity(
+                    val as "Empty" | "Normal" | "Near Full" | "Full"
+                  )
+                }
+                fullWidth
+                data={[
+                  { label: "Empty", value: "Empty" },
+                  { label: "Normal", value: "Normal" },
+                  { label: "Near Full", value: "Near Full" },
+                  { label: "Full", value: "Full" },
+                ]}
+                color={
+                  lockerCapacity === "Full"
+                    ? "red"
+                    : lockerCapacity === "Near Full"
+                    ? "orange"
+                    : lockerCapacity === "Empty"
+                    ? "gray"
+                    : "blue"
+                }
+              />
+              <Text size="xs" c="dimmed">
+                This will update the status of the assigned locker for this
+                user.
+              </Text>
+            </Stack>
+          )}
+
           <Textarea
             label="Notes"
             placeholder="Additional details..."

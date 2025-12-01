@@ -13,6 +13,7 @@ export async function PUT(
   const id = (await params).id;
   const body = await request.json();
 
+  // 1. Update Package
   const { data, error } = await supabase
     .from("mailroom_packages")
     .update({
@@ -29,6 +30,19 @@ export async function PUT(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // 2. Update Locker Status (if locker is assigned and status is provided)
+  if (body.locker_id && body.locker_status) {
+    const { error: lockerError } = await supabase
+      .from("mailroom_assigned_lockers")
+      .update({ status: body.locker_status })
+      .eq("locker_id", body.locker_id)
+      .eq("registration_id", body.registration_id);
+
+    if (lockerError) {
+      console.error("Failed to update locker status:", lockerError);
+    }
   }
 
   return NextResponse.json(data);
