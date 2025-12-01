@@ -104,11 +104,11 @@ export default function DashboardNav() {
                   </Anchor>
                   <Anchor
                     component={Link}
-                    href="#"
-                    style={linkColor("/admin/mailroom")}
+                    href="/admin/mailrooms"
+                    style={linkColor("/admin/mailrooms")}
                     underline="hover"
                   >
-                    Mailroom Services
+                    Mailrooms
                   </Anchor>
                   <Anchor
                     component={Link}
