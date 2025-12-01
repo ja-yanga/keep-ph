@@ -22,6 +22,7 @@ export async function GET(req: Request) {
         locker_qty,
         location_id,
         plan_id,
+        mailroom_status,
         mailroom_locations (
           name
         )

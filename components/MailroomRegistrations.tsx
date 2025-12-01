@@ -30,6 +30,7 @@ import {
   IconTrash,
   IconInfoCircle,
   IconPhone,
+  IconRefresh, // <--- Add this
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -47,6 +48,7 @@ interface Registration {
   locker_qty: number;
   location_id: string;
   plan_id: string;
+  mailroom_status: boolean; // <--- Added this
   // Optional joined fields if your API returns them, otherwise we fetch separately
   location_name?: string;
   plan_name?: string;
@@ -90,6 +92,7 @@ export default function MailroomRegistrations() {
   const [selectedUser, setSelectedUser] = useState<Registration | null>(null);
   const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshingStatus, setRefreshingStatus] = useState(false); // <--- Add this
 
   useEffect(() => {
     fetchData();
@@ -190,6 +193,31 @@ export default function MailroomRegistrations() {
     }
   };
 
+  // Add this function to handle the manual trigger
+  const handleRefreshStatus = async () => {
+    setRefreshingStatus(true);
+    try {
+      const res = await fetch("/api/admin/mailroom/cron", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to update statuses");
+
+      notifications.show({
+        title: "Success",
+        message: "Subscription statuses updated successfully",
+        color: "green",
+      });
+      fetchData(); // Reload the table data
+    } catch (error) {
+      console.error(error);
+      notifications.show({
+        title: "Error",
+        message: "Failed to update statuses",
+        color: "red",
+      });
+    } finally {
+      setRefreshingStatus(false);
+    }
+  };
+
   // Filter logic
   const filteredRegistrations = registrations.filter((r) => {
     const q = search.toLowerCase();
@@ -231,13 +259,26 @@ export default function MailroomRegistrations() {
     <Stack align="center">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search users..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ width: 300 }}
-          />
+          <Group>
+            <TextInput
+              placeholder="Search users..."
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              style={{ width: 300 }}
+            />
+            <Tooltip label="Force check for expired subscriptions">
+              <Button
+                variant="light"
+                color="orange"
+                onClick={handleRefreshStatus}
+                loading={refreshingStatus}
+                leftSection={<IconRefresh size={16} />}
+              >
+                Sync Statuses
+              </Button>
+            </Tooltip>
+          </Group>
           <Badge size="lg" variant="light">
             {registrations.length} Registered Users
           </Badge>
@@ -281,6 +322,26 @@ export default function MailroomRegistrations() {
                   </Stack>
                 </Group>
               ),
+            },
+            {
+              accessor: "status",
+              title: "Status",
+              width: 120,
+              render: (r) => {
+                // Use DB field if available, otherwise fallback to date calculation
+                let isActive = r.mailroom_status;
+
+                if (isActive === null || isActive === undefined) {
+                  const expiresAt = dayjs(r.created_at).add(r.months, "month");
+                  isActive = !dayjs().isAfter(expiresAt);
+                }
+
+                return (
+                  <Badge color={isActive ? "green" : "red"} variant="light">
+                    {isActive ? "Active" : "Inactive"}
+                  </Badge>
+                );
+              },
             },
             {
               accessor: "subscription",

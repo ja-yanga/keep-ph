@@ -41,6 +41,7 @@ CREATE TABLE public.mailroom_packages (
   mailroom_full boolean DEFAULT false,
   received_at timestamp with time zone DEFAULT now(),
   locker_id uuid,
+  release_proof_url text,
   CONSTRAINT mailroom_packages_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
   CONSTRAINT mailroom_packages_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)
@@ -69,6 +70,7 @@ CREATE TABLE public.mailroom_registrations (
   email text NOT NULL,
   mobile numeric NOT NULL,
   telephone numeric,
+  mailroom_status boolean,
   CONSTRAINT mailroom_registrations_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT mailroom_registrations_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.mailroom_locations(id),
