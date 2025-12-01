@@ -18,6 +18,8 @@ import {
   Textarea,
   Text,
   FileInput,
+  Tabs, // Import Tabs
+  rem,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -31,7 +33,8 @@ import {
   IconAlertCircle,
   IconScan,
   IconUpload,
-  IconTruckDelivery, // Add this icon
+  IconTruckDelivery,
+  IconList,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -87,7 +90,7 @@ export default function MailroomPackages() {
   const [packages, setPackages] = useState<Package[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
-  const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]); // Track assignments
+  const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -113,13 +116,12 @@ export default function MailroomPackages() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // --- NEW STATE FOR SCANNING ---
+  // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [packageToScan, setPackageToScan] = useState<any | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // --- NEW STATE FOR RELEASE PROOF ---
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [releaseFile, setReleaseFile] = useState<File | null>(null);
   const [packageToRelease, setPackageToRelease] = useState<Package | null>(
@@ -127,14 +129,16 @@ export default function MailroomPackages() {
   );
   const [isReleasing, setIsReleasing] = useState(false);
 
+  // Tab State
+  const [activeTab, setActiveTab] = useState<string | null>("requests");
+
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Reset page when search changes
   useEffect(() => {
     setPage(1);
-  }, [search, filterStatus, filterType]);
+  }, [search, filterStatus, filterType, activeTab]); // Reset page on tab change
 
   const clearFilters = () => {
     setSearch("");
@@ -147,7 +151,6 @@ export default function MailroomPackages() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // We need to fetch assigned lockers to know who owns what
       const [packagesRes, registrationsRes, lockersRes, assignedRes] =
         await Promise.all([
           fetch("/api/admin/mailroom/packages"),
@@ -211,7 +214,6 @@ export default function MailroomPackages() {
     open();
   };
 
-  // Auto-select locker when user changes
   const handleRegistrationChange = (regId: string | null) => {
     if (!regId) {
       setFormData({ ...formData, registration_id: "", locker_id: "" });
@@ -443,6 +445,7 @@ export default function MailroomPackages() {
     }
   };
 
+  // --- FILTER LOGIC ---
   const filteredPackages = packages.filter((p) => {
     const q = search.toLowerCase();
     const matchesSearch =
@@ -455,7 +458,11 @@ export default function MailroomPackages() {
     const matchesStatus = filterStatus ? p.status === filterStatus : true;
     const matchesType = filterType ? p.package_type === filterType : true;
 
-    return matchesSearch && matchesStatus && matchesType;
+    // Tab Logic
+    const isRequest = p.status.includes("REQUEST");
+    const matchesTab = activeTab === "requests" ? isRequest : !isRequest;
+
+    return matchesSearch && matchesStatus && matchesType && matchesTab;
   });
 
   const paginatedPackages = filteredPackages.slice(
@@ -477,6 +484,11 @@ export default function MailroomPackages() {
     }
   };
 
+  // Count requests for badge
+  const requestCount = packages.filter((p) =>
+    p.status.includes("REQUEST")
+  ).length;
+
   return (
     <Stack align="center">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
@@ -489,17 +501,22 @@ export default function MailroomPackages() {
               onChange={(e) => setSearch(e.currentTarget.value)}
               style={{ width: 250 }}
             />
-            <Select
-              placeholder="Filter by Status"
-              data={STATUSES.map((s) => ({
-                value: s,
-                label: s.replace(/_/g, " "),
-              }))}
-              value={filterStatus}
-              onChange={setFilterStatus}
-              clearable
-              style={{ width: 200 }}
-            />
+            {/* Only show status filter on Inventory tab */}
+            {activeTab === "inventory" && (
+              <Select
+                placeholder="Filter by Status"
+                data={STATUSES.filter((s) => !s.includes("REQUEST")).map(
+                  (s) => ({
+                    value: s,
+                    label: s.replace(/_/g, " "),
+                  })
+                )}
+                value={filterStatus}
+                onChange={setFilterStatus}
+                clearable
+                style={{ width: 200 }}
+              />
+            )}
             <Select
               placeholder="Filter by Type"
               data={PACKAGE_TYPES}
@@ -526,6 +543,27 @@ export default function MailroomPackages() {
             Add Package
           </Button>
         </Group>
+
+        <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+          <Tabs.List>
+            <Tabs.Tab
+              value="requests"
+              leftSection={<IconAlertCircle size={16} />}
+              rightSection={
+                requestCount > 0 && (
+                  <Badge size="xs" circle color="red">
+                    {requestCount}
+                  </Badge>
+                )
+              }
+            >
+              Pending Requests
+            </Tabs.Tab>
+            <Tabs.Tab value="inventory" leftSection={<IconList size={16} />}>
+              Inventory & History
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
 
         <DataTable
           withTableBorder
@@ -609,7 +647,7 @@ export default function MailroomPackages() {
             {
               accessor: "status",
               title: "Status",
-              width: 150,
+              width: 180,
               render: ({ status }: Package) => (
                 <Badge color={getStatusColor(status)} variant="light">
                   {status.replace(/_/g, " ")}
@@ -626,10 +664,50 @@ export default function MailroomPackages() {
             {
               accessor: "actions",
               title: "Actions",
-              width: 180, // Increased width to fit buttons
+              width: 180,
               textAlign: "right",
               render: (pkg: Package) => (
                 <Group gap="xs" justify="flex-end">
+                  {/* Action Buttons based on Status */}
+                  {pkg.status === "REQUEST_TO_SCAN" && (
+                    <Tooltip label="Upload Scanned PDF">
+                      <Button
+                        size="compact-xs"
+                        color="violet"
+                        leftSection={<IconScan size={14} />}
+                        onClick={() => handleOpenScan(pkg)}
+                      >
+                        Scan
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {pkg.status === "REQUEST_TO_RELEASE" && (
+                    <Tooltip label="Confirm Release">
+                      <Button
+                        size="compact-xs"
+                        color="teal"
+                        leftSection={<IconTruckDelivery size={14} />}
+                        onClick={() => handleOpenRelease(pkg)}
+                      >
+                        Release
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {pkg.status === "REQUEST_TO_DISPOSE" && (
+                    <Tooltip label="Confirm Disposal">
+                      <Button
+                        size="compact-xs"
+                        color="red"
+                        variant="light"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => handleConfirmDisposal(pkg)}
+                      >
+                        Dispose
+                      </Button>
+                    </Tooltip>
+                  )}
+
+                  {/* Standard Edit/Delete (Always visible or only on Inventory?) */}
                   <Tooltip label="Edit">
                     <ActionIcon
                       variant="subtle"
@@ -648,57 +726,19 @@ export default function MailroomPackages() {
                       <IconTrash size={16} />
                     </ActionIcon>
                   </Tooltip>
-
-                  {/* Scan Button */}
-                  {pkg.status === "REQUEST_TO_SCAN" && (
-                    <Tooltip label="Upload Scanned PDF">
-                      <Button
-                        size="compact-xs"
-                        color="violet"
-                        leftSection={<IconScan size={14} />}
-                        onClick={() => handleOpenScan(pkg)}
-                      >
-                        Scan
-                      </Button>
-                    </Tooltip>
-                  )}
-
-                  {/* Release Button */}
-                  {pkg.status === "REQUEST_TO_RELEASE" && (
-                    <Tooltip label="Confirm Release & Upload Proof">
-                      <Button
-                        size="compact-xs"
-                        color="teal"
-                        leftSection={<IconTruckDelivery size={14} />}
-                        onClick={() => handleOpenRelease(pkg)}
-                      >
-                        Release
-                      </Button>
-                    </Tooltip>
-                  )}
-
-                  {/* Disposal Button */}
-                  {pkg.status === "REQUEST_TO_DISPOSE" && (
-                    <Tooltip label="Confirm Disposal">
-                      <Button
-                        size="compact-xs"
-                        color="red"
-                        variant="light"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => handleConfirmDisposal(pkg)}
-                      >
-                        Dispose
-                      </Button>
-                    </Tooltip>
-                  )}
                 </Group>
               ),
             },
           ]}
-          noRecordsText="No packages found"
+          noRecordsText={
+            activeTab === "requests"
+              ? "No pending requests"
+              : "No packages found"
+          }
         />
       </Paper>
 
+      {/* Modals (Keep existing modals) */}
       <Modal
         opened={opened}
         onClose={close}
@@ -719,7 +759,7 @@ export default function MailroomPackages() {
             }
           />
           <Select
-            label="Recipient (Registration)"
+            label="Recipient"
             placeholder="Select recipient"
             required
             searchable
@@ -730,7 +770,6 @@ export default function MailroomPackages() {
             value={formData.registration_id}
             onChange={(val) => handleRegistrationChange(val)}
           />
-
           <Select
             label="Assign Locker"
             placeholder={
@@ -743,32 +782,21 @@ export default function MailroomPackages() {
             disabled={!formData.registration_id}
             data={lockers
               .filter((l) => {
-                // Only show lockers if a user is selected
                 if (!formData.registration_id) return false;
-
-                // Check if this locker is assigned to the selected user
                 const isAssigned = assignedLockers.some(
                   (a) =>
                     a.locker_id === l.id &&
                     a.registration_id === formData.registration_id
                 );
-
-                // Also include the currently selected locker (even if unassigned/overflow)
-                // so it doesn't disappear from the input when editing
                 const isSelected = l.id === formData.locker_id;
-
                 return isAssigned || isSelected;
               })
-              .map((l) => ({
-                value: l.id,
-                label: l.locker_code, // Clean label without "Occupied" status
-              }))}
+              .map((l) => ({ value: l.id, label: l.locker_code }))}
             value={formData.locker_id}
             onChange={(val) =>
               setFormData({ ...formData, locker_id: val || "" })
             }
           />
-
           <Select
             label="Type"
             required
@@ -817,7 +845,6 @@ export default function MailroomPackages() {
         </Stack>
       </Modal>
 
-      {/* --- SCAN UPLOAD MODAL --- */}
       <Modal
         opened={scanModalOpen}
         onClose={() => setScanModalOpen(false)}
@@ -852,7 +879,6 @@ export default function MailroomPackages() {
         </Stack>
       </Modal>
 
-      {/* Release Proof Modal */}
       <Modal
         opened={releaseModalOpen}
         onClose={() => setReleaseModalOpen(false)}

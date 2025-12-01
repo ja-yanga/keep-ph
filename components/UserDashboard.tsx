@@ -55,7 +55,7 @@ const addMonths = (iso?: string | null, months = 0) => {
   return d.toISOString();
 };
 
-export default function MailroomList() {
+export default function UserDashboard() {
   const { session } = useSession();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(false);

@@ -21,7 +21,10 @@ export async function GET(req: Request) {
         months,
         locker_qty,
         location_id,
-        plan_id
+        plan_id,
+        mailroom_locations (
+          name
+        )
       `
       )
       .order("created_at", { ascending: false });
@@ -34,9 +37,10 @@ export async function GET(req: Request) {
       );
     }
 
-    const formattedData = data.map((reg) => ({
+    const formattedData = data.map((reg: any) => ({
       ...reg,
       phone_number: reg.mobile,
+      location_name: reg.mailroom_locations?.name || "Unknown Location",
     }));
 
     return NextResponse.json({ data: formattedData }, { status: 200 });

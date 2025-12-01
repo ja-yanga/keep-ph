@@ -73,7 +73,7 @@ export default function DashboardNav() {
       <Container size="xl">
         <Group justify="space-between" align="center" style={{ width: "100%" }}>
           {/* Brand */}
-          <Link href="/dashboard" style={{ textDecoration: "none" }}>
+          <Link href="/admin/dashboard" style={{ textDecoration: "none" }}>
             <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
               Keep PH
             </Title>
@@ -84,8 +84,8 @@ export default function DashboardNav() {
             <Group gap="lg" visibleFrom="sm">
               <Anchor
                 component={Link}
-                href="/dashboard"
-                style={linkColor("/dashboard")}
+                href="/admin/dashboard"
+                style={linkColor("/admin/dashboard")}
                 underline="hover"
                 aria-current={pathname === "/dashboard" ? "page" : undefined}
               >

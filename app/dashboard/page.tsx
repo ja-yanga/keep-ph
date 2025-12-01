@@ -12,15 +12,24 @@ import {
 import DashboardNav from "../../components/DashboardNav";
 import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
-import MailroomList from "@/components/MailroomList";
+import UserDashboard from "@/components/UserDashboard";
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation"; // Import useRouter
 
 export default function DashboardPage() {
   const { session, loading, error } = useSession();
+  const router = useRouter(); // Initialize router
   const firstName = session?.profile?.first_name ?? null;
   const displayName = firstName ?? session?.user?.email ?? "User";
 
   const [hasMailroom, setHasMailroom] = useState<boolean | null>(null);
+
+  // Redirect admins
+  useEffect(() => {
+    if (!loading && session?.role === "admin") {
+      router.push("/admin/dashboard");
+    }
+  }, [loading, session?.role, router]);
 
   useEffect(() => {
     if (loading) return; // Wait for session to load
@@ -75,7 +84,7 @@ export default function DashboardPage() {
           </Center>
         ) : hasMailroom ? (
           <Container size="xl" py="xl">
-            <MailroomList />
+            <UserDashboard />
           </Container>
         ) : (
           <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
