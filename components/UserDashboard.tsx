@@ -18,8 +18,8 @@ import {
   SimpleGrid,
   RingProgress,
   Center,
-  Popover, // <--- Add Popover
-  Select, // <--- Add Select
+  Popover,
+  Select,
 } from "@mantine/core";
 import {
   IconRefresh,
@@ -41,7 +41,9 @@ import { useSession } from "@/components/SessionProvider";
 type RawRow = any;
 type Row = {
   id: string;
+  mailroom_code: string | null; // <--- Added
   name: string;
+  email: string | null; // <--- Added
   plan: string | null;
   location: string | null;
   created_at?: string | null;
@@ -65,14 +67,12 @@ export default function UserDashboard() {
 
   // UI state
   const [search, setSearch] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [filters, setFilters] = useState({
     plan: null as string | null,
     location: null as string | null,
     mailroomStatus: null as string | null,
   });
 
-  // NEW: Derive unique options for the filter dropdowns based on loaded data
   const filterOptions = useMemo(() => {
     if (!rows) return { plans: [], locations: [] };
     const plans = Array.from(
@@ -86,7 +86,9 @@ export default function UserDashboard() {
 
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
     {
+      mailroom_code: true, // <--- Added
       name: true,
+      email: true, // <--- Added
       plan: true,
       location: true,
       created_at: true,
@@ -151,7 +153,9 @@ export default function UserDashboard() {
             `${locationName ?? "Mailroom Service"} #${r.id?.slice(0, 8)}`;
           return {
             id: r.id,
+            mailroom_code: r.mailroom_code ?? null, // <--- Added
             name,
+            email: r.email ?? null, // <--- Added
             plan: planName,
             location: locationName,
             created_at: created,
@@ -184,6 +188,12 @@ export default function UserDashboard() {
           const q = search.toLowerCase();
           const found =
             String(r.name).toLowerCase().includes(q) ||
+            String(r.email ?? "")
+              .toLowerCase()
+              .includes(q) || // <--- Search email
+            String(r.mailroom_code ?? "")
+              .toLowerCase()
+              .includes(q) || // <--- Search code
             String(r.plan ?? "")
               .toLowerCase()
               .includes(q) ||
@@ -276,7 +286,9 @@ export default function UserDashboard() {
             `${locationName ?? "Mailroom Service"} #${r.id?.slice(0, 8)}`;
           return {
             id: r.id,
+            mailroom_code: r.mailroom_code ?? null, // <--- Added
             name,
+            email: r.email ?? null, // <--- Added
             plan: planName,
             location: locationName,
             created_at: created,
@@ -317,7 +329,6 @@ export default function UserDashboard() {
     </Table.Th>
   );
 
-  // UPDATED: Calculate stats based on actual packages inside the registrations
   const stats = useMemo(() => {
     if (!rows) return { stored: 0, requests: 0, released: 0 };
 
@@ -326,12 +337,9 @@ export default function UserDashboard() {
     let released = 0;
 
     rows.forEach((row) => {
-      // Access packages from the raw data
-      // Ensure your API /api/mailroom/registrations selects 'packages:mailroom_packages(id, status)'
       const packages = row.raw?.packages;
 
       if (Array.isArray(packages)) {
-        // Use a Set to ensure we don't double count if the API returns duplicates
         const uniqueIds = new Set();
 
         packages.forEach((p: any) => {
@@ -426,7 +434,7 @@ export default function UserDashboard() {
       <Paper p="md" radius="md" withBorder shadow="sm">
         <Group justify="space-between" mb="md">
           <TextInput
-            placeholder="Search by name, plan or location..."
+            placeholder="Search by name, code, email..."
             leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
@@ -439,7 +447,6 @@ export default function UserDashboard() {
               </ActionIcon>
             </Tooltip>
 
-            {/* UPDATED: Working Filter Popover */}
             <Popover width={300} position="bottom-end" withArrow shadow="md">
               <Popover.Target>
                 <Tooltip label="Filter List">
@@ -533,7 +540,13 @@ export default function UserDashboard() {
           <Table verticalSpacing="sm" striped highlightOnHover withTableBorder>
             <Table.Thead>
               <Table.Tr>
+                {visibleColumns.mailroom_code && (
+                  <ThSortable col="mailroom_code" label="Code" />
+                )}
                 {visibleColumns.name && <ThSortable col="name" label="Name" />}
+                {visibleColumns.email && (
+                  <ThSortable col="email" label="Email" />
+                )}
                 {visibleColumns.plan && <ThSortable col="plan" label="Plan" />}
                 {visibleColumns.location && (
                   <ThSortable col="location" label="Location" />
@@ -556,7 +569,7 @@ export default function UserDashboard() {
             <Table.Tbody>
               {loading || rows === null ? (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
+                  <Table.Td colSpan={9}>
                     <Stack align="center" py="xl">
                       <Loader size="sm" />
                       <Text size="sm" c="dimmed">
@@ -567,7 +580,7 @@ export default function UserDashboard() {
                 </Table.Tr>
               ) : error ? (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
+                  <Table.Td colSpan={9}>
                     <Stack align="center" py="xl">
                       <Text c="red">{error}</Text>
                     </Stack>
@@ -575,7 +588,7 @@ export default function UserDashboard() {
                 </Table.Tr>
               ) : filtered.length === 0 ? (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
+                  <Table.Td colSpan={9}>
                     <Stack align="center" py="xl">
                       <ThemeIcon
                         size={48}
@@ -592,11 +605,29 @@ export default function UserDashboard() {
               ) : (
                 filtered.map((r) => (
                   <Table.Tr key={r.id}>
+                    {visibleColumns.mailroom_code && (
+                      <Table.Td>
+                        {r.mailroom_code ? (
+                          <Badge variant="outline" color="violet" size="sm">
+                            {r.mailroom_code}
+                          </Badge>
+                        ) : (
+                          <Text c="dimmed" size="sm">
+                            —
+                          </Text>
+                        )}
+                      </Table.Td>
+                    )}
                     {visibleColumns.name && (
                       <Table.Td>
                         <Text fw={500} size="sm">
                           {r.name}
                         </Text>
+                      </Table.Td>
+                    )}
+                    {visibleColumns.email && (
+                      <Table.Td>
+                        <Text size="sm">{r.email ?? "—"}</Text>
                       </Table.Td>
                     )}
                     {visibleColumns.plan && (

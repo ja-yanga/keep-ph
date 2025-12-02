@@ -15,7 +15,6 @@ import {
   Stack,
   TextInput,
   Tooltip,
-  Switch,
   Textarea,
   Text,
   FileInput,
@@ -47,6 +46,7 @@ interface Registration {
   id: string;
   full_name: string;
   email: string;
+  mailroom_code?: string | null;
 }
 
 interface Locker {
@@ -60,7 +60,7 @@ interface AssignedLocker {
   id: string;
   registration_id: string;
   locker_id: string;
-  status?: "Empty" | "Normal" | "Near Full" | "Full"; // <--- Add this
+  status?: "Empty" | "Normal" | "Near Full" | "Full";
   locker?: Locker;
 }
 
@@ -73,7 +73,6 @@ interface Package {
   status: string;
   notes?: string;
   image_url?: string;
-  mailroom_full: boolean;
   received_at: string;
   registration?: Registration;
   locker?: Locker;
@@ -116,7 +115,6 @@ export default function MailroomPackages() {
     package_type: "Parcel",
     status: "STORED",
     notes: "",
-    mailroom_full: false,
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -141,7 +139,7 @@ export default function MailroomPackages() {
   const [isDisposing, setIsDisposing] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<string | null>("requests");
+  const [activeTab, setActiveTab] = useState<string | null>("active");
 
   // New state for locker capacity
   const [lockerCapacity, setLockerCapacity] = useState<
@@ -213,9 +211,6 @@ export default function MailroomPackages() {
       );
       if (assignment && assignment.status) {
         setLockerCapacity(assignment.status);
-      } else {
-        // Fallback
-        setLockerCapacity(pkg.mailroom_full ? "Full" : "Normal");
       }
 
       setFormData({
@@ -225,7 +220,6 @@ export default function MailroomPackages() {
         package_type: pkg.package_type,
         status: pkg.status,
         notes: pkg.notes || "",
-        mailroom_full: pkg.mailroom_full,
       });
     } else {
       setEditingPackage(null);
@@ -237,7 +231,6 @@ export default function MailroomPackages() {
         package_type: "Parcel",
         status: "STORED",
         notes: "",
-        mailroom_full: false,
       });
     }
     open();
@@ -287,7 +280,6 @@ export default function MailroomPackages() {
       // We cast to 'any' to allow adding the optional locker_status field
       const payload: any = {
         ...formData,
-        mailroom_full: lockerCapacity === "Full", // Sync boolean
       };
 
       // Only send locker_status when ADDING a package
@@ -371,7 +363,7 @@ export default function MailroomPackages() {
         package_type: packageToDispose.package_type,
         status: "DISPOSED",
         notes: packageToDispose.notes,
-        mailroom_full: packageToDispose.mailroom_full,
+
         locker_status: lockerCapacity, // <--- Send the new status
       };
 
@@ -609,6 +601,9 @@ export default function MailroomPackages() {
 
         <Tabs value={activeTab} onChange={setActiveTab} mb="md">
           <Tabs.List>
+            <Tabs.Tab value="active" leftSection={<IconPackage size={16} />}>
+              Active Inventory
+            </Tabs.Tab>
             <Tabs.Tab
               value="requests"
               leftSection={<IconAlertCircle size={16} />}
@@ -621,9 +616,6 @@ export default function MailroomPackages() {
               }
             >
               Pending Requests
-            </Tabs.Tab>
-            <Tabs.Tab value="active" leftSection={<IconPackage size={16} />}>
-              Active Inventory
             </Tabs.Tab>
             <Tabs.Tab value="released" leftSection={<IconCheck size={16} />}>
               Released
@@ -836,10 +828,20 @@ export default function MailroomPackages() {
             searchable
             data={registrations.map((r) => ({
               value: r.id,
-              label: `${r.full_name} (${r.email})`,
+              // CHANGED: Include mailroom_code in the label
+              label: `${r.full_name} ${
+                r.mailroom_code ? `(${r.mailroom_code})` : ""
+              } - ${r.email}`,
             }))}
             value={formData.registration_id}
             onChange={(val) => handleRegistrationChange(val)}
+            // CHANGED: Custom filter to search by code, name, or email
+            filter={({ options, search }) => {
+              const q = search.toLowerCase().trim();
+              return (options as any).filter((option: any) =>
+                option.label.toLowerCase().includes(q)
+              );
+            }}
           />
           <Select
             label="Assign Locker"
@@ -951,16 +953,7 @@ export default function MailroomPackages() {
               setFormData({ ...formData, notes: e.currentTarget.value })
             }
           />
-          <Switch
-            label="Mailroom Full?"
-            checked={formData.mailroom_full}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                mailroom_full: e.currentTarget.checked,
-              })
-            }
-          />
+
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={close}>
               Cancel

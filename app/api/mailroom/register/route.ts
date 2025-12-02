@@ -101,6 +101,18 @@ export async function POST(req: Request) {
     }
 
     // --- Create registration ---
+    // 1. Generate a Code (e.g., KPH-A1B2)
+    function generateCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I, O, 0, 1 to avoid confusion
+      let result = "";
+      for (let i = 0; i < 4; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return `KPH-${result}`;
+    }
+
+    const mailroom_code = generateCode();
+
     const registrationRecord = {
       user_id: userId,
       full_name: full_name || null,
@@ -112,6 +124,7 @@ export async function POST(req: Request) {
       locker_qty: lockerQty,
       months: Number(months) || 1,
       notes: notes ?? null,
+      mailroom_code: mailroom_code,
     };
 
     const { data: registration, error: regError } = await client

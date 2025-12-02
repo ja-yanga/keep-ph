@@ -18,7 +18,8 @@ import {
   Badge,
   ActionIcon,
   SimpleGrid,
-  Select, // Ensure Select is imported
+  Select,
+  Alert, // <--- Added
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -27,6 +28,8 @@ import {
   IconEdit,
   IconSearch,
   IconPlus,
+  IconAlertCircle, // <--- Added
+  IconCheck, // <--- Added
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -34,7 +37,7 @@ import { DataTable } from "mantine-datatable";
 type Location = {
   id: string;
   name: string;
-  code?: string | null; // Add this
+  code?: string | null;
   region?: string | null;
   city?: string | null;
   barangay?: string | null;
@@ -68,10 +71,14 @@ export default function MailroomLocations() {
   const [editLocation, setEditLocation] = useState<Location | null>(null);
   const [editing, setEditing] = useState(false);
 
+  // NEW: Alert States
+  const [formError, setFormError] = useState<string | null>(null);
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+
   const form = useForm({
     initialValues: {
       name: "",
-      code: "", // Add this
+      code: "",
       region: "",
       city: "",
       barangay: "",
@@ -83,7 +90,7 @@ export default function MailroomLocations() {
   const editForm = useForm({
     initialValues: {
       name: "",
-      code: "", // Add this
+      code: "",
       region: "",
       city: "",
       barangay: "",
@@ -100,6 +107,23 @@ export default function MailroomLocations() {
   useEffect(() => {
     setPage(1);
   }, [search, filterRegion, filterCity, sortBy]);
+
+  // Reset form error when modals open/close
+  useEffect(() => {
+    if (createOpen || editOpen) {
+      setFormError(null);
+    }
+  }, [createOpen, editOpen]);
+
+  // Auto-dismiss global success alert after 5 seconds
+  useEffect(() => {
+    if (globalSuccess) {
+      const timer = setTimeout(() => {
+        setGlobalSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [globalSuccess]);
 
   const clearFilters = () => {
     setSearch("");
@@ -135,10 +159,11 @@ export default function MailroomLocations() {
   // create handler
   const handleCreate = form.onSubmit(async (values) => {
     setCreating(true);
+    setFormError(null); // Clear previous errors
     try {
       const payload = {
         name: values.name,
-        code: values.code || null, // Add this
+        code: values.code || null,
         region: values.region || null,
         city: values.city || null,
         barangay: values.barangay || null,
@@ -155,22 +180,15 @@ export default function MailroomLocations() {
         throw new Error(json?.error || "Failed to create location");
       }
 
-      notifications.show({
-        title: "Success",
-        message: "Location created successfully",
-        color: "green",
-      });
-
+      // Success: Close modal and show global success
+      setGlobalSuccess("Location created successfully!");
       setCreateOpen(false);
       form.reset();
       fetchData();
     } catch (err: any) {
       console.error("create error", err);
-      notifications.show({
-        title: "Error",
-        message: err?.message ?? "Failed to create location",
-        color: "red",
-      });
+      // Error: Keep modal open and show error inside
+      setFormError(err?.message ?? "Failed to create location");
     } finally {
       setCreating(false);
     }
@@ -198,7 +216,7 @@ export default function MailroomLocations() {
     setEditLocation(loc);
     editForm.setValues({
       name: loc.name ?? "",
-      code: loc.code ?? "", // Add this
+      code: loc.code ?? "",
       region: loc.region ?? "",
       city: loc.city ?? "",
       barangay: loc.barangay ?? "",
@@ -212,19 +230,16 @@ export default function MailroomLocations() {
   const handleEdit = editForm.onSubmit(async (values) => {
     if (!editLocation) return;
     if (!editLocation.id) {
-      notifications.show({
-        title: "Error",
-        message: "Missing location id. Cannot save changes.",
-        color: "red",
-      });
+      setFormError("Missing location id. Cannot save changes.");
       return;
     }
 
     setEditing(true);
+    setFormError(null);
     try {
       const payload = {
         name: values.name,
-        code: values.code || null, // Add this
+        code: values.code || null,
         region: values.region || null,
         city: values.city || null,
         barangay: values.barangay || null,
@@ -243,22 +258,15 @@ export default function MailroomLocations() {
         throw new Error(json?.error || "Failed to update location");
       }
 
-      notifications.show({
-        title: "Success",
-        message: "Location updated successfully",
-        color: "green",
-      });
-
+      // Success: Close modal and show global success
+      setGlobalSuccess("Location updated successfully!");
       setEditOpen(false);
       setEditLocation(null);
       fetchData();
     } catch (err: any) {
       console.error("edit error", err);
-      notifications.show({
-        title: "Error",
-        message: err?.message ?? "Failed to update location",
-        color: "red",
-      });
+      // Error: Keep modal open and show error inside
+      setFormError(err?.message ?? "Failed to update location");
     } finally {
       setEditing(false);
     }
@@ -312,6 +320,20 @@ export default function MailroomLocations() {
 
   return (
     <Stack>
+      {/* GLOBAL SUCCESS ALERT */}
+      {globalSuccess && (
+        <Alert
+          variant="light"
+          color="green"
+          title="Success"
+          icon={<IconCheck size={16} />}
+          withCloseButton
+          onClose={() => setGlobalSuccess(null)}
+        >
+          {globalSuccess}
+        </Alert>
+      )}
+
       <Paper p="md" radius="md" withBorder shadow="sm">
         <Group justify="space-between" mb="md">
           <Group style={{ flex: 1 }}>
@@ -371,7 +393,10 @@ export default function MailroomLocations() {
             </Tooltip>
             <Button
               leftSection={<IconPlus size={16} />}
-              onClick={() => setCreateOpen(true)}
+              onClick={() => {
+                setCreateOpen(true);
+                setGlobalSuccess(null); // Clear success when starting new action
+              }}
             >
               Create
             </Button>
@@ -401,7 +426,7 @@ export default function MailroomLocations() {
               width: 100,
               render: ({ code }: Location) =>
                 code ? <Badge variant="outline">{code}</Badge> : "—",
-            }, // Add Code column
+            },
             {
               accessor: "region",
               title: "Region",
@@ -454,7 +479,10 @@ export default function MailroomLocations() {
                     <ActionIcon
                       variant="subtle"
                       color="blue"
-                      onClick={() => openEdit(loc)}
+                      onClick={() => {
+                        openEdit(loc);
+                        setGlobalSuccess(null); // Clear success when starting new action
+                      }}
                     >
                       <IconEdit size={16} />
                     </ActionIcon>
@@ -476,6 +504,20 @@ export default function MailroomLocations() {
       >
         <form onSubmit={handleCreate}>
           <Stack>
+            {/* ERROR ALERT INSIDE MODAL */}
+            {formError && (
+              <Alert
+                variant="light"
+                color="red"
+                title="Error"
+                icon={<IconAlertCircle size={16} />}
+                withCloseButton
+                onClose={() => setFormError(null)}
+              >
+                {formError}
+              </Alert>
+            )}
+
             <TextInput
               required
               label="Name"
@@ -620,6 +662,20 @@ export default function MailroomLocations() {
       >
         <form onSubmit={handleEdit}>
           <Stack>
+            {/* ERROR ALERT INSIDE MODAL */}
+            {formError && (
+              <Alert
+                variant="light"
+                color="red"
+                title="Error"
+                icon={<IconAlertCircle size={16} />}
+                withCloseButton
+                onClose={() => setFormError(null)}
+              >
+                {formError}
+              </Alert>
+            )}
+
             <TextInput
               label="Name"
               required

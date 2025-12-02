@@ -19,7 +19,7 @@ import {
   Divider,
   Grid,
   Table,
-  Tabs, // <--- Added Tabs
+  Tabs,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -32,7 +32,7 @@ import {
   IconInfoCircle,
   IconPhone,
   IconRefresh,
-  IconUsers, // <--- Added Icons
+  IconUsers,
   IconUserCheck,
   IconUserOff,
 } from "@tabler/icons-react";
@@ -43,6 +43,7 @@ import { useDisclosure } from "@mantine/hooks";
 
 interface Registration {
   id: string;
+  mailroom_code: string | null;
   full_name: string;
   email: string;
   phone_number?: string;
@@ -74,13 +75,13 @@ interface AssignedLocker {
   id: string;
   registration_id: string;
   locker_id: string;
-  status?: "Empty" | "Normal" | "Near Full" | "Full"; // <--- Add this field
+  status?: "Empty" | "Normal" | "Near Full" | "Full";
 }
 
 export default function MailroomRegistrations() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]); // Add plans state
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [assignments, setAssignments] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -95,10 +96,10 @@ export default function MailroomRegistrations() {
   const [selectedUser, setSelectedUser] = useState<Registration | null>(null);
   const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [refreshingStatus, setRefreshingStatus] = useState(false); // <--- Add this
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
 
   // NEW: Tab State
-  const [activeTab, setActiveTab] = useState<string | null>("active");
+  const [activeTab, setActiveTab] = useState<string | null>("all");
 
   useEffect(() => {
     fetchData();
@@ -243,7 +244,8 @@ export default function MailroomRegistrations() {
     const q = search.toLowerCase();
     const matchesSearch =
       r.full_name.toLowerCase().includes(q) ||
-      r.email.toLowerCase().includes(q);
+      r.email.toLowerCase().includes(q) ||
+      (r.mailroom_code && r.mailroom_code.toLowerCase().includes(q)); // <--- Add Search by Code
 
     const isActive = isRegistrationActive(r);
 
@@ -347,6 +349,28 @@ export default function MailroomRegistrations() {
           recordsPerPageOptions={[10, 20, 50]}
           onRecordsPerPageChange={setPageSize}
           columns={[
+            // NEW COLUMN: Mailroom Code
+            {
+              accessor: "mailroom_code",
+              title: "Mailroom Code",
+              width: 140,
+              render: (r) =>
+                r.mailroom_code ? (
+                  <Badge
+                    size="md"
+                    variant="light"
+                    color="violet"
+                    radius="sm"
+                    style={{ textTransform: "none", fontSize: "13px" }}
+                  >
+                    {r.mailroom_code}
+                  </Badge>
+                ) : (
+                  <Text size="sm" c="dimmed" fs="italic">
+                    Pending
+                  </Text>
+                ),
+            },
             {
               accessor: "full_name",
               title: "User Details",
@@ -357,6 +381,7 @@ export default function MailroomRegistrations() {
                     {r.full_name.charAt(0)}
                   </Avatar>
                   <Stack gap={0}>
+                    {/* Removed Badge from here */}
                     <Text size="sm" fw={500}>
                       {r.full_name}
                     </Text>

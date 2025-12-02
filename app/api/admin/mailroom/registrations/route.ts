@@ -14,6 +14,7 @@ export async function GET(req: Request) {
         `
         id,
         user_id,
+        mailroom_code,
         full_name,
         email,
         mobile,

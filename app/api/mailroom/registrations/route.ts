@@ -76,6 +76,7 @@ export async function GET(req: Request) {
         full_name,
         email,
         mobile,
+        mailroom_code,
         mailroom_locations ( id, name, city, region, barangay, zip ),
         mailroom_plans ( id, name, price ),
         packages:mailroom_packages ( id, status ) 

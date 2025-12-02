@@ -110,9 +110,12 @@ export default function MailroomLockers() {
         fetch("/api/admin/mailroom/assigned-lockers"),
       ]);
 
+      let fetchedLockers: Locker[] = [];
+      let fetchedAssignments: AssignedLocker[] = [];
+
       if (lockersRes.ok) {
         const data = await lockersRes.json();
-        setLockers(Array.isArray(data) ? data : data.data || []);
+        fetchedLockers = Array.isArray(data) ? data : data.data || [];
       }
       if (locationsRes.ok) {
         const data = await locationsRes.json();
@@ -120,8 +123,57 @@ export default function MailroomLockers() {
       }
       if (assignedRes.ok) {
         const data = await assignedRes.json();
-        setAssignedLockers(Array.isArray(data) ? data : data.data || []);
+        fetchedAssignments = Array.isArray(data) ? data : data.data || [];
       }
+
+      // --- AUTO-FIX LOGIC ---
+      // If both fetches succeeded, check for lockers marked 'Occupied' but have no assignment
+      if (lockersRes.ok && assignedRes.ok) {
+        const assignedLockerIds = new Set(
+          fetchedAssignments.map((a) => a.locker_id)
+        );
+
+        const ghostLockers = fetchedLockers.filter(
+          (l) => !l.is_available && !assignedLockerIds.has(l.id)
+        );
+
+        if (ghostLockers.length > 0) {
+          console.log("Fixing ghost lockers:", ghostLockers);
+
+          // Update them in the database
+          await Promise.all(
+            ghostLockers.map((l) =>
+              fetch(`/api/admin/mailroom/lockers/${l.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  locker_code: l.locker_code,
+                  location_id: l.location_id,
+                  is_available: true, // Force available
+                }),
+              })
+            )
+          );
+
+          notifications.show({
+            title: "System Cleanup",
+            message: `Automatically freed ${ghostLockers.length} lockers that had no active assignment.`,
+            color: "orange",
+            icon: <IconLockOpen size={16} />,
+          });
+
+          // Update local state immediately so UI reflects the fix
+          fetchedLockers = fetchedLockers.map((l) =>
+            ghostLockers.find((g) => g.id === l.id)
+              ? { ...l, is_available: true }
+              : l
+          );
+        }
+      }
+      // ----------------------
+
+      setLockers(fetchedLockers);
+      setAssignedLockers(fetchedAssignments);
     } catch (error) {
       console.error("Failed to fetch data", error);
       notifications.show({
