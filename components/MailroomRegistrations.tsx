@@ -19,6 +19,7 @@ import {
   Divider,
   Grid,
   Table,
+  Tabs, // <--- Added Tabs
 } from "@mantine/core";
 import {
   IconSearch,
@@ -30,7 +31,10 @@ import {
   IconTrash,
   IconInfoCircle,
   IconPhone,
-  IconRefresh, // <--- Add this
+  IconRefresh,
+  IconUsers, // <--- Added Icons
+  IconUserCheck,
+  IconUserOff,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -43,13 +47,11 @@ interface Registration {
   email: string;
   phone_number?: string;
   created_at: string;
-  // New fields from schema
   months: number;
   locker_qty: number;
   location_id: string;
   plan_id: string;
-  mailroom_status: boolean; // <--- Added this
-  // Optional joined fields if your API returns them, otherwise we fetch separately
+  mailroom_status: boolean;
   location_name?: string;
   plan_name?: string;
 }
@@ -95,9 +97,17 @@ export default function MailroomRegistrations() {
   const [submitting, setSubmitting] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false); // <--- Add this
 
+  // NEW: Tab State
+  const [activeTab, setActiveTab] = useState<string | null>("active");
+
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Reset page when tab changes
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, search]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -219,12 +229,31 @@ export default function MailroomRegistrations() {
     }
   };
 
+  // Helper to determine active status
+  const isRegistrationActive = (r: Registration) => {
+    if (r.mailroom_status !== null && r.mailroom_status !== undefined) {
+      return r.mailroom_status;
+    }
+    const expiresAt = dayjs(r.created_at).add(r.months, "month");
+    return !dayjs().isAfter(expiresAt);
+  };
+
   // Filter logic
   const filteredRegistrations = registrations.filter((r) => {
     const q = search.toLowerCase();
-    return (
-      r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)
-    );
+    const matchesSearch =
+      r.full_name.toLowerCase().includes(q) ||
+      r.email.toLowerCase().includes(q);
+
+    const isActive = isRegistrationActive(r);
+
+    // Tab Logic
+    let matchesTab = true;
+    if (activeTab === "active") matchesTab = isActive;
+    if (activeTab === "inactive") matchesTab = !isActive;
+    // if activeTab === "all", matchesTab remains true
+
+    return matchesSearch && matchesTab;
   });
 
   const paginatedRegistrations = filteredRegistrations.slice(
@@ -287,6 +316,21 @@ export default function MailroomRegistrations() {
           </Badge>
         </Group>
 
+        {/* NEW: Tabs Component */}
+        <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+          <Tabs.List>
+            <Tabs.Tab value="all" leftSection={<IconUsers size={16} />}>
+              All Users
+            </Tabs.Tab>
+            <Tabs.Tab value="active" leftSection={<IconUserCheck size={16} />}>
+              Active
+            </Tabs.Tab>
+            <Tabs.Tab value="inactive" leftSection={<IconUserOff size={16} />}>
+              Inactive
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
+
         <DataTable
           withTableBorder
           borderRadius="sm"
@@ -331,14 +375,7 @@ export default function MailroomRegistrations() {
               title: "Status",
               width: 120,
               render: (r) => {
-                // Use DB field if available, otherwise fallback to date calculation
-                let isActive = r.mailroom_status;
-
-                if (isActive === null || isActive === undefined) {
-                  const expiresAt = dayjs(r.created_at).add(r.months, "month");
-                  isActive = !dayjs().isAfter(expiresAt);
-                }
-
+                const isActive = isRegistrationActive(r);
                 return (
                   <Badge color={isActive ? "green" : "red"} variant="light">
                     {isActive ? "Active" : "Inactive"}
@@ -378,7 +415,6 @@ export default function MailroomRegistrations() {
               render: (r) => (
                 <Group gap={4}>
                   <IconMapPin size={14} color="gray" />
-                  {/* Note: You might need to fetch location name or map ID to name */}
                   <Text size="sm">{r.location_name || "Main Branch"}</Text>
                 </Group>
               ),

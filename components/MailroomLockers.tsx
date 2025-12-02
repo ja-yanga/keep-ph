@@ -17,8 +17,8 @@ import {
   TextInput,
   Title,
   Tooltip,
-  Switch,
-  Box,
+  SegmentedControl,
+  Tabs, // <--- Added Tabs
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -28,7 +28,8 @@ import {
   IconTrash,
   IconLock,
   IconLockOpen,
-  IconUser,
+  IconBox,
+  IconLayoutGrid, // <--- Added Icon
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -50,11 +51,7 @@ interface AssignedLocker {
   id: string;
   registration_id: string;
   locker_id: string;
-  status: "Empty" | "Normal" | "Near Full" | "Full"; // <--- Updated to include Empty
-  locker?: {
-    id: string;
-    locker_code: string;
-  };
+  status: "Normal" | "Near Full" | "Full";
   registration?: {
     id: string;
     full_name: string;
@@ -69,15 +66,14 @@ export default function MailroomLockers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // New Filter States
   const [filterLocation, setFilterLocation] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
-  // Pagination state
+  // CHANGED: Replaced filterStatus with activeTab
+  const [activeTab, setActiveTab] = useState<string | null>("all");
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Modal state
   const [opened, { open, close }] = useDisclosure(false);
   const [editingLocker, setEditingLocker] = useState<Locker | null>(null);
   const [formData, setFormData] = useState({
@@ -85,40 +81,46 @@ export default function MailroomLockers() {
     location_id: "",
     is_available: true,
   });
+
+  const [capacityStatus, setCapacityStatus] = useState<string>("Normal");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Reset page when search changes
   useEffect(() => {
     setPage(1);
-  }, [search, filterLocation, filterStatus]); // Add filters to dependency
+  }, [search, filterLocation, activeTab]); // Updated dependency
 
   const clearFilters = () => {
     setSearch("");
     setFilterLocation(null);
-    setFilterStatus(null);
+    setActiveTab("all");
   };
 
-  const hasFilters = search || filterLocation || filterStatus;
+  const hasFilters = search || filterLocation || activeTab !== "all";
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [lockersRes, locationsRes] = await Promise.all([
+      const [lockersRes, locationsRes, assignedRes] = await Promise.all([
         fetch("/api/admin/mailroom/lockers"),
         fetch("/api/admin/mailroom/locations"),
+        fetch("/api/admin/mailroom/assigned-lockers"),
       ]);
 
       if (lockersRes.ok) {
         const data = await lockersRes.json();
-        setLockers(data);
+        setLockers(Array.isArray(data) ? data : data.data || []);
       }
       if (locationsRes.ok) {
         const data = await locationsRes.json();
-        setLocations(Array.isArray(data.data) ? data.data : data);
+        setLocations(Array.isArray(data) ? data : data.data || []);
+      }
+      if (assignedRes.ok) {
+        const data = await assignedRes.json();
+        setAssignedLockers(Array.isArray(data) ? data : data.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch data", error);
@@ -140,6 +142,9 @@ export default function MailroomLockers() {
         location_id: locker.location_id,
         is_available: locker.is_available,
       });
+
+      const assignment = assignedLockers.find((a) => a.locker_id === locker.id);
+      setCapacityStatus(assignment?.status || "Normal");
     } else {
       setEditingLocker(null);
       setFormData({
@@ -147,6 +152,7 @@ export default function MailroomLockers() {
         location_id: "",
         is_available: true,
       });
+      setCapacityStatus("Normal");
     }
     open();
   };
@@ -175,7 +181,23 @@ export default function MailroomLockers() {
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) throw new Error("Failed to save locker");
+
+      const assignment = editingLocker
+        ? assignedLockers.find((a) => a.locker_id === editingLocker.id)
+        : null;
+
+      if (editingLocker && assignment && capacityStatus !== assignment.status) {
+        const statusRes = await fetch(
+          `/api/admin/mailroom/assigned-lockers/${assignment.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: capacityStatus }),
+          }
+        );
+        if (!statusRes.ok) console.error("Failed to update capacity status");
+      }
 
       notifications.show({
         title: "Success",
@@ -184,7 +206,7 @@ export default function MailroomLockers() {
       });
 
       close();
-      fetchData(); // Refresh list
+      fetchData();
     } catch (error) {
       console.error(error);
       notifications.show({
@@ -233,10 +255,11 @@ export default function MailroomLockers() {
       ? l.location_id === filterLocation
       : true;
 
+    // CHANGED: Tab Logic
     const matchesStatus =
-      filterStatus === "available"
+      activeTab === "available"
         ? l.is_available
-        : filterStatus === "occupied"
+        : activeTab === "occupied"
         ? !l.is_available
         : true;
 
@@ -248,7 +271,6 @@ export default function MailroomLockers() {
     page * pageSize
   );
 
-  // Helper to find assignment for the current locker being edited
   const activeAssignment = editingLocker
     ? assignedLockers.find((a) => a.locker_id === editingLocker.id)
     : null;
@@ -273,17 +295,8 @@ export default function MailroomLockers() {
               clearable
               style={{ width: 200 }}
             />
-            <Select
-              placeholder="Filter by Status"
-              data={[
-                { value: "available", label: "Available" },
-                { value: "occupied", label: "Occupied" },
-              ]}
-              value={filterStatus}
-              onChange={setFilterStatus}
-              clearable
-              style={{ width: 150 }}
-            />
+            {/* Removed Status Select */}
+
             {hasFilters && (
               <Button
                 variant="subtle"
@@ -302,6 +315,24 @@ export default function MailroomLockers() {
             Add Locker
           </Button>
         </Group>
+
+        {/* NEW: Tabs for Status */}
+        <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+          <Tabs.List>
+            <Tabs.Tab value="all" leftSection={<IconLayoutGrid size={16} />}>
+              All Lockers
+            </Tabs.Tab>
+            <Tabs.Tab value="occupied" leftSection={<IconLock size={16} />}>
+              Occupied
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="available"
+              leftSection={<IconLockOpen size={16} />}
+            >
+              Available
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
 
         <DataTable
           withTableBorder
@@ -346,6 +377,39 @@ export default function MailroomLockers() {
               ),
             },
             {
+              accessor: "capacity",
+              title: "Capacity Status",
+              width: 150,
+              render: (locker: Locker) => {
+                const assignment = Array.isArray(assignedLockers)
+                  ? assignedLockers.find((a) => a.locker_id === locker.id)
+                  : null;
+
+                if (!assignment)
+                  return (
+                    <Text size="sm" c="dimmed">
+                      —
+                    </Text>
+                  );
+
+                return (
+                  <Badge
+                    color={
+                      assignment.status === "Full"
+                        ? "red"
+                        : assignment.status === "Near Full"
+                        ? "orange"
+                        : "blue"
+                    }
+                    variant="outline"
+                    leftSection={<IconBox size={12} />}
+                  >
+                    {assignment.status || "Normal"}
+                  </Badge>
+                );
+              },
+            },
+            {
               accessor: "actions",
               title: "Actions",
               width: 100,
@@ -386,40 +450,6 @@ export default function MailroomLockers() {
         centered
       >
         <Stack>
-          {/* NEW: Show Status if Locker is Assigned */}
-          {activeAssignment && (
-            <Paper
-              withBorder
-              p="sm"
-              radius="md"
-              bg="var(--mantine-color-gray-0)"
-            >
-              <Group justify="space-between">
-                <Group gap="xs">
-                  <Text size="sm" fw={600}>
-                    Capacity Status:
-                  </Text>
-                  <Badge
-                    color={
-                      activeAssignment.status === "Full"
-                        ? "red"
-                        : activeAssignment.status === "Near Full"
-                        ? "orange"
-                        : activeAssignment.status === "Empty"
-                        ? "gray"
-                        : "blue"
-                    }
-                  >
-                    {activeAssignment.status || "Normal"}
-                  </Badge>
-                </Group>
-              </Group>
-              <Text size="xs" c="dimmed" mt={4}>
-                Assigned to: {activeAssignment.registration?.full_name}
-              </Text>
-            </Paper>
-          )}
-
           <TextInput
             label="Locker Code"
             placeholder="e.g. A-101"
@@ -439,6 +469,49 @@ export default function MailroomLockers() {
             }
             required
           />
+
+          {activeAssignment && (
+            <Paper
+              withBorder
+              p="sm"
+              radius="md"
+              bg="var(--mantine-color-gray-0)"
+            >
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" fw={600}>
+                    Assigned To:
+                  </Text>
+                  <Text size="sm">
+                    {activeAssignment.registration?.full_name}
+                  </Text>
+                </Group>
+
+                <Text size="sm" fw={600}>
+                  Capacity Status
+                </Text>
+                <SegmentedControl
+                  value={capacityStatus}
+                  onChange={setCapacityStatus}
+                  fullWidth
+                  size="xs"
+                  data={[
+                    { label: "Normal", value: "Normal" },
+                    { label: "Near Full", value: "Near Full" },
+                    { label: "Full", value: "Full" },
+                  ]}
+                  color={
+                    capacityStatus === "Full"
+                      ? "red"
+                      : capacityStatus === "Near Full"
+                      ? "orange"
+                      : "blue"
+                  }
+                />
+              </Stack>
+            </Paper>
+          )}
+
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={close}>
               Cancel

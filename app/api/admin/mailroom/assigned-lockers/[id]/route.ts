@@ -6,15 +6,16 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export async function PUT(
+// CHANGED: Renamed from PUT to PATCH to match frontend request
+export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const id = (await params).id;
   const body = await request.json();
 
-  // Validate status - Added "Empty"
-  const validStatuses = ["Empty", "Normal", "Near Full", "Full"];
+  // Validate status - Removed "Empty" to match schema and frontend
+  const validStatuses = ["Normal", "Near Full", "Full"];
   if (!validStatuses.includes(body.status)) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
