@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react"; // <--- Import Suspense
 import {
   Box,
   Container,
@@ -16,6 +16,7 @@ import {
   Alert,
   Group,
   rem,
+  Loader, // <--- Import Loader
 } from "@mantine/core";
 import { IconAlertCircle, IconAt, IconLock } from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -24,7 +25,8 @@ import SiteFooter from "../../components/Footer";
 import { supabase } from "@/lib/supabaseClient";
 import { useSession } from "@/components/SessionProvider";
 
-export default function SignInPage() {
+// 1. Move the main logic into a separate component
+function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next"); // Get the return URL if it exists
@@ -195,5 +197,14 @@ export default function SignInPage() {
 
       <SiteFooter />
     </Box>
+  );
+}
+
+// 2. Export the wrapper component with Suspense
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <SignInContent />
+    </Suspense>
   );
 }

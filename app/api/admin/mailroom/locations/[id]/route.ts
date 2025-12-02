@@ -8,12 +8,13 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id?: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await req.json().catch(() => ({}));
+    const resolvedParams = await params;
 
-    let id = params?.id ?? body?.id;
+    let id = resolvedParams?.id ?? body?.id;
     if (!id) {
       try {
         const parsed = new URL(req.url);
