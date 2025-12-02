@@ -18,6 +18,8 @@ import {
   SimpleGrid,
   RingProgress,
   Center,
+  Popover, // <--- Add Popover
+  Select, // <--- Add Select
 } from "@mantine/core";
 import {
   IconRefresh,
@@ -69,6 +71,19 @@ export default function UserDashboard() {
     location: null as string | null,
     mailroomStatus: null as string | null,
   });
+
+  // NEW: Derive unique options for the filter dropdowns based on loaded data
+  const filterOptions = useMemo(() => {
+    if (!rows) return { plans: [], locations: [] };
+    const plans = Array.from(
+      new Set(rows.map((r) => r.plan).filter(Boolean))
+    ) as string[];
+    const locations = Array.from(
+      new Set(rows.map((r) => r.location).filter(Boolean))
+    ) as string[];
+    return { plans, locations };
+  }, [rows]);
+
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
     {
       name: true,
@@ -423,16 +438,86 @@ export default function UserDashboard() {
                 <IconRefresh size={18} />
               </ActionIcon>
             </Tooltip>
-            <Tooltip label="Advanced Filters">
-              <ActionIcon
-                variant="light"
-                size="lg"
-                onClick={() => setAdvancedOpen(true)}
-                disabled
-              >
-                <IconFilter size={18} />
-              </ActionIcon>
-            </Tooltip>
+
+            {/* UPDATED: Working Filter Popover */}
+            <Popover width={300} position="bottom-end" withArrow shadow="md">
+              <Popover.Target>
+                <Tooltip label="Filter List">
+                  <ActionIcon
+                    variant={
+                      Object.values(filters).some(Boolean) ? "filled" : "light"
+                    }
+                    size="lg"
+                  >
+                    <IconFilter size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Stack gap="sm">
+                  <Text size="sm" fw={600}>
+                    Filter Registrations
+                  </Text>
+
+                  <Select
+                    label="Plan"
+                    placeholder="Any Plan"
+                    data={filterOptions.plans}
+                    value={filters.plan}
+                    onChange={(val) =>
+                      setFilters((prev) => ({ ...prev, plan: val }))
+                    }
+                    clearable
+                    size="xs"
+                  />
+
+                  <Select
+                    label="Location"
+                    placeholder="Any Location"
+                    data={filterOptions.locations}
+                    value={filters.location}
+                    onChange={(val) =>
+                      setFilters((prev) => ({ ...prev, location: val }))
+                    }
+                    clearable
+                    size="xs"
+                  />
+
+                  <Select
+                    label="Status"
+                    placeholder="Any Status"
+                    data={["ACTIVE", "EXPIRING", "INACTIVE"]}
+                    value={filters.mailroomStatus}
+                    onChange={(val) =>
+                      setFilters((prev) => ({ ...prev, mailroomStatus: val }))
+                    }
+                    clearable
+                    size="xs"
+                  />
+
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    size="xs"
+                    onClick={() =>
+                      setFilters({
+                        plan: null,
+                        location: null,
+                        mailroomStatus: null,
+                      })
+                    }
+                    disabled={
+                      !filters.plan &&
+                      !filters.location &&
+                      !filters.mailroomStatus
+                    }
+                  >
+                    Clear Filters
+                  </Button>
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
+
             <Button
               leftSection={<IconDownload size={16} />}
               variant="outline"
