@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react"; // <--- Import Suspense
+import { useState, Suspense, useEffect } from "react";
 import {
   Box,
   Container,
@@ -16,9 +16,14 @@ import {
   Alert,
   Group,
   rem,
-  Loader, // <--- Import Loader
+  Loader,
 } from "@mantine/core";
-import { IconAlertCircle, IconAt, IconLock } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconAt,
+  IconLock,
+  IconCheck,
+} from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
@@ -29,13 +34,26 @@ import { useSession } from "@/components/SessionProvider";
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next"); // Get the return URL if it exists
+  const next = searchParams.get("next");
 
-  const { refresh } = useSession(); // Get the refresh function
+  const { refresh } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null); // Add error state
+  const [error, setError] = useState<string | null>(null);
+
+  // NEW: State for verification alert
+  const [verified, setVerified] = useState(false);
+
+  // NEW: Check URL hash for implicit flow verification
+  useEffect(() => {
+    // The URL will look like: /signin#access_token=...&type=signup...
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=signup")) {
+      setVerified(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +143,19 @@ function SignInContent() {
             >
               <form onSubmit={handleSubmit}>
                 <Stack gap="md">
+                  {/* NEW: Verification Success Alert */}
+                  {verified && (
+                    <Alert
+                      variant="light"
+                      color="teal"
+                      title="Email Verified"
+                      icon={<IconCheck size={16} />}
+                      radius="md"
+                    >
+                      Your email has been successfully verified. Please log in.
+                    </Alert>
+                  )}
+
                   {error && (
                     <Alert
                       variant="light"
@@ -162,7 +193,12 @@ function SignInContent() {
                       leftSection={<IconLock size={16} color="#868e96" />}
                     />
                     <Group justify="flex-end">
-                      <Anchor href="#" size="sm" fw={500} c="#1A237E">
+                      <Anchor
+                        href="/forgot-password"
+                        size="sm"
+                        fw={500}
+                        c="#1A237E"
+                      >
                         Forgot Password?
                       </Anchor>
                     </Group>

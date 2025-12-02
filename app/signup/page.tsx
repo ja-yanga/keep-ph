@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react"; // <--- Import useEffect
 import {
   Box,
   Container,
@@ -15,8 +15,16 @@ import {
   Center,
   Alert,
   rem,
+  ThemeIcon,
+  Transition, // <--- Import Transition for smooth alert
 } from "@mantine/core";
-import { IconAlertCircle, IconAt, IconLock } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconAt,
+  IconLock,
+  IconMail,
+  IconCheck, // <--- Import IconCheck
+} from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
@@ -30,11 +38,29 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // New state to toggle between Form and Verification View
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  // Resend Logic State
+  const [timer, setTimer] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
+  // Timer Effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timer]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // email validation regex
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError("Please enter a valid email address");
@@ -68,8 +94,9 @@ export default function SignUpPage() {
         return;
       }
 
-      // On successful signup redirect to signin
-      router.push("/signin");
+      // Instead of redirecting, show the verification UI
+      setIsSubmitted(true);
+      setTimer(60); // Start cooldown immediately after signup
     } catch (err) {
       console.error(err);
       setError("An unexpected error occurred");
@@ -78,6 +105,152 @@ export default function SignUpPage() {
     }
   };
 
+  const handleResend = async () => {
+    setResendLoading(true);
+    setResendSuccess(false);
+    try {
+      const res = await fetch("/api/auth/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (res.ok) {
+        setResendSuccess(true);
+        setTimer(60); // Reset timer to 60 seconds
+      } else {
+        // Handle error silently or show a small notification
+        console.error("Failed to resend");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // ----------------------------------------------------------------
+  // VIEW: Verification / Check Email
+  // ----------------------------------------------------------------
+  if (isSubmitted) {
+    return (
+      <Box
+        style={{
+          minHeight: "100dvh",
+          backgroundColor: "#F8F9FA",
+          fontFamily: "Manrope, sans-serif",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Nav />
+        <Center style={{ flex: 1, padding: "4rem 1rem" }}>
+          <Container size="sm">
+            <Stack align="center" gap="xl">
+              {/* Icon */}
+              <ThemeIcon
+                size={80}
+                radius="50%"
+                variant="light"
+                color="indigo"
+                style={{ backgroundColor: "#E8EAF6" }}
+              >
+                <IconMail size={40} color="#1A237E" />
+              </ThemeIcon>
+
+              {/* Headings */}
+              <Stack gap="xs" align="center">
+                <Title
+                  order={1}
+                  style={{
+                    fontWeight: 800,
+                    color: "#1A237E",
+                    fontSize: rem(32),
+                  }}
+                >
+                  Check Your Email
+                </Title>
+                <Text c="dimmed" ta="center" maw={400}>
+                  We&apos;ve sent a verification link to <b>{email}</b>. Please
+                  click the link to activate your account.
+                </Text>
+              </Stack>
+
+              {/* Action Card */}
+              <Paper
+                withBorder
+                shadow="sm"
+                p={30}
+                radius="md"
+                style={{
+                  backgroundColor: "#fff",
+                  borderColor: "#E9ECEF",
+                  width: "100%",
+                  maxWidth: 400,
+                }}
+              >
+                <Stack align="center" gap="md">
+                  {/* Success Alert */}
+                  {resendSuccess && (
+                    <Alert
+                      variant="light"
+                      color="teal"
+                      title="Email Sent"
+                      icon={<IconCheck size={16} />}
+                      withCloseButton
+                      onClose={() => setResendSuccess(false)}
+                      w="100%"
+                    >
+                      A new verification link has been sent.
+                    </Alert>
+                  )}
+
+                  <Text
+                    size="sm"
+                    c="dimmed"
+                    ta="center"
+                    style={{ lineHeight: 1.5 }}
+                  >
+                    Didn&apos;t receive the email? Check your spam folder or
+                    click the button below to send it again.
+                  </Text>
+
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    size="md"
+                    radius="md"
+                    color="indigo"
+                    loading={resendLoading}
+                    disabled={timer > 0}
+                    style={{
+                      borderColor: "#1A237E",
+                      color: "#1A237E",
+                      fontWeight: 600,
+                    }}
+                    onClick={handleResend}
+                  >
+                    {timer > 0
+                      ? `Resend available in ${timer}s`
+                      : "Resend Email"}
+                  </Button>
+
+                  <Anchor href="/signin" size="sm" c="dimmed" mt="xs">
+                    Back to Login
+                  </Anchor>
+                </Stack>
+              </Paper>
+            </Stack>
+          </Container>
+        </Center>
+        <SiteFooter />
+      </Box>
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // VIEW: Sign Up Form (Default)
+  // ----------------------------------------------------------------
   return (
     <Box
       style={{
@@ -88,10 +261,8 @@ export default function SignUpPage() {
         flexDirection: "column",
       }}
     >
-      {/* Header */}
       <Nav />
 
-      {/* Main Section */}
       <Center style={{ flex: 1, padding: "4rem 1rem" }}>
         <Container size="xs" w="100%">
           <Stack gap="lg">
@@ -193,7 +364,6 @@ export default function SignUpPage() {
         </Container>
       </Center>
 
-      {/* Footer */}
       <SiteFooter />
     </Box>
   );

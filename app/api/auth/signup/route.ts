@@ -1,34 +1,36 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
 export async function POST(req: Request) {
   try {
-    const { email, password, first_name, last_name } = await req.json();
+    const body = await req.json();
+    const { email, password } = body;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required" },
+        { status: 400 }
+      );
+    }
 
-    // 1. Initialize Clients
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // 1. Create standard client for Auth (Sign Up)
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Use Service Key for DB inserts if available (bypasses RLS), otherwise fallback to Anon Key
-    const supabaseAdmin = supabaseServiceKey
-      ? createClient(supabaseUrl, supabaseServiceKey)
-      : supabase;
+    // 2. Create Admin client for Database Insert (Bypass RLS)
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const redirectTo = process.env.NEXT_PUBLIC_APP_URL
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/signin`
-      : undefined;
+    const origin = new URL(req.url).origin;
 
-    // 2. Sign Up (Auth)
+    // 3. Sign up the user in Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectTo,
-        // Storing metadata here is a good backup
-        data: { first_name, last_name },
+        emailRedirectTo: `${origin}/signin`,
       },
     });
 
@@ -36,31 +38,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // 3. Create Profile
+    // 4. Manually create the user in public.users table
     if (data.user) {
-      const { error: insertError } = await supabaseAdmin.from("users").insert({
+      // We use empty strings for names because your schema requires them (NOT NULL),
+      // but we don't have them yet. The 'needs_onboarding' flag handles the rest.
+      const { error: dbError } = await supabaseAdmin.from("users").insert({
         id: data.user.id,
-        email,
-        first_name: first_name || "",
-        last_name: last_name || "",
+        email: email,
+        first_name: "", // Placeholder
+        last_name: "", // Placeholder
         role: "user",
         needs_onboarding: true,
       });
 
-      if (insertError) {
-        console.error("Profile insert error:", insertError);
-        // We don't return 500 here because the Auth User was successfully created.
-        // The user can likely fix their profile later via onboarding.
+      if (dbError) {
+        console.error("Error creating public user record:", dbError);
+        // Note: We don't return an error here to the client because the Auth account
+        // was successfully created. The user might just need to contact support
+        // or the app needs to handle the missing row gracefully later.
       }
     }
 
     return NextResponse.json({
-      message: "Signup successful. Please check your email.",
-      user: data,
+      message: "Signup successful, please check your email.",
+      user: data.user,
     });
-  } catch (err) {
+  } catch (err: any) {
+    console.error("Signup error:", err);
     return NextResponse.json(
-      { error: "Something went wrong." },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
