@@ -5,6 +5,7 @@ import "mantine-datatable/styles.layer.css";
 import React, { useEffect, useState } from "react";
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Group,
@@ -36,6 +37,7 @@ import {
   IconUpload,
   IconTruckDelivery,
   IconList,
+  IconCheck, // <--- Added IconCheck
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -130,6 +132,13 @@ export default function MailroomPackages() {
     null
   );
   const [isReleasing, setIsReleasing] = useState(false);
+
+  // NEW: Dispose Modal State
+  const [disposeModalOpen, setDisposeModalOpen] = useState(false);
+  const [packageToDispose, setPackageToDispose] = useState<Package | null>(
+    null
+  );
+  const [isDisposing, setIsDisposing] = useState(false);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<string | null>("requests");
@@ -342,40 +351,47 @@ export default function MailroomPackages() {
     }
   };
 
-  // --- NEW HANDLER FOR DISPOSAL ---
-  const handleConfirmDisposal = async (pkg: Package) => {
-    if (
-      !confirm(
-        `Are you sure you want to confirm disposal for ${pkg.tracking_number}? This will mark it as DISPOSED.`
-      )
-    )
-      return;
+  // --- UPDATED HANDLER FOR DISPOSAL ---
+  const handleConfirmDisposal = (pkg: Package) => {
+    setPackageToDispose(pkg);
+    // Default to "Empty" or "Normal" when disposing, as items are removed
+    setLockerCapacity("Normal");
+    setDisposeModalOpen(true);
+  };
+
+  const handleSubmitDispose = async () => {
+    if (!packageToDispose) return;
+    setIsDisposing(true);
 
     try {
-      // Construct payload with updated status
       const payload = {
-        tracking_number: pkg.tracking_number,
-        registration_id: pkg.registration_id,
-        locker_id: pkg.locker_id,
-        package_type: pkg.package_type,
+        tracking_number: packageToDispose.tracking_number,
+        registration_id: packageToDispose.registration_id,
+        locker_id: packageToDispose.locker_id,
+        package_type: packageToDispose.package_type,
         status: "DISPOSED",
-        notes: pkg.notes,
-        mailroom_full: pkg.mailroom_full,
+        notes: packageToDispose.notes,
+        mailroom_full: packageToDispose.mailroom_full,
+        locker_status: lockerCapacity, // <--- Send the new status
       };
 
-      const res = await fetch(`/api/admin/mailroom/packages/${pkg.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(
+        `/api/admin/mailroom/packages/${packageToDispose.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
       if (!res.ok) throw new Error("Failed to update status");
 
       notifications.show({
         title: "Success",
-        message: "Package marked as DISPOSED",
+        message: "Package marked as DISPOSED and locker status updated",
         color: "green",
       });
+      setDisposeModalOpen(false);
       fetchData();
     } catch (error) {
       console.error(error);
@@ -384,6 +400,8 @@ export default function MailroomPackages() {
         message: "Failed to dispose package",
         color: "red",
       });
+    } finally {
+      setIsDisposing(false);
     }
   };
 
@@ -436,6 +454,8 @@ export default function MailroomPackages() {
   const handleOpenRelease = (pkg: Package) => {
     setPackageToRelease(pkg);
     setReleaseFile(null);
+    // Default to "Normal" or "Empty" when releasing
+    setLockerCapacity("Normal");
     setReleaseModalOpen(true);
   };
 
@@ -447,6 +467,7 @@ export default function MailroomPackages() {
       const formData = new FormData();
       formData.append("file", releaseFile);
       formData.append("packageId", packageToRelease.id);
+      formData.append("lockerStatus", lockerCapacity); // <--- Send new status
 
       const res = await fetch("/api/admin/mailroom/release", {
         method: "POST",
@@ -460,7 +481,7 @@ export default function MailroomPackages() {
 
       notifications.show({
         title: "Success",
-        message: "Package released and proof uploaded",
+        message: "Package released and locker status updated",
         color: "green",
       });
 
@@ -491,10 +512,20 @@ export default function MailroomPackages() {
     const matchesType = filterType ? p.package_type === filterType : true;
 
     // Tab Logic
-    const isRequest = p.status.includes("REQUEST");
-    const matchesTab = activeTab === "requests" ? isRequest : !isRequest;
+    if (activeTab === "requests") {
+      return p.status.includes("REQUEST");
+    }
+    if (activeTab === "active") {
+      return p.status === "STORED";
+    }
+    if (activeTab === "released") {
+      return p.status === "RELEASED" || p.status === "RETRIEVED";
+    }
+    if (activeTab === "disposed") {
+      return p.status === "DISPOSED";
+    }
 
-    return matchesSearch && matchesStatus && matchesType && matchesTab;
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   const paginatedPackages = filteredPackages.slice(
@@ -591,8 +622,14 @@ export default function MailroomPackages() {
             >
               Pending Requests
             </Tabs.Tab>
-            <Tabs.Tab value="inventory" leftSection={<IconList size={16} />}>
-              Inventory & History
+            <Tabs.Tab value="active" leftSection={<IconPackage size={16} />}>
+              Active Inventory
+            </Tabs.Tab>
+            <Tabs.Tab value="released" leftSection={<IconCheck size={16} />}>
+              Released
+            </Tabs.Tab>
+            <Tabs.Tab value="disposed" leftSection={<IconTrash size={16} />}>
+              Disposed
             </Tabs.Tab>
           </Tabs.List>
         </Tabs>
@@ -700,7 +737,7 @@ export default function MailroomPackages() {
               textAlign: "right",
               render: (pkg: Package) => (
                 <Group gap="xs" justify="flex-end">
-                  {/* Action Buttons based on Status */}
+                  {/* Action Buttons based on Status (Requests Only) */}
                   {pkg.status === "REQUEST_TO_SCAN" && (
                     <Tooltip label="Upload Scanned PDF">
                       <Button
@@ -739,7 +776,9 @@ export default function MailroomPackages() {
                     </Tooltip>
                   )}
 
-                  {/* Standard Edit/Delete (Always visible or only on Inventory?) */}
+                  {/* REMOVED: Manual Release/Dispose for "STORED" status */}
+
+                  {/* Standard Edit/Delete */}
                   <Tooltip label="Edit">
                     <ActionIcon
                       variant="subtle"
@@ -986,6 +1025,42 @@ export default function MailroomPackages() {
             onChange={setReleaseFile}
             leftSection={<IconUpload size={16} />}
           />
+
+          {/* NEW: Locker Status Selector */}
+          <Stack gap={4} mt="xs">
+            <Text size="sm" fw={500}>
+              Update Locker Capacity Status
+            </Text>
+            <SegmentedControl
+              value={lockerCapacity}
+              onChange={(val) =>
+                setLockerCapacity(
+                  val as "Empty" | "Normal" | "Near Full" | "Full"
+                )
+              }
+              fullWidth
+              data={[
+                { label: "Empty", value: "Empty" },
+                { label: "Normal", value: "Normal" },
+                { label: "Near Full", value: "Near Full" },
+                { label: "Full", value: "Full" },
+              ]}
+              color={
+                lockerCapacity === "Full"
+                  ? "red"
+                  : lockerCapacity === "Near Full"
+                  ? "orange"
+                  : lockerCapacity === "Empty"
+                  ? "gray"
+                  : "blue"
+              }
+            />
+            <Text size="xs" c="dimmed">
+              Since items are being removed, you might want to set this to
+              "Normal" or "Empty".
+            </Text>
+          </Stack>
+
           <Group justify="flex-end" mt="md">
             <Button
               variant="default"
@@ -1000,6 +1075,73 @@ export default function MailroomPackages() {
               disabled={!releaseFile}
             >
               Upload Proof & Complete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* NEW: Dispose Modal */}
+      <Modal
+        opened={disposeModalOpen}
+        onClose={() => setDisposeModalOpen(false)}
+        title="Confirm Disposal"
+        centered
+      >
+        <Stack>
+          <Alert color="red" icon={<IconTrash size={16} />}>
+            Are you sure you want to mark{" "}
+            <b>{packageToDispose?.tracking_number}</b> as DISPOSED? This action
+            cannot be undone.
+          </Alert>
+
+          {/* NEW: Locker Status Selector */}
+          <Stack gap={4} mt="xs">
+            <Text size="sm" fw={500}>
+              Update Locker Capacity Status
+            </Text>
+            <SegmentedControl
+              value={lockerCapacity}
+              onChange={(val) =>
+                setLockerCapacity(
+                  val as "Empty" | "Normal" | "Near Full" | "Full"
+                )
+              }
+              fullWidth
+              data={[
+                { label: "Empty", value: "Empty" },
+                { label: "Normal", value: "Normal" },
+                { label: "Near Full", value: "Near Full" },
+                { label: "Full", value: "Full" },
+              ]}
+              color={
+                lockerCapacity === "Full"
+                  ? "red"
+                  : lockerCapacity === "Near Full"
+                  ? "orange"
+                  : lockerCapacity === "Empty"
+                  ? "gray"
+                  : "blue"
+              }
+            />
+            <Text size="xs" c="dimmed">
+              Since items are being disposed, you might want to set this to
+              "Normal" or "Empty".
+            </Text>
+          </Stack>
+
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="default"
+              onClick={() => setDisposeModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={handleSubmitDispose}
+              loading={isDisposing}
+            >
+              Confirm Disposal
             </Button>
           </Group>
         </Stack>
