@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import {
+  ActionIcon,
   Box,
   Container,
   Title,
@@ -16,26 +17,63 @@ import {
   Text,
   FileButton,
   Modal,
-  Alert, // Add Alert
+  Alert,
+  Tabs,
+  Progress,
+  Popover,
+  Divider,
+  rem,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { createClient } from "@supabase/supabase-js";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
-import { IconAlertCircle, IconCheck } from "@tabler/icons-react"; // Add Icons
+import {
+  IconAlertCircle,
+  IconCheck,
+  IconUser,
+  IconLock,
+  IconTrash,
+  IconCamera,
+  IconX,
+} from "@tabler/icons-react";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Password Strength Helper
+function PasswordRequirement({
+  meets,
+  label,
+}: {
+  meets: boolean;
+  label: string;
+}) {
+  return (
+    <Text
+      c={meets ? "teal" : "red"}
+      style={{ display: "flex", alignItems: "center" }}
+      mt={7}
+      size="sm"
+    >
+      {meets ? (
+        <IconCheck style={{ width: rem(14), height: rem(14) }} />
+      ) : (
+        <IconX style={{ width: rem(14), height: rem(14) }} />
+      )}
+      <Box ml={10}>{label}</Box>
+    </Text>
+  );
+}
+
 export default function AccountPage() {
   const { session, refresh } = useSession();
 
-  // Modal state for Profile
+  // Modal states
   const [opened, { open, close }] = useDisclosure(false);
-  // Modal state for Password
   const [
     passwordOpened,
     { open: openPasswordModal, close: closePasswordModal },
@@ -48,9 +86,7 @@ export default function AccountPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [avatar, setAvatar] = useState<File | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(
-    "https://lh3.googleusercontent.com/aida-public/AB6AXuDJsdZ9uDbcolOcnMDxQTiA6vxMfSUGQqFHxbijFNSP6Vmp22EOqMCZ3r7hdfpBuFXb_digYU675pokgl_HLjoxj1hdPsgaXcmRvAY4xup2Hx9MEI6PTOOI_5yizPen6aLsW8ExgaIAfHiIqmxpIpzyv252JGnOzJ7mXVViCb5Jlv9K_tRiCbQRmKlGOfHpXYSnerWkBwcFTRUnsHdQ9nx94TO949a6EOb8MNFyQNguRi90Ihl-kXuT0Mrj4aOc8Jsblx6k7lAm4c4"
-  );
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // Profile Feedback
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -61,12 +97,24 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
-
-  // Password Feedback
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const [popoverOpened, setPopoverOpened] = useState(false);
 
-  // Fetch data from session
+  // Password Strength Logic
+  const checks = [
+    { label: "Includes at least 6 characters", meets: newPassword.length > 5 },
+    { label: "Includes number", meets: /[0-9]/.test(newPassword) },
+    { label: "Includes lowercase letter", meets: /[a-z]/.test(newPassword) },
+    { label: "Includes uppercase letter", meets: /[A-Z]/.test(newPassword) },
+  ];
+  const strength = checks.reduce(
+    (acc, requirement) => (!requirement.meets ? acc : acc + 1),
+    0
+  );
+  const color = strength === 4 ? "teal" : strength > 2 ? "yellow" : "red";
+
+  // Fetch data
   useEffect(() => {
     if (session) {
       if (session.user?.email) setEmail(session.user.email);
@@ -83,12 +131,11 @@ export default function AccountPage() {
     }
   };
 
-  // Triggered by form submit (validates required fields first)
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError(null);
     setProfileSuccess(null);
-    open(); // Open confirmation modal
+    open();
   };
 
   const handleConfirmSave = async () => {
@@ -99,8 +146,6 @@ export default function AccountPage() {
 
     try {
       let avatarDataUrl: string | null = null;
-
-      // 1. Convert avatar to Base64 if a new file is selected
       if (avatar) {
         avatarDataUrl = await new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -110,14 +155,13 @@ export default function AccountPage() {
         });
       }
 
-      // 2. Call API to Update Profile (sending the file data)
       const res = await fetch("/api/auth/update-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           first_name: firstName,
           last_name: lastName,
-          avatar_data_url: avatarDataUrl, // Send the data URL
+          avatar_data_url: avatarDataUrl,
         }),
       });
 
@@ -126,7 +170,7 @@ export default function AccountPage() {
         throw new Error(data.error || "Failed to update profile");
       }
 
-      await refresh(); // Refresh session to update UI
+      await refresh();
       close();
       setProfileSuccess("Profile updated successfully!");
     } catch (err: any) {
@@ -138,7 +182,6 @@ export default function AccountPage() {
     }
   };
 
-  // 1. Validate password inputs and open modal
   const handlePasswordSubmit = () => {
     setPasswordError(null);
     setPasswordSuccess(null);
@@ -147,21 +190,18 @@ export default function AccountPage() {
       setPasswordError("Please fill in all password fields.");
       return;
     }
-
     if (newPassword !== confirmPassword) {
       setPasswordError("New passwords do not match.");
       return;
     }
-
-    if (newPassword.length < 6) {
-      setPasswordError("Password must be at least 6 characters.");
+    if (strength < 4) {
+      setPasswordError("Password is too weak.");
       return;
     }
 
     openPasswordModal();
   };
 
-  // 2. Execute API call
   const confirmUpdatePassword = async () => {
     setPasswordLoading(true);
     setPasswordError(null);
@@ -171,21 +211,14 @@ export default function AccountPage() {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
+        body: JSON.stringify({ currentPassword, newPassword }),
       });
 
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update password");
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to update password");
 
       closePasswordModal();
       setPasswordSuccess("Password updated successfully!");
-      // Clear fields
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -209,7 +242,7 @@ export default function AccountPage() {
     >
       <DashboardNav />
 
-      {/* Profile Confirmation Modal */}
+      {/* Modals */}
       <Modal opened={opened} onClose={close} title="Save Changes?" centered>
         <Text size="sm" mb="lg">
           Are you sure you want to update your profile information?
@@ -221,14 +254,14 @@ export default function AccountPage() {
           <Button
             onClick={handleConfirmSave}
             loading={saving}
-            style={{ backgroundColor: "#26316D", color: "white" }}
+            color="blue"
+            // style={{ backgroundColor: "#26316D", color: "white" }}
           >
             Confirm Save
           </Button>
         </Group>
       </Modal>
 
-      {/* Password Confirmation Modal */}
       <Modal
         opened={passwordOpened}
         onClose={closePasswordModal}
@@ -236,8 +269,7 @@ export default function AccountPage() {
         centered
       >
         <Text size="sm" mb="lg">
-          Are you sure you want to update your password? You will need to use
-          the new password next time you sign in.
+          Are you sure you want to update your password?
         </Text>
         <Group justify="flex-end">
           <Button
@@ -250,7 +282,7 @@ export default function AccountPage() {
           <Button
             onClick={confirmUpdatePassword}
             loading={passwordLoading}
-            style={{ backgroundColor: "#26316D", color: "white" }}
+            color="blue"
           >
             Confirm Update
           </Button>
@@ -259,182 +291,235 @@ export default function AccountPage() {
 
       <Box component="main" style={{ flex: 1 }} py="xl">
         <Container size="md">
-          {/* Profile Information Section */}
-          <Paper
-            withBorder
-            p="xl"
-            radius="md"
-            shadow="sm"
-            mb="xl"
-            pos="relative"
-          >
-            <Title order={2} mb="lg" style={{ color: "#1A202C" }}>
-              Profile Information
-            </Title>
+          <Title order={2} mb="lg" c="dark.8">
+            Account Settings
+          </Title>
 
-            {profileError && (
-              <Alert
-                icon={<IconAlertCircle size={16} />}
-                title="Error"
-                color="red"
-                mb="md"
-                withCloseButton
-                onClose={() => setProfileError(null)}
-              >
-                {profileError}
-              </Alert>
-            )}
-            {profileSuccess && (
-              <Alert
-                icon={<IconCheck size={16} />}
-                title="Success"
-                color="teal"
-                mb="md"
-                withCloseButton
-                onClose={() => setProfileSuccess(null)}
-              >
-                {profileSuccess}
-              </Alert>
-            )}
+          <Paper withBorder radius="md" shadow="sm" p="md">
+            <Tabs defaultValue="profile" orientation="horizontal">
+              <Tabs.List mb="lg">
+                <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
+                  Profile
+                </Tabs.Tab>
+                <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
+                  Security
+                </Tabs.Tab>
+              </Tabs.List>
 
-            <form onSubmit={handleFormSubmit}>
-              <Grid gutter="xl">
-                {/* Avatar Column */}
-                <Grid.Col span={{ base: 12, md: 3 }}>
-                  <Stack align="center">
-                    <Avatar
-                      src={avatarUrl}
-                      size={120}
-                      radius={120}
-                      style={{ border: "1px solid #E2E8F0" }}
-                    />
-                    <FileButton
-                      onChange={handleAvatarChange}
-                      accept="image/png,image/jpeg"
-                    >
-                      {(props) => (
-                        <Button
-                          {...props}
-                          variant="subtle"
-                          size="sm"
-                          c="#26316D"
-                          style={{ fontWeight: 500 }}
-                        >
-                          Change Picture
-                        </Button>
-                      )}
-                    </FileButton>
-                  </Stack>
-                </Grid.Col>
+              {/* --- PROFILE TAB --- */}
+              <Tabs.Panel value="profile">
+                {profileError && (
+                  <Alert
+                    icon={<IconAlertCircle size={16} />}
+                    title="Error"
+                    color="red"
+                    mb="md"
+                    withCloseButton
+                    onClose={() => setProfileError(null)}
+                  >
+                    {profileError}
+                  </Alert>
+                )}
+                {profileSuccess && (
+                  <Alert
+                    icon={<IconCheck size={16} />}
+                    title="Success"
+                    color="teal"
+                    mb="md"
+                    withCloseButton
+                    onClose={() => setProfileSuccess(null)}
+                  >
+                    {profileSuccess}
+                  </Alert>
+                )}
 
-                {/* Form Fields Column */}
-                <Grid.Col span={{ base: 12, md: 9 }}>
-                  <Grid gutter="md">
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput
-                        label="First Name"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.currentTarget.value)}
-                        required
-                      />
+                <form onSubmit={handleFormSubmit}>
+                  <Grid gutter="xl">
+                    <Grid.Col span={{ base: 12, md: 4 }}>
+                      <Stack align="center">
+                        <Box pos="relative" style={{ cursor: "pointer" }}>
+                          <FileButton
+                            onChange={handleAvatarChange}
+                            accept="image/png,image/jpeg"
+                          >
+                            {(props) => (
+                              <Avatar
+                                {...props}
+                                src={avatarUrl}
+                                size={150}
+                                radius={150}
+                                style={{
+                                  border: "4px solid white",
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                }}
+                              />
+                            )}
+                          </FileButton>
+                          <FileButton
+                            onChange={handleAvatarChange}
+                            accept="image/png,image/jpeg"
+                          >
+                            {(props) => (
+                              <ActionIcon
+                                {...props}
+                                variant="filled"
+                                color="blue"
+                                radius="xl"
+                                size="lg"
+                                pos="absolute"
+                                bottom={5}
+                                right={10}
+                              >
+                                <IconCamera size={18} />
+                              </ActionIcon>
+                            )}
+                          </FileButton>
+                        </Box>
+                        <Text size="xs" c="dimmed">
+                          Click to upload new picture
+                        </Text>
+                      </Stack>
                     </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput
-                        label="Last Name"
-                        value={lastName}
-                        onChange={(e) => setLastName(e.currentTarget.value)}
-                        required
-                      />
-                    </Grid.Col>
-                    <Grid.Col span={12}>
-                      <TextInput
-                        label="Email"
-                        value={email}
-                        readOnly
-                        styles={{
-                          input: {
-                            backgroundColor: "#F7FAFC",
-                            color: "#718096",
-                            cursor: "not-allowed",
-                          },
-                        }}
-                      />
+
+                    <Grid.Col span={{ base: 12, md: 8 }}>
+                      <Stack gap="md">
+                        <Group grow>
+                          <TextInput
+                            label="First Name"
+                            value={firstName}
+                            onChange={(e) =>
+                              setFirstName(e.currentTarget.value)
+                            }
+                            required
+                          />
+                          <TextInput
+                            label="Last Name"
+                            value={lastName}
+                            onChange={(e) => setLastName(e.currentTarget.value)}
+                            required
+                          />
+                        </Group>
+                        <TextInput
+                          label="Email"
+                          value={email}
+                          readOnly
+                          description="Contact support to change email"
+                          disabled
+                        />
+
+                        <Group justify="flex-end" mt="md">
+                          <Button type="submit" color="blue">
+                            Save Profile
+                          </Button>
+                        </Group>
+                      </Stack>
                     </Grid.Col>
                   </Grid>
-                </Grid.Col>
-              </Grid>
+                </form>
+              </Tabs.Panel>
 
-              <Group justify="flex-end" mt="xl">
-                <Button
-                  type="submit"
-                  size="md"
-                  style={{ backgroundColor: "#26316D", color: "white" }}
-                >
-                  Save Changes
-                </Button>
-              </Group>
-            </form>
-          </Paper>
+              {/* --- SECURITY TAB --- */}
+              <Tabs.Panel value="security">
+                <Container size="xs" px={0}>
+                  {passwordError && (
+                    <Alert
+                      icon={<IconAlertCircle size={16} />}
+                      title="Error"
+                      color="red"
+                      mb="md"
+                      withCloseButton
+                      onClose={() => setPasswordError(null)}
+                    >
+                      {passwordError}
+                    </Alert>
+                  )}
+                  {passwordSuccess && (
+                    <Alert
+                      icon={<IconCheck size={16} />}
+                      title="Success"
+                      color="teal"
+                      mb="md"
+                      withCloseButton
+                      onClose={() => setPasswordSuccess(null)}
+                    >
+                      {passwordSuccess}
+                    </Alert>
+                  )}
 
-          {/* Change Password Section */}
-          <Paper withBorder p="xl" radius="md" shadow="sm">
-            <Title order={2} mb="lg" style={{ color: "#1A202C" }}>
-              Change Password
-            </Title>
+                  <Stack gap="md">
+                    <PasswordInput
+                      label="Current Password"
+                      value={currentPassword}
+                      onChange={(e) =>
+                        setCurrentPassword(e.currentTarget.value)
+                      }
+                      required
+                    />
 
-            {passwordError && (
-              <Alert
-                icon={<IconAlertCircle size={16} />}
-                title="Error"
-                color="red"
-                mb="md"
-                withCloseButton
-                onClose={() => setPasswordError(null)}
-              >
-                {passwordError}
-              </Alert>
-            )}
-            {passwordSuccess && (
-              <Alert
-                icon={<IconCheck size={16} />}
-                title="Success"
-                color="teal"
-                mb="md"
-                withCloseButton
-                onClose={() => setPasswordSuccess(null)}
-              >
-                {passwordSuccess}
-              </Alert>
-            )}
+                    <Popover
+                      opened={popoverOpened}
+                      position="bottom"
+                      width="target"
+                      transitionProps={{ transition: "pop" }}
+                    >
+                      <Popover.Target>
+                        <div
+                          onFocusCapture={() => setPopoverOpened(true)}
+                          onBlurCapture={() => setPopoverOpened(false)}
+                        >
+                          <PasswordInput
+                            label="New Password"
+                            value={newPassword}
+                            onChange={(e) =>
+                              setNewPassword(e.currentTarget.value)
+                            }
+                            required
+                          />
+                        </div>
+                      </Popover.Target>
+                      <Popover.Dropdown>
+                        <Progress
+                          color={color}
+                          value={(strength * 100) / 4}
+                          mb={10}
+                          size={7}
+                        />
+                        <PasswordRequirement
+                          label="Includes at least 6 characters"
+                          meets={newPassword.length > 5}
+                        />
+                        {checks.slice(1).map((requirement, index) => (
+                          <PasswordRequirement
+                            key={index}
+                            label={requirement.label}
+                            meets={requirement.meets}
+                          />
+                        ))}
+                      </Popover.Dropdown>
+                    </Popover>
 
-            <Stack gap="md">
-              <PasswordInput
-                label="Current Password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.currentTarget.value)}
-              />
-              <PasswordInput
-                label="New Password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.currentTarget.value)}
-              />
-              <PasswordInput
-                label="Confirm New Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-              />
-            </Stack>
+                    <PasswordInput
+                      label="Confirm New Password"
+                      value={confirmPassword}
+                      onChange={(e) =>
+                        setConfirmPassword(e.currentTarget.value)
+                      }
+                      required
+                    />
 
-            <Group justify="flex-end" mt="xl">
-              <Button
-                size="md"
-                onClick={handlePasswordSubmit}
-                loading={passwordLoading}
-                style={{ backgroundColor: "#26316D", color: "white" }}
-              >
-                Update Password
-              </Button>
-            </Group>
+                    <Group justify="flex-end" mt="md">
+                      <Button
+                        onClick={handlePasswordSubmit}
+                        loading={passwordLoading}
+                        color="blue"
+                      >
+                        Update Password
+                      </Button>
+                    </Group>
+                  </Stack>
+                </Container>
+              </Tabs.Panel>
+            </Tabs>
           </Paper>
         </Container>
       </Box>

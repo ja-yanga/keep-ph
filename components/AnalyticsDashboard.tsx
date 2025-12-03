@@ -90,7 +90,15 @@ export default function AnalyticsDashboard() {
   // Use fetched data or empty arrays to prevent crashes
   const visitorData = data?.visitorData || [];
   const deviceData = data?.deviceData || [];
-  const topPages = data?.topPages || [];
+
+  // CHANGED: Filter out pages with UUIDs (e.g., /mailroom/123-abc...)
+  const topPages = (data?.topPages || []).filter((page: any) => {
+    // Regex to detect UUIDs (8-4-4-4-12 hex characters)
+    const uuidRegex =
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    // CHANGED: Use 'name' instead of 'path' (matches the API response structure)
+    return !uuidRegex.test(page.name);
+  });
   const stats = data?.stats || {
     activeNow: 0,
     totalVisitors: 0,

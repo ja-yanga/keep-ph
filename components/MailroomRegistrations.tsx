@@ -81,6 +81,7 @@ interface AssignedLocker {
 export default function MailroomRegistrations() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
+  const [locations, setLocations] = useState<any[]>([]); // ADDED: store locations
   const [plans, setPlans] = useState<Plan[]>([]);
   const [assignments, setAssignments] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +103,19 @@ export default function MailroomRegistrations() {
   const [activeTab, setActiveTab] = useState<string | null>("all");
 
   useEffect(() => {
-    fetchData();
+    const init = async () => {
+      // Set loading true immediately so the spinner shows during the sync
+      setLoading(true);
+      try {
+        // Run the cron job silently to update statuses/renewals
+        await fetch("/api/admin/mailroom/cron", { method: "POST" });
+      } catch (e) {
+        console.error("Auto-sync failed", e);
+      }
+      // Then fetch the fresh data
+      fetchData();
+    };
+    init();
   }, []);
 
   // Reset page when tab changes
@@ -114,12 +127,15 @@ export default function MailroomRegistrations() {
     setLoading(true);
     try {
       // Fetch plans as well
-      const [regRes, lockerRes, assignRes, planRes] = await Promise.all([
-        fetch("/api/admin/mailroom/registrations"),
-        fetch("/api/admin/mailroom/lockers"),
-        fetch("/api/admin/mailroom/assigned-lockers"),
-        fetch("/api/admin/mailroom/plans"),
-      ]);
+      const [regRes, lockerRes, assignRes, planRes, locRes] = await Promise.all(
+        [
+          fetch("/api/admin/mailroom/registrations"),
+          fetch("/api/admin/mailroom/lockers"),
+          fetch("/api/admin/mailroom/assigned-lockers"),
+          fetch("/api/admin/mailroom/plans"),
+          fetch("/api/admin/mailroom/locations"), // ADDED: fetch locations
+        ]
+      );
 
       if (regRes.ok) {
         const data = await regRes.json();
@@ -136,6 +152,11 @@ export default function MailroomRegistrations() {
       if (planRes.ok) {
         const data = await planRes.json();
         setPlans(data.data || data);
+      }
+      // Set locations if available
+      if (locRes && locRes.ok) {
+        const data = await locRes.json();
+        setLocations(data.data ?? data ?? []);
       }
     } catch (error) {
       console.error("Failed to fetch data", error);
@@ -437,12 +458,16 @@ export default function MailroomRegistrations() {
             {
               accessor: "location",
               title: "Location",
-              render: (r) => (
-                <Group gap={4}>
-                  <IconMapPin size={14} color="gray" />
-                  <Text size="sm">{r.location_name || "Main Branch"}</Text>
-                </Group>
-              ),
+              render: (r) => {
+                const found = locations.find((l) => l.id === r.location_id);
+                const name = r.location_name || found?.name || "Main Branch";
+                return (
+                  <Group gap={4}>
+                    <IconMapPin size={14} color="gray" />
+                    <Text size="sm">{name}</Text>
+                  </Group>
+                );
+              },
             },
             {
               accessor: "actions",
@@ -534,12 +559,34 @@ export default function MailroomRegistrations() {
                       </Text>{" "}
                       {selectedUser.locker_qty}
                     </Text>
-                    <Text size="sm">
-                      <Text span fw={500}>
-                        Location:
-                      </Text>{" "}
-                      {selectedUser.location_name || "Main Branch"}
-                    </Text>
+
+                    {(() => {
+                      const foundLoc = locations.find(
+                        (l) => l.id === selectedUser.location_id
+                      );
+                      return (
+                        <div>
+                          <Text size="sm">
+                            <Text span fw={500}>
+                              Location:
+                            </Text>{" "}
+                            {foundLoc?.name ??
+                              selectedUser.location_name ??
+                              "Main Branch"}
+                          </Text>
+                          {foundLoc && (
+                            <Text size="xs" c="dimmed" mt={4}>
+                              {foundLoc.barangay
+                                ? `${foundLoc.barangay}, `
+                                : ""}
+                              {foundLoc.city}
+                              {foundLoc.region ? ` • ${foundLoc.region}` : ""}
+                              {foundLoc.zip ? ` • ${foundLoc.zip}` : ""}
+                            </Text>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </Stack>
                 </Grid.Col>
               </Grid>

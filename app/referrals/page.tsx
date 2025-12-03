@@ -15,8 +15,16 @@ import {
   Loader,
   Center,
   Badge,
+  ThemeIcon,
+  Divider,
 } from "@mantine/core";
-import { IconCopy, IconCheck } from "@tabler/icons-react";
+import {
+  IconCopy,
+  IconCheck,
+  IconGift,
+  IconUsers,
+  IconTicket,
+} from "@tabler/icons-react";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
@@ -70,9 +78,14 @@ export default function ReferralPage() {
   const rows = referrals.map((item) => (
     <Table.Tr key={item.referrals_id}>
       <Table.Td>
-        <Text fw={500} c="#1A237E">
-          {item.referrals_service_type || "General Referral"}
-        </Text>
+        <Group gap="sm">
+          <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
+            <IconUsers size={12} />
+          </ThemeIcon>
+          <Text fw={500} size="sm" c="dark.6">
+            {item.referrals_service_type || "General Referral"}
+          </Text>
+        </Group>
       </Table.Td>
       <Table.Td>
         <Text size="sm" c="dimmed">
@@ -85,7 +98,7 @@ export default function ReferralPage() {
         </Text>
       </Table.Td>
       <Table.Td style={{ textAlign: "right" }}>
-        <Badge color="green" variant="light">
+        <Badge color="green" variant="light" size="sm">
           Completed
         </Badge>
       </Table.Td>
@@ -103,14 +116,18 @@ export default function ReferralPage() {
     >
       <DashboardNav />
 
-      <Box component="main" style={{ flex: 1 }} py={{ base: 48, md: 96 }}>
+      <Box component="main" style={{ flex: 1 }} py={{ base: 48, md: 80 }}>
         <Container size="md">
           <Stack align="center" gap="md" mb={40}>
-            <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
+            <ThemeIcon size={60} radius="xl" color="indigo" variant="light">
+              <IconGift size={32} />
+            </ThemeIcon>
+            <Title order={1} style={{ fontWeight: 800, color: "#1A237E" }}>
               Refer a Friend
             </Title>
             <Text c="dimmed" size="lg" ta="center" maw={600}>
-              Share your code and earn rewards when your friends sign up.
+              Share your unique code below. When your friends sign up using this
+              code, you both earn rewards!
             </Text>
           </Stack>
 
@@ -119,78 +136,117 @@ export default function ReferralPage() {
               <Loader color="blue" />
             </Center>
           ) : (
-            <Paper
-              withBorder
-              shadow="sm"
-              radius="lg"
-              p={{ base: "md", sm: "xl" }}
-            >
-              <Stack gap="xl">
-                {/* Code Section */}
-                <Paper bg="#E8EAF6" p="lg" radius="md">
-                  <Group justify="space-between" align="center">
-                    <Box>
-                      <Text size="sm" fw={500} c="#5C6AC4" mb={4}>
-                        Your Referral Code
-                      </Text>
-                      <Title order={3} style={{ color: "#1A237E" }}>
-                        {referralCode || "Generating..."}
-                      </Title>
-                    </Box>
-
-                    <CopyButton value={referralCode || ""} timeout={2000}>
-                      {({ copied, copy }) => (
-                        <Button
-                          color={copied ? "teal" : "indigo"}
-                          onClick={copy}
-                          disabled={!referralCode}
-                          leftSection={
-                            copied ? (
-                              <IconCheck size={16} />
-                            ) : (
-                              <IconCopy size={16} />
-                            )
-                          }
-                          style={{
-                            backgroundColor: copied ? undefined : "#1A237E",
-                          }}
-                        >
-                          {copied ? "Copied" : "Copy Code"}
-                        </Button>
-                      )}
-                    </CopyButton>
+            <Stack gap="xl">
+              {/* Code Section - Redesigned to be a "Hero" card */}
+              <Paper
+                withBorder
+                shadow="sm"
+                radius="lg"
+                p={{ base: "lg", sm: "xl" }}
+                bg="white"
+              >
+                <Stack align="center" gap="xs">
+                  <Group gap="xs">
+                    <IconTicket size={16} color="gray" />
+                    <Text
+                      size="xs"
+                      fw={700}
+                      c="dimmed"
+                      tt="uppercase"
+                      style={{ letterSpacing: 1 }}
+                    >
+                      Your Unique Referral Code
+                    </Text>
                   </Group>
-                </Paper>
 
-                {/* Table Section */}
-                <Box>
-                  <Title order={3} mb="md" style={{ color: "#1A237E" }}>
-                    Referred Users
-                  </Title>
-                  <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
-                    {referrals.length > 0 ? (
-                      <Table verticalSpacing="sm" highlightOnHover>
-                        <Table.Thead bg="gray.0">
-                          <Table.Tr>
-                            <Table.Th>Service Type</Table.Th>
-                            <Table.Th>Referred Email</Table.Th>
-                            <Table.Th>Date Created</Table.Th>
-                            <Table.Th />
-                          </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>{rows}</Table.Tbody>
-                      </Table>
-                    ) : (
-                      <Box p="xl" ta="center">
-                        <Text c="dimmed">
-                          No referrals yet. Share your code to get started!
-                        </Text>
-                      </Box>
+                  <Text
+                    size="3.5rem"
+                    fw={900}
+                    c="indigo.9"
+                    style={{ lineHeight: 1, letterSpacing: 2 }}
+                    ta="center"
+                  >
+                    {referralCode || "..."}
+                  </Text>
+
+                  <CopyButton value={referralCode || ""} timeout={2000}>
+                    {({ copied, copy }) => (
+                      <Button
+                        color={copied ? "teal" : "indigo"}
+                        variant={copied ? "filled" : "light"}
+                        onClick={copy}
+                        disabled={!referralCode}
+                        radius="xl"
+                        mt="md"
+                        size="md"
+                        leftSection={
+                          copied ? (
+                            <IconCheck size={18} />
+                          ) : (
+                            <IconCopy size={18} />
+                          )
+                        }
+                      >
+                        {copied ? "Copied to Clipboard" : "Copy Code"}
+                      </Button>
                     )}
-                  </Paper>
-                </Box>
-              </Stack>
-            </Paper>
+                  </CopyButton>
+                </Stack>
+              </Paper>
+
+              {/* Table Section */}
+              <Box>
+                <Group mb="md" align="center">
+                  <IconUsers size={20} color="#1A237E" />
+                  <Title order={3} style={{ color: "#1A237E" }}>
+                    Referral History
+                  </Title>
+                  <Badge variant="light" color="gray" size="lg" circle>
+                    {referrals.length}
+                  </Badge>
+                </Group>
+
+                <Paper
+                  withBorder
+                  radius="md"
+                  shadow="sm"
+                  style={{ overflow: "hidden" }}
+                >
+                  {referrals.length > 0 ? (
+                    <Table verticalSpacing="md" highlightOnHover>
+                      <Table.Thead bg="gray.0">
+                        <Table.Tr>
+                          <Table.Th>Service Type</Table.Th>
+                          <Table.Th>Referred Email</Table.Th>
+                          <Table.Th>Date Joined</Table.Th>
+                          <Table.Th style={{ textAlign: "right" }}>
+                            Status
+                          </Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>{rows}</Table.Tbody>
+                    </Table>
+                  ) : (
+                    <Stack align="center" py={40} gap="xs">
+                      <ThemeIcon
+                        color="gray"
+                        variant="light"
+                        size="xl"
+                        radius="xl"
+                      >
+                        <IconUsers size={24} />
+                      </ThemeIcon>
+                      <Text fw={600} c="dark.4">
+                        No referrals yet
+                      </Text>
+                      <Text c="dimmed" size="sm">
+                        Share your code to get started!
+                      </Text>
+                    </Stack>
+                  )}
+                </Paper>
+              </Box>
+            </Stack>
           )}
         </Container>
       </Box>

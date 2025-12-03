@@ -10,33 +10,32 @@ import {
   Table,
   Text,
   Title,
-  TextInput,
-  Tooltip,
-  ActionIcon,
-  ScrollArea,
   ThemeIcon,
   SimpleGrid,
-  RingProgress,
-  Center,
-  Popover,
-  Select,
+  Card,
+  Progress,
+  Divider,
+  ActionIcon,
+  Tooltip,
+  Container,
+  Modal,
 } from "@mantine/core";
 import {
-  IconRefresh,
-  IconEye,
-  IconSearch,
-  IconFilter,
-  IconDownload,
-  IconInbox,
-  IconSortAscending,
-  IconSortDescending,
   IconBox,
   IconTruckDelivery,
   IconAlertCircle,
-  IconChevronRight, // Added Chevron
+  IconMapPin,
+  IconCalendar,
+  IconChevronRight,
+  IconCreditCard,
+  IconPackage,
+  IconSortAscending,
+  IconSortDescending,
+  IconCreditCardOff, // ADDED
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
+import { notifications } from "@mantine/notifications"; // ADDED
 
 type RawRow = any;
 type Row = {
@@ -49,6 +48,7 @@ type Row = {
   created_at?: string | null;
   expiry_at?: string | null;
   mailroom_status?: string | null;
+  auto_renew: boolean; // ADDED
   // NEW: Add stats to the Row type
   stats: {
     stored: number;
@@ -69,19 +69,45 @@ const addMonths = (iso?: string | null, months = 0) => {
 const mapDataToRows = (data: RawRow[]): Row[] => {
   return data.map((r: any) => {
     const planName = r.mailroom_plans?.name ?? r.plan_name ?? null;
+    const planMonths = r.mailroom_plans?.months ?? r.months ?? null;
     const userName = r.full_name ?? null;
     const locationName = r.mailroom_locations?.name ?? r.location_name ?? null;
     const created = r.created_at ?? null;
-    const expiry = r.months ? addMonths(created, Number(r.months)) : null;
+
+    // 1. Extract auto_renew first so we can use it in logic
+    // Default to true if null/undefined
+    const autoRenew = r.auto_renew !== false;
+
+    const expiry = planMonths ? addMonths(created, Number(planMonths)) : null;
+
     const now = new Date();
     let computedStatus: string | null = null;
 
     if (expiry) {
       const ed = new Date(expiry);
       const diff = ed.getTime() - now.getTime();
-      if (diff <= 0) computedStatus = "INACTIVE";
-      else if (diff <= 7 * 24 * 60 * 60 * 1000) computedStatus = "EXPIRING";
-      else computedStatus = "ACTIVE";
+
+      if (diff <= 0) {
+        // Date has passed
+        if (autoRenew) {
+          // If auto-renew is ON, we keep it ACTIVE (grace period / pending renewal)
+          computedStatus = "ACTIVE";
+        } else {
+          // Only show INACTIVE if they explicitly canceled
+          computedStatus = "INACTIVE";
+        }
+      } else if (diff <= 7 * 24 * 60 * 60 * 1000) {
+        // Less than 7 days left
+        if (autoRenew) {
+          // If auto-renew is ON, it's not really "expiring", it's just renewing.
+          computedStatus = "ACTIVE";
+        } else {
+          // Warn them only if it will actually expire
+          computedStatus = "EXPIRING";
+        }
+      } else {
+        computedStatus = "ACTIVE";
+      }
     } else {
       computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
     }
@@ -120,6 +146,7 @@ const mapDataToRows = (data: RawRow[]): Row[] => {
       created_at: created,
       expiry_at: expiry,
       mailroom_status,
+      auto_renew: autoRenew, // Use the variable we created
       // NEW: Attach stats
       stats: { stored, pending, released },
       raw: r,
@@ -132,6 +159,11 @@ export default function UserDashboard() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ADDED: Cancel Modal State
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+  const [canceling, setCanceling] = useState(false);
 
   // UI state
   const [search, setSearch] = useState("");
@@ -275,6 +307,46 @@ export default function UserDashboard() {
     fetchData();
   };
 
+  // ADDED: Handle Cancel Subscription
+  const handleCancelSubscription = async () => {
+    if (!selectedSubId) return;
+    setCanceling(true);
+    try {
+      const res = await fetch(
+        `/api/mailroom/registrations/${selectedSubId}/cancel`,
+        {
+          method: "PATCH",
+        }
+      );
+
+      if (!res.ok) throw new Error("Failed to cancel subscription");
+
+      notifications.show({
+        title: "Subscription Canceled",
+        message: "Your plan will not renew after the current period.",
+        color: "orange",
+      });
+
+      // Update local state
+      setRows((prev) =>
+        prev
+          ? prev.map((r) =>
+              r.id === selectedSubId ? { ...r, auto_renew: false } : r
+            )
+          : null
+      );
+      setCancelModalOpen(false);
+    } catch (err: any) {
+      notifications.show({
+        title: "Error",
+        message: err.message,
+        color: "red",
+      });
+    } finally {
+      setCanceling(false);
+    }
+  };
+
   const SortIcon = ({ col }: { col: string }) => {
     if (sortBy !== col) return null;
     return sortDir === "asc" ? (
@@ -303,460 +375,307 @@ export default function UserDashboard() {
     </Table.Th>
   );
 
+  // Calculate global stats
   const stats = useMemo(() => {
     if (!rows) return { stored: 0, requests: 0, released: 0 };
-
     let stored = 0;
     let requests = 0;
     let released = 0;
-
     rows.forEach((row) => {
-      const packages = row.raw?.packages;
-
-      if (Array.isArray(packages)) {
-        const uniqueIds = new Set();
-
-        packages.forEach((p: any) => {
-          if (uniqueIds.has(p.id)) return;
-          uniqueIds.add(p.id);
-
-          if (p.status === "STORED") stored++;
-          else if (p.status === "RELEASED") released++;
-          else if (p.status?.includes("REQUEST")) requests++;
-        });
-      }
+      stored += row.stats.stored;
+      requests += row.stats.pending;
+      released += row.stats.released;
     });
-
     return { stored, requests, released };
   }, [rows]);
 
-  const activePackages = stats.stored;
-  const pendingRequests = stats.requests;
-  const readyForPickup = stats.released;
+  if (loading) {
+    return (
+      <Stack align="center" py="xl">
+        <Loader size="md" />
+        <Text c="dimmed">Loading your dashboard...</Text>
+      </Stack>
+    );
+  }
+
+  if (error) {
+    return (
+      <Stack align="center" py="xl">
+        <IconAlertCircle size={40} color="red" />
+        <Text c="red">{error}</Text>
+        <Button onClick={fetchData} variant="subtle">
+          Try Again
+        </Button>
+      </Stack>
+    );
+  }
+
+  // Empty State
+  if (rows && rows.length === 0) {
+    return (
+      <Container size="sm">
+        <Paper p="xl" radius="md" withBorder ta="center">
+          <ThemeIcon size={60} radius="xl" color="blue" variant="light" mb="md">
+            <IconBox size={30} />
+          </ThemeIcon>
+          <Title order={3} mb="xs">
+            No Mailroom Services Yet
+          </Title>
+          <Text c="dimmed" mb="xl">
+            You haven't registered for a mailroom service yet. Get your own
+            address today!
+          </Text>
+          <Button component={Link} href="/mailroom/register" size="md">
+            Register New Service
+          </Button>
+        </Paper>
+      </Container>
+    );
+  }
 
   return (
-    <Stack gap="lg">
+    <Stack gap="xl">
+      {/* 1. Welcome Section */}
       <Group justify="space-between" align="flex-end">
         <Box>
           <Title order={2} c="dark.8">
-            Mailroom Service List
+            Hello, {session?.user?.name || "User"}
           </Title>
-          <Text c="dimmed" size="sm">
-            Manage your mailroom subscriptions and packages
-          </Text>
+          <Text c="dimmed">Here is what's happening with your mail.</Text>
         </Box>
+        <Button component={Link} href="/mailroom/register" variant="outline">
+          Add New Mailroom
+        </Button>
       </Group>
 
-      <SimpleGrid cols={{ base: 1, sm: 3 }} mb="lg">
-        <Paper withBorder p="md" radius="md">
+      {/* 2. High Level Stats (Simplified) */}
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <Paper
+          p="md"
+          radius="md"
+          withBorder
+          shadow="xs"
+          bg={stats.stored > 0 ? "blue.0" : undefined}
+        >
           <Group>
-            <RingProgress
-              size={80}
-              roundCaps
-              thickness={8}
-              sections={[{ value: 100, color: "blue" }]}
-              label={
-                <Center>
-                  <IconBox style={{ width: 20, height: 20 }} stroke={1.5} />
-                </Center>
-              }
-            />
-            <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
-                In Storage
-              </Text>
-              <Text fw={700} size="xl">
-                {activePackages}
-              </Text>
-            </div>
-          </Group>
-        </Paper>
-
-        <Paper withBorder p="md" radius="md">
-          <Group>
-            <ThemeIcon size={80} radius="100%" variant="light" color="teal">
-              <IconTruckDelivery size={40} />
+            <ThemeIcon size="xl" radius="md" color="blue" variant="filled">
+              <IconBox size={24} />
             </ThemeIcon>
             <div>
               <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
-                Ready for Pickup
+                Items in Storage
               </Text>
-              <Text fw={700} size="xl">
-                {readyForPickup}
+              <Text fw={700} size="xl" c="blue.9">
+                {stats.stored}
               </Text>
             </div>
           </Group>
         </Paper>
-
-        <Paper withBorder p="md" radius="md">
+        <Paper p="md" radius="md" withBorder shadow="xs">
           <Group>
-            <ThemeIcon size={80} radius="100%" variant="light" color="orange">
-              <IconAlertCircle size={40} />
+            <ThemeIcon size="xl" radius="md" color="orange" variant="light">
+              <IconAlertCircle size={24} />
             </ThemeIcon>
             <div>
               <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
                 Pending Requests
               </Text>
               <Text fw={700} size="xl">
-                {pendingRequests}
+                {stats.requests}
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+        <Paper p="md" radius="md" withBorder shadow="xs">
+          <Group>
+            <ThemeIcon size="xl" radius="md" color="teal" variant="light">
+              <IconTruckDelivery size={24} />
+            </ThemeIcon>
+            <div>
+              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+                Total Released
+              </Text>
+              <Text fw={700} size="xl">
+                {stats.released}
               </Text>
             </div>
           </Group>
         </Paper>
       </SimpleGrid>
 
-      <Paper p="md" radius="md" withBorder shadow="sm">
-        <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search by name, code, email..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: 1, maxWidth: 400 }}
-          />
-          <Group gap="xs">
-            <Tooltip label="Refresh List">
-              <ActionIcon variant="light" size="lg" onClick={refresh}>
-                <IconRefresh size={18} />
-              </ActionIcon>
-            </Tooltip>
+      <Divider label="Your Active Subscriptions" labelPosition="center" />
 
-            <Popover width={300} position="bottom-end" withArrow shadow="md">
-              <Popover.Target>
-                <Tooltip label="Filter List">
-                  <ActionIcon
-                    variant={
-                      Object.values(filters).some(Boolean) ? "filled" : "light"
-                    }
-                    size="lg"
-                  >
-                    <IconFilter size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Stack gap="sm">
-                  <Text size="sm" fw={600}>
-                    Filter Registrations
+      {/* 3. Subscription Cards (Replaces the Table) */}
+      <SimpleGrid cols={{ base: 1, md: 2 }}>
+        {rows?.map((row) => (
+          <Card key={row.id} shadow="sm" padding="lg" radius="md" withBorder>
+            <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
+              <Group justify="space-between">
+                {/* CHANGED: Added quotes around "xs" */}
+                <Group gap="xs">
+                  <ThemeIcon color="violet" variant="light">
+                    <IconMapPin size={16} />
+                  </ThemeIcon>
+                  <Text fw={600} size="sm">
+                    {row.location || "Unknown Location"}
                   </Text>
+                </Group>
+                <Badge
+                  // CHANGED: Update colors to handle INACTIVE/EXPIRING
+                  color={
+                    row.mailroom_status === "ACTIVE"
+                      ? "green"
+                      : row.mailroom_status === "EXPIRING"
+                      ? "yellow"
+                      : "red"
+                  }
+                  variant="dot"
+                >
+                  {row.mailroom_status}
+                </Badge>
+              </Group>
+            </Card.Section>
 
-                  <Select
-                    label="Plan"
-                    placeholder="Any Plan"
-                    data={filterOptions.plans}
-                    value={filters.plan}
-                    onChange={(val) =>
-                      setFilters((prev) => ({ ...prev, plan: val }))
-                    }
-                    clearable
-                    size="xs"
-                  />
+            <Stack mt="md" gap="sm">
+              <Group justify="space-between" align="flex-start">
+                <Box>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    Mailroom Code
+                  </Text>
+                  <Text size="xl" fw={800} ff="monospace" c="violet.9">
+                    {row.mailroom_code || "PENDING"}
+                  </Text>
+                </Box>
+                <Box ta="right">
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    Plan
+                  </Text>
+                  <Text fw={600}>{row.plan}</Text>
+                </Box>
+              </Group>
 
-                  <Select
-                    label="Location"
-                    placeholder="Any Location"
-                    data={filterOptions.locations}
-                    value={filters.location}
-                    onChange={(val) =>
-                      setFilters((prev) => ({ ...prev, location: val }))
-                    }
-                    clearable
-                    size="xs"
-                  />
+              {/* ADDED: Subscriber Details */}
+              <Box>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  Subscriber
+                </Text>
+                <Text fw={600} size="sm" lh={1.2}>
+                  {row.name}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {row.email}
+                </Text>
+              </Box>
 
-                  <Select
-                    label="Status"
-                    placeholder="Any Status"
-                    data={["ACTIVE", "EXPIRING", "INACTIVE"]}
-                    value={filters.mailroomStatus}
-                    onChange={(val) =>
-                      setFilters((prev) => ({ ...prev, mailroomStatus: val }))
-                    }
-                    clearable
-                    size="xs"
-                  />
+              <Divider my="xs" variant="dashed" />
 
-                  <Button
-                    variant="subtle"
-                    color="red"
-                    size="xs"
-                    onClick={() =>
-                      setFilters({
-                        plan: null,
-                        location: null,
-                        mailroomStatus: null,
-                      })
-                    }
-                    disabled={
-                      !filters.plan &&
-                      !filters.location &&
-                      !filters.mailroomStatus
-                    }
-                  >
-                    Clear Filters
-                  </Button>
-                </Stack>
-              </Popover.Dropdown>
-            </Popover>
-          </Group>
-        </Group>
+              <Group grow>
+                <Box>
+                  <Group gap={6} mb={4}>
+                    <IconPackage size={14} color="gray" />
+                    <Text size="xs" c="dimmed">
+                      Current Inventory
+                    </Text>
+                  </Group>
+                  <Text fw={700} size="lg">
+                    {row.stats.stored}{" "}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 400,
+                        color: "#868e96",
+                      }}
+                    >
+                      items
+                    </span>
+                  </Text>
+                </Box>
+                <Box>
+                  <Group gap={6} mb={4}>
+                    <IconCalendar size={14} color="gray" />
+                    {/* CHANGED: Dynamic Label */}
+                    <Text size="xs" c="dimmed">
+                      {row.auto_renew ? "Renews On" : "Expires On"}
+                    </Text>
+                  </Group>
+                  {/* CHANGED: Dynamic Color */}
+                  <Text fw={500} size="sm" c={row.auto_renew ? "dark" : "red"}>
+                    {row.expiry_at
+                      ? new Date(row.expiry_at).toLocaleDateString()
+                      : "N/A"}
+                  </Text>
+                </Box>
+              </Group>
+            </Stack>
 
-        <ScrollArea>
-          <Table verticalSpacing="md" highlightOnHover withTableBorder={false}>
-            <Table.Thead bg="gray.0">
-              <Table.Tr>
-                {visibleColumns.mailroom_code && (
-                  <ThSortable col="mailroom_code" label="Code" />
-                )}
-                {visibleColumns.name && <ThSortable col="name" label="Name" />}
-
-                {visibleColumns.activity && (
-                  <Table.Th
-                    style={{
-                      textTransform: "uppercase",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "var(--mantine-color-dimmed)",
-                    }}
-                  >
-                    Activity
-                  </Table.Th>
-                )}
-
-                {visibleColumns.email && (
-                  <ThSortable col="email" label="Email" />
-                )}
-                {visibleColumns.plan && <ThSortable col="plan" label="Plan" />}
-                {visibleColumns.location && (
-                  <ThSortable col="location" label="Location" />
-                )}
-                {visibleColumns.created_at && (
-                  <ThSortable col="created_at" label="Created" />
-                )}
-                {visibleColumns.expiry_at && (
-                  <ThSortable col="expiry_at" label="Expiry" />
-                )}
-                {visibleColumns.mailroom_status && (
-                  <Table.Th
-                    style={{
-                      textTransform: "uppercase",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "var(--mantine-color-dimmed)",
-                    }}
-                  >
-                    Status
-                  </Table.Th>
-                )}
-                {visibleColumns.view && (
-                  <Table.Th style={{ width: 100 }}></Table.Th>
-                )}
-              </Table.Tr>
-            </Table.Thead>
-
-            <Table.Tbody>
-              {loading || rows === null ? (
-                <Table.Tr>
-                  <Table.Td colSpan={10}>
-                    <Stack align="center" py="xl">
-                      <Loader size="sm" />
-                      <Text size="sm" c="dimmed">
-                        Loading registrations...
-                      </Text>
-                    </Stack>
-                  </Table.Td>
-                </Table.Tr>
-              ) : error ? (
-                <Table.Tr>
-                  <Table.Td colSpan={10}>
-                    <Stack align="center" py="xl">
-                      <Text c="red">{error}</Text>
-                    </Stack>
-                  </Table.Td>
-                </Table.Tr>
-              ) : filtered.length === 0 ? (
-                <Table.Tr>
-                  <Table.Td colSpan={10}>
-                    <Stack align="center" py="xl">
-                      <ThemeIcon
-                        size={48}
-                        radius="xl"
-                        color="gray"
-                        variant="light"
-                      >
-                        <IconInbox size={24} />
-                      </ThemeIcon>
-                      <Text c="dimmed">No registrations found</Text>
-                    </Stack>
-                  </Table.Td>
-                </Table.Tr>
-              ) : (
-                filtered.map((r) => (
-                  <Table.Tr key={r.id}>
-                    {visibleColumns.mailroom_code && (
-                      <Table.Td>
-                        {r.mailroom_code ? (
-                          <Badge
-                            variant="light"
-                            color="violet"
-                            size="md"
-                            radius="sm"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            {r.mailroom_code}
-                          </Badge>
-                        ) : (
-                          <Text c="dimmed" size="sm">
-                            —
-                          </Text>
-                        )}
-                      </Table.Td>
-                    )}
-                    {visibleColumns.name && (
-                      <Table.Td>
-                        {/* CHANGED: Removed Avatar, just showing name */}
-                        <Text fw={600} size="sm">
-                          {r.name}
-                        </Text>
-                      </Table.Td>
-                    )}
-
-                    {visibleColumns.activity && (
-                      <Table.Td>
-                        <Group gap={8}>
-                          {r.stats.stored > 0 && (
-                            <Tooltip
-                              label={`${r.stats.stored} Items in Storage`}
-                            >
-                              {/* CHANGED: Increased size, changed variant to light, fixed icon size */}
-                              <Badge
-                                size="md"
-                                variant="light"
-                                color="blue"
-                                leftSection={
-                                  <IconBox size={16} style={{ marginTop: 4 }} />
-                                }
-                              >
-                                {r.stats.stored}
-                              </Badge>
-                            </Tooltip>
-                          )}
-                          {r.stats.pending > 0 && (
-                            <Tooltip
-                              label={`${r.stats.pending} Pending Requests`}
-                            >
-                              <Badge
-                                size="md"
-                                variant="light"
-                                color="orange"
-                                leftSection={
-                                  <IconAlertCircle
-                                    size={16}
-                                    style={{ marginTop: 4 }}
-                                  />
-                                }
-                              >
-                                {r.stats.pending}
-                              </Badge>
-                            </Tooltip>
-                          )}
-                          {r.stats.stored === 0 && r.stats.pending === 0 && (
-                            <Text size="xs" c="dimmed">
-                              —
-                            </Text>
-                          )}
-                        </Group>
-                      </Table.Td>
-                    )}
-
-                    {visibleColumns.email && (
-                      <Table.Td>
-                        <Text size="sm" c="dimmed">
-                          {r.email ?? "—"}
-                        </Text>
-                      </Table.Td>
-                    )}
-                    {visibleColumns.plan && (
-                      <Table.Td>
-                        <Text size="sm" fw={500}>
-                          {r.plan ?? "—"}
-                        </Text>
-                      </Table.Td>
-                    )}
-                    {visibleColumns.location && (
-                      <Table.Td>
-                        <Text size="sm" c="dimmed">
-                          {r.location ?? "—"}
-                        </Text>
-                      </Table.Td>
-                    )}
-                    {visibleColumns.created_at && (
-                      <Table.Td>
-                        <Text size="xs" c="dimmed">
-                          {r.created_at
-                            ? new Date(r.created_at).toLocaleDateString()
-                            : "—"}
-                        </Text>
-                      </Table.Td>
-                    )}
-                    {visibleColumns.expiry_at && (
-                      <Table.Td>
-                        <Text size="xs" c="dimmed">
-                          {r.expiry_at
-                            ? new Date(r.expiry_at).toLocaleDateString()
-                            : "—"}
-                        </Text>
-                      </Table.Td>
-                    )}
-                    {visibleColumns.mailroom_status && (
-                      <Table.Td>
-                        {r.mailroom_status ? (
-                          (() => {
-                            const s = String(r.mailroom_status).toUpperCase();
-                            const color =
-                              s === "ACTIVE"
-                                ? "green"
-                                : s === "EXPIRING"
-                                ? "yellow"
-                                : "gray";
-                            return (
-                              <Badge
-                                color={color}
-                                variant="light"
-                                size="sm"
-                                radius="sm"
-                              >
-                                {s}
-                              </Badge>
-                            );
-                          })()
-                        ) : (
-                          <Text c="dimmed">—</Text>
-                        )}
-                      </Table.Td>
-                    )}
-                    {visibleColumns.view && (
-                      <Table.Td>
-                        <Button
-                          component={Link}
-                          href={`/mailroom/${r.id}`}
-                          variant="default"
-                          size="xs"
-                          radius="md"
-                          fullWidth
-                          rightSection={<IconChevronRight size={14} />}
-                        >
-                          Manage
-                        </Button>
-                      </Table.Td>
-                    )}
-                  </Table.Tr>
-                ))
+            {/* CHANGED: Added Group for buttons */}
+            <Group mt="md" grow>
+              <Button
+                component={Link}
+                href={`/mailroom/${row.id}`}
+                radius="md"
+                rightSection={<IconChevronRight size={16} />}
+              >
+                Manage Mailbox
+              </Button>
+              {/* ADDED: Cancel Button */}
+              {row.auto_renew && row.mailroom_status === "ACTIVE" && (
+                <Button
+                  variant="light"
+                  color="red"
+                  radius="md"
+                  onClick={() => {
+                    setSelectedSubId(row.id);
+                    setCancelModalOpen(true);
+                  }}
+                >
+                  Cancel Renewal
+                </Button>
               )}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
-      </Paper>
+            </Group>
+          </Card>
+        ))}
+      </SimpleGrid>
+
+      {/* ADDED: Cancel Confirmation Modal */}
+      <Modal
+        opened={cancelModalOpen}
+        onClose={() => setCancelModalOpen(false)}
+        title="Cancel Subscription Renewal?"
+        centered
+      >
+        <Stack>
+          <Text size="sm">
+            Are you sure you want to cancel the auto-renewal for this mailroom?
+          </Text>
+          <Paper withBorder p="sm" bg="gray.0">
+            <Group gap="sm">
+              <IconCreditCardOff size={20} color="gray" />
+              <Text size="xs" c="dimmed">
+                You will retain access to your mailroom and packages until the
+                current period expires. After that, the account will become
+                inactive.
+              </Text>
+            </Group>
+          </Paper>
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="default"
+              onClick={() => setCancelModalOpen(false)}
+              disabled={canceling}
+            >
+              Keep Subscription
+            </Button>
+            <Button
+              color="red"
+              onClick={handleCancelSubscription}
+              loading={canceling}
+            >
+              Cancel Renewal
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

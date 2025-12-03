@@ -266,6 +266,17 @@ export default function DashboardNav() {
                 <>
                   <Anchor
                     component={Link}
+                    href="/dashboard"
+                    style={linkColor("/dashboard")}
+                    underline="hover"
+                    aria-current={
+                      pathname === "/dashboard" ? "page" : undefined
+                    }
+                  >
+                    Dashboard
+                  </Anchor>
+                  <Anchor
+                    component={Link}
                     href="/mailroom/register"
                     style={linkColor("/mailroom/register")}
                     underline="hover"

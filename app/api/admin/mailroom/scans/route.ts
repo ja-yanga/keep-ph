@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { sendNotification } from "@/lib/notifications"; // Import the helper
 
 // Initialize Admin Client (Service Role needed for Storage uploads if RLS is strict)
 const supabase = createClient(
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     const fileName = `${packageId}-${Date.now()}.${fileExt}`;
     const filePath = `${fileName}`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("mailroom-scans") // Ensure this bucket exists in Supabase
       .upload(filePath, file, {
         contentType: file.type,
@@ -58,13 +59,39 @@ export async function POST(request: Request) {
 
     // 4. Update Package Status (Reset to STORED or mark as PROCESSED)
     // We reset to 'STORED' so the "Request" badge disappears, but the file is now linked.
-    const { error: updateError } = await supabase
+    const { data: pkgData, error: updateError } = await supabase
       .from("mailroom_packages")
       .update({ status: "STORED" })
-      .eq("id", packageId);
+      .eq("id", packageId)
+      .select("registration_id, tracking_number")
+      .single();
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // 5. Fetch registration to get user_id and mailroom_code
+    const { data: registration } = await supabase
+      .from("mailroom_registrations")
+      .select("user_id, mailroom_code")
+      .eq("id", pkgData.registration_id)
+      .single();
+
+    // 6. Send Notification
+    if (registration?.user_id) {
+      try {
+        await sendNotification(
+          registration.user_id,
+          "Document Scanned",
+          `Your document (${
+            pkgData.tracking_number || "Unknown"
+          }) has been scanned and is ready to view.`,
+          "SCAN_READY", // CHANGED: use allowed NotificationType
+          `/mailroom/${pkgData.registration_id}`
+        );
+      } catch (notifyErr) {
+        console.error("sendNotification failed:", notifyErr);
+      }
     }
 
     return NextResponse.json({ success: true, url: publicUrl });
