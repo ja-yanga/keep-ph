@@ -1,29 +1,23 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("mailroom_registrations")
       .select(
         `
-        id,
-        user_id,
-        mailroom_code,
-        full_name,
-        email,
-        mobile,
-        created_at,
-        months,
-        locker_qty,
-        location_id,
-        plan_id,
-        mailroom_status,
+        *,
+        mailroom_plans (
+          name,
+          can_receive_mail,
+          can_receive_parcels
+        ),
         mailroom_locations (
           name
         )
@@ -31,25 +25,12 @@ export async function GET(req: Request) {
       )
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Admin registrations fetch error:", error);
-      return NextResponse.json(
-        { error: error.message || "Failed to load registrations" },
-        { status: 500 }
-      );
-    }
+    if (error) throw error;
 
-    const formattedData = data.map((reg: any) => ({
-      ...reg,
-      phone_number: reg.mobile,
-      location_name: reg.mailroom_locations?.name || "Unknown Location",
-    }));
-
-    return NextResponse.json({ data: formattedData }, { status: 200 });
-  } catch (err: any) {
-    console.error("Admin registrations API error:", err);
+    return NextResponse.json({ data });
+  } catch (error: any) {
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: error.message || "Internal Server Error" },
       { status: 500 }
     );
   }

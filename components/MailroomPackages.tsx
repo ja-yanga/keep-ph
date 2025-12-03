@@ -49,6 +49,12 @@ interface Registration {
   full_name: string;
   email: string;
   mailroom_code?: string | null;
+  // CHANGED: Added specific plan capabilities
+  mailroom_plans?: {
+    name: string;
+    can_receive_mail: boolean;
+    can_receive_parcels: boolean;
+  };
 }
 
 interface Locker {
@@ -114,7 +120,7 @@ export default function MailroomPackages() {
     tracking_number: "",
     registration_id: "",
     locker_id: "",
-    package_type: "Parcel",
+    package_type: "", // CHANGED: Default to empty string to force selection
     status: "STORED",
     notes: "",
   });
@@ -266,19 +272,46 @@ export default function MailroomPackages() {
 
   const handleRegistrationChange = (regId: string | null) => {
     if (!regId) {
-      setFormData({ ...formData, registration_id: "", locker_id: "" });
+      setFormData({
+        ...formData,
+        registration_id: "",
+        locker_id: "",
+        package_type: "",
+      });
       return;
     }
 
     // Find if this user has an assigned locker
     const assignment = assignedLockers.find((a) => a.registration_id === regId);
 
+    // Find the registration to check plan capabilities
+    const reg = registrations.find((r) => r.id === regId);
+
+    // Determine default package type based on plan
+    let defaultType = "";
+    if (reg?.mailroom_plans?.can_receive_parcels) defaultType = "Parcel";
+    else if (reg?.mailroom_plans?.can_receive_mail) defaultType = "Document";
+
     setFormData({
       ...formData,
       registration_id: regId,
-      // If they have an assigned locker, auto-select it. Otherwise leave blank.
       locker_id: assignment ? assignment.locker_id : "",
+      package_type: defaultType,
     });
+  };
+
+  // Helper to get available types for selected user
+  const getAvailablePackageTypes = () => {
+    if (!formData.registration_id) return [];
+
+    const reg = registrations.find((r) => r.id === formData.registration_id);
+    if (!reg?.mailroom_plans) return PACKAGE_TYPES; // Fallback
+
+    const types = [];
+    if (reg.mailroom_plans.can_receive_mail) types.push("Document");
+    if (reg.mailroom_plans.can_receive_parcels) types.push("Parcel");
+
+    return types;
   };
 
   const handleSubmit = async () => {
@@ -851,13 +884,14 @@ export default function MailroomPackages() {
             searchable
             data={registrations.map((r) => ({
               value: r.id,
-              label: `${r.full_name}${
-                r.mailroom_code ? ` (${r.mailroom_code})` : ""
-              } - ${r.email}`,
+              // CHANGED: Format to "Code - Email (Plan)"
+              label: `${r.mailroom_code || "No Code"} - ${r.email} (${
+                r.mailroom_plans?.name || "Unknown Plan"
+              })`,
             }))}
             value={formData.registration_id}
             onChange={(val) => handleRegistrationChange(val)}
-            // CHANGED: Custom filter to search by code, name, or email
+            // Custom filter allows searching by any part of the label string
             filter={({ options, search }) => {
               const q = search.toLowerCase().trim();
               return (options as any).filter((option: any) =>
@@ -913,10 +947,16 @@ export default function MailroomPackages() {
           <Select
             label="Type"
             required
-            data={PACKAGE_TYPES}
+            placeholder={
+              !formData.registration_id
+                ? "Select a recipient first"
+                : "Select type"
+            }
+            disabled={!formData.registration_id}
+            data={getAvailablePackageTypes()}
             value={formData.package_type}
             onChange={(val) =>
-              setFormData({ ...formData, package_type: val || "Parcel" })
+              setFormData({ ...formData, package_type: val || "" })
             }
           />
           <Select
