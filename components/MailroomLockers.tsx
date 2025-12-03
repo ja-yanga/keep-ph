@@ -21,6 +21,8 @@ import {
   Tabs, // <--- Added Tabs
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+// Added useSearchParams
+import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
   IconPlus,
@@ -70,6 +72,16 @@ export default function MailroomLockers() {
 
   // CHANGED: Replaced filterStatus with activeTab
   const [activeTab, setActiveTab] = useState<string | null>("all");
+
+  // NEW: Handle URL Query Params for Tab Selection
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);

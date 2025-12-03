@@ -233,7 +233,7 @@ export default function MailroomPlans() {
       <Tooltip label="Receives Parcels">
         <ThemeIcon
           variant="light"
-          color={plan.can_receive_parcels ? "blue" : "gray"}
+          color={plan.can_receive_parcels ? "orange" : "gray"}
           size="sm"
         >
           <IconPackage size={12} />
@@ -242,7 +242,7 @@ export default function MailroomPlans() {
       <Tooltip label="Digitization">
         <ThemeIcon
           variant="light"
-          color={plan.can_digitize ? "blue" : "gray"}
+          color={plan.can_digitize ? "cyan" : "gray"}
           size="sm"
         >
           <IconScan size={12} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react"; // Added useEffect
 import {
   Badge,
   Box,
@@ -28,6 +28,9 @@ import {
   IconCalendar,
   IconLock,
   IconCreditCard,
+  IconMail,
+  IconPackage,
+  IconScan,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
@@ -56,6 +59,39 @@ export default function MailroomPackageView({
   onRefresh,
 }: MailroomPackageViewProps) {
   const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
+  const [isStorageFull, setIsStorageFull] = useState(false);
+  // 1. Add a refresh key state to force updates
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // 2. Create a wrapper function that triggers both local and parent refresh
+  const handleRefresh = () => {
+    setRefreshKey((prev) => prev + 1);
+    onRefresh();
+  };
+
+  // Plan Capabilities
+  const plan = item?.mailroom_plans || {};
+
+  // Check storage usage
+  useEffect(() => {
+    const checkStorage = async () => {
+      if (item?.id && plan.can_digitize) {
+        try {
+          const res = await fetch(`/api/user/scans?registrationId=${item.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.usage) {
+              setIsStorageFull(data.usage.used_mb >= data.usage.limit_mb);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to check storage usage", e);
+        }
+      }
+    };
+
+    checkStorage();
+  }, [item, plan.can_digitize, refreshKey]); // 3. Add refreshKey to dependency array
 
   // Filter packages based on selected locker
   const filteredPackages = useMemo(() => {
@@ -142,9 +178,6 @@ export default function MailroomPackageView({
     </Anchor>
   ));
 
-  // Plan Capabilities
-  const plan = item.mailroom_plans || {};
-
   return (
     <Box
       style={{
@@ -174,7 +207,8 @@ export default function MailroomPackageView({
               </Box>
               <Group>
                 <Tooltip label="Refresh Data">
-                  <ActionIcon variant="light" size="lg" onClick={onRefresh}>
+                  {/* 4. Use handleRefresh instead of onRefresh directly */}
+                  <ActionIcon variant="light" size="lg" onClick={handleRefresh}>
                     <IconRefresh size={20} />
                   </ActionIcon>
                 </Tooltip>
@@ -344,11 +378,15 @@ export default function MailroomPackageView({
                     can_receive_parcels: plan.can_receive_parcels === true,
                     can_digitize: plan.can_digitize === true,
                   }}
-                  onRefresh={onRefresh}
+                  isStorageFull={isStorageFull}
+                  onRefresh={handleRefresh} // 5. Pass handleRefresh here too so actions update the UI
                 />
 
                 {/* Digital Storage Section (Only if plan allows) */}
-                {plan.can_digitize && <UserScans registrationId={item.id} />}
+                {/* 6. Add key={refreshKey} to force UserScans to remount/refetch */}
+                {plan.can_digitize && (
+                  <UserScans key={refreshKey} registrationId={item.id} />
+                )}
               </Stack>
             </Grid.Col>
 
@@ -488,6 +526,58 @@ export default function MailroomPackageView({
                         </Text>
                       </Box>
                     </Group>
+
+                    {/* Plan Capabilities Icons */}
+                    {(plan.can_receive_mail ||
+                      plan.can_receive_parcels ||
+                      plan.can_digitize) && (
+                      <Box mt="xs">
+                        <Text size="xs" c="dimmed" mb={6}>
+                          Included Features
+                        </Text>
+                        <Group gap="xs">
+                          {plan.can_receive_mail && (
+                            <Tooltip label="Can Receive Mail" withArrow>
+                              <ThemeIcon
+                                variant="light"
+                                color="blue"
+                                size="md"
+                                radius="md"
+                              >
+                                <IconMail size={18} />
+                              </ThemeIcon>
+                            </Tooltip>
+                          )}
+                          {plan.can_receive_parcels && (
+                            <Tooltip label="Can Receive Parcels" withArrow>
+                              <ThemeIcon
+                                variant="light"
+                                color="orange"
+                                size="md"
+                                radius="md"
+                              >
+                                <IconPackage size={18} />
+                              </ThemeIcon>
+                            </Tooltip>
+                          )}
+                          {plan.can_digitize && (
+                            <Tooltip
+                              label="Digital Scanning Included"
+                              withArrow
+                            >
+                              <ThemeIcon
+                                variant="light"
+                                color="cyan"
+                                size="md"
+                                radius="md"
+                              >
+                                <IconScan size={18} />
+                              </ThemeIcon>
+                            </Tooltip>
+                          )}
+                        </Group>
+                      </Box>
+                    )}
                   </Stack>
                 </Paper>
               </Stack>

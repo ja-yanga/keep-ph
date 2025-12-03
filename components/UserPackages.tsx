@@ -40,6 +40,7 @@ interface UserPackagesProps {
     can_receive_parcels: boolean;
     can_digitize: boolean;
   };
+  isStorageFull?: boolean; // <--- Added prop definition
   onRefresh: () => void;
 }
 
@@ -49,13 +50,14 @@ interface Package {
   sender: string;
   package_type: string;
   status: string;
-  release_proof_url?: string | null; // <--- Add this field
+  release_proof_url?: string | null;
 }
 
 export default function UserPackages({
   packages,
   lockers,
   planCapabilities,
+  isStorageFull = false,
   onRefresh,
 }: UserPackagesProps) {
   // 1. Local State for immediate UI updates
@@ -260,43 +262,91 @@ export default function UserPackages({
                         <Group gap="xs">
                           {status === "STORED" && (
                             <>
-                              <Tooltip label="Request Release">
-                                <ActionIcon
-                                  variant="light"
-                                  color="blue"
-                                  size="sm"
-                                  onClick={() =>
-                                    handleActionClick(p, "RELEASE")
-                                  }
+                              <Tooltip
+                                label={
+                                  isStorageFull
+                                    ? "Storage Full"
+                                    : "Request Release"
+                                }
+                              >
+                                {/* Wrapper required for Tooltip to work on disabled elements */}
+                                <span
+                                  style={{
+                                    cursor: isStorageFull
+                                      ? "not-allowed"
+                                      : undefined,
+                                  }}
                                 >
-                                  <IconTruckDelivery size={14} />
-                                </ActionIcon>
+                                  <ActionIcon
+                                    variant="light"
+                                    color="blue"
+                                    size="sm"
+                                    disabled={isStorageFull}
+                                    onClick={() =>
+                                      handleActionClick(p, "RELEASE")
+                                    }
+                                  >
+                                    <IconTruckDelivery size={14} />
+                                  </ActionIcon>
+                                </span>
                               </Tooltip>
-                              <Tooltip label="Request Disposal">
-                                <ActionIcon
-                                  variant="light"
-                                  color="red"
-                                  size="sm"
-                                  onClick={() =>
-                                    handleActionClick(p, "DISPOSE")
-                                  }
+
+                              <Tooltip
+                                label={
+                                  isStorageFull
+                                    ? "Storage Full"
+                                    : "Request Disposal"
+                                }
+                              >
+                                <span
+                                  style={{
+                                    cursor: isStorageFull
+                                      ? "not-allowed"
+                                      : undefined,
+                                  }}
                                 >
-                                  <IconTrash size={14} />
-                                </ActionIcon>
+                                  <ActionIcon
+                                    variant="light"
+                                    color="red"
+                                    size="sm"
+                                    disabled={isStorageFull}
+                                    onClick={() =>
+                                      handleActionClick(p, "DISPOSE")
+                                    }
+                                  >
+                                    <IconTrash size={14} />
+                                  </ActionIcon>
+                                </span>
                               </Tooltip>
+
                               {type === "Document" &&
                                 planCapabilities.can_digitize && (
-                                  <Tooltip label="Request Scan">
-                                    <ActionIcon
-                                      variant="light"
-                                      color="violet"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleActionClick(p, "SCAN")
-                                      }
+                                  <Tooltip
+                                    label={
+                                      isStorageFull
+                                        ? "Storage Full"
+                                        : "Request Scan"
+                                    }
+                                  >
+                                    <span
+                                      style={{
+                                        cursor: isStorageFull
+                                          ? "not-allowed"
+                                          : undefined,
+                                      }}
                                     >
-                                      <IconScan size={14} />
-                                    </ActionIcon>
+                                      <ActionIcon
+                                        variant="light"
+                                        color="violet"
+                                        size="sm"
+                                        disabled={isStorageFull}
+                                        onClick={() =>
+                                          handleActionClick(p, "SCAN")
+                                        }
+                                      >
+                                        <IconScan size={14} />
+                                      </ActionIcon>
+                                    </span>
                                   </Tooltip>
                                 )}
                             </>

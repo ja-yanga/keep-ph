@@ -182,7 +182,8 @@ export default function AdminDashboard() {
           description="Requires immediate action"
           icon={IconAlertCircle}
           color="red"
-          onClick={() => router.push("/admin/packages")}
+          // CHANGED: Added query param ?tab=requests
+          onClick={() => router.push("/admin/packages?tab=requests")}
         />
 
         <StatCard
@@ -207,7 +208,8 @@ export default function AdminDashboard() {
           title="Locker Occupancy"
           icon={IconLock}
           color="violet"
-          onClick={() => router.push("/admin/lockers")}
+          // CHANGED: Added query param ?tab=occupied
+          onClick={() => router.push("/admin/lockers?tab=occupied")}
           customContent={
             <Group gap="xs" mt={4}>
               <RingProgress

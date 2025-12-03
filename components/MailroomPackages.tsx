@@ -23,6 +23,8 @@ import {
   SegmentedControl,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+// Added useSearchParams
+import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
   IconPlus,
@@ -36,7 +38,7 @@ import {
   IconUpload,
   IconTruckDelivery,
   IconList,
-  IconCheck, // <--- Added IconCheck
+  IconCheck,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -141,6 +143,16 @@ export default function MailroomPackages() {
   // Tab State
   const [activeTab, setActiveTab] = useState<string | null>("active");
 
+  // NEW: Handle URL Query Params for Tab Selection
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
   // New state for locker capacity
   const [lockerCapacity, setLockerCapacity] = useState<
     "Empty" | "Normal" | "Near Full" | "Full"
@@ -168,7 +180,7 @@ export default function MailroomPackages() {
       const [packagesRes, registrationsRes, lockersRes, assignedRes] =
         await Promise.all([
           fetch("/api/admin/mailroom/packages"),
-          fetch("/api/admin/mailroom/registrations"), // <--- Updated to admin route
+          fetch("/api/admin/mailroom/registrations"),
           fetch("/api/admin/mailroom/lockers"),
           fetch("/api/admin/mailroom/assigned-lockers"),
         ]);
@@ -828,9 +840,8 @@ export default function MailroomPackages() {
             searchable
             data={registrations.map((r) => ({
               value: r.id,
-              // CHANGED: Include mailroom_code in the label
-              label: `${r.full_name} ${
-                r.mailroom_code ? `(${r.mailroom_code})` : ""
+              label: `${r.full_name}${
+                r.mailroom_code ? ` (${r.mailroom_code})` : ""
               } - ${r.email}`,
             }))}
             value={formData.registration_id}
