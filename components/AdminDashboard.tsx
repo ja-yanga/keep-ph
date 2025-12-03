@@ -28,6 +28,7 @@ import {
   IconRefresh, // <--- Add this
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
+import AnalyticsDashboard from "./AnalyticsDashboard";
 
 interface DashboardStats {
   pendingRequests: number;

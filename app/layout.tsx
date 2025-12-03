@@ -9,6 +9,7 @@ import {
   mantineHtmlProps,
 } from "@mantine/core";
 import { SessionProvider } from "@/components/SessionProvider";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,6 +40,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
+        {/* Add Google Analytics here */}
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        )}
+
         <MantineProvider>
           <SessionProvider>{children}</SessionProvider>
         </MantineProvider>
