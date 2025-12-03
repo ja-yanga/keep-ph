@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Badge,
   Box,
@@ -23,7 +23,6 @@ import {
 } from "@mantine/core";
 import {
   IconRefresh,
-  IconSettings,
   IconEye,
   IconSearch,
   IconFilter,
@@ -34,6 +33,7 @@ import {
   IconBox,
   IconTruckDelivery,
   IconAlertCircle,
+  IconChevronRight, // Added Chevron
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
@@ -41,14 +41,20 @@ import { useSession } from "@/components/SessionProvider";
 type RawRow = any;
 type Row = {
   id: string;
-  mailroom_code: string | null; // <--- Added
+  mailroom_code: string | null;
   name: string;
-  email: string | null; // <--- Added
+  email: string | null;
   plan: string | null;
   location: string | null;
   created_at?: string | null;
   expiry_at?: string | null;
   mailroom_status?: string | null;
+  // NEW: Add stats to the Row type
+  stats: {
+    stored: number;
+    pending: number;
+    released: number;
+  };
   raw?: RawRow;
 };
 
@@ -57,6 +63,68 @@ const addMonths = (iso?: string | null, months = 0) => {
   const d = new Date(iso);
   d.setMonth(d.getMonth() + months);
   return d.toISOString();
+};
+
+// 1. Update the mapping function to calculate stats per row
+const mapDataToRows = (data: RawRow[]): Row[] => {
+  return data.map((r: any) => {
+    const planName = r.mailroom_plans?.name ?? r.plan_name ?? null;
+    const userName = r.full_name ?? null;
+    const locationName = r.mailroom_locations?.name ?? r.location_name ?? null;
+    const created = r.created_at ?? null;
+    const expiry = r.months ? addMonths(created, Number(r.months)) : null;
+    const now = new Date();
+    let computedStatus: string | null = null;
+
+    if (expiry) {
+      const ed = new Date(expiry);
+      const diff = ed.getTime() - now.getTime();
+      if (diff <= 0) computedStatus = "INACTIVE";
+      else if (diff <= 7 * 24 * 60 * 60 * 1000) computedStatus = "EXPIRING";
+      else computedStatus = "ACTIVE";
+    } else {
+      computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
+    }
+    const mailroom_status = computedStatus;
+
+    // NEW: Calculate stats for this specific registration
+    let stored = 0;
+    let pending = 0;
+    let released = 0;
+
+    if (Array.isArray(r.packages)) {
+      const uniqueIds = new Set();
+      r.packages.forEach((p: any) => {
+        if (uniqueIds.has(p.id)) return;
+        uniqueIds.add(p.id);
+        if (p.status === "STORED") stored++;
+        else if (p.status === "RELEASED") released++;
+        else if (p.status?.includes("REQUEST")) pending++;
+      });
+    }
+
+    const name =
+      userName ??
+      planName ??
+      r.package_name ??
+      r.title ??
+      `${locationName ?? "Mailroom Service"} #${r.id?.slice(0, 8)}`;
+
+    return {
+      id: r.id,
+      mailroom_code: r.mailroom_code ?? null,
+      name,
+      email: r.email ?? null,
+      plan: planName,
+      location: locationName,
+      created_at: created,
+      expiry_at: expiry,
+      mailroom_status,
+      // NEW: Attach stats
+      stats: { stored, pending, released },
+      raw: r,
+    };
+  });
 };
 
 export default function UserDashboard() {
@@ -86,9 +154,11 @@ export default function UserDashboard() {
 
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
     {
-      mailroom_code: true, // <--- Added
+      mailroom_code: true,
       name: true,
-      email: true, // <--- Added
+      // NEW: Add activity column, enabled by default
+      activity: true,
+      email: true,
       plan: true,
       location: true,
       created_at: true,
@@ -102,83 +172,44 @@ export default function UserDashboard() {
   const [sortBy, setSortBy] = useState<string | null>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/mailroom/registrations", {
-          method: "GET",
-          credentials: "include",
-        });
-        if (!mounted) return;
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          setError(json?.error || "Failed to load registrations");
-          setRows([]);
-          return;
-        }
-        const json = await res.json();
-        const data: RawRow[] = Array.isArray(json?.data ?? json)
-          ? json.data ?? json
-          : [];
-
-        const mapped: Row[] = data.map((r: any) => {
-          const planName = r.mailroom_plans?.name ?? r.plan_name ?? null;
-          const userName = r.full_name ?? null;
-          const locationName =
-            r.mailroom_locations?.name ?? r.location_name ?? null;
-          const created = r.created_at ?? null;
-          const expiry = r.months ? addMonths(created, Number(r.months)) : null;
-          const now = new Date();
-          let computedStatus: string | null = null;
-          if (expiry) {
-            const ed = new Date(expiry);
-            const diff = ed.getTime() - now.getTime();
-            if (diff <= 0) computedStatus = "INACTIVE";
-            else if (diff <= 7 * 24 * 60 * 60 * 1000)
-              computedStatus = "EXPIRING";
-            else computedStatus = "ACTIVE";
-          } else {
-            computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
-          }
-          const mailroom_status = computedStatus;
-
-          const name =
-            userName ??
-            planName ??
-            r.package_name ??
-            r.title ??
-            `${locationName ?? "Mailroom Service"} #${r.id?.slice(0, 8)}`;
-          return {
-            id: r.id,
-            mailroom_code: r.mailroom_code ?? null, // <--- Added
-            name,
-            email: r.email ?? null, // <--- Added
-            plan: planName,
-            location: locationName,
-            created_at: created,
-            expiry_at: expiry,
-            mailroom_status,
-            raw: r,
-          };
-        });
-
-        setRows(mapped);
-      } catch (err: any) {
-        console.error("load err", err);
-        setError("Failed to load registrations.");
+  // 2. Create a reusable fetch function
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/mailroom/registrations", {
+        method: "GET",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        setError(json?.error || "Failed to load registrations");
         setRows([]);
-      } finally {
-        if (mounted) setLoading(false);
+        return;
       }
+      const json = await res.json();
+      const data: RawRow[] = Array.isArray(json?.data ?? json)
+        ? json.data ?? json
+        : [];
+
+      // Use the helper function
+      const mapped = mapDataToRows(data);
+      setRows(mapped);
+    } catch (err: any) {
+      console.error("load err", err);
+      setError("Failed to load registrations.");
+      setRows([]);
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, [session?.user?.id]);
+  }, []);
+
+  // Initial Load
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchData();
+    }
+  }, [session?.user?.id, fetchData]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -190,10 +221,10 @@ export default function UserDashboard() {
             String(r.name).toLowerCase().includes(q) ||
             String(r.email ?? "")
               .toLowerCase()
-              .includes(q) || // <--- Search email
+              .includes(q) ||
             String(r.mailroom_code ?? "")
               .toLowerCase()
-              .includes(q) || // <--- Search code
+              .includes(q) ||
             String(r.plan ?? "")
               .toLowerCase()
               .includes(q) ||
@@ -241,71 +272,7 @@ export default function UserDashboard() {
   const refresh = () => {
     setRows(null);
     setError(null);
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/mailroom/registrations", {
-          method: "GET",
-          credentials: "include",
-        });
-        if (!res.ok) {
-          setError("Failed to reload");
-          setRows([]);
-          return;
-        }
-        const json = await res.json();
-        const data: RawRow[] = Array.isArray(json?.data ?? json)
-          ? json.data ?? json
-          : [];
-        const mapped: Row[] = data.map((r: any) => {
-          const planName = r.mailroom_plans?.name ?? r.plan_name ?? null;
-          const userName = r.full_name ?? null;
-          const locationName =
-            r.mailroom_locations?.name ?? r.location_name ?? null;
-          const created = r.created_at ?? null;
-          const expiry = r.months ? addMonths(created, Number(r.months)) : null;
-          const now = new Date();
-          let computedStatus: string | null = null;
-          if (expiry) {
-            const ed = new Date(expiry);
-            const diff = ed.getTime() - now.getTime();
-            if (diff <= 0) computedStatus = "INACTIVE";
-            else if (diff <= 7 * 24 * 60 * 60 * 1000)
-              computedStatus = "EXPIRING";
-            else computedStatus = "ACTIVE";
-          } else {
-            computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
-          }
-          const mailroom_status = computedStatus;
-
-          const name =
-            userName ??
-            planName ??
-            r.package_name ??
-            r.title ??
-            `${locationName ?? "Mailroom Service"} #${r.id?.slice(0, 8)}`;
-          return {
-            id: r.id,
-            mailroom_code: r.mailroom_code ?? null, // <--- Added
-            name,
-            email: r.email ?? null, // <--- Added
-            plan: planName,
-            location: locationName,
-            created_at: created,
-            expiry_at: expiry,
-            mailroom_status,
-            raw: r,
-          };
-        });
-        setRows(mapped);
-      } catch (err) {
-        console.error("refresh err", err);
-        setError("Failed to reload");
-        setRows([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    fetchData();
   };
 
   const SortIcon = ({ col }: { col: string }) => {
@@ -319,7 +286,14 @@ export default function UserDashboard() {
 
   const ThSortable = ({ col, label }: { col: string; label: string }) => (
     <Table.Th
-      style={{ cursor: "pointer", whiteSpace: "nowrap" }}
+      style={{
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        textTransform: "uppercase", // Uppercase headers
+        fontSize: "11px", // Smaller font
+        fontWeight: 700,
+        color: "var(--mantine-color-dimmed)",
+      }}
       onClick={() => toggleSort(col)}
     >
       <Group gap={4}>
@@ -524,26 +498,31 @@ export default function UserDashboard() {
                 </Stack>
               </Popover.Dropdown>
             </Popover>
-
-            <Button
-              leftSection={<IconDownload size={16} />}
-              variant="outline"
-              size="sm"
-              disabled
-            >
-              Export
-            </Button>
           </Group>
         </Group>
 
         <ScrollArea>
-          <Table verticalSpacing="sm" striped highlightOnHover withTableBorder>
-            <Table.Thead>
+          <Table verticalSpacing="md" highlightOnHover withTableBorder={false}>
+            <Table.Thead bg="gray.0">
               <Table.Tr>
                 {visibleColumns.mailroom_code && (
                   <ThSortable col="mailroom_code" label="Code" />
                 )}
                 {visibleColumns.name && <ThSortable col="name" label="Name" />}
+
+                {visibleColumns.activity && (
+                  <Table.Th
+                    style={{
+                      textTransform: "uppercase",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "var(--mantine-color-dimmed)",
+                    }}
+                  >
+                    Activity
+                  </Table.Th>
+                )}
+
                 {visibleColumns.email && (
                   <ThSortable col="email" label="Email" />
                 )}
@@ -552,16 +531,25 @@ export default function UserDashboard() {
                   <ThSortable col="location" label="Location" />
                 )}
                 {visibleColumns.created_at && (
-                  <ThSortable col="created_at" label="Date Created" />
+                  <ThSortable col="created_at" label="Created" />
                 )}
                 {visibleColumns.expiry_at && (
-                  <ThSortable col="expiry_at" label="Date Expiry" />
+                  <ThSortable col="expiry_at" label="Expiry" />
                 )}
                 {visibleColumns.mailroom_status && (
-                  <Table.Th>Mailroom Status</Table.Th>
+                  <Table.Th
+                    style={{
+                      textTransform: "uppercase",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "var(--mantine-color-dimmed)",
+                    }}
+                  >
+                    Status
+                  </Table.Th>
                 )}
                 {visibleColumns.view && (
-                  <Table.Th style={{ width: 80 }}>Action</Table.Th>
+                  <Table.Th style={{ width: 100 }}></Table.Th>
                 )}
               </Table.Tr>
             </Table.Thead>
@@ -569,7 +557,7 @@ export default function UserDashboard() {
             <Table.Tbody>
               {loading || rows === null ? (
                 <Table.Tr>
-                  <Table.Td colSpan={9}>
+                  <Table.Td colSpan={10}>
                     <Stack align="center" py="xl">
                       <Loader size="sm" />
                       <Text size="sm" c="dimmed">
@@ -580,7 +568,7 @@ export default function UserDashboard() {
                 </Table.Tr>
               ) : error ? (
                 <Table.Tr>
-                  <Table.Td colSpan={9}>
+                  <Table.Td colSpan={10}>
                     <Stack align="center" py="xl">
                       <Text c="red">{error}</Text>
                     </Stack>
@@ -588,7 +576,7 @@ export default function UserDashboard() {
                 </Table.Tr>
               ) : filtered.length === 0 ? (
                 <Table.Tr>
-                  <Table.Td colSpan={9}>
+                  <Table.Td colSpan={10}>
                     <Stack align="center" py="xl">
                       <ThemeIcon
                         size={48}
@@ -608,7 +596,13 @@ export default function UserDashboard() {
                     {visibleColumns.mailroom_code && (
                       <Table.Td>
                         {r.mailroom_code ? (
-                          <Badge variant="outline" color="violet" size="sm">
+                          <Badge
+                            variant="light"
+                            color="violet"
+                            size="md"
+                            radius="sm"
+                            style={{ fontFamily: "monospace" }}
+                          >
                             {r.mailroom_code}
                           </Badge>
                         ) : (
@@ -620,29 +614,85 @@ export default function UserDashboard() {
                     )}
                     {visibleColumns.name && (
                       <Table.Td>
-                        <Text fw={500} size="sm">
+                        {/* CHANGED: Removed Avatar, just showing name */}
+                        <Text fw={600} size="sm">
                           {r.name}
                         </Text>
                       </Table.Td>
                     )}
+
+                    {visibleColumns.activity && (
+                      <Table.Td>
+                        <Group gap={8}>
+                          {r.stats.stored > 0 && (
+                            <Tooltip
+                              label={`${r.stats.stored} Items in Storage`}
+                            >
+                              {/* CHANGED: Increased size, changed variant to light, fixed icon size */}
+                              <Badge
+                                size="md"
+                                variant="light"
+                                color="blue"
+                                leftSection={
+                                  <IconBox size={16} style={{ marginTop: 4 }} />
+                                }
+                              >
+                                {r.stats.stored}
+                              </Badge>
+                            </Tooltip>
+                          )}
+                          {r.stats.pending > 0 && (
+                            <Tooltip
+                              label={`${r.stats.pending} Pending Requests`}
+                            >
+                              <Badge
+                                size="md"
+                                variant="light"
+                                color="orange"
+                                leftSection={
+                                  <IconAlertCircle
+                                    size={16}
+                                    style={{ marginTop: 4 }}
+                                  />
+                                }
+                              >
+                                {r.stats.pending}
+                              </Badge>
+                            </Tooltip>
+                          )}
+                          {r.stats.stored === 0 && r.stats.pending === 0 && (
+                            <Text size="xs" c="dimmed">
+                              —
+                            </Text>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    )}
+
                     {visibleColumns.email && (
                       <Table.Td>
-                        <Text size="sm">{r.email ?? "—"}</Text>
+                        <Text size="sm" c="dimmed">
+                          {r.email ?? "—"}
+                        </Text>
                       </Table.Td>
                     )}
                     {visibleColumns.plan && (
                       <Table.Td>
-                        <Text size="sm">{r.plan ?? "—"}</Text>
+                        <Text size="sm" fw={500}>
+                          {r.plan ?? "—"}
+                        </Text>
                       </Table.Td>
                     )}
                     {visibleColumns.location && (
                       <Table.Td>
-                        <Text size="sm">{r.location ?? "—"}</Text>
+                        <Text size="sm" c="dimmed">
+                          {r.location ?? "—"}
+                        </Text>
                       </Table.Td>
                     )}
                     {visibleColumns.created_at && (
                       <Table.Td>
-                        <Text size="sm" c="dimmed">
+                        <Text size="xs" c="dimmed">
                           {r.created_at
                             ? new Date(r.created_at).toLocaleDateString()
                             : "—"}
@@ -651,7 +701,7 @@ export default function UserDashboard() {
                     )}
                     {visibleColumns.expiry_at && (
                       <Table.Td>
-                        <Text size="sm" c="dimmed">
+                        <Text size="xs" c="dimmed">
                           {r.expiry_at
                             ? new Date(r.expiry_at).toLocaleDateString()
                             : "—"}
@@ -670,7 +720,12 @@ export default function UserDashboard() {
                                 ? "yellow"
                                 : "gray";
                             return (
-                              <Badge color={color} variant="light">
+                              <Badge
+                                color={color}
+                                variant="light"
+                                size="sm"
+                                radius="sm"
+                              >
                                 {s}
                               </Badge>
                             );
@@ -682,13 +737,17 @@ export default function UserDashboard() {
                     )}
                     {visibleColumns.view && (
                       <Table.Td>
-                        <Tooltip label="View Details">
-                          <Link href={`/mailroom/${r.id}`}>
-                            <ActionIcon variant="subtle" color="blue">
-                              <IconEye size={18} />
-                            </ActionIcon>
-                          </Link>
-                        </Tooltip>
+                        <Button
+                          component={Link}
+                          href={`/mailroom/${r.id}`}
+                          variant="default"
+                          size="xs"
+                          radius="md"
+                          fullWidth
+                          rightSection={<IconChevronRight size={14} />}
+                        >
+                          Manage
+                        </Button>
                       </Table.Td>
                     )}
                   </Table.Tr>
