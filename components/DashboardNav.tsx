@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Container,
@@ -10,29 +10,147 @@ import {
   Button,
   ActionIcon,
   Tooltip,
+  Popover,
+  Text,
+  Stack,
+  Indicator,
+  ScrollArea,
+  ThemeIcon,
+  Divider,
 } from "@mantine/core";
-import { IconBell, IconUser } from "@tabler/icons-react";
+import {
+  IconBell,
+  IconUser,
+  IconPackage,
+  IconTrash,
+  IconScan,
+  IconCheck,
+} from "@tabler/icons-react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
+
+// Notification Type Definition
+type Notification = {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
+  link?: string;
+};
 
 export default function DashboardNav() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  // Get session and role from the provider
+  // Notification State
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+
   const { session } = useSession();
   const role = session?.role;
-
   const showLinks = !pathname.startsWith("/onboarding");
   const isAdmin = role === "admin";
+
+  // Fetch Notifications
+  const fetchNotifications = async () => {
+    if (!session?.user?.id) return;
+
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (data) {
+      setNotifications(data);
+      setUnreadCount(data.filter((n) => !n.is_read).length);
+    }
+  };
+
+  // Initial Fetch & Realtime Subscription
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchNotifications();
+
+      // Subscribe to new notifications in real-time
+      const channel = supabase
+        .channel("realtime-notifications")
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            setNotifications((prev) => [payload.new as Notification, ...prev]);
+            setUnreadCount((prev) => prev + 1);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [session?.user?.id]);
+
+  const markAsRead = async () => {
+    if (unreadCount === 0) return;
+
+    // Optimistic update
+    setUnreadCount(0);
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", session?.user?.id)
+      .eq("is_read", false);
+  };
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case "PACKAGE_ARRIVED":
+        return <IconPackage size={16} />;
+      case "PACKAGE_DISPOSED":
+        return <IconTrash size={16} />;
+      case "SCAN_READY":
+        return <IconScan size={16} />;
+      case "PACKAGE_RELEASED":
+        return <IconCheck size={16} />;
+      default:
+        return <IconBell size={16} />;
+    }
+  };
+
+  const getColor = (type: string) => {
+    switch (type) {
+      case "PACKAGE_ARRIVED":
+        return "blue";
+      case "PACKAGE_DISPOSED":
+        return "red";
+      case "SCAN_READY":
+        return "violet";
+      case "PACKAGE_RELEASED":
+        return "green";
+      default:
+        return "gray";
+    }
+  };
 
   const linkColor = (href: string) => {
     const active = pathname === href || pathname.startsWith(href + "/");
     return {
-      color: "#1A237E", // Consistent color with Nav
+      color: "#1A237E",
       fontWeight: active ? 700 : 500,
     };
   };
@@ -73,7 +191,10 @@ export default function DashboardNav() {
       <Container size="xl">
         <Group justify="space-between" align="center" style={{ width: "100%" }}>
           {/* Brand */}
-          <Link href="/admin/dashboard" style={{ textDecoration: "none" }}>
+          <Link
+            href={isAdmin ? "/admin/dashboard" : "/dashboard"}
+            style={{ textDecoration: "none" }}
+          >
             <Title order={3} style={{ fontWeight: 800, color: "#1A237E" }}>
               Keep PH
             </Title>
@@ -82,18 +203,16 @@ export default function DashboardNav() {
           {/* Nav links - hidden on onboarding, wait for session */}
           {showLinks && session && (
             <Group gap="lg" visibleFrom="sm">
-              <Anchor
-                component={Link}
-                href="/admin/dashboard"
-                style={linkColor("/admin/dashboard")}
-                underline="hover"
-                aria-current={pathname === "/dashboard" ? "page" : undefined}
-              >
-                Dashboard
-              </Anchor>
-
               {isAdmin ? (
                 <>
+                  <Anchor
+                    component={Link}
+                    href="/admin/dashboard"
+                    style={linkColor("/admin/dashboard")}
+                    underline="hover"
+                  >
+                    Dashboard
+                  </Anchor>
                   <Anchor
                     component={Link}
                     href="/admin/lockers"
@@ -133,6 +252,14 @@ export default function DashboardNav() {
                     underline="hover"
                   >
                     Registration Locations
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/admin/stats"
+                    style={linkColor("/admin/stats")}
+                    underline="hover"
+                  >
+                    Stats
                   </Anchor>
                 </>
               ) : (
@@ -174,16 +301,108 @@ export default function DashboardNav() {
           {/* Right: optionally show notifications, always show logout */}
           <Group gap="sm">
             {showLinks && (
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                radius="xl"
-                size="lg"
-                aria-label="notifications"
-                disabled
+              <Popover
+                width={320}
+                position="bottom-end"
+                withArrow
+                shadow="md"
+                opened={notifOpen}
+                onChange={setNotifOpen}
+                onClose={markAsRead}
               >
-                <IconBell size={20} />
-              </ActionIcon>
+                <Popover.Target>
+                  <Indicator
+                    color="red"
+                    size={16}
+                    label={unreadCount}
+                    disabled={unreadCount === 0}
+                    offset={4}
+                  >
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      radius="xl"
+                      size="lg"
+                      aria-label="notifications"
+                      onClick={() => setNotifOpen((o) => !o)}
+                    >
+                      <IconBell size={20} />
+                    </ActionIcon>
+                  </Indicator>
+                </Popover.Target>
+                <Popover.Dropdown p={0}>
+                  <Box p="sm" bg="gray.0">
+                    <Text size="sm" fw={700}>
+                      Notifications
+                    </Text>
+                  </Box>
+                  <Divider />
+                  <ScrollArea h={300}>
+                    {notifications.length === 0 ? (
+                      <Box p="xl" ta="center">
+                        <Text size="sm" c="dimmed">
+                          No notifications yet
+                        </Text>
+                      </Box>
+                    ) : (
+                      <Stack gap={0}>
+                        {notifications.map((n) => (
+                          <Box
+                            key={n.id}
+                            p="sm"
+                            style={{
+                              borderBottom: "1px solid #f1f3f5",
+                              backgroundColor: n.is_read ? "white" : "#f8f9fa",
+                              cursor: n.link ? "pointer" : "default",
+                            }}
+                            onClick={() => {
+                              if (n.link) router.push(n.link);
+                              setNotifOpen(false);
+                            }}
+                          >
+                            <Group align="flex-start" wrap="nowrap">
+                              <ThemeIcon
+                                color={getColor(n.type)}
+                                variant="light"
+                                size="md"
+                                radius="xl"
+                                mt={2}
+                              >
+                                {getIcon(n.type)}
+                              </ThemeIcon>
+                              <Box style={{ flex: 1 }}>
+                                <Text size="sm" fw={600} lh={1.2} mb={2}>
+                                  {n.title}
+                                </Text>
+                                <Text size="xs" c="dimmed" lh={1.4}>
+                                  {n.message}
+                                </Text>
+                                <Text
+                                  size="xs"
+                                  c="dimmed"
+                                  mt={4}
+                                  style={{ fontSize: 10 }}
+                                >
+                                  {new Date(n.created_at).toLocaleString()}
+                                </Text>
+                              </Box>
+                              {!n.is_read && (
+                                <Box
+                                  w={8}
+                                  h={8}
+                                  bg="blue"
+                                  style={{ borderRadius: "50%" }}
+                                  mt={6}
+                                />
+                              )}
+                            </Group>
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                  </ScrollArea>
+                </Popover.Dropdown>
+              </Popover>
             )}
 
             {/* Admin Account Icon (placed between Bell and Logout) */}
