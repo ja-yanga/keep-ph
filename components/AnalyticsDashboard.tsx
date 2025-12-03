@@ -22,6 +22,7 @@ import {
   IconDeviceMobile,
   IconChartBar,
   IconAlertCircle,
+  IconActivity,
 } from "@tabler/icons-react";
 import {
   LineChart,
@@ -47,7 +48,11 @@ export default function AnalyticsDashboard() {
     visitorData: any[];
     deviceData: any[];
     topPages: any[];
-    stats: { totalVisitors: number; totalPageViews: number };
+    stats: {
+      activeNow: number;
+      totalVisitors: number;
+      totalPageViews: number;
+    };
   } | null>(null);
 
   useEffect(() => {
@@ -86,7 +91,11 @@ export default function AnalyticsDashboard() {
   const visitorData = data?.visitorData || [];
   const deviceData = data?.deviceData || [];
   const topPages = data?.topPages || [];
-  const stats = data?.stats || { totalVisitors: 0, totalPageViews: 0 };
+  const stats = data?.stats || {
+    activeNow: 0,
+    totalVisitors: 0,
+    totalPageViews: 0,
+  };
 
   return (
     <Stack gap="lg">
@@ -108,6 +117,25 @@ export default function AnalyticsDashboard() {
 
       {/* 1. Key Metrics Cards */}
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <Paper withBorder p="md" radius="md">
+          <Group>
+            <ThemeIcon size="xl" radius="md" variant="light" color="green">
+              <IconActivity size={28} />
+            </ThemeIcon>
+            <div>
+              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+                Active Now
+              </Text>
+              <Text fw={700} size="xl" c="green">
+                {stats.activeNow}
+              </Text>
+              <Text c="dimmed" size="xs">
+                users on
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+
         <Paper withBorder p="md" radius="md">
           <Group>
             <ThemeIcon size="xl" radius="md" variant="light" color="blue">
@@ -135,25 +163,6 @@ export default function AnalyticsDashboard() {
               </Text>
               <Text fw={700} size="xl">
                 {stats.totalPageViews.toLocaleString()}
-              </Text>
-            </div>
-          </Group>
-        </Paper>
-
-        <Paper withBorder p="md" radius="md">
-          <Group>
-            <ThemeIcon size="xl" radius="md" variant="light" color="orange">
-              <IconClock size={28} />
-            </ThemeIcon>
-            <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
-                Avg. Session
-              </Text>
-              <Text fw={700} size="xl">
-                --
-              </Text>
-              <Text c="dimmed" size="xs">
-                (Requires advanced metrics)
               </Text>
             </div>
           </Group>

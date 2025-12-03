@@ -21,6 +21,16 @@ export async function GET(req: Request) {
       },
     });
 
+    // NEW: Fetch Realtime Active Users (Last 30 mins)
+    const [realtimeResponse] = await analyticsDataClient.runRealtimeReport({
+      property: `properties/${propertyId}`,
+      metrics: [{ name: "activeUsers" }],
+    });
+
+    const activeNow = Number(
+      realtimeResponse.rows?.[0]?.metricValues?.[0]?.value || 0
+    );
+
     // 1. Fetch Trend Data (Visitors & Pageviews) - Last 7 Days
     const [trendResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
@@ -139,6 +149,7 @@ export async function GET(req: Request) {
       deviceData,
       topPages,
       stats: {
+        activeNow, // NEW field
         totalVisitors,
         totalPageViews,
       },
