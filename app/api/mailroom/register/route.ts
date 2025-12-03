@@ -21,7 +21,6 @@ export async function POST(req: Request) {
       lockerQty,
       months,
       notes,
-      // NEW: Accept referral code from body (make sure to update frontend payload too!)
       referralCode,
     } = body;
 
@@ -33,7 +32,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Fetch Plan Price (Server-Side Source of Truth)
+    // 2. Fetch Plan Price
     const { data: plan, error: planError } = await supabaseAdmin
       .from("mailroom_plans")
       .select("price")
@@ -47,16 +46,40 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Calculate Amount Due
+    // 3. Check Locker Availability BEFORE creating registration
+    const { data: availableLockers, error: lockerCheckError } =
+      await supabaseAdmin
+        .from("location_lockers")
+        .select("id")
+        .eq("location_id", locationId)
+        .eq("is_available", true)
+        .limit(lockerQty);
+
+    if (lockerCheckError) {
+      return NextResponse.json(
+        { error: "Failed to check locker availability" },
+        { status: 500 }
+      );
+    }
+
+    if (!availableLockers || availableLockers.length < lockerQty) {
+      return NextResponse.json(
+        {
+          error: `Insufficient lockers available. Requested: ${lockerQty}, Available: ${
+            availableLockers?.length || 0
+          }`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // 4. Calculate Amount Due
     let amountDue = Number(plan.price) * Number(lockerQty) * Number(months);
 
-    // 4. Apply Annual Discount (20%)
     if (Number(months) === 12) {
       amountDue = amountDue * 0.8;
     }
 
-    // NEW: 4.5 Apply Referral Discount (5%)
-    // We must validate the code again server-side to prevent manipulation
     if (referralCode) {
       const { data: referrer } = await supabaseAdmin
         .from("users")
@@ -64,9 +87,8 @@ export async function POST(req: Request) {
         .eq("referral_code", referralCode)
         .single();
 
-      // Only apply if valid and not self-referral
       if (referrer && referrer.id !== userId) {
-        amountDue = amountDue * 0.95; // 5% off
+        amountDue = amountDue * 0.95;
       }
     }
 
@@ -76,14 +98,12 @@ export async function POST(req: Request) {
     let attempts = 0;
 
     while (!isUnique && attempts < 5) {
-      // Generate random 4-char alphanumeric string (substring 2 to 6)
       const randomStr = Math.random()
         .toString(36)
         .substring(2, 6)
         .toUpperCase();
       mailroomCode = `KPH-${randomStr}`;
 
-      // Check if exists
       const { data: existing } = await supabaseAdmin
         .from("mailroom_registrations")
         .select("id")
@@ -103,12 +123,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // 6. Prepare Data for Insert
-    // Handle optional numeric fields: convert empty strings to null
+    // 6. Insert Registration
     const mobileNum = mobile ? mobile.replace(/\D/g, "") : null;
     const telephoneNum = telephone ? telephone.replace(/\D/g, "") : null;
 
-    const { data, error } = await supabaseAdmin
+    const { data: registration, error: regError } = await supabaseAdmin
       .from("mailroom_registrations")
       .insert([
         {
@@ -118,26 +137,54 @@ export async function POST(req: Request) {
           locker_qty: lockerQty,
           months,
           notes,
-          // Contact Info from Schema
           full_name,
           email,
           mobile: mobileNum,
           telephone: telephoneNum,
-          mailroom_code: mailroomCode, // Added back
+          mailroom_code: mailroomCode,
         },
       ])
       .select()
       .single();
 
-    if (error) {
-      console.error("Registration Insert Error:", error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (regError) {
+      console.error("Registration Insert Error:", regError);
+      return NextResponse.json({ error: regError.message }, { status: 400 });
+    }
+
+    // 7. ASSIGN LOCKERS (Restored Logic)
+    const lockerIdsToAssign = availableLockers.map((l) => l.id);
+
+    // 7a. Mark lockers as unavailable
+    const { error: updateError } = await supabaseAdmin
+      .from("location_lockers")
+      .update({ is_available: false })
+      .in("id", lockerIdsToAssign);
+
+    if (updateError) {
+      console.error("Failed to update locker status:", updateError);
+      // Note: In a real production app, you might want to rollback the registration here
+    }
+
+    // 7b. Create assignment records
+    const assignments = lockerIdsToAssign.map((lockerId) => ({
+      registration_id: registration.id,
+      locker_id: lockerId,
+      status: "Normal",
+    }));
+
+    const { error: assignError } = await supabaseAdmin
+      .from("mailroom_assigned_lockers")
+      .insert(assignments);
+
+    if (assignError) {
+      console.error("Failed to assign lockers:", assignError);
     }
 
     return NextResponse.json({
       message: "Mailroom registered successfully",
-      data,
-      amountDue, // Return calculated amount for payment
+      data: registration,
+      amountDue,
     });
   } catch (err: any) {
     console.error("mailroom register unexpected error:", err);

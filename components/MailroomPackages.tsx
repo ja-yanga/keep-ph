@@ -133,7 +133,6 @@ export default function MailroomPackages() {
   );
   const [isReleasing, setIsReleasing] = useState(false);
 
-  // NEW: Dispose Modal State
   const [disposeModalOpen, setDisposeModalOpen] = useState(false);
   const [packageToDispose, setPackageToDispose] = useState<Package | null>(
     null
@@ -143,7 +142,9 @@ export default function MailroomPackages() {
   // Tab State
   const [activeTab, setActiveTab] = useState<string | null>("active");
 
-  // NEW: Handle URL Query Params for Tab Selection
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -165,6 +166,21 @@ export default function MailroomPackages() {
   useEffect(() => {
     setPage(1);
   }, [search, filterStatus, filterType, activeTab]); // Reset page on tab change
+
+  // NEW: Auto-dismiss global success
+  useEffect(() => {
+    if (globalSuccess) {
+      const timer = setTimeout(() => setGlobalSuccess(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [globalSuccess]);
+
+  // NEW: Clear form errors when any modal opens
+  useEffect(() => {
+    if (opened || scanModalOpen || releaseModalOpen || disposeModalOpen) {
+      setFormError(null);
+    }
+  }, [opened, scanModalOpen, releaseModalOpen, disposeModalOpen]);
 
   const clearFilters = () => {
     setSearch("");
@@ -272,15 +288,13 @@ export default function MailroomPackages() {
       !formData.package_type ||
       !formData.status
     ) {
-      notifications.show({
-        title: "Validation Error",
-        message: "Please fill in all required fields",
-        color: "red",
-      });
+      setFormError("Please fill in all required fields");
       return;
     }
 
     setSubmitting(true);
+    setFormError(null); // Clear previous errors
+
     try {
       const url = editingPackage
         ? `/api/admin/mailroom/packages/${editingPackage.id}`
@@ -307,23 +321,15 @@ export default function MailroomPackages() {
 
       if (!res.ok) throw new Error("Failed to save");
 
-      notifications.show({
-        title: "Success",
-        message: `Package ${
-          editingPackage ? "updated" : "created"
-        } successfully`,
-        color: "green",
-      });
+      setGlobalSuccess(
+        `Package ${editingPackage ? "updated" : "created"} successfully`
+      );
 
       close();
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to save package",
-        color: "red",
-      });
+      setFormError(error.message || "Failed to save package");
     } finally {
       setSubmitting(false);
     }
@@ -339,11 +345,7 @@ export default function MailroomPackages() {
 
       if (!res.ok) throw new Error("Failed to delete");
 
-      notifications.show({
-        title: "Success",
-        message: "Package deleted successfully",
-        color: "green",
-      });
+      setGlobalSuccess("Package deleted successfully");
       fetchData();
     } catch (error) {
       console.error(error);
@@ -366,6 +368,7 @@ export default function MailroomPackages() {
   const handleSubmitDispose = async () => {
     if (!packageToDispose) return;
     setIsDisposing(true);
+    setFormError(null);
 
     try {
       const payload = {
@@ -390,20 +393,12 @@ export default function MailroomPackages() {
 
       if (!res.ok) throw new Error("Failed to update status");
 
-      notifications.show({
-        title: "Success",
-        message: "Package marked as DISPOSED and locker status updated",
-        color: "green",
-      });
+      setGlobalSuccess("Package marked as DISPOSED and locker status updated");
       setDisposeModalOpen(false);
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to dispose package",
-        color: "red",
-      });
+      setFormError(error.message || "Failed to dispose package");
     } finally {
       setIsDisposing(false);
     }
@@ -419,6 +414,7 @@ export default function MailroomPackages() {
   const handleSubmitScan = async () => {
     if (!scanFile || !packageToScan) return;
     setIsUploading(true);
+    setFormError(null);
 
     try {
       const formData = new FormData();
@@ -435,20 +431,12 @@ export default function MailroomPackages() {
         throw new Error(err.error || "Upload failed");
       }
 
-      notifications.show({
-        title: "Success",
-        message: "Document scanned and uploaded successfully",
-        color: "green",
-      });
+      setGlobalSuccess("Document scanned and uploaded successfully");
 
       setScanModalOpen(false);
       fetchData();
     } catch (error: any) {
-      notifications.show({
-        title: "Error",
-        message: error.message,
-        color: "red",
-      });
+      setFormError(error.message || "Upload failed");
     } finally {
       setIsUploading(false);
     }
@@ -466,6 +454,7 @@ export default function MailroomPackages() {
   const handleSubmitRelease = async () => {
     if (!releaseFile || !packageToRelease) return;
     setIsReleasing(true);
+    setFormError(null);
 
     try {
       const formData = new FormData();
@@ -483,20 +472,12 @@ export default function MailroomPackages() {
         throw new Error(err.error || "Release failed");
       }
 
-      notifications.show({
-        title: "Success",
-        message: "Package released and locker status updated",
-        color: "green",
-      });
+      setGlobalSuccess("Package released and locker status updated");
 
       setReleaseModalOpen(false);
       fetchData();
     } catch (error: any) {
-      notifications.show({
-        title: "Error",
-        message: error.message,
-        color: "red",
-      });
+      setFormError(error.message || "Release failed");
     } finally {
       setIsReleasing(false);
     }
@@ -558,6 +539,22 @@ export default function MailroomPackages() {
 
   return (
     <Stack align="center">
+      {/* GLOBAL SUCCESS ALERT */}
+      {globalSuccess && (
+        <Alert
+          variant="light"
+          color="green"
+          title="Success"
+          icon={<IconCheck size={16} />}
+          withCloseButton
+          onClose={() => setGlobalSuccess(null)}
+          w="100%"
+          maw={1200}
+        >
+          {globalSuccess}
+        </Alert>
+      )}
+
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
           <Group style={{ flex: 1 }}>
@@ -821,6 +818,20 @@ export default function MailroomPackages() {
         centered
       >
         <Stack>
+          {/* FORM ERROR ALERT */}
+          {formError && (
+            <Alert
+              variant="light"
+              color="red"
+              title="Error"
+              icon={<IconAlertCircle size={16} />}
+              withCloseButton
+              onClose={() => setFormError(null)}
+            >
+              {formError}
+            </Alert>
+          )}
+
           <TextInput
             label="Tracking Number"
             placeholder="e.g. TN-123456"
@@ -983,6 +994,20 @@ export default function MailroomPackages() {
         centered
       >
         <Stack>
+          {/* FORM ERROR ALERT */}
+          {formError && (
+            <Alert
+              variant="light"
+              color="red"
+              title="Error"
+              icon={<IconAlertCircle size={16} />}
+              withCloseButton
+              onClose={() => setFormError(null)}
+            >
+              {formError}
+            </Alert>
+          )}
+
           <Text size="sm">
             Upload the PDF scan for <b>{packageToScan?.tracking_number}</b>.
           </Text>
@@ -1017,6 +1042,20 @@ export default function MailroomPackages() {
         centered
       >
         <Stack>
+          {/* FORM ERROR ALERT */}
+          {formError && (
+            <Alert
+              variant="light"
+              color="red"
+              title="Error"
+              icon={<IconAlertCircle size={16} />}
+              withCloseButton
+              onClose={() => setFormError(null)}
+            >
+              {formError}
+            </Alert>
+          )}
+
           <Text size="sm">
             Upload Proof of Release (Photo/Signature) for{" "}
             <b>{packageToRelease?.tracking_number}</b>.
@@ -1092,6 +1131,20 @@ export default function MailroomPackages() {
         centered
       >
         <Stack>
+          {/* FORM ERROR ALERT */}
+          {formError && (
+            <Alert
+              variant="light"
+              color="red"
+              title="Error"
+              icon={<IconAlertCircle size={16} />}
+              withCloseButton
+              onClose={() => setFormError(null)}
+            >
+              {formError}
+            </Alert>
+          )}
+
           <Alert color="red" icon={<IconTrash size={16} />}>
             Are you sure you want to mark{" "}
             <b>{packageToDispose?.tracking_number}</b> as DISPOSED? This action

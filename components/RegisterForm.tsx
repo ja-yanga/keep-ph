@@ -38,6 +38,9 @@ import {
   IconChevronRight,
   IconChevronLeft,
   IconCalendar,
+  IconMail,
+  IconPackage,
+  IconScan,
 } from "@tabler/icons-react";
 
 const supabase = createClient(
@@ -107,10 +110,13 @@ export default function RegisterForm() {
         .select("id,name,region,city,barangay,zip")
         .order("name", { ascending: true });
 
-      // 2. Fetch Plans
+      // 2. Fetch Plans with Capabilities
+      // CHANGED: Added capability columns to the select query
       const { data: plns } = await supabase
         .from("mailroom_plans")
-        .select("id,name,price,description")
+        .select(
+          "id,name,price,description,can_receive_mail,can_receive_parcels,can_digitize,storage_limit"
+        )
         .order("price", { ascending: true });
 
       // 3. Fetch Available Locker Counts from API
@@ -465,82 +471,207 @@ export default function RegisterForm() {
 
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                   {plans.map((p) => {
-                    // Calculate display price based on cycle
-                    // CHANGED: Apply 20% discount for annual
+                    // Calculate pricing for display
+                    const monthlyBase = p.price;
+                    const annualTotal = monthlyBase * 12 * 0.8;
+                    const annualMonthlyEquivalent = monthlyBase * 0.8;
+
                     const displayPrice =
-                      billingCycle === "annual" ? p.price * 12 * 0.8 : p.price;
-                    const originalPrice = p.price * 12;
+                      billingCycle === "annual"
+                        ? annualMonthlyEquivalent
+                        : monthlyBase;
+
+                    const isSelected = selectedPlanId === p.id;
+                    const isPopular = p.name === "Personal"; // Static "Popular" flag
+
+                    // DYNAMIC FEATURES LIST based on DB columns
+                    const features = [];
+
+                    // 1. Storage
+                    if (p.storage_limit > 0) {
+                      // Convert MB to GB if >= 1024, otherwise show MB
+                      const storageLabel =
+                        p.storage_limit >= 1024
+                          ? `${(p.storage_limit / 1024).toFixed(
+                              0
+                            )}GB Digital Storage`
+                          : `${p.storage_limit}MB Digital Storage`;
+
+                      features.push({
+                        label: storageLabel,
+                        icon: IconBox,
+                      });
+                    }
+
+                    // 2. Mail
+                    if (p.can_receive_mail) {
+                      features.push({
+                        label: "Mail Reception",
+                        icon: IconMail,
+                      });
+                    }
+
+                    // 3. Parcels
+                    if (p.can_receive_parcels) {
+                      features.push({
+                        label: "Parcel Reception",
+                        icon: IconPackage,
+                      });
+                    }
+
+                    // 4. Digitization
+                    if (p.can_digitize) {
+                      features.push({
+                        label: "Scan & Digitize",
+                        icon: IconScan,
+                      });
+                    }
 
                     return (
                       <Card
                         key={p.id}
-                        withBorder
-                        padding="lg"
+                        padding="xl"
                         radius="md"
+                        withBorder
                         onClick={() => setSelectedPlanId(p.id)}
                         style={{
                           cursor: "pointer",
-                          borderColor:
-                            selectedPlanId === p.id ? "#26316D" : undefined,
-                          borderWidth: selectedPlanId === p.id ? 2 : 1,
-                          backgroundColor:
-                            selectedPlanId === p.id
-                              ? "var(--mantine-color-blue-0)"
-                              : undefined,
                           transition: "all 0.2s ease",
+                          borderColor: isSelected
+                            ? "#26316D"
+                            : "var(--mantine-color-gray-3)",
+                          borderWidth: isSelected ? 2 : 1,
+                          backgroundColor: isSelected
+                            ? "var(--mantine-color-blue-0)"
+                            : "white",
+                          transform: isSelected ? "translateY(-4px)" : "none",
+                          boxShadow: isSelected
+                            ? "0 10px 20px rgba(38, 49, 109, 0.1)"
+                            : "none",
+                          position: "relative",
+                          overflow: "visible",
                         }}
                       >
-                        <Group
-                          justify="space-between"
-                          align="flex-start"
-                          mb="xs"
-                        >
+                        {isPopular && (
                           <Badge
-                            color={selectedPlanId === p.id ? "blue" : "gray"}
-                            variant="light"
+                            color="orange"
+                            variant="filled"
+                            size="sm"
+                            style={{
+                              position: "absolute",
+                              top: -10,
+                              right: 20,
+                              zIndex: 10,
+                              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                            }}
                           >
-                            {p.name}
+                            MOST POPULAR
                           </Badge>
-                          {selectedPlanId === p.id && (
-                            <ThemeIcon color="blue" radius="xl" size="sm">
-                              <IconCheck size={12} />
-                            </ThemeIcon>
-                          )}
-                        </Group>
+                        )}
 
-                        <Stack gap={0} mb="xs">
-                          {billingCycle === "annual" && (
+                        <Stack justify="space-between" h="100%">
+                          <Box>
+                            <Group
+                              justify="space-between"
+                              align="flex-start"
+                              mb="md"
+                            >
+                              <Badge
+                                size="lg"
+                                variant={isSelected ? "filled" : "light"}
+                                color={isSelected ? "blue" : "gray"}
+                                style={{
+                                  backgroundColor: isSelected
+                                    ? "#26316D"
+                                    : undefined,
+                                }}
+                              >
+                                {p.name}
+                              </Badge>
+                              {isSelected && (
+                                <ThemeIcon
+                                  color="#26316D"
+                                  radius="xl"
+                                  size="md"
+                                  variant="filled"
+                                >
+                                  <IconCheck size={14} />
+                                </ThemeIcon>
+                              )}
+                            </Group>
+
+                            <Group align="baseline" gap={4}>
+                              <Text
+                                size="xl"
+                                fw={800}
+                                c="#26316D"
+                                style={{ fontSize: "2rem", lineHeight: 1 }}
+                              >
+                                {format(displayPrice)}
+                              </Text>
+                              <Text c="dimmed" fw={500}>
+                                /mo
+                              </Text>
+                            </Group>
+
+                            {billingCycle === "annual" ? (
+                              <Group gap={6} mt={4} mb="md">
+                                <Text size="xs" c="dimmed" td="line-through">
+                                  {format(monthlyBase)}
+                                </Text>
+                                <Text size="xs" c="green" fw={600}>
+                                  Billed {format(annualTotal)} yearly
+                                </Text>
+                              </Group>
+                            ) : (
+                              <Box h={22} mt={4} mb="md" />
+                            )}
+
+                            <Divider my="sm" variant="dashed" />
+
                             <Text
                               size="sm"
                               c="dimmed"
-                              td="line-through"
-                              style={{ lineHeight: 1 }}
+                              mb="md"
+                              style={{ lineHeight: 1.4 }}
                             >
-                              {format(originalPrice)}
+                              {p.description}
                             </Text>
-                          )}
-                          <Text size="xl" fw={700} c="#26316D">
-                            {format(displayPrice)}
-                            <Text span size="sm" c="dimmed" fw={400}>
-                              /{billingCycle === "annual" ? "yr" : "mo"}
-                            </Text>
-                          </Text>
-                          {billingCycle === "annual" && (
-                            <Badge
-                              size="sm"
-                              variant="filled"
-                              color="green"
-                              mt={4}
-                              w="fit-content"
-                            >
-                              SAVE 20%
-                            </Badge>
-                          )}
-                        </Stack>
 
-                        <Text size="sm" c="dimmed" style={{ lineHeight: 1.4 }}>
-                          {p.description}
-                        </Text>
+                            <Stack gap="sm">
+                              {features.map((f, idx) => (
+                                <Group key={idx} gap="sm">
+                                  <ThemeIcon
+                                    color={isSelected ? "blue" : "gray"}
+                                    variant="light"
+                                    size="sm"
+                                    radius="xl"
+                                  >
+                                    <IconCheck size={10} />
+                                  </ThemeIcon>
+                                  <Text size="sm" fw={500} c="dark.3">
+                                    {f.label}
+                                  </Text>
+                                </Group>
+                              ))}
+                            </Stack>
+                          </Box>
+
+                          <Button
+                            fullWidth
+                            variant={isSelected ? "filled" : "light"}
+                            color="blue"
+                            mt="xl"
+                            style={{
+                              backgroundColor: isSelected
+                                ? "#26316D"
+                                : undefined,
+                              color: isSelected ? "white" : undefined,
+                            }}
+                          >
+                            {isSelected ? "Selected" : "Select Plan"}
+                          </Button>
+                        </Stack>
                       </Card>
                     );
                   })}

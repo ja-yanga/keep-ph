@@ -18,7 +18,8 @@ import {
   Title,
   Tooltip,
   SegmentedControl,
-  Tabs, // <--- Added Tabs
+  Tabs,
+  Alert, // Added Alert
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 // Added useSearchParams
@@ -31,7 +32,9 @@ import {
   IconLock,
   IconLockOpen,
   IconBox,
-  IconLayoutGrid, // <--- Added Icon
+  IconLayoutGrid,
+  IconCheck, // Added IconCheck
+  IconAlertCircle, // Added IconAlertCircle
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -73,6 +76,10 @@ export default function MailroomLockers() {
   // CHANGED: Replaced filterStatus with activeTab
   const [activeTab, setActiveTab] = useState<string | null>("all");
 
+  // NEW: Alert States
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
   // NEW: Handle URL Query Params for Tab Selection
   const searchParams = useSearchParams();
 
@@ -104,6 +111,21 @@ export default function MailroomLockers() {
   useEffect(() => {
     setPage(1);
   }, [search, filterLocation, activeTab]); // Updated dependency
+
+  // NEW: Auto-dismiss global success
+  useEffect(() => {
+    if (globalSuccess) {
+      const timer = setTimeout(() => setGlobalSuccess(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [globalSuccess]);
+
+  // NEW: Clear form errors when modal opens
+  useEffect(() => {
+    if (opened) {
+      setFormError(null);
+    }
+  }, [opened]);
 
   const clearFilters = () => {
     setSearch("");
@@ -223,15 +245,13 @@ export default function MailroomLockers() {
 
   const handleSubmit = async () => {
     if (!formData.locker_code || !formData.location_id) {
-      notifications.show({
-        title: "Validation Error",
-        message: "Please fill in all required fields",
-        color: "red",
-      });
+      setFormError("Please fill in all required fields");
       return;
     }
 
     setSubmitting(true);
+    setFormError(null); // Clear previous errors
+
     try {
       const url = editingLocker
         ? `/api/admin/mailroom/lockers/${editingLocker.id}`
@@ -263,21 +283,15 @@ export default function MailroomLockers() {
         if (!statusRes.ok) console.error("Failed to update capacity status");
       }
 
-      notifications.show({
-        title: "Success",
-        message: `Locker ${editingLocker ? "updated" : "created"} successfully`,
-        color: "green",
-      });
+      setGlobalSuccess(
+        `Locker ${editingLocker ? "updated" : "created"} successfully`
+      );
 
       close();
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to save locker",
-        color: "red",
-      });
+      setFormError(error.message || "Failed to save locker");
     } finally {
       setSubmitting(false);
     }
@@ -293,11 +307,7 @@ export default function MailroomLockers() {
 
       if (!res.ok) throw new Error("Failed to delete");
 
-      notifications.show({
-        title: "Success",
-        message: "Locker deleted successfully",
-        color: "green",
-      });
+      setGlobalSuccess("Locker deleted successfully");
       fetchData();
     } catch (error) {
       console.error(error);
@@ -341,6 +351,22 @@ export default function MailroomLockers() {
 
   return (
     <Stack align="center">
+      {/* GLOBAL SUCCESS ALERT */}
+      {globalSuccess && (
+        <Alert
+          variant="light"
+          color="green"
+          title="Success"
+          icon={<IconCheck size={16} />}
+          withCloseButton
+          onClose={() => setGlobalSuccess(null)}
+          w="100%"
+          maw={1200}
+        >
+          {globalSuccess}
+        </Alert>
+      )}
+
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
           <Group style={{ flex: 1 }}>
@@ -514,6 +540,20 @@ export default function MailroomLockers() {
         centered
       >
         <Stack>
+          {/* FORM ERROR ALERT */}
+          {formError && (
+            <Alert
+              variant="light"
+              color="red"
+              title="Error"
+              icon={<IconAlertCircle size={16} />}
+              withCloseButton
+              onClose={() => setFormError(null)}
+            >
+              {formError}
+            </Alert>
+          )}
+
           <TextInput
             label="Locker Code"
             placeholder="e.g. A-101"

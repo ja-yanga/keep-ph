@@ -20,8 +20,9 @@ import {
   Text,
   SimpleGrid,
   Select,
-  Switch, // Add Switch
-  ThemeIcon, // Add ThemeIcon
+  Switch,
+  ThemeIcon,
+  Alert, // Added Alert
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -30,11 +31,12 @@ import {
   IconRefresh,
   IconSearch,
   IconDatabase,
-  IconMail, // Add icons
+  IconMail,
   IconPackage,
   IconScan,
   IconCheck,
   IconX,
+  IconAlertCircle, // Added IconAlertCircle
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -70,6 +72,10 @@ export default function MailroomPlans() {
   const [editPlan, setEditPlan] = useState<Plan | null>(null);
   const [editing, setEditing] = useState(false);
 
+  // NEW: Alert States
+  const [formError, setFormError] = useState<string | null>(null);
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+
   const editForm = useForm({
     initialValues: {
       name: "",
@@ -90,6 +96,23 @@ export default function MailroomPlans() {
   useEffect(() => {
     setPage(1);
   }, [search, sortBy]);
+
+  // Reset form error when modals open/close
+  useEffect(() => {
+    if (editOpen) {
+      setFormError(null);
+    }
+  }, [editOpen]);
+
+  // Auto-dismiss global success alert after 5 seconds
+  useEffect(() => {
+    if (globalSuccess) {
+      const timer = setTimeout(() => {
+        setGlobalSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [globalSuccess]);
 
   const clearFilters = () => {
     setSearch("");
@@ -153,6 +176,7 @@ export default function MailroomPlans() {
     if (!editPlan) return;
 
     setEditing(true);
+    setFormError(null); // Clear previous errors
     try {
       // Convert form GB back to MB for storage
       let finalStorageMB = null;
@@ -179,22 +203,15 @@ export default function MailroomPlans() {
         throw new Error("Failed to update plan");
       }
 
-      notifications.show({
-        title: "Success",
-        message: "Plan updated successfully",
-        color: "green",
-      });
-
+      // Success: Close modal and show global success
+      setGlobalSuccess("Plan updated successfully!");
       setEditOpen(false);
       setEditPlan(null);
       fetchData();
     } catch (err: any) {
       console.error("edit error", err);
-      notifications.show({
-        title: "Error",
-        message: err?.message ?? "Failed to update plan",
-        color: "red",
-      });
+      // Error: Keep modal open and show error inside
+      setFormError(err?.message ?? "Failed to update plan");
     } finally {
       setEditing(false);
     }
@@ -279,6 +296,20 @@ export default function MailroomPlans() {
 
   return (
     <Stack>
+      {/* GLOBAL SUCCESS ALERT */}
+      {globalSuccess && (
+        <Alert
+          variant="light"
+          color="green"
+          title="Success"
+          icon={<IconCheck size={16} />}
+          withCloseButton
+          onClose={() => setGlobalSuccess(null)}
+        >
+          {globalSuccess}
+        </Alert>
+      )}
+
       <Paper p="md" radius="md" withBorder shadow="sm">
         <Group justify="space-between" mb="md">
           <Group style={{ flex: 1 }}>
@@ -522,10 +553,25 @@ export default function MailroomPlans() {
       >
         <form onSubmit={handleEdit}>
           <Stack gap="md">
+            {/* ERROR ALERT INSIDE MODAL */}
+            {formError && (
+              <Alert
+                variant="light"
+                color="red"
+                title="Error"
+                icon={<IconAlertCircle size={16} />}
+                withCloseButton
+                onClose={() => setFormError(null)}
+              >
+                {formError}
+              </Alert>
+            )}
+
             <TextInput
               label="Plan Name"
               placeholder="e.g. Personal Plan"
               required
+              readOnly
               {...editForm.getInputProps("name")}
             />
 
