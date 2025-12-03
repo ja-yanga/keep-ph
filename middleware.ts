@@ -1,86 +1,88 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+export async function middleware(request: NextRequest) {
+  // 1. Create an initial response
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
 
-// Pages that logged-in users should be redirected AWAY from
-const authPaths = [
-  "/",
-  "/signin",
-  "/signup",
-  "/forgot-password",
-  "/update-password",
-];
-
-export async function middleware(req: NextRequest) {
-  const url = req.nextUrl.clone();
-
-  // 1. Allow API routes and static assets immediately
-  if (
-    url.pathname.startsWith("/api") ||
-    url.pathname.startsWith("/_next") ||
-    url.pathname.startsWith("/static") ||
-    url.pathname.includes(".") // simplistic check for files like robots.txt, images
-  ) {
-    return NextResponse.next();
-  }
-
-  // 2. Check for session token
-  const tokenCookie = req.cookies.get("sb-access-token")?.value ?? null;
-  let isValidSession = false;
-
-  if (tokenCookie) {
-    const accessToken = decodeURIComponent(tokenCookie);
-    try {
-      // Verify token via Supabase auth REST
-      const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          apikey: SUPABASE_ANON_KEY,
+  // 2. Initialize Supabase Client to read the cookies
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
         },
-      });
-
-      if (res.ok) {
-        isValidSession = true;
-      }
-    } catch (err) {
-      console.error("[middleware] session check error:", err);
+        setAll(cookiesToSet) {
+          // This allows the middleware to refresh the token if needed
+          cookiesToSet.forEach(({ name, value, options }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
     }
-  }
+  );
 
-  // 3. Handle Auth Paths (Signin, Signup, Home)
-  if (authPaths.includes(url.pathname)) {
-    if (isValidSession) {
-      // User is already logged in, redirect to dashboard
+  // 3. Check Session
+  // This will read the 'sb-<project>-auth-token' cookie correctly
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // 4. Define Protected and Auth Paths
+  const url = request.nextUrl.clone();
+  const isAuthPage = ["/signin", "/signup", "/forgot-password"].includes(
+    url.pathname
+  );
+
+  // CHANGED: Added "/update-password" to public pages to prevent middleware blocking
+  // The page itself should handle the "not logged in" state if the session is missing
+  const isPublicPage = [
+    "/",
+    "/api/auth/callback",
+    "/api/auth/callback/google",
+    "/update-password",
+  ].includes(url.pathname);
+
+  // 5. Redirect Logic
+  if (isAuthPage) {
+    if (user) {
+      // If logged in, don't let them see signin page
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);
     }
-    // User is not logged in, allow access to public pages
-    return NextResponse.next();
+    return response;
   }
 
-  // 4. Handle Protected Paths (Everything else)
-  if (!isValidSession) {
-    // User is not logged in, redirect to signin
+  if (!user && !isPublicPage) {
+    // If not logged in and trying to access protected page (like /dashboard)
     url.pathname = "/signin";
     return NextResponse.redirect(url);
   }
 
-  // User is logged in and accessing a protected route
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
+     * Match all request paths except for:
      * - _next/static (static files)
-     * - _next/data (static data)
-     * - favicon.ico
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
      * - api (API routes)
      */
-    "/((?!_next/static|_next/data|favicon.ico|api).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api).*)",
   ],
 };

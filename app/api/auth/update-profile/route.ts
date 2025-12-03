@@ -1,29 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+// Admin client for database/storage operations (bypassing RLS)
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Verify Session
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(/sb-access-token=([^;]+)/);
-    const token = match ? decodeURIComponent(match[1]) : null;
+    const cookieStore = await cookies();
 
-    if (!token) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // We are only reading here
+          },
+        },
+      }
+    );
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     // 2. Get Body
@@ -48,8 +60,8 @@ export async function POST(req: NextRequest) {
       const fileExt = mimeType.split("/")[1] || "png";
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
-      // Upload to 'avatars' bucket
-      const { error: uploadError } = await supabase.storage
+      // Upload to 'avatars' bucket using Admin client
+      const { error: uploadError } = await supabaseAdmin.storage
         .from("avatars")
         .upload(fileName, buffer, {
           contentType: mimeType,
@@ -65,14 +77,14 @@ export async function POST(req: NextRequest) {
       }
 
       // Get Public URL
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = supabaseAdmin.storage
         .from("avatars")
         .getPublicUrl(fileName);
 
       publicAvatarUrl = urlData.publicUrl;
     }
 
-    // 4. Update Profile
+    // 4. Update Profile using Admin client
     const updatePayload: any = {
       first_name,
       last_name,
@@ -83,7 +95,7 @@ export async function POST(req: NextRequest) {
       updatePayload.avatar_url = publicAvatarUrl;
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("users")
       .update(updatePayload)
       .eq("id", user.id);

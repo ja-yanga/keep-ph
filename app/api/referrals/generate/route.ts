@@ -1,33 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+// Admin client for database operations (bypassing RLS)
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(req: Request) {
   try {
-    // 1. Securely get user from session cookie
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(/sb-access-token=([^;]+)/);
-    const token = match ? decodeURIComponent(match[1]) : null;
+    const cookieStore = await cookies();
 
-    if (!token) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // We are only reading here
+          },
+        },
+      }
+    );
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 2. Check existing code in 'users' table
-    const { data: existingUser } = await supabase
+    // 2. Check existing code in 'users' table using Admin client
+    const { data: existingUser } = await supabaseAdmin
       .from("users")
       .select("referral_code")
       .eq("id", user.id)
@@ -44,7 +56,7 @@ export async function POST(req: Request) {
       .toUpperCase()}`;
 
     // 4. Update 'users' table
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("users")
       .update({ referral_code: code })
       .eq("id", user.id);

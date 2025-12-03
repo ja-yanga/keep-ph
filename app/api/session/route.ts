@@ -1,61 +1,73 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Admin client for fetching profile data (bypassing RLS if needed)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-export async function GET(req: Request) {
+export async function GET(request: Request) {
   try {
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(/sb-access-token=([^;]+)/);
-    const accessToken = match ? decodeURIComponent(match[1]) : null;
+    const cookieStore = await cookies();
 
-    if (!accessToken) {
+    // 1. Create the Supabase client using the cookies from the request
+    // This automatically handles reading the correct 'sb-*-auth-token' cookies
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // We are only reading here, so we don't need to set cookies
+          },
+        },
+      }
+    );
+
+    // 2. Get the user from the session
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(
-      accessToken
-    );
-
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-    }
-
-    // fetch profile (first_name, last_name, role, needs_onboarding) from users table
+    // 3. Fetch profile data
     let profile: Record<string, any> | null = null;
     let needs_onboarding = true;
+
     try {
       const { data: profileData, error: profileErr } = await supabaseAdmin
         .from("users")
         .select(
           "first_name, last_name, role, needs_onboarding, avatar_url, referral_code"
-        ) // Added referral_code
-        .eq("id", userData.user.id)
+        )
+        .eq("id", user.id)
         .maybeSingle();
 
       if (!profileErr && profileData) {
         profile = profileData;
-        // prefer explicit column if present, otherwise compute from missing names
         if (typeof profileData.needs_onboarding === "boolean") {
           needs_onboarding = profileData.needs_onboarding;
         } else {
           needs_onboarding = !(profileData.first_name && profileData.last_name);
         }
-      } else {
-        // fallback: compute from absence of names on user object (safe default)
-        needs_onboarding = true;
       }
     } catch (e) {
       console.error("profile lookup error:", e);
-      needs_onboarding = true;
     }
 
     return NextResponse.json({
       ok: true,
-      user: userData.user,
+      user: user,
       profile,
       role: profile?.role ?? null,
     });

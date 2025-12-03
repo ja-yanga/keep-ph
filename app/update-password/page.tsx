@@ -1,183 +1,181 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Box,
-  Container,
-  Title,
-  Text,
-  Paper,
-  Stack,
-  PasswordInput,
-  Button,
-  Center,
-  Alert,
-  rem,
-} from "@mantine/core";
-import { IconAlertCircle, IconLock, IconCheck } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
+import {
+  Button,
+  PasswordInput,
+  Paper,
+  Title,
+  Container,
+  Stack,
+  Text,
+  Loader,
+  Center,
+  Box,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
 
 export default function UpdatePasswordPage() {
-  const router = useRouter();
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(true);
+  const router = useRouter();
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
-    // Extract access_token from URL hash (Implicit Flow)
-    const hash = window.location.hash;
-    if (hash) {
-      const params = new URLSearchParams(hash.substring(1)); // remove #
-      const token = params.get("access_token");
-      if (token) {
-        setAccessToken(token);
-      } else {
-        setError("Invalid or expired reset link.");
-      }
-    } else {
-      // If no hash, maybe the user is already logged in via cookie?
-      // We'll let the API decide, or show an error if strictly relying on hash.
-    }
-  }, []);
+    const initSession = async () => {
+      // Check if a session already exists
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // CHANGED: Use the new dedicated reset-password API
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-
-      if (accessToken) {
-        headers["Authorization"] = `Bearer ${accessToken}`;
+      if (session) {
+        setVerifying(false);
+        return;
       }
 
-      const res = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify({ password }),
+      // If no session, check for recovery tokens in URL hash
+      const hash = window.location.hash;
+      if (hash.includes("access_token")) {
+        const params = new URLSearchParams(hash.replace("#", ""));
+        const access_token = params.get("access_token")!;
+        const refresh_token = params.get("refresh_token")!;
+
+        // Set session manually
+        const { error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+
+        if (error) {
+          notifications.show({
+            title: "Invalid or expired link",
+            message: "Please request a new password reset link.",
+            color: "red",
+          });
+          router.push("/signin");
+          return;
+        }
+
+        // Clean URL
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+        setVerifying(false);
+        return;
+      }
+
+      // If no session and no token
+      notifications.show({
+        title: "Session Expired",
+        message: "Please request a new password reset link.",
+        color: "red",
       });
+      router.push("/signin");
+    };
 
-      const data = await res.json();
+    initSession();
+  }, [supabase, router]);
 
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to update password");
-      }
+  const handleUpdate = async () => {
+    if (!password) return;
+    setLoading(true);
 
-      setSuccess(true);
+    const { error } = await supabase.auth.updateUser({ password });
 
-      setTimeout(() => {
-        router.push("/signin");
-      }, 2000);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to update password");
-    } finally {
-      setLoading(false);
+    if (error) {
+      notifications.show({
+        title: "Error",
+        message: error.message,
+        color: "red",
+      });
+    } else {
+      notifications.show({
+        title: "Success",
+        message: "Your password has been updated.",
+        color: "green",
+      });
+      router.push("/signin");
     }
+
+    setLoading(false);
   };
+
+  if (verifying) {
+    return (
+      <Box
+        bg="gray.0"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Nav />
+        <Center style={{ flex: 1 }}>
+          <Loader size="lg" />
+        </Center>
+        <SiteFooter />
+      </Box>
+    );
+  }
 
   return (
     <Box
+      bg="gray.0"
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F8F9FA",
-        fontFamily: "Manrope, sans-serif",
+        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
       }}
     >
       <Nav />
-      <Center style={{ flex: 1, padding: "4rem 1rem" }}>
-        <Container size="xs" w="100%">
-          <Stack gap="lg">
-            <Stack gap={4} align="center">
-              <Title
-                order={1}
-                style={{ fontWeight: 800, color: "#1A237E", fontSize: rem(32) }}
+
+      <Center style={{ flex: 1, padding: "40px 0" }}>
+        <Container size={420} w="100%">
+          <Title
+            ta="center"
+            order={2}
+            style={{ fontFamily: "Greycliff CF, sans-serif" }}
+          >
+            Set New Password
+          </Title>
+          <Text c="dimmed" size="sm" ta="center" mt={5}>
+            Please enter your new password below
+          </Text>
+
+          <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+            <Stack>
+              <PasswordInput
+                label="New Password"
+                placeholder="Your new password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.currentTarget.value)}
+              />
+              <Button
+                fullWidth
+                onClick={handleUpdate}
+                loading={loading}
+                style={{ backgroundColor: "#1A237E" }}
               >
-                New Password
-              </Title>
-              <Text c="dimmed" size="md">
-                Enter your new secure password
-              </Text>
+                Update Password
+              </Button>
             </Stack>
-
-            <Paper
-              withBorder
-              shadow="xl"
-              p={30}
-              radius="md"
-              style={{ backgroundColor: "#fff" }}
-            >
-              {success ? (
-                <Alert
-                  variant="light"
-                  color="teal"
-                  title="Success"
-                  icon={<IconCheck size={16} />}
-                  radius="md"
-                >
-                  Password updated successfully! Redirecting to login...
-                </Alert>
-              ) : (
-                <form onSubmit={handleSubmit}>
-                  <Stack gap="md">
-                    {error && (
-                      <Alert
-                        color="red"
-                        icon={<IconAlertCircle size={16} />}
-                        radius="md"
-                      >
-                        {error}
-                      </Alert>
-                    )}
-
-                    <PasswordInput
-                      label="New Password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      radius="md"
-                      leftSection={<IconLock size={16} color="#868e96" />}
-                    />
-                    <PasswordInput
-                      label="Confirm Password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      radius="md"
-                      leftSection={<IconLock size={16} color="#868e96" />}
-                    />
-
-                    <Button
-                      type="submit"
-                      fullWidth
-                      size="md"
-                      radius="md"
-                      loading={loading}
-                      style={{ backgroundColor: "#1A237E" }}
-                    >
-                      Update Password
-                    </Button>
-                  </Stack>
-                </form>
-              )}
-            </Paper>
-          </Stack>
+          </Paper>
         </Container>
       </Center>
+
       <SiteFooter />
     </Box>
   );

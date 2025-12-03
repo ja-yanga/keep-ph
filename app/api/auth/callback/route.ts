@@ -1,15 +1,18 @@
-import { NextResponse } from "next/server";
+// /api/auth/callback/route.ts
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
 
-  if (code) {
+  // Get tokens from URL
+  const access_token = searchParams.get("access_token");
+  const refresh_token = searchParams.get("refresh_token");
+  const next = searchParams.get("next") ?? "/update-password";
+
+  if (access_token && refresh_token) {
     const cookieStore = await cookies();
-
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -27,15 +30,20 @@ export async function GET(request: Request) {
         },
       }
     );
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    // Set session so the user is logged in
+    const { error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
 
     if (!error) {
-      const nextUrl = new URL(next, origin);
-      // If the user is being redirected to signin, add the verified flag
-      if (nextUrl.pathname === "/signin") {
-        nextUrl.searchParams.set("verified", "true");
-      }
-      return NextResponse.redirect(nextUrl.toString());
+      return NextResponse.redirect(`${origin}${next}`);
+    } else {
+      console.error("Set session error:", error);
+      return NextResponse.redirect(
+        `${origin}/signin?error=${encodeURIComponent(error.message)}`
+      );
     }
   }
 

@@ -1,64 +1,43 @@
 import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Admin client for database operations
 const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   : createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function parseCookies(header: string) {
-  if (!header) return {};
-  return Object.fromEntries(
-    header.split(";").map((c) => {
-      const idx = c.indexOf("=");
-      const k = c.slice(0, idx).trim();
-      const v = c.slice(idx + 1).trim();
-      try {
-        return [k, decodeURIComponent(v)];
-      } catch {
-        return [k, v];
-      }
-    })
-  );
-}
-
 export async function GET(req: Request) {
   try {
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const cookies = parseCookies(cookieHeader);
+    const cookieStore = await cookies();
 
-    const token = cookies["sb-access-token"] ?? cookies["sb:token"] ?? null;
-    if (!token) {
-      return NextResponse.json(
-        { error: "Unauthenticated (no token)" },
-        { status: 401 }
-      );
-    }
-
-    // validate token with Supabase auth endpoint to get user id
-    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: SUPABASE_ANON_KEY,
+    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          // We are only reading here
+        },
       },
     });
 
-    if (!userRes.ok) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const user = await userRes.json();
-    const userId = user?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Unable to resolve user id" },
-        { status: 401 }
-      );
-    }
+    const userId = user.id;
 
     // fetch registrations for this user and include linked location & plan info
     const { data, error } = await supabaseAdmin

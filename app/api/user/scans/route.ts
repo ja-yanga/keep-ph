@@ -1,5 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 // Initialize Admin Client (Service Role)
 const SUPABASE_URL =
@@ -20,44 +22,34 @@ export async function GET(request: Request) {
       );
     }
 
-    // 1. Extract Token
-    const cookieHeader = request.headers.get("cookie") ?? "";
-    let accessToken = null;
+    const cookieStore = await cookies();
 
-    const match = cookieHeader.match(/sb-access-token=([^;]+)/);
-    if (match) {
-      accessToken = decodeURIComponent(match[1]);
-    } else {
-      const authCookie = cookieHeader
-        .split(";")
-        .find(
-          (c) => c.trim().startsWith("sb-") && c.trim().endsWith("-auth-token")
-        );
-      if (authCookie) {
-        const val = authCookie.split("=")[1];
-        try {
-          const json = JSON.parse(decodeURIComponent(val));
-          accessToken = json.access_token;
-        } catch {
-          accessToken = val;
-        }
+    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // We are only reading here
+          },
+        },
       }
-    }
+    );
 
-    if (!accessToken) {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 2. Verify User
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(
-      accessToken
-    );
-
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-    }
-
-    const userId = userData.user.id;
+    const userId = user.id;
 
     // 3. Verify Ownership & Get Plan Limit
     // We use 'any' here to bypass the strict type check on the joined relation

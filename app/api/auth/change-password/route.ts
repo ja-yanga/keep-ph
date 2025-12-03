@@ -1,36 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
-
-// Admin client to verify session and update user
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-// Anon client to verify "current password" via sign-in
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Verify Session
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(/sb-access-token=([^;]+)/);
-    const token = match ? decodeURIComponent(match[1]) : null;
+    const cookieStore = await cookies();
 
-    if (!token) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // We are only reading here
+          },
+        },
+      }
+    );
 
     const {
       data: { user },
       error: authError,
-    } = await supabaseAdmin.auth.getUser(token);
+    } = await supabase.auth.getUser();
 
     if (authError || !user || !user.email) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     // 2. Get Body
@@ -45,8 +44,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Verify Current Password
-    // We attempt to sign in with the provided current password to verify it.
-    const { error: signInError } = await supabaseAnon.auth.signInWithPassword({
+    // We create a temporary client to check credentials without affecting the current session
+    const tempClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    const { error: signInError } = await tempClient.auth.signInWithPassword({
       email: user.email,
       password: currentPassword,
     });
@@ -59,10 +63,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Update Password
-    const { error: updateError } =
-      await supabaseAdmin.auth.admin.updateUserById(user.id, {
-        password: newPassword,
-      });
+    // Use the authenticated session to update the password
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
 
     if (updateError) throw updateError;
 

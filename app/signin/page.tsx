@@ -17,17 +17,20 @@ import {
   Group,
   rem,
   Loader,
+  Divider, // <--- Added
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconAt,
   IconLock,
   IconCheck,
+  IconBrandGoogle, // <--- Added
 } from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient"; // Keep this for other things if needed
+import { createBrowserClient } from "@supabase/ssr"; // <--- ADD THIS IMPORT
 import { useSession } from "@/components/SessionProvider";
 
 // 1. Move the main logic into a separate component
@@ -99,6 +102,36 @@ function SignInContent() {
     } catch (err) {
       console.error(err);
       setError("An unexpected error occurred. Please try again."); // Set error state
+      setLoading(false);
+    }
+  };
+
+  // NEW: Google Login Handler
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+
+    // NEW: Create a temporary client to ensure PKCE flow is used
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          // CHANGED: Point to the specific Google callback
+          redirectTo: `${
+            window.location.origin
+          }/api/auth/callback/google?next=${next || "/dashboard"}`,
+        },
+      });
+      if (error) throw error;
+      // Note: No need to setLoading(false) as the browser will redirect
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "An unexpected error occurred.");
       setLoading(false);
     }
   };
@@ -216,6 +249,26 @@ function SignInContent() {
                     }}
                   >
                     Sign In
+                  </Button>
+
+                  {/* NEW: Google Login Section */}
+                  <Divider
+                    label="Or continue with"
+                    labelPosition="center"
+                    my="xs"
+                  />
+
+                  <Button
+                    variant="default"
+                    fullWidth
+                    size="md"
+                    radius="md"
+                    loading={loading}
+                    leftSection={<IconBrandGoogle size={18} />}
+                    onClick={handleGoogleLogin}
+                    type="button" //
+                  >
+                    Sign in with Google
                   </Button>
                 </Stack>
               </form>

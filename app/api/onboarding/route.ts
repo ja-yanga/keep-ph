@@ -1,18 +1,50 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
+// Use NEXT_PUBLIC_SUPABASE_URL for consistency
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// Admin client for database updates (bypassing RLS)
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// debug GET (returns cookie/token and user errors in dev)
 export async function GET() {
-  return NextResponse.json({ error: "Not found" }, { status: 405 });
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
 
 export async function POST(req: Request) {
   try {
+    const cookieStore = await cookies();
+
+    // 1. Verify User via Cookie (using @supabase/ssr)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // We are only reading here
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      console.error("Auth error:", userErr);
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    // 2. Parse Body
     const body = await req.json();
     const {
       first_name = null,
@@ -21,33 +53,13 @@ export async function POST(req: Request) {
     } = body as {
       first_name: string | null;
       last_name: string | null;
-      avatar: string | null; // data URL (data:<mime>;base64,...)
+      avatar: string | null; // data URL
     };
-
-    // read access token from HttpOnly cookie (sb-access-token)
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(/sb-access-token=([^;]+)/);
-    const accessToken = match ? decodeURIComponent(match[1]) : null;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    // get user from token
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseAdmin.auth.getUser(accessToken);
-
-    if (userErr || !user) {
-      console.error("getUser error:", userErr);
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-    }
 
     let publicAvatarUrl: string | null = null;
 
+    // 3. Handle Avatar Upload
     if (avatar) {
-      // avatar is expected as data URL: data:<mime>;base64,<data>
       const dataUrlMatch = avatar.match(
         /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/
       );
@@ -62,7 +74,7 @@ export async function POST(req: Request) {
       const base64 = dataUrlMatch[2];
       const buffer = Buffer.from(base64, "base64");
 
-      const ext = mime.split("/")[1].replace("+", "-"); // sanitize
+      const ext = mime.split("/")[1].replace("+", "-");
       const fileName = `${user.id}/${Date.now()}.${ext}`;
       const bucket = "avatars";
 
@@ -78,23 +90,17 @@ export async function POST(req: Request) {
         );
       }
 
-      // for private bucket: create signed url
-      const { data: signed, error: signErr } = await supabaseAdmin.storage
+      const { data: signed } = await supabaseAdmin.storage
         .from(bucket)
-        .createSignedUrl(fileName, 60 * 60 * 24); // 24 hours
+        .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year
 
       publicAvatarUrl = signed?.signedUrl ?? null;
-
-      // if you made the bucket public, you can use getPublicUrl instead:
-      // const { data: publicData } = supabaseAdmin.storage.from(bucket).getPublicUrl(fileName);
-      // publicAvatarUrl = publicData.publicUrl;
     }
 
-    // update users table with service role key (server-side)
+    // 4. Update User Profile (using Admin client to bypass RLS)
     const updatePayload: Record<string, any> = {
       first_name,
       last_name,
-      // mark onboarding completed
       needs_onboarding: false,
     };
     if (publicAvatarUrl) updatePayload.avatar_url = publicAvatarUrl;
@@ -102,8 +108,7 @@ export async function POST(req: Request) {
     const { error: updateError } = await supabaseAdmin
       .from("users")
       .update(updatePayload)
-      .eq("id", user.id)
-      .limit(1);
+      .eq("id", user.id);
 
     if (updateError) {
       console.error("users update error:", updateError);

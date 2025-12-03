@@ -13,11 +13,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
+    // Standard client is fine here as we don't need to read user cookies
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const origin = new URL(req.url).origin;
 
     // Send password reset email
-    // The user will be redirected to /update-password with the token in the URL hash
+    // CHANGED: Point to the callback route so the session is established BEFORE they land on the page
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${origin}/update-password`,
     });
