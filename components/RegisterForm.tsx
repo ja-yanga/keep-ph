@@ -22,7 +22,7 @@ import {
   Alert,
   Stepper,
   ThemeIcon,
-  SegmentedControl, // <--- Import this
+  SegmentedControl,
   ActionIcon,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -37,7 +37,7 @@ import {
   IconCreditCard,
   IconChevronRight,
   IconChevronLeft,
-  IconCalendar, // <--- Import this
+  IconCalendar,
 } from "@tabler/icons-react";
 
 const supabase = createClient(
@@ -77,6 +77,11 @@ export default function RegisterForm() {
 
   const [notes, setNotes] = useState("");
   const [referralCode, setReferralCode] = useState("");
+
+  // NEW: Referral State
+  const [referralValid, setReferralValid] = useState(false);
+  const [referralMessage, setReferralMessage] = useState("");
+  const [validatingCode, setValidatingCode] = useState(false);
 
   // UI State
   const [loading, setLoading] = useState(false);
@@ -154,10 +159,20 @@ export default function RegisterForm() {
   const qty = typeof lockerQty === "number" ? lockerQty : 1;
 
   // Calculate totals
-  // If annual, the "displayed price" on card is usually price * 12
+  // 1. Base Calculation
   const displayedPlanPrice =
-    billingCycle === "annual" ? basePrice * 12 : basePrice;
-  const totalCost = displayedPlanPrice * qty; // (Price per cycle) * qty
+    billingCycle === "annual" ? basePrice * 12 * 0.8 : basePrice;
+
+  const subTotal = displayedPlanPrice * qty;
+
+  // 2. Apply Referral Discount (5%)
+  const referralDiscountAmount = referralValid ? subTotal * 0.05 : 0;
+
+  // 3. Final Total
+  const totalCost = subTotal - referralDiscountAmount;
+
+  // Helper to calculate original price for comparison
+  const originalAnnualPrice = basePrice * 12;
 
   const format = (n: number) =>
     n.toLocaleString("en-PH", {
@@ -165,6 +180,34 @@ export default function RegisterForm() {
       currency: "PHP",
       maximumFractionDigits: 0,
     });
+
+  // NEW: Validate Referral Function
+  const validateReferral = async () => {
+    if (!referralCode.trim()) return;
+
+    setValidatingCode(true);
+    setReferralMessage("");
+    setReferralValid(false);
+
+    try {
+      const res = await fetch("/api/referrals/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: referralCode.trim(),
+          currentUserId: session?.user?.id,
+        }),
+      });
+
+      const data = await res.json();
+      setReferralValid(data.valid);
+      setReferralMessage(data.message);
+    } catch (err) {
+      setReferralMessage("Error validating code");
+    } finally {
+      setValidatingCode(false);
+    }
+  };
 
   // Navigation Handlers
   const nextStep = () => {
@@ -254,6 +297,7 @@ export default function RegisterForm() {
         lockerQty: qty,
         months: months, // This is now controlled by the toggle (1 or 12)
         notes,
+        referralCode: referralValid ? referralCode : null,
       };
 
       const res = await fetch("/api/mailroom/register", {
@@ -288,6 +332,10 @@ export default function RegisterForm() {
 
       close();
       setSuccess("Registered successfully! Redirecting...");
+
+      // Scroll to top to ensure the success alert is visible
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
       setTimeout(() => {
         router.push("/dashboard");
       }, 2000);
@@ -418,8 +466,10 @@ export default function RegisterForm() {
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                   {plans.map((p) => {
                     // Calculate display price based on cycle
+                    // CHANGED: Apply 20% discount for annual
                     const displayPrice =
-                      billingCycle === "annual" ? p.price * 12 : p.price;
+                      billingCycle === "annual" ? p.price * 12 * 0.8 : p.price;
+                    const originalPrice = p.price * 12;
 
                     return (
                       <Card
@@ -458,12 +508,35 @@ export default function RegisterForm() {
                           )}
                         </Group>
 
-                        <Text size="xl" fw={700} c="#26316D" mb="xs">
-                          {format(displayPrice)}
-                          <Text span size="sm" c="dimmed" fw={400}>
-                            /{billingCycle === "annual" ? "yr" : "mo"}
+                        <Stack gap={0} mb="xs">
+                          {billingCycle === "annual" && (
+                            <Text
+                              size="sm"
+                              c="dimmed"
+                              td="line-through"
+                              style={{ lineHeight: 1 }}
+                            >
+                              {format(originalPrice)}
+                            </Text>
+                          )}
+                          <Text size="xl" fw={700} c="#26316D">
+                            {format(displayPrice)}
+                            <Text span size="sm" c="dimmed" fw={400}>
+                              /{billingCycle === "annual" ? "yr" : "mo"}
+                            </Text>
                           </Text>
-                        </Text>
+                          {billingCycle === "annual" && (
+                            <Badge
+                              size="sm"
+                              variant="filled"
+                              color="green"
+                              mt={4}
+                              w="fit-content"
+                            >
+                              SAVE 20%
+                            </Badge>
+                          )}
+                        </Stack>
 
                         <Text size="sm" c="dimmed" style={{ lineHeight: 1.4 }}>
                           {p.description}
@@ -737,12 +810,45 @@ export default function RegisterForm() {
 
                 {/* Additional Info Section */}
                 <Paper withBorder p="lg" radius="md">
-                  <TextInput
-                    label="Referral Code (Optional)"
-                    placeholder="Enter code"
-                    value={referralCode}
-                    onChange={(e) => setReferralCode(e.currentTarget.value)}
-                  />
+                  <Group align="flex-end">
+                    <TextInput
+                      label="Referral Code (Optional)"
+                      placeholder="Enter code"
+                      value={referralCode}
+                      onChange={(e) => {
+                        setReferralCode(e.currentTarget.value);
+                        // Reset validation if user types new code
+                        if (referralValid) {
+                          setReferralValid(false);
+                          setReferralMessage("");
+                        }
+                      }}
+                      error={
+                        !referralValid && referralMessage
+                          ? referralMessage
+                          : null
+                      }
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      variant="light"
+                      onClick={validateReferral}
+                      loading={validatingCode}
+                      disabled={!referralCode || referralValid}
+                    >
+                      {referralValid ? "Applied" : "Apply"}
+                    </Button>
+                  </Group>
+                  {referralValid && (
+                    <Text c="teal" size="xs" mt={4}>
+                      <IconCheck
+                        size={12}
+                        style={{ display: "inline", marginRight: 4 }}
+                      />
+                      {referralMessage}
+                    </Text>
+                  )}
+
                   <Textarea
                     mt="md"
                     label="Notes"
@@ -842,9 +948,16 @@ export default function RegisterForm() {
               </Group>
               <Group justify="space-between">
                 <Text c="dimmed">Cycle</Text>
-                <Text fw={500}>
-                  {billingCycle === "annual" ? "Annual (12 Mo)" : "Monthly"}
-                </Text>
+                <Group gap={6}>
+                  <Text fw={500}>
+                    {billingCycle === "annual" ? "Annual (12 Mo)" : "Monthly"}
+                  </Text>
+                  {billingCycle === "annual" && (
+                    <Badge size="xs" color="green" variant="light">
+                      -20%
+                    </Badge>
+                  )}
+                </Group>
               </Group>
               <Group justify="space-between">
                 <Text c="dimmed">Quantity</Text>
@@ -854,6 +967,27 @@ export default function RegisterForm() {
               </Group>
 
               <Divider my="sm" />
+
+              {/* NEW: Subtotal and Discount Rows */}
+              {referralValid && (
+                <>
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">
+                      Subtotal
+                    </Text>
+                    <Text size="sm">{format(subTotal)}</Text>
+                  </Group>
+                  <Group justify="space-between">
+                    <Text size="sm" c="green">
+                      Referral Discount (5%)
+                    </Text>
+                    <Text size="sm" c="green">
+                      -{format(referralDiscountAmount)}
+                    </Text>
+                  </Group>
+                  <Divider my="sm" />
+                </>
+              )}
 
               <Group justify="space-between">
                 <Text size="lg" fw={700}>

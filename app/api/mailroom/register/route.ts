@@ -1,179 +1,144 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  : supabase;
-
-const isUuid = (s: unknown) =>
-  typeof s === "string" &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+// Use Service Role Key to bypass RLS policies for the insert
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-
-    let {
+    const {
       userId,
       full_name,
       email,
       mobile,
-      telephone, // Destructure telephone
+      telephone,
       locationId,
       planId,
-      lockerQty = 1,
-      months = 1,
-      notes = null,
-    } = body ?? {};
+      lockerQty,
+      months,
+      notes,
+      // NEW: Accept referral code from body (make sure to update frontend payload too!)
+      referralCode,
+    } = body;
 
-    if (!userId) {
-      return NextResponse.json({ error: "Missing userId" }, { status: 400 });
-    }
-
-    // --- Resolve locationId ---
-    if (!isUuid(locationId)) {
-      const q = String(locationId ?? "").trim();
-      const { data: locs } = await supabase
-        .from("mailroom_locations")
-        .select("id")
-        .or(
-          `name.ilike.%${q}%,city.ilike.%${q}%,region.ilike.%${q}%,barangay.ilike.%${q}%`
-        )
-        .limit(1);
-
-      if (!locs?.length)
-        return NextResponse.json(
-          { error: `Unknown mailroom location "${locationId}"` },
-          { status: 400 }
-        );
-
-      locationId = locs[0].id;
-    }
-
-    // --- Resolve planId ---
-    if (!isUuid(planId)) {
-      const q = String(planId ?? "").trim();
-      const { data: plans } = await supabase
-        .from("mailroom_plans")
-        .select("id")
-        .ilike("name", `%${q}%`)
-        .limit(1);
-
-      if (!plans?.length)
-        return NextResponse.json(
-          { error: `Unknown plan "${planId}"` },
-          { status: 400 }
-        );
-
-      planId = plans[0].id;
-    }
-
-    if (!isUuid(locationId) || !isUuid(planId)) {
+    // 1. Validation
+    if (!userId || !locationId || !planId || !lockerQty || !months) {
       return NextResponse.json(
-        { error: "Failed to resolve locationId or planId to UUIDs" },
+        { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const client = supabaseAdmin;
-
-    // --- Fetch available lockers ---
-    const { data: availableLockers, error: lockerError } = await client
-      .from("location_lockers")
-      .select("*")
-      .eq("location_id", locationId)
-      .eq("is_available", true)
-      .order("id", { ascending: true })
-      .limit(lockerQty);
-
-    if (lockerError) throw lockerError;
-
-    if (!availableLockers || availableLockers.length < lockerQty) {
-      return NextResponse.json(
-        { error: "Not enough available lockers at this location" },
-        { status: 400 }
-      );
-    }
-
-    // --- Create registration ---
-    // 1. Generate a Code (e.g., KPH-A1B2)
-    function generateCode() {
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I, O, 0, 1 to avoid confusion
-      let result = "";
-      for (let i = 0; i < 4; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return `KPH-${result}`;
-    }
-
-    const mailroom_code = generateCode();
-
-    const registrationRecord = {
-      user_id: userId,
-      full_name: full_name || null,
-      email: email || null,
-      mobile: mobile || null,
-      telephone: telephone || null, // Add telephone to record
-      location_id: locationId,
-      plan_id: planId,
-      locker_qty: lockerQty,
-      months: Number(months) || 1,
-      notes: notes ?? null,
-      mailroom_code: mailroom_code,
-    };
-
-    const { data: registration, error: regError } = await client
-      .from("mailroom_registrations")
-      .insert([registrationRecord])
-      .select("*")
+    // 2. Fetch Plan Price (Server-Side Source of Truth)
+    const { data: plan, error: planError } = await supabaseAdmin
+      .from("mailroom_plans")
+      .select("price")
+      .eq("id", planId)
       .single();
 
-    if (regError) {
-      console.error("mailroom register error:", regError);
-      return NextResponse.json({ error: regError.message }, { status: 400 });
+    if (planError || !plan) {
+      return NextResponse.json(
+        { error: "Invalid plan selected" },
+        { status: 400 }
+      );
     }
 
-    // --- Assign lockers ---
-    const assignedLockerRecords = availableLockers.map((l) => ({
-      registration_id: registration.id,
-      locker_id: l.id,
-      assigned_at: new Date().toISOString(),
-    }));
+    // 3. Calculate Amount Due
+    let amountDue = Number(plan.price) * Number(lockerQty) * Number(months);
 
-    const { error: assignError } = await client
-      .from("mailroom_assigned_lockers")
-      .insert(assignedLockerRecords);
-
-    if (assignError) {
-      console.error("Failed to assign lockers:", assignError);
-      return NextResponse.json({ error: assignError.message }, { status: 400 });
+    // 4. Apply Annual Discount (20%)
+    if (Number(months) === 12) {
+      amountDue = amountDue * 0.8;
     }
 
-    // --- Mark lockers as unavailable ---
-    const lockerIds = availableLockers.map((l) => l.id);
-    const { error: updateLockerError } = await client
-      .from("location_lockers")
-      .update({ is_available: false })
-      .in("id", lockerIds);
+    // NEW: 4.5 Apply Referral Discount (5%)
+    // We must validate the code again server-side to prevent manipulation
+    if (referralCode) {
+      const { data: referrer } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .eq("referral_code", referralCode)
+        .single();
 
-    if (updateLockerError) {
-      console.error("Failed to update locker availability:", updateLockerError);
-      // optional: rollback registration or assignment
+      // Only apply if valid and not self-referral
+      if (referrer && referrer.id !== userId) {
+        amountDue = amountDue * 0.95; // 5% off
+      }
     }
 
-    return NextResponse.json(
-      {
-        message: "Registered successfully",
-        registration,
-        assignedLockers: assignedLockerRecords,
-      },
-      { status: 200 }
-    );
+    // 5. Generate Unique Mailroom Code
+    let mailroomCode = "";
+    let isUnique = false;
+    let attempts = 0;
+
+    while (!isUnique && attempts < 5) {
+      // Generate random 4-char alphanumeric string (substring 2 to 6)
+      const randomStr = Math.random()
+        .toString(36)
+        .substring(2, 6)
+        .toUpperCase();
+      mailroomCode = `KPH-${randomStr}`;
+
+      // Check if exists
+      const { data: existing } = await supabaseAdmin
+        .from("mailroom_registrations")
+        .select("id")
+        .eq("mailroom_code", mailroomCode)
+        .single();
+
+      if (!existing) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+
+    if (!isUnique) {
+      return NextResponse.json(
+        { error: "Failed to generate unique mailroom code" },
+        { status: 500 }
+      );
+    }
+
+    // 6. Prepare Data for Insert
+    // Handle optional numeric fields: convert empty strings to null
+    const mobileNum = mobile ? mobile.replace(/\D/g, "") : null;
+    const telephoneNum = telephone ? telephone.replace(/\D/g, "") : null;
+
+    const { data, error } = await supabaseAdmin
+      .from("mailroom_registrations")
+      .insert([
+        {
+          user_id: userId,
+          location_id: locationId,
+          plan_id: planId,
+          locker_qty: lockerQty,
+          months,
+          notes,
+          // Contact Info from Schema
+          full_name,
+          email,
+          mobile: mobileNum,
+          telephone: telephoneNum,
+          mailroom_code: mailroomCode, // Added back
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Registration Insert Error:", error);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      message: "Mailroom registered successfully",
+      data,
+      amountDue, // Return calculated amount for payment
+    });
   } catch (err: any) {
     console.error("mailroom register unexpected error:", err);
     return NextResponse.json(
