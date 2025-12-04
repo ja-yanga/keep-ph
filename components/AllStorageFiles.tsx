@@ -41,6 +41,7 @@ import {
   IconArrowDown,
   IconSortAscendingLetters,
   IconSortDescendingLetters,
+  IconTrash,
 } from "@tabler/icons-react";
 import type { IconProps } from "@tabler/icons-react"; // Import IconProps for correct typing
 import { useSession } from "@/components/SessionProvider";
@@ -118,6 +119,7 @@ export default function AllUserScans() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selected, setSelected] = useState<Scan | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Search & sort state
   const [search, setSearch] = useState("");
@@ -173,6 +175,52 @@ export default function AllUserScans() {
     } else {
       setSortBy(key);
       setSortDir("desc"); // Default to descending when switching column
+    }
+  };
+
+  const handleDelete = async (scanId?: string) => {
+    if (!scanId) {
+      alert("Invalid file id");
+      return;
+    }
+
+    if (!confirm("Delete this file permanently?")) return;
+
+    const url = `/api/user/storage/${encodeURIComponent(scanId)}`;
+    try {
+      setDeletingId(scanId);
+      console.debug("Deleting scan:", scanId, "url:", url);
+
+      const res = await fetch(url, {
+        method: "DELETE",
+        credentials: "same-origin", // or "include" if you need cookies sent cross-site
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      const text = await res.text().catch(() => "");
+      let body: any = {};
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        body = { raw: text };
+      }
+
+      if (!res.ok) {
+        console.error("delete failed response:", res.status, body);
+        throw new Error(
+          body?.error || body?.message || `Delete failed (${res.status})`
+        );
+      }
+
+      // optimistic update
+      setScans((prev) => prev.filter((s) => s.id !== scanId));
+    } catch (e: any) {
+      console.error("delete failed", e);
+      alert(e.message || "Failed to delete file");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -385,6 +433,17 @@ export default function AllUserScans() {
                               color="green"
                             >
                               <IconDownload size={18} />
+                            </ActionIcon>
+                          </Tooltip>
+
+                          <Tooltip label="Delete" withArrow>
+                            <ActionIcon
+                              color="red"
+                              variant="light"
+                              onClick={() => handleDelete(s.id)}
+                              disabled={deletingId === s.id}
+                            >
+                              <IconTrash size={18} />
                             </ActionIcon>
                           </Tooltip>
                         </Group>

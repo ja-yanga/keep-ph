@@ -590,21 +590,30 @@ export default function UserDashboard() {
                     </span>
                   </Text>
                 </Box>
-                <Box>
-                  <Group gap={6} mb={4}>
-                    <IconCalendar size={14} color="gray" />
-                    {/* CHANGED: Dynamic Label */}
-                    <Text size="xs" c="dimmed">
-                      {row.auto_renew ? "Renews On" : "Expires On"}
-                    </Text>
-                  </Group>
-                  {/* CHANGED: Dynamic Color */}
+                <Box style={{ textAlign: "right" }}>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                    {row.auto_renew ? "Renews On" : "Expires On"}
+                  </Text>
                   <Text fw={500} size="sm" c={row.auto_renew ? "dark" : "red"}>
                     {row.expiry_at
                       ? new Date(row.expiry_at).toLocaleDateString()
                       : "N/A"}
                   </Text>
                 </Box>
+              </Group>
+
+              {/* show released count and pending requests per mailroom */}
+              <Group mt="sm" style={{ gap: 8 }}>
+                <Badge color="teal" variant="light">
+                  Released: {row.stats.released}
+                </Badge>
+                <Badge
+                  color={row.stats.pending > 0 ? "orange" : "gray"}
+                  variant={row.stats.pending > 0 ? "filled" : "light"}
+                >
+                  {row.stats.pending} request
+                  {row.stats.pending !== 1 ? "s" : ""}
+                </Badge>
               </Group>
             </Stack>
 

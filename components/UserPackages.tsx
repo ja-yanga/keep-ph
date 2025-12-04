@@ -18,6 +18,7 @@ import {
   SimpleGrid,
   Box,
   Divider,
+  useMantineTheme,
 } from "@mantine/core";
 import {
   IconPackage,
@@ -54,7 +55,65 @@ export default function UserPackages({
   isStorageFull = false,
   onRefresh,
 }: UserPackagesProps) {
+  const theme = useMantineTheme();
   const [localPackages, setLocalPackages] = useState<any[]>(packages);
+
+  // map of tracking_number|package_id -> file_url
+  const [scanMap, setScanMap] = useState<Record<string, string>>({});
+
+  // Fetch scans once packages are available and build lookup map
+  useEffect(() => {
+    if (!packages || packages.length === 0) {
+      setScanMap({});
+      return;
+    }
+
+    // derive a registrationId from packages (if present)
+    const regPkg =
+      packages.find((p: any) => p.registration_id) ||
+      packages.find((p: any) => p.package?.registration_id);
+    const registrationId =
+      (regPkg && (regPkg.registration_id || regPkg.package?.registration_id)) ||
+      null;
+
+    if (!registrationId) {
+      // no registration id available — avoid calling the API that requires it
+      setScanMap({});
+      return;
+    }
+
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/user/scans?registrationId=${encodeURIComponent(
+            registrationId
+          )}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        const scansArr = Array.isArray(data?.scans) ? data.scans : [];
+
+        const map: Record<string, string> = {};
+        scansArr.forEach((s: any) => {
+          const file = s.file_url;
+          // prefer package.tracking_number if available
+          const tracking = s.package?.tracking_number;
+          if (tracking) map[tracking] = file;
+          if (s.package_id) map[s.package_id] = file;
+        });
+
+        if (mounted) setScanMap(map);
+      } catch (err) {
+        console.error("failed to load scans for packages", err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [packages]);
 
   useEffect(() => {
     setLocalPackages(packages);
@@ -99,6 +158,7 @@ export default function UserPackages({
   // Image Preview State
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string | null>(null);
 
   const handleActionClick = (
     pkg: any,
@@ -155,7 +215,6 @@ export default function UserPackages({
             await maybePromise;
           }
         } catch (e) {
-          // swallow errors from parent refresh but log for debugging
           console.error("onRefresh failed:", e);
         }
       }
@@ -193,6 +252,16 @@ export default function UserPackages({
         lockerCode = assigned.locker_code || assigned.locker?.locker_code;
     }
 
+    // Resolve scan URL using package fields or the fetched scanMap
+    const scanUrl =
+      pkg.scan_url ||
+      pkg.digital_scan_url ||
+      pkg.scanned_file_url ||
+      scanMap[pkg.tracking_number] ||
+      scanMap[pkg.id] ||
+      null;
+    const hasScan = Boolean(scanUrl);
+
     let statusColor = "blue";
     if (["RELEASED", "RETRIEVED"].includes(status)) statusColor = "green";
     else if (status === "DISPOSED") statusColor = "red";
@@ -201,7 +270,7 @@ export default function UserPackages({
     return (
       <Paper p="md" radius="md" withBorder shadow="xs" bg="white">
         <Group justify="space-between" align="flex-start" mb="xs">
-          <Group gap="xs">
+          <Group style={{ gap: theme.spacing.xs }}>
             {/* CHANGED: Conditional Icon and Color */}
             <ThemeIcon
               variant="light"
@@ -284,41 +353,65 @@ export default function UserPackages({
 
             {/* Scan button appears as an extra option for documents */}
             {isDocument && planCapabilities.can_digitize && (
-              <Button
-                variant="light"
-                color="violet"
-                fullWidth
-                size="xs"
-                leftSection={<IconScan size={14} />}
-                disabled={isStorageFull}
-                onClick={() => handleActionClick(pkg, "SCAN")}
-              >
-                Request Scan
-              </Button>
+              <>
+                {hasScan ? (
+                  <Button
+                    variant="default"
+                    color="violet"
+                    fullWidth
+                    size="xs"
+                    leftSection={<IconEye size={14} />}
+                    onClick={() => {
+                      setPreviewTitle("View Scan");
+                      setPreviewImage(scanUrl);
+                      setImageModalOpen(true);
+                    }}
+                  >
+                    View Scan
+                  </Button>
+                ) : (
+                  <Button
+                    variant="light"
+                    color="violet"
+                    fullWidth
+                    size="xs"
+                    leftSection={<IconScan size={14} />}
+                    disabled={isStorageFull}
+                    onClick={() => handleActionClick(pkg, "SCAN")}
+                  >
+                    Request Scan
+                  </Button>
+                )}
+              </>
             )}
           </Stack>
         )}
 
         {status === "RELEASED" && (
-          <Group grow>
+          // don't force equal widths; allow buttons to size and prevent label clipping
+          <Group style={{ gap: theme.spacing.xs }}>
             <Button
-              size="xs"
+              size="sm"
               variant="filled"
               color="green"
               leftSection={<IconCheck size={14} />}
               onClick={() => handleActionClick(pkg, "CONFIRM_RECEIVED")}
+              style={{ whiteSpace: "nowrap", minWidth: 130 }}
             >
               Confirm Receipt
             </Button>
+
             {(pkg.release_proof_url || pkg.image_url) && (
               <Button
-                size="xs"
+                size="sm"
                 variant="default"
                 leftSection={<IconEye size={14} />}
                 onClick={() => {
+                  setPreviewTitle("Proof of Release");
                   setPreviewImage(pkg.release_proof_url || pkg.image_url);
                   setImageModalOpen(true);
                 }}
+                style={{ whiteSpace: "nowrap", minWidth: 110 }}
               >
                 View Proof
               </Button>
@@ -416,14 +509,13 @@ export default function UserPackages({
               : `Are you sure you want to request to ${actionType?.toLowerCase()} this package?`}
           </Text>
 
-          {actionType !== "CONFIRM_RECEIVED" && (
+          {/* {actionType !== "CONFIRM_RECEIVED" && (
             <Textarea
               label="Additional Notes (Optional)"
-              placeholder="e.g. Please deliver on weekend..."
               value={notes}
               onChange={(e) => setNotes(e.currentTarget.value)}
             />
-          )}
+          )} */}
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setActionModalOpen(false)}>
@@ -436,19 +528,43 @@ export default function UserPackages({
         </Stack>
       </Modal>
 
-      {/* Image Preview Modal */}
+      {/* Preview Modal (images or PDFs) */}
       <Modal
         opened={imageModalOpen}
-        onClose={() => setImageModalOpen(false)}
-        title="Proof of Release"
-        size="lg"
+        onClose={() => {
+          setImageModalOpen(false);
+          setPreviewImage(null);
+          setPreviewTitle(null);
+        }}
+        title={previewTitle ?? "Preview"}
+        size="xl"
+        centered
+        overlayProps={{ blur: 3, backgroundOpacity: 0.45 }}
       >
-        {previewImage && (
-          <img
-            src={previewImage}
-            alt="Proof"
-            style={{ width: "100%", borderRadius: 8 }}
-          />
+        {previewImage ? (
+          // PDF -> iframe, otherwise show image
+          /\.pdf(\?.*)?$/i.test(previewImage) ? (
+            <div style={{ width: "100%" }}>
+              <iframe
+                src={previewImage}
+                title={previewTitle ?? "Preview"}
+                style={{ width: "100%", height: "70vh", border: "none" }}
+              />
+            </div>
+          ) : (
+            <img
+              src={previewImage}
+              alt={previewTitle ?? "Preview"}
+              style={{
+                width: "100%",
+                maxHeight: "70vh",
+                objectFit: "contain",
+                borderRadius: 8,
+              }}
+            />
+          )
+        ) : (
+          <Text c="dimmed">No preview available</Text>
         )}
       </Modal>
     </>

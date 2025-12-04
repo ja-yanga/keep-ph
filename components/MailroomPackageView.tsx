@@ -36,7 +36,7 @@ import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import UserPackages from "./UserPackages";
-import UserScans from "./UserScans"; // <--- Import the component
+import UserScans from "./UserScans";
 
 function addMonths(iso?: string | null, months = 0) {
   if (!iso) return null;

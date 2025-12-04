@@ -25,6 +25,7 @@ import {
   IconDatabase,
   IconCalendar,
   IconRefresh,
+  IconTrash,
 } from "@tabler/icons-react";
 
 interface Scan {
@@ -58,6 +59,7 @@ export default function UserScans({ registrationId }: UserScansProps) {
   const [loading, setLoading] = useState(true);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [selectedScan, setSelectedScan] = useState<Scan | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchScans = useCallback(async () => {
     if (!registrationId) return;
@@ -89,6 +91,38 @@ export default function UserScans({ registrationId }: UserScansProps) {
   const handlePreview = (scan: Scan) => {
     setSelectedScan(scan);
     setPreviewModalOpen(true);
+  };
+
+  const handleDelete = async (scanId?: string) => {
+    if (!scanId) {
+      alert("Invalid file id");
+      return;
+    }
+
+    if (!confirm("Delete this file permanently?")) return;
+
+    const url = `/api/user/storage/${encodeURIComponent(scanId)}`;
+    try {
+      setDeletingId(scanId);
+      const res = await fetch(url, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `Delete failed (${res.status})`);
+      }
+
+      // optimistic update
+      setScans((prev) => prev.filter((s) => s.id !== scanId));
+    } catch (e: any) {
+      console.error("Failed to delete scan:", e);
+      alert(e.message || "Failed to delete file");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const formatFileSize = (mb: number) => {
@@ -225,6 +259,16 @@ export default function UserScans({ registrationId }: UserScansProps) {
                               color="green"
                             >
                               <IconDownload size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Delete">
+                            <ActionIcon
+                              color="red"
+                              variant="light"
+                              onClick={() => handleDelete(scan.id)}
+                              disabled={deletingId === scan.id}
+                            >
+                              <IconTrash size={16} />
                             </ActionIcon>
                           </Tooltip>
                         </Group>
