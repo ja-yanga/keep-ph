@@ -18,6 +18,7 @@ import {
   SimpleGrid,
   Box,
   Divider,
+  TextInput,
   useMantineTheme,
 } from "@mantine/core";
 import {
@@ -28,11 +29,10 @@ import {
   IconEye,
   IconLock,
   IconCheck,
-  IconPhoto,
-  IconBox,
   IconHistory,
   IconInbox,
-  IconFileText, // ADDED: Import for document icon
+  IconFileText,
+  IconSearch,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 
@@ -57,18 +57,17 @@ export default function UserPackages({
 }: UserPackagesProps) {
   const theme = useMantineTheme();
   const [localPackages, setLocalPackages] = useState<any[]>(packages);
+  const [search, setSearch] = useState("");
 
   // map of tracking_number|package_id -> file_url
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
 
-  // Fetch scans once packages are available and build lookup map
   useEffect(() => {
     if (!packages || packages.length === 0) {
       setScanMap({});
       return;
     }
 
-    // derive a registrationId from packages (if present)
     const regPkg =
       packages.find((p: any) => p.registration_id) ||
       packages.find((p: any) => p.package?.registration_id);
@@ -77,7 +76,6 @@ export default function UserPackages({
       null;
 
     if (!registrationId) {
-      // no registration id available — avoid calling the API that requires it
       setScanMap({});
       return;
     }
@@ -98,7 +96,6 @@ export default function UserPackages({
         const map: Record<string, string> = {};
         scansArr.forEach((s: any) => {
           const file = s.file_url;
-          // prefer package.tracking_number if available
           const tracking = s.package?.tracking_number;
           if (tracking) map[tracking] = file;
           if (s.package_id) map[s.package_id] = file;
@@ -132,12 +129,10 @@ export default function UserPackages({
       }
     });
 
-    // Sort active by newest first
     active.sort(
       (a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-    // Sort history by newest updated
     history.sort(
       (a, b) =>
         new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -145,6 +140,27 @@ export default function UserPackages({
 
     return { activePackages: active, historyPackages: history };
   }, [localPackages]);
+
+  // --- SEARCH FILTERS ---
+  const filteredActivePackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return activePackages;
+    return activePackages.filter(
+      (pkg) =>
+        (pkg.tracking_number?.toLowerCase().includes(q) ?? false) ||
+        (pkg.package_type?.toLowerCase().includes(q) ?? false)
+    );
+  }, [activePackages, search]);
+
+  const filteredHistoryPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return historyPackages;
+    return historyPackages.filter(
+      (pkg) =>
+        (pkg.tracking_number?.toLowerCase().includes(q) ?? false) ||
+        (pkg.package_type?.toLowerCase().includes(q) ?? false)
+    );
+  }, [historyPackages, search]);
 
   // Action State
   const [actionModalOpen, setActionModalOpen] = useState(false);
@@ -236,10 +252,8 @@ export default function UserPackages({
     const status = pkg.status || "STORED";
     const receivedDate = pkg.received_at;
 
-    // ADDED: Check if it is a document
     const isDocument = type === "Document";
 
-    // Resolve locker code
     let lockerCode = pkg.locker?.locker_code;
     if (!lockerCode && pkg.locker_id && Array.isArray(lockers)) {
       const assigned = lockers.find(
@@ -252,7 +266,6 @@ export default function UserPackages({
         lockerCode = assigned.locker_code || assigned.locker?.locker_code;
     }
 
-    // Resolve scan URL using package fields or the fetched scanMap
     const scanUrl =
       pkg.scan_url ||
       pkg.digital_scan_url ||
@@ -271,7 +284,6 @@ export default function UserPackages({
       <Paper p="md" radius="md" withBorder shadow="xs" bg="white">
         <Group justify="space-between" align="flex-start" mb="xs">
           <Group style={{ gap: theme.spacing.xs }}>
-            {/* CHANGED: Conditional Icon and Color */}
             <ThemeIcon
               variant="light"
               color={isDocument ? "violet" : "blue"}
@@ -322,7 +334,6 @@ export default function UserPackages({
           </Box>
         </Group>
 
-        {/* Actions Area */}
         {status === "STORED" && (
           <Stack gap="xs">
             <SimpleGrid cols={2} spacing="xs">
@@ -351,7 +362,6 @@ export default function UserPackages({
               </Button>
             </SimpleGrid>
 
-            {/* Scan button appears as an extra option for documents */}
             {isDocument && planCapabilities.can_digitize && (
               <>
                 {hasScan ? (
@@ -388,7 +398,6 @@ export default function UserPackages({
         )}
 
         {status === "RELEASED" && (
-          // don't force equal widths; allow buttons to size and prevent label clipping
           <Group style={{ gap: theme.spacing.xs }}>
             <Button
               size="sm"
@@ -439,7 +448,7 @@ export default function UserPackages({
             </Group>
             <Tabs.List>
               <Tabs.Tab value="inbox" leftSection={<IconInbox size={14} />}>
-                Inbox ({activePackages.length})
+                Inbox ({filteredActivePackages.length})
               </Tabs.Tab>
               <Tabs.Tab value="history" leftSection={<IconHistory size={14} />}>
                 History
@@ -447,10 +456,22 @@ export default function UserPackages({
             </Tabs.List>
           </Group>
 
+          {/* --- SEARCH BAR --- */}
+          <Box mb="md">
+            <TextInput
+              placeholder="Search by tracking number or package type..."
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              leftSection={<IconSearch size={16} />}
+              size="md"
+              __clearable
+            />
+          </Box>
+
           <Tabs.Panel value="inbox">
-            {activePackages.length > 0 ? (
+            {filteredActivePackages.length > 0 ? (
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {activePackages.map((pkg) => (
+                {filteredActivePackages.map((pkg) => (
                   <PackageCard key={pkg.id} pkg={pkg} />
                 ))}
               </SimpleGrid>
@@ -462,17 +483,15 @@ export default function UserPackages({
                 style={{ borderRadius: 8 }}
               >
                 <IconInbox size={40} color="gray" />
-                <Text c="dimmed">
-                  Your inbox is empty. No pending packages.
-                </Text>
+                <Text c="dimmed">No matching packages found.</Text>
               </Stack>
             )}
           </Tabs.Panel>
 
           <Tabs.Panel value="history">
-            {historyPackages.length > 0 ? (
+            {filteredHistoryPackages.length > 0 ? (
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {historyPackages.map((pkg) => (
+                {filteredHistoryPackages.map((pkg) => (
                   <PackageCard key={pkg.id} pkg={pkg} />
                 ))}
               </SimpleGrid>
@@ -484,14 +503,14 @@ export default function UserPackages({
                 style={{ borderRadius: 8 }}
               >
                 <IconHistory size={40} color="gray" />
-                <Text c="dimmed">No history available yet.</Text>
+                <Text c="dimmed">No matching history packages found.</Text>
               </Stack>
             )}
           </Tabs.Panel>
         </Tabs>
       </Paper>
 
-      {/* Action Confirmation Modal */}
+      {/* --- Action Modal --- */}
       <Modal
         opened={actionModalOpen}
         onClose={() => setActionModalOpen(false)}
@@ -509,14 +528,6 @@ export default function UserPackages({
               : `Are you sure you want to request to ${actionType?.toLowerCase()} this package?`}
           </Text>
 
-          {/* {actionType !== "CONFIRM_RECEIVED" && (
-            <Textarea
-              label="Additional Notes (Optional)"
-              value={notes}
-              onChange={(e) => setNotes(e.currentTarget.value)}
-            />
-          )} */}
-
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setActionModalOpen(false)}>
               Cancel
@@ -528,7 +539,7 @@ export default function UserPackages({
         </Stack>
       </Modal>
 
-      {/* Preview Modal (images or PDFs) */}
+      {/* --- Preview Modal --- */}
       <Modal
         opened={imageModalOpen}
         onClose={() => {
@@ -542,15 +553,12 @@ export default function UserPackages({
         overlayProps={{ blur: 3, backgroundOpacity: 0.45 }}
       >
         {previewImage ? (
-          // PDF -> iframe, otherwise show image
           /\.pdf(\?.*)?$/i.test(previewImage) ? (
-            <div style={{ width: "100%" }}>
-              <iframe
-                src={previewImage}
-                title={previewTitle ?? "Preview"}
-                style={{ width: "100%", height: "70vh", border: "none" }}
-              />
-            </div>
+            <iframe
+              src={previewImage}
+              title={previewTitle ?? "Preview"}
+              style={{ width: "100%", height: "70vh", border: "none" }}
+            />
           ) : (
             <img
               src={previewImage}

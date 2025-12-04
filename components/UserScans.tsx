@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Badge,
   Group,
@@ -17,6 +17,8 @@ import {
   Center,
   Progress,
   Box,
+  TextInput,
+  Button,
 } from "@mantine/core";
 import {
   IconFileText,
@@ -26,6 +28,7 @@ import {
   IconCalendar,
   IconRefresh,
   IconTrash,
+  IconSearch,
 } from "@tabler/icons-react";
 
 interface Scan {
@@ -51,6 +54,7 @@ interface UserScansProps {
 
 export default function UserScans({ registrationId }: UserScansProps) {
   const [scans, setScans] = useState<Scan[]>([]);
+  const [search, setSearch] = useState("");
   const [usage, setUsage] = useState<StorageUsage>({
     used_mb: 0,
     limit_mb: 0,
@@ -67,13 +71,13 @@ export default function UserScans({ registrationId }: UserScansProps) {
     try {
       setLoading(true);
       const res = await fetch(
-        `/api/user/scans?registrationId=${registrationId}`,
+        `/api/user/scans?registrationId=${encodeURIComponent(registrationId)}`,
         { credentials: "include" }
       );
       if (res.ok) {
         const data = await res.json();
-        setScans(data.scans);
-        setUsage(data.usage);
+        setScans(data.scans ?? []);
+        setUsage(data.usage ?? { used_mb: 0, limit_mb: 0, percentage: 0 });
       } else {
         console.error("API Error:", await res.text());
       }
@@ -87,6 +91,17 @@ export default function UserScans({ registrationId }: UserScansProps) {
   useEffect(() => {
     fetchScans();
   }, [fetchScans]);
+
+  // filtered scans by search (file name or tracking number)
+  const filteredScans = useMemo(() => {
+    const q = (search || "").trim().toLowerCase();
+    if (!q) return scans;
+    return scans.filter((s) => {
+      const fileName = (s.file_name || "").toLowerCase();
+      const tracking = (s.package?.tracking_number || "").toLowerCase();
+      return fileName.includes(q) || tracking.includes(q);
+    });
+  }, [scans, search]);
 
   const handlePreview = (scan: Scan) => {
     setSelectedScan(scan);
@@ -150,6 +165,18 @@ export default function UserScans({ registrationId }: UserScansProps) {
           </Group>
         </Group>
 
+        {/* Search (same behavior as UserPackages) */}
+        <Box mb="md">
+          <TextInput
+            placeholder="Search by file name or tracking number..."
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            leftSection={<IconSearch size={16} />}
+            size="md"
+            __clearable
+          />
+        </Box>
+
         {/* Storage Usage Bar */}
         <Box mb="lg">
           <Group justify="space-between" mb={5}>
@@ -196,8 +223,8 @@ export default function UserScans({ registrationId }: UserScansProps) {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {scans.length > 0 ? (
-                  scans.map((scan) => (
+                {filteredScans.length > 0 ? (
+                  filteredScans.map((scan) => (
                     <Table.Tr key={scan.id}>
                       <Table.Td>
                         <Group gap="xs">
@@ -283,7 +310,11 @@ export default function UserScans({ registrationId }: UserScansProps) {
                           size={40}
                           color="var(--mantine-color-gray-3)"
                         />
-                        <Text c="dimmed">No scanned documents found</Text>
+                        <Text c="dimmed">
+                          {search
+                            ? "No results found for your search."
+                            : "No scanned documents found"}
+                        </Text>
                       </Stack>
                     </Table.Td>
                   </Table.Tr>
@@ -297,17 +328,28 @@ export default function UserScans({ registrationId }: UserScansProps) {
       {/* PDF Preview Modal */}
       <Modal
         opened={previewModalOpen}
-        onClose={() => setPreviewModalOpen(false)}
+        onClose={() => {
+          setPreviewModalOpen(false);
+          setSelectedScan(null);
+        }}
         title={selectedScan?.file_name || "Document Preview"}
         size="xl"
         centered
       >
-        {selectedScan && (
+        {selectedScan && /\.pdf(\?.*)?$/i.test(selectedScan.file_url) ? (
           <iframe
             src={selectedScan.file_url}
             style={{ width: "100%", height: "70vh", border: "none" }}
             title="PDF Preview"
           />
+        ) : selectedScan ? (
+          <img
+            src={selectedScan.file_url}
+            alt={selectedScan.file_name}
+            style={{ width: "100%", maxHeight: "70vh", objectFit: "contain" }}
+          />
+        ) : (
+          <Text c="dimmed">No preview available</Text>
         )}
       </Modal>
     </>

@@ -47,6 +47,8 @@ function SignInContent() {
 
   // NEW: State for verification alert
   const [verified, setVerified] = useState(false);
+  // NEW: State for password-reset success alert
+  const [pwReset, setPwReset] = useState(false);
 
   // NEW: Check URL hash for implicit flow verification
   useEffect(() => {
@@ -55,6 +57,12 @@ function SignInContent() {
     if (hash && hash.includes("type=signup")) {
       setVerified(true);
       window.history.replaceState(null, "", window.location.pathname);
+    }
+    // Check query param for password reset success
+    if (searchParams.get("pw_reset") === "1") {
+      setPwReset(true);
+      // remove query so it won't re-show on refresh
+      router.replace("/signin");
     }
   }, []);
 
@@ -186,6 +194,18 @@ function SignInContent() {
                       radius="md"
                     >
                       Your email has been successfully verified. Please log in.
+                    </Alert>
+                  )}
+                  {pwReset && (
+                    <Alert
+                      variant="light"
+                      color="teal"
+                      title="Password Updated"
+                      icon={<IconCheck size={16} />}
+                      radius="md"
+                    >
+                      Your password was updated. Please sign in with your new
+                      password.
                     </Alert>
                   )}
 

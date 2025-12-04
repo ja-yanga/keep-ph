@@ -100,12 +100,14 @@ export default function UpdatePasswordPage() {
         color: "red",
       });
     } else {
-      notifications.show({
-        title: "Success",
-        message: "Your password has been updated.",
-        color: "green",
-      });
-      router.push("/signin");
+      // sign out current session so middleware won't redirect an authenticated user
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.debug("signOut failed (ignored):", e);
+      }
+      // navigate to signin with flag to show confirmation
+      router.push("/signin?pw_reset=1");
     }
 
     setLoading(false);
