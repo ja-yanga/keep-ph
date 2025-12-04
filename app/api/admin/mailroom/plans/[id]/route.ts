@@ -21,13 +21,35 @@ export async function PATCH(
       );
     }
 
-    const { name, price, description, storage_limit } = body;
+    const {
+      name,
+      price,
+      description,
+      storage_limit,
+      can_receive_mail,
+      can_receive_parcels,
+      can_digitize,
+    } = body;
 
     const updates: Record<string, any> = {};
     if (name !== undefined) updates.name = name;
     if (price !== undefined) updates.price = Number(price);
     if (description !== undefined) updates.description = description || null;
-    if (storage_limit !== undefined) updates.storage_limit = storage_limit;
+
+    // storage_limit is expected in MB on the DB; client sends GB converted to MB already,
+    // but accept numbers/null as provided.
+    if (storage_limit !== undefined) {
+      updates.storage_limit =
+        storage_limit === null ? null : Number(storage_limit);
+    }
+
+    // Accept boolean capability fields
+    if (can_receive_mail !== undefined)
+      updates.can_receive_mail = Boolean(can_receive_mail);
+    if (can_receive_parcels !== undefined)
+      updates.can_receive_parcels = Boolean(can_receive_parcels);
+    if (can_digitize !== undefined)
+      updates.can_digitize = Boolean(can_digitize);
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
