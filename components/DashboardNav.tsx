@@ -59,7 +59,8 @@ export default function DashboardNav() {
 
   // Fetch Notifications
   const fetchNotifications = async () => {
-    if (!session?.user?.id) return;
+    // only fetch notifications for regular users
+    if (!session?.user?.id || role !== "user") return;
 
     const { data } = await supabase
       .from("notifications")
@@ -76,10 +77,10 @@ export default function DashboardNav() {
 
   // Initial Fetch & Realtime Subscription
   useEffect(() => {
-    if (session?.user?.id) {
+    // only subscribe & fetch for regular users
+    if (session?.user?.id && role === "user") {
       fetchNotifications();
 
-      // Subscribe to new notifications in real-time
       const channel = supabase
         .channel("realtime-notifications")
         .on(
@@ -100,6 +101,10 @@ export default function DashboardNav() {
       return () => {
         supabase.removeChannel(channel);
       };
+    } else {
+      // ensure notifications hidden/cleared for non-users
+      setNotifications([]);
+      setUnreadCount(0);
     }
   }, [session?.user?.id]);
 
@@ -297,12 +302,12 @@ export default function DashboardNav() {
                   </Anchor>
                   <Anchor
                     component={Link}
-                    href="/account"
-                    style={linkColor("/account")}
+                    href="/storage"
+                    style={linkColor("/storage")}
                     underline="hover"
-                    aria-current={pathname === "/account" ? "page" : undefined}
+                    aria-current={pathname === "/storage" ? "page" : undefined}
                   >
-                    Account
+                    Storage
                   </Anchor>
                 </>
               )}
@@ -311,7 +316,7 @@ export default function DashboardNav() {
 
           {/* Right: optionally show notifications, always show logout */}
           <Group gap="sm">
-            {showLinks && (
+            {showLinks && role === "user" && (
               <Popover
                 width={320}
                 position="bottom-end"
@@ -416,22 +421,19 @@ export default function DashboardNav() {
               </Popover>
             )}
 
-            {/* Admin Account Icon (placed between Bell and Logout) */}
-            {showLinks && isAdmin && (
-              <Tooltip label="Account">
-                <ActionIcon
-                  component={Link}
-                  href="/account"
-                  variant="subtle"
-                  color="gray"
-                  radius="xl"
-                  size="lg"
-                  aria-label="account"
-                >
-                  <IconUser size={20} />
-                </ActionIcon>
-              </Tooltip>
-            )}
+            <Tooltip label="Account">
+              <ActionIcon
+                component={Link}
+                href="/account"
+                variant="subtle"
+                color="gray"
+                radius="xl"
+                size="lg"
+                aria-label="account"
+              >
+                <IconUser size={20} />
+              </ActionIcon>
+            </Tooltip>
 
             <Button
               component="button"

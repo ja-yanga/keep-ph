@@ -17,6 +17,9 @@ import {
   rem,
   ThemeIcon,
   Transition, // <--- Import Transition for smooth alert
+  Divider, // ADDED for Google divider
+  Group,
+  Loader,
 } from "@mantine/core";
 import {
   IconAlertCircle,
@@ -24,10 +27,12 @@ import {
   IconLock,
   IconMail,
   IconCheck, // <--- Import IconCheck
+  IconBrandGoogle, // ADDED: Google icon
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
+import { createBrowserClient } from "@supabase/ssr"; // ADDED: for OAuth flow
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -104,6 +109,34 @@ export default function SignUpPage() {
       setLoading(false);
     }
   };
+
+  // --- Google OAuth (copied from signin) ---
+  const handleGoogleSignUp = async () => {
+    setLoading(true);
+    setError(null);
+    // Create a temporary client to ensure PKCE flow is used
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          // Point to the Google callback for signup flow
+          redirectTo: `${window.location.origin}/api/auth/callback/google?type=signup`,
+        },
+      });
+      if (error) throw error;
+      // browser will redirect
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "An unexpected error occurred.");
+      setLoading(false);
+    }
+  };
+  // --- end Google OAuth ---
 
   const handleResend = async () => {
     setResendLoading(true);
@@ -349,6 +382,25 @@ export default function SignUpPage() {
                     }}
                   >
                     Sign Up
+                  </Button>
+
+                  <Divider
+                    label="Or continue with"
+                    labelPosition="center"
+                    my="xs"
+                  />
+
+                  <Button
+                    variant="default"
+                    fullWidth
+                    size="md"
+                    radius="md"
+                    loading={loading}
+                    leftSection={<IconBrandGoogle size={18} />}
+                    onClick={handleGoogleSignUp}
+                    type="button"
+                  >
+                    Continue with Google
                   </Button>
                 </Stack>
               </form>

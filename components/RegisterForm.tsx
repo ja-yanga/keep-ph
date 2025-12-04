@@ -24,6 +24,8 @@ import {
   ThemeIcon,
   SegmentedControl,
   ActionIcon,
+  Loader,
+  Center,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useRouter } from "next/navigation";
@@ -92,6 +94,9 @@ export default function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // initial load state for fetching locations/plans/availability
+  const [initLoading, setInitLoading] = useState(true);
+
   // Update months when billing cycle changes
   useEffect(() => {
     if (billingCycle === "annual") {
@@ -104,53 +109,68 @@ export default function RegisterForm() {
   useEffect(() => {
     let mounted = true;
     async function load() {
-      // 1. Fetch Locations
-      const { data: locs } = await supabase
-        .from("mailroom_locations")
-        .select("id,name,region,city,barangay,zip")
-        .order("name", { ascending: true });
-
-      // 2. Fetch Plans with Capabilities
-      // CHANGED: Added capability columns to the select query
-      const { data: plns } = await supabase
-        .from("mailroom_plans")
-        .select(
-          "id,name,price,description,can_receive_mail,can_receive_parcels,can_digitize,storage_limit"
-        )
-        .order("price", { ascending: true });
-
-      // 3. Fetch Available Locker Counts from API
-      let counts: Record<string, number> = {};
       try {
-        const res = await fetch("/api/mailroom/locations/availability");
-        if (res.ok) {
-          counts = await res.json();
-        } else {
-          console.error("Failed to fetch availability");
+        // 1. Fetch Locations
+        const { data: locs } = await supabase
+          .from("mailroom_locations")
+          .select("id,name,region,city,barangay,zip")
+          .order("name", { ascending: true });
+
+        // 2. Fetch Plans with Capabilities
+        const { data: plns } = await supabase
+          .from("mailroom_plans")
+          .select(
+            "id,name,price,description,can_receive_mail,can_receive_parcels,can_digitize,storage_limit"
+          )
+          .order("price", { ascending: true });
+
+        // 3. Fetch Available Locker Counts from API
+        let counts: Record<string, number> = {};
+        try {
+          const res = await fetch("/api/mailroom/locations/availability");
+          if (res.ok) {
+            counts = await res.json();
+          } else {
+            console.error("Failed to fetch availability");
+          }
+        } catch (err) {
+          console.error("Error fetching availability:", err);
         }
+
+        if (!mounted) return;
+
+        if (locs) setLocations(locs);
+        if (plns) {
+          const normalized = plns.map((p: any) => ({
+            ...p,
+            price: Number(p.price),
+          }));
+          setPlans(normalized);
+        }
+
+        // Set the counts directly from API response
+        setLocationAvailability(counts);
       } catch (err) {
-        console.error("Error fetching availability:", err);
+        console.error("RegisterForm initial load error:", err);
+      } finally {
+        if (mounted) setInitLoading(false);
       }
-
-      if (!mounted) return;
-
-      if (locs) setLocations(locs);
-      if (plns) {
-        const normalized = plns.map((p: any) => ({
-          ...p,
-          price: Number(p.price),
-        }));
-        setPlans(normalized);
-      }
-
-      // Set the counts directly from API response
-      setLocationAvailability(counts);
     }
     load();
     return () => {
       mounted = false;
     };
   }, []);
+  // show loader while initial data is fetched
+  if (initLoading) {
+    return (
+      <Paper withBorder p="lg" radius="md" style={{ minHeight: 280 }}>
+        <Center style={{ padding: 48 }}>
+          <Loader />
+        </Center>
+      </Paper>
+    );
+  }
 
   // Derived State
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
@@ -835,7 +855,14 @@ export default function RegisterForm() {
                       <TextInput
                         label="First Name"
                         value={firstName}
-                        onChange={(e) => setFirstName(e.currentTarget.value)}
+                        onChange={(e) => {
+                          // allow letters, spaces, hyphens and apostrophes only
+                          const val = e.currentTarget.value.replace(
+                            /[^A-Za-z\s'-]/g,
+                            ""
+                          );
+                          setFirstName(val);
+                        }}
                         required
                       />
                     </Grid.Col>
@@ -843,7 +870,13 @@ export default function RegisterForm() {
                       <TextInput
                         label="Last Name"
                         value={lastName}
-                        onChange={(e) => setLastName(e.currentTarget.value)}
+                        onChange={(e) => {
+                          const val = e.currentTarget.value.replace(
+                            /[^A-Za-z\s'-]/g,
+                            ""
+                          );
+                          setLastName(val);
+                        }}
                         required
                       />
                     </Grid.Col>

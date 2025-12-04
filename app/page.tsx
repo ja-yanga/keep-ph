@@ -231,8 +231,7 @@ export default function Home() {
                 Simple, Transparent Pricing
               </Title>
               <Text c="dimmed" ta="center" size="lg" maw={600}>
-                Choose a plan that fits your needs. Upgrade, downgrade, or
-                cancel anytime.
+                Choose the plan that best fits your needs.
               </Text>
 
               <Group mt="md">
@@ -292,8 +291,14 @@ export default function Home() {
                       </List.Item>
                     </List>
                   </Box>
-                  <Button variant="default" fullWidth radius="md" mt="xl">
-                    Sign Up Free
+                  <Button
+                    variant="default"
+                    fullWidth
+                    radius="md"
+                    mt="xl"
+                    onClick={() => router.push("/signup")}
+                  >
+                    I'm Interested
                   </Button>
                 </Stack>
               </Card>
@@ -351,8 +356,14 @@ export default function Home() {
                       </List.Item>
                     </List>
                   </Box>
-                  <Button variant="outline" fullWidth radius="md" mt="xl">
-                    Get Digital
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    radius="md"
+                    mt="xl"
+                    onClick={() => router.push("/signup")}
+                  >
+                    I'm Interested
                   </Button>
                 </Stack>
               </Card>
@@ -439,8 +450,9 @@ export default function Home() {
                     size="md"
                     color="#1A237E"
                     mt="xl"
+                    onClick={() => router.push("/signup")}
                   >
-                    Get Personal
+                    I'm Interested
                   </Button>
                 </Stack>
               </Card>
@@ -498,8 +510,14 @@ export default function Home() {
                       </List.Item>
                     </List>
                   </Box>
-                  <Button variant="outline" fullWidth radius="md" mt="xl">
-                    Get Business
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    radius="md"
+                    mt="xl"
+                    onClick={() => router.push("/signup")}
+                  >
+                    I'm Interested
                   </Button>
                 </Stack>
               </Card>
