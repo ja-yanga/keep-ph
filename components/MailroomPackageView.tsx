@@ -508,6 +508,20 @@ export default function MailroomPackageView({
                           : "—"}
                       </Text>
                     </Box>
+
+                    <Box>
+                      <Text size="xs" c="dimmed">
+                        Billing
+                      </Text>
+                      <Text fw={500}>
+                        {item.months
+                          ? Number(item.months) >= 12
+                            ? "Annual"
+                            : "Monthly"
+                          : "—"}
+                      </Text>
+                    </Box>
+
                     <Group grow>
                       <Box>
                         <Text size="xs" c="dimmed">

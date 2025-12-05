@@ -1085,13 +1085,7 @@ export default function RegisterForm() {
 
         {/* RIGHT COLUMN: STICKY SUMMARY */}
         <Grid.Col span={{ base: 12, md: 4 }}>
-          <Paper
-            withBorder
-            p="xl"
-            radius="md"
-            shadow="sm"
-            style={{ position: "sticky", top: 20 }}
-          >
+          <Paper withBorder p="xl" radius="md" shadow="sm">
             <Title order={4} mb="lg">
               Order Summary
             </Title>
@@ -1167,9 +1161,9 @@ export default function RegisterForm() {
               </Group>
 
               {/* REMOVED: The redundant button here. 
-                  We only show it if NOT on the final step, or remove it entirely 
-                  to rely on the main navigation flow. 
-              */}
+                   We only show it if NOT on the final step, or remove it entirely 
+                   to rely on the main navigation flow. 
+               */}
 
               <Group justify="center" gap="xs" mt="xs">
                 <IconCreditCard size={14} color="gray" />

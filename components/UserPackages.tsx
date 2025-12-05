@@ -122,7 +122,8 @@ export default function UserPackages({
     const history: any[] = [];
 
     localPackages.forEach((pkg) => {
-      if (["RELEASED", "RETRIEVED", "DISPOSED"].includes(pkg.status)) {
+      // Treat only retrieved/disposed as history. RELEASED stays in inbox (active).
+      if (["RETRIEVED", "DISPOSED"].includes(pkg.status)) {
         history.push(pkg);
       } else {
         active.push(pkg);
@@ -182,7 +183,8 @@ export default function UserPackages({
   ) => {
     setSelectedPackage(pkg);
     setActionType(type);
-    setNotes("");
+    // prefill notes only for release so user can edit existing note if present
+    setNotes(type === "RELEASE" ? pkg?.notes || "" : "");
     setActionModalOpen(true);
   };
 
@@ -202,14 +204,22 @@ export default function UserPackages({
       const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus, notes: notes }),
+        // include notes so backend can persist on mailroom_packages.notes (only meaningful for RELEASE)
+        body: JSON.stringify({ status: newStatus, notes }),
       });
 
       if (!res.ok) throw new Error("Failed to update package");
 
       setLocalPackages((current) =>
         current.map((p) =>
-          p.id === selectedPackage.id ? { ...p, status: newStatus } : p
+          p.id === selectedPackage.id
+            ? {
+                ...p,
+                status: newStatus,
+                // persist notes locally when user submitted a release note
+                notes: actionType === "RELEASE" ? notes : p.notes,
+              }
+            : p
         )
       );
 
@@ -527,6 +537,18 @@ export default function UserPackages({
               ? "Are you sure you have received this package? This will mark it as RETRIEVED."
               : `Are you sure you want to request to ${actionType?.toLowerCase()} this package?`}
           </Text>
+
+          {/* show additional note field only for Release requests */}
+          {actionType === "RELEASE" && (
+            <Textarea
+              placeholder="Add an optional note for the release (e.g. recipient name, pickup instructions)"
+              label="Release Note"
+              value={notes}
+              onChange={(e) => setNotes(e.currentTarget.value)}
+              autosize
+              minRows={3}
+            />
+          )}
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setActionModalOpen(false)}>

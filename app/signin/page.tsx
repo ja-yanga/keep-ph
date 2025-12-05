@@ -17,20 +17,20 @@ import {
   Group,
   rem,
   Loader,
-  Divider, // <--- Added
+  Divider,
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconAt,
   IconLock,
   IconCheck,
-  IconBrandGoogle, // <--- Added
+  IconBrandGoogle,
 } from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
-import { supabase } from "@/lib/supabaseClient"; // Keep this for other things if needed
-import { createBrowserClient } from "@supabase/ssr"; // <--- ADD THIS IMPORT
+import { supabase } from "@/lib/supabaseClient";
+import { createBrowserClient } from "@supabase/ssr";
 import { useSession } from "@/components/SessionProvider";
 
 // 1. Move the main logic into a separate component
@@ -43,6 +43,7 @@ function SignInContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // NEW: State for verification alert
@@ -116,7 +117,7 @@ function SignInContent() {
 
   // NEW: Google Login Handler
   const handleGoogleLogin = async () => {
-    setLoading(true);
+    setOauthLoading(true);
     setError(null);
 
     // NEW: Create a temporary client to ensure PKCE flow is used
@@ -140,7 +141,7 @@ function SignInContent() {
     } catch (err: any) {
       console.error(err);
       setError(err.message || "An unexpected error occurred.");
-      setLoading(false);
+      setOauthLoading(false);
     }
   };
 
@@ -283,10 +284,10 @@ function SignInContent() {
                     fullWidth
                     size="md"
                     radius="md"
-                    loading={loading}
+                    loading={oauthLoading}
                     leftSection={<IconBrandGoogle size={18} />}
                     onClick={handleGoogleLogin}
-                    type="button" //
+                    type="button"
                   >
                     Sign in with Google
                   </Button>

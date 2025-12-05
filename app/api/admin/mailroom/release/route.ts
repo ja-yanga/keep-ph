@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendNotification } from "@/lib/notifications";
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -73,6 +74,40 @@ export async function POST(request: Request) {
 
       if (lockerError)
         console.error("Failed to update locker status:", lockerError);
+    }
+
+    // 4. Notify user (same pattern as scans route)
+    if (pkg?.registration_id) {
+      try {
+        const { data: registration, error: regErr } = await supabaseAdmin
+          .from("mailroom_registrations")
+          .select("user_id, mailroom_code")
+          .eq("id", pkg.registration_id)
+          .single();
+
+        if (regErr) {
+          console.error(
+            "Failed to fetch registration for notification:",
+            regErr
+          );
+        } else if (registration?.user_id) {
+          try {
+            await sendNotification(
+              registration.user_id,
+              "Package Released",
+              `Your package (${
+                pkg.tracking_number || "Unknown"
+              }) has been released and is ready for pickup.`,
+              "PACKAGE_RELEASED",
+              `/mailroom/${pkg.registration_id}`
+            );
+          } catch (notifyErr) {
+            console.error("sendNotification failed for release:", notifyErr);
+          }
+        }
+      } catch (e) {
+        console.error("Notification flow failed:", e);
+      }
     }
 
     return NextResponse.json({ success: true });

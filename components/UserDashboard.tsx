@@ -9,6 +9,7 @@ import {
   Stack,
   Table,
   Text,
+  TextInput,
   Title,
   ThemeIcon,
   SimpleGrid,
@@ -32,6 +33,7 @@ import {
   IconSortAscending,
   IconSortDescending,
   IconCreditCardOff, // ADDED
+  IconSearch,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
@@ -443,9 +445,20 @@ export default function UserDashboard() {
           </Title>
           <Text c="dimmed">Here is what's happening with your mail.</Text>
         </Box>
-        <Button component={Link} href="/mailroom/register" variant="outline">
-          Add New Mailroom
-        </Button>
+        <Group gap="sm" align="center">
+          <TextInput
+            placeholder="Search mailrooms"
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            leftSection={<IconSearch size={16} />}
+            size="md"
+            __clearable
+            style={{ maxWidth: 420, minWidth: 240 }}
+          />
+          <Button component={Link} href="/mailroom/register" variant="outline">
+            Add New Mailroom
+          </Button>
+        </Group>
       </Group>
 
       {/* 2. High Level Stats (Simplified) */}
@@ -507,7 +520,7 @@ export default function UserDashboard() {
 
       {/* 3. Subscription Cards (Replaces the Table) */}
       <SimpleGrid cols={{ base: 1, md: 2 }}>
-        {rows?.map((row) => (
+        {filtered.map((row) => (
           <Card key={row.id} shadow="sm" padding="lg" radius="md" withBorder>
             <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
               <Group justify="space-between">

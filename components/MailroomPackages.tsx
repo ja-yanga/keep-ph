@@ -138,6 +138,8 @@ export default function MailroomPackages() {
     null
   );
   const [isReleasing, setIsReleasing] = useState(false);
+  // ADDED: admin note for release modal
+  const [releaseNote, setReleaseNote] = useState<string>("");
 
   const [disposeModalOpen, setDisposeModalOpen] = useState(false);
   const [packageToDispose, setPackageToDispose] = useState<Package | null>(
@@ -481,6 +483,8 @@ export default function MailroomPackages() {
     setReleaseFile(null);
     // Default to "Normal" or "Empty" when releasing
     setLockerCapacity("Normal");
+    // Prefill admin note if present on package
+    setReleaseNote(pkg?.notes || "");
     setReleaseModalOpen(true);
   };
 
@@ -493,7 +497,9 @@ export default function MailroomPackages() {
       const formData = new FormData();
       formData.append("file", releaseFile);
       formData.append("packageId", packageToRelease.id);
-      formData.append("lockerStatus", lockerCapacity); // <--- Send new status
+      formData.append("lockerStatus", lockerCapacity);
+      // include admin note to persist on mailroom_packages.notes
+      if (releaseNote) formData.append("notes", releaseNote);
 
       const res = await fetch("/api/admin/mailroom/release", {
         method: "POST",
@@ -1107,6 +1113,16 @@ export default function MailroomPackages() {
             value={releaseFile}
             onChange={setReleaseFile}
             leftSection={<IconUpload size={16} />}
+          />
+
+          {/* NEW: Admin note for release (persist to mailroom_packages.notes) */}
+          <Textarea
+            label="Release Notes"
+            placeholder="Optional note for this release (e.g. recipient name, remarks)..."
+            value={releaseNote}
+            onChange={(e) => setReleaseNote(e.currentTarget.value)}
+            minRows={2}
+            readOnly
           />
 
           {/* NEW: Locker Status Selector */}

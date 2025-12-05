@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react"; // <--- Import useEffect
+import { useState, useEffect } from "react";
 import {
   Box,
   Container,
@@ -16,8 +16,8 @@ import {
   Alert,
   rem,
   ThemeIcon,
-  Transition, // <--- Import Transition for smooth alert
-  Divider, // ADDED for Google divider
+  Transition,
+  Divider,
   Group,
   Loader,
 } from "@mantine/core";
@@ -41,6 +41,7 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // New state to toggle between Form and Verification View
@@ -112,7 +113,7 @@ export default function SignUpPage() {
 
   // --- Google OAuth (copied from signin) ---
   const handleGoogleSignUp = async () => {
-    setLoading(true);
+    setOauthLoading(true);
     setError(null);
     // Create a temporary client to ensure PKCE flow is used
     const supabase = createBrowserClient(
@@ -133,7 +134,7 @@ export default function SignUpPage() {
     } catch (err: any) {
       console.error(err);
       setError(err.message || "An unexpected error occurred.");
-      setLoading(false);
+      setOauthLoading(false);
     }
   };
   // --- end Google OAuth ---
@@ -395,7 +396,7 @@ export default function SignUpPage() {
                     fullWidth
                     size="md"
                     radius="md"
-                    loading={loading}
+                    loading={oauthLoading}
                     leftSection={<IconBrandGoogle size={18} />}
                     onClick={handleGoogleSignUp}
                     type="button"
