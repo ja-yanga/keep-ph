@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import useSWR, { mutate } from "swr";
 import {
   Box,
   Container,
@@ -47,78 +48,115 @@ export default function DashboardNav() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  // Notification State
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // keep popover state local (UI unchanged)
   const [notifOpen, setNotifOpen] = useState(false);
 
   const { session } = useSession();
-  const role = session?.role;
+  // normalize role: some session shapes have role on root, others under user
+  const roleRaw = session?.role ?? session?.user?.role;
+  const role = typeof roleRaw === "string" ? roleRaw.toLowerCase() : roleRaw;
   const showLinks = !pathname.startsWith("/onboarding");
   const isAdmin = role === "admin";
 
-  // Fetch Notifications
-  const fetchNotifications = async () => {
-    // only fetch notifications for regular users
-    if (!session?.user?.id || role !== "user") return;
+  // normalize userId to avoid accessing possibly-null session directly
+  const userId = session?.user?.id;
 
+  // helper to validate UUID (prevents passing invalid value to Postgres)
+  const isValidUUID = (id?: any) =>
+    typeof id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      id
+    );
+
+  // treat as "user" when session exists and role is not admin (handles missing/undefined role)
+  const isUser = !!session && role !== "admin";
+  // SWR key: only when we have a valid user uuid and user role
+  const swrKey =
+    isValidUUID(userId) && isUser ? ["notifications", userId] : null;
+
+  // fetcher that reads latest 10 notifications for user
+  const fetchNotifications = async (key: any) => {
+    // SWR can call fetcher with the key array (['notifications', userId]) or a string.
+    const uid = Array.isArray(key) ? key[1] : key;
+    if (!isValidUUID(uid)) return [];
     const { data } = await supabase
       .from("notifications")
       .select("*")
-      .eq("user_id", session.user.id)
+      .eq("user_id", uid)
       .order("created_at", { ascending: false })
       .limit(10);
-
-    if (data) {
-      setNotifications(data);
-      setUnreadCount(data.filter((n) => !n.is_read).length);
-    }
+    return data ?? [];
   };
 
-  // Initial Fetch & Realtime Subscription
+  // trigger an immediate revalidation when key becomes available
   useEffect(() => {
-    // only subscribe & fetch for regular users
-    if (session?.user?.id && role === "user") {
-      fetchNotifications();
+    if (swrKey) mutate(swrKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swrKey]);
 
-      const channel = supabase
-        .channel("realtime-notifications")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${session.user.id}`,
-          },
-          (payload) => {
-            setNotifications((prev) => [payload.new as Notification, ...prev]);
-            setUnreadCount((prev) => prev + 1);
-          }
-        )
-        .subscribe();
+  // useSWR provides initial fetch and revalidation
+  const { data, error } = useSWR<Notification[] | undefined>(
+    swrKey,
+    fetchNotifications,
+    { revalidateOnFocus: true }
+  );
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    } else {
-      // ensure notifications hidden/cleared for non-users
-      setNotifications([]);
-      setUnreadCount(0);
-    }
-  }, [session?.user?.id]);
+  const notifications: Notification[] = Array.isArray(data) ? data : [];
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
+  // Realtime subscription: mutate SWR cache on INSERT so list updates immediately
+  useEffect(() => {
+    if (!isValidUUID(userId) || !isUser) return;
+
+    const channel = supabase
+      .channel(`notifications-user-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const key = ["notifications", userId];
+          mutate(
+            key,
+            (current: Notification[] = []) => {
+              const next = [payload.new as Notification, ...current];
+              return next.slice(0, 10);
+            },
+            false
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, role]);
+
+  // mark all as read (optimistic update + persist)
   const markAsRead = async () => {
-    if (unreadCount === 0) return;
+    if (!isValidUUID(userId) || role !== "user") return;
 
-    // Optimistic update
-    setUnreadCount(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    const key = ["notifications", userId];
 
+    // optimistic update in SWR cache
+    mutate(
+      key,
+      (current: Notification[] = []) =>
+        current.map((n) => ({ ...n, is_read: true })),
+      false
+    );
+
+    // persist to DB
     await supabase
       .from("notifications")
       .update({ is_read: true })
-      .eq("user_id", session?.user?.id)
+      .eq("user_id", userId)
       .eq("is_read", false);
   };
 
@@ -163,13 +201,8 @@ export default function DashboardNav() {
   const handleSignOut = async () => {
     setLoading(true);
     try {
-      // Call server signout endpoint (clears HttpOnly cookies if set)
       await fetch("/api/auth/signout", { method: "POST" });
-
-      // Also clear client session
       await supabase.auth.signOut();
-
-      // navigate to signin
       router.push("/signin");
     } catch (err) {
       console.error("signout error:", err);
@@ -179,6 +212,7 @@ export default function DashboardNav() {
     }
   };
 
+  // keep UI exactly the same, using `notifications` and `unreadCount` above
   return (
     <Box
       component="header"
