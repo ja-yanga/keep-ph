@@ -36,6 +36,7 @@ import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
 import { notifications } from "@mantine/notifications";
 import RewardClaimModal from "@/components/RewardClaimModal";
+import ClaimStatusModal from "@/components/ClaimStatusModal";
 
 export default function ReferralPage() {
   const { session } = useSession();
@@ -47,106 +48,71 @@ export default function ReferralPage() {
   const REWARD_THRESHOLD = 10;
   const referralCount = referrals.length;
   const isRewardReady = referralCount >= REWARD_THRESHOLD;
-  // const isRewardReady = true;
+  // const isRewardReady = true; //testing
 
-  // New state for Modal and Claim processing
+  // New state for Modal
   const [opened, { open, close }] = useDisclosure(false);
-  const [isClaiming, setIsClaiming] = useState(false);
+  const [claims, setClaims] = useState<any[]>([]);
+  const [claimLoading, setClaimLoading] = useState(false);
+  const [statusOpened, { open: openStatus, close: closeStatus }] =
+    useDisclosure(false);
 
-  useEffect(() => {
-    async function loadReferralData() {
-      if (!session?.user?.id) return;
+  const latestClaim = claims?.[0] ?? null;
+  const hasPending =
+    latestClaim &&
+    (latestClaim.status === "PENDING" || latestClaim.status === "PROCESSING");
 
-      try {
-        setLoading(true);
-
-        // 1. Call API to get or generate the referral code
-        const resCode = await fetch("/api/referrals/generate", {
-          method: "POST",
-        });
-        const dataCode = await resCode.json();
-
-        if (dataCode.referral_code) {
-          setReferralCode(dataCode.referral_code);
-        }
-
-        // 2. Call API to fetch referrals list
-        const resList = await fetch(
-          `/api/referrals/list?user_id=${session.user.id}`
-        );
-        const dataList = await resList.json();
-
-        if (resList.ok && dataList.referrals) {
-          setReferrals(dataList.referrals);
-        } else {
-          console.error("Failed to fetch referrals list:", dataList.error);
-        }
-      } catch (err) {
-        console.error("Error loading referrals:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (session) {
-      loadReferralData();
-    }
-  }, [session]);
-
-  const handleClaimReward = async (
-    paymentMethod: string,
-    accountDetails: string
-  ) => {
-    if (!isRewardReady) return;
-
-    setIsClaiming(true);
-    close();
-
+  // extract load logic into a callable function so modal can refresh after claim
+  const fetchReferralData = async () => {
+    if (!session?.user?.id) return;
     try {
-      // ** 1. Call your Supabase/Next.js API endpoint to record the claim **
-      const res = await fetch("/api/rewards/claim", {
+      setLoading(true);
+
+      // 1. Call API to get or generate the referral code
+      const resCode = await fetch("/api/referrals/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: session?.user?.id,
-          paymentMethod,
-          accountDetails,
-          referralCount: referralCount,
-        }),
       });
+      const dataCode = await resCode.json();
+      if (dataCode.referral_code) setReferralCode(dataCode.referral_code);
 
-      if (res.ok) {
-        notifications.show({
-          title: "Claim Successful! 🎉",
-          message:
-            "Your reward is being processed and will be sent to your " +
-            paymentMethod +
-            " account shortly.",
-          color: "green",
-        });
-
-        // ** 2. Optional: Refetch data to show reward as claimed or reset the referral count **
-        // In a real app, you'd likely update the user's 'rewards_claimed' status.
+      // 2. Call API to fetch referrals list
+      const resList = await fetch(
+        `/api/referrals/list?user_id=${session.user.id}`
+      );
+      const dataList = await resList.json();
+      if (resList.ok && dataList.referrals) {
+        setReferrals(dataList.referrals);
       } else {
-        const errorData = await res.json();
-        notifications.show({
-          title: "Claim Failed",
-          message:
-            errorData.error ||
-            "An error occurred while claiming the reward. Please try again.",
-          color: "red",
-        });
+        console.error("Failed to fetch referrals list:", dataList.error);
       }
-    } catch (error) {
-      notifications.show({
-        title: "Error",
-        message: "Network error. Could not connect to the server.",
-        color: "red",
-      });
+    } catch (err) {
+      console.error("Error loading referrals:", err);
     } finally {
-      setIsClaiming(false);
+      setLoading(false);
+      // refresh claim status after referrals load
+      await fetchRewardsStatus();
     }
   };
+
+  const fetchRewardsStatus = async () => {
+    if (!session?.user?.id) return;
+    setClaimLoading(true);
+    try {
+      const res = await fetch(`/api/rewards/status?userId=${session.user.id}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setClaims(json.claims || []);
+    } catch (e) {
+      console.error("fetchRewardsStatus", e);
+    } finally {
+      setClaimLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (session) fetchReferralData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const rows = referrals.map((item) => (
     <Table.Tr key={item.referrals_id}>
@@ -195,8 +161,14 @@ export default function ReferralPage() {
       <RewardClaimModal
         opened={opened}
         onClose={close}
-        onClaim={handleClaimReward}
-        isLoading={isClaiming}
+        userId={session?.user?.id}
+        onSuccess={fetchReferralData}
+        isLoading={false}
+      />
+      <ClaimStatusModal
+        opened={statusOpened}
+        onClose={closeStatus}
+        claim={latestClaim}
       />
 
       <Box component="main" style={{ flex: 1 }} py={{ base: 48, md: 80 }}>
@@ -258,15 +230,35 @@ export default function ReferralPage() {
                       aria-label="Referral Progress"
                     />
                     <Button
-                      onClick={open}
-                      disabled={!isRewardReady || isClaiming}
-                      loading={isClaiming}
-                      color={isRewardReady ? "green" : "gray"}
+                      onClick={() => {
+                        if (hasPending || latestClaim) {
+                          openStatus();
+                        } else {
+                          open(); // opens existing RewardClaimModal for submitting
+                        }
+                      }}
+                      disabled={!isRewardReady && !latestClaim}
+                      loading={claimLoading}
+                      color={
+                        hasPending
+                          ? "orange"
+                          : latestClaim?.status === "PAID"
+                          ? "green"
+                          : isRewardReady
+                          ? "green"
+                          : "gray"
+                      }
                       variant={isRewardReady ? "filled" : "light"}
                       leftSection={<IconAward size={20} />}
                       radius="xl"
                     >
-                      {isRewardReady ? "Claim Reward" : "Keep Referring"}
+                      {hasPending
+                        ? "View Claim — Pending"
+                        : latestClaim?.status === "PAID"
+                        ? "View Payout — Paid"
+                        : isRewardReady
+                        ? "Claim Reward"
+                        : "Keep Referring"}
                     </Button>
                   </Stack>
                 </Group>

@@ -19,35 +19,83 @@ import { notifications } from "@mantine/notifications";
 interface RewardClaimModalProps {
   opened: boolean;
   onClose: () => void;
-  onClaim: (paymentMethod: string, accountDetails: string) => void;
-  isLoading: boolean;
+  userId?: string | null;
+  onSuccess?: () => void;
+  isLoading?: boolean;
 }
 
 export default function RewardClaimModal({
   opened,
   onClose,
-  onClaim,
-  isLoading,
+  userId,
+  onSuccess,
+  isLoading = false,
 }: RewardClaimModalProps) {
-  const [paymentMethod, setPaymentMethod] = useState<"Gcash" | "Maya">("Gcash");
+  const [paymentMethod, setPaymentMethod] = useState<"gcash" | "maya">("gcash");
   const [accountDetails, setAccountDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const theme = useMantineTheme();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accountDetails.trim()) {
       notifications.show({
         title: "Required",
-        message: `Please enter your ${paymentMethod} number.`,
+        message: `Please enter your ${paymentMethod} account.`,
+        color: "red",
+      });
+      return;
+    }
+    if (!userId) {
+      notifications.show({
+        title: "Not signed in",
+        message: "You must be signed in to claim rewards.",
         color: "red",
       });
       return;
     }
 
     setIsSubmitting(true);
-    onClaim(paymentMethod, accountDetails);
-    setTimeout(() => setIsSubmitting(false), 500);
+    try {
+      const res = await fetch("/api/rewards/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          paymentMethod: paymentMethod.toLowerCase(),
+          accountDetails,
+        }),
+      });
+
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        notifications.show({
+          title: "Claim Submitted",
+          message: "Your reward request is submitted and will be processed.",
+          color: "green",
+        });
+        if (onSuccess) await onSuccess();
+        onClose();
+      } else {
+        // DEBUG: log server response so you can see why it failed in console + network
+        console.error("rewards.claim failed:", res.status, payload);
+        notifications.show({
+          title: "Claim Failed",
+          message: payload?.error || "Failed to submit claim",
+          color: "red",
+        });
+      }
+    } catch (err) {
+      console.error("reward claim error", err);
+      notifications.show({
+        title: "Error",
+        message: "Network error. Please try again later.",
+        color: "red",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -67,9 +115,8 @@ export default function RewardClaimModal({
     >
       <Stack gap="lg">
         <Text>
-          Congratulations! You've qualified for a cash reward. Please provide
-          your Gcash or Maya details below. Requests are typically processed and
-          paid out within 24-48 hours.
+          Congratulations! Provide your payout details below. Requests are
+          typically processed within 24–48 hours.
         </Text>
 
         <Paper withBorder p="md" radius="md" bg={theme.colors.gray[0]}>
@@ -78,18 +125,18 @@ export default function RewardClaimModal({
           </Title>
           <Group grow>
             <Button
-              variant={paymentMethod === "Gcash" ? "filled" : "light"}
+              variant={paymentMethod === "gcash" ? "filled" : "light"}
               color="pink"
-              onClick={() => setPaymentMethod("Gcash")}
+              onClick={() => setPaymentMethod("gcash")}
               leftSection={<IconWallet size={16} />}
               size="sm"
             >
-              Gcash
+              GCash
             </Button>
             <Button
-              variant={paymentMethod === "Maya" ? "filled" : "light"}
+              variant={paymentMethod === "maya" ? "filled" : "light"}
               color="indigo"
-              onClick={() => setPaymentMethod("Maya")}
+              onClick={() => setPaymentMethod("maya")}
               leftSection={<IconWallet size={16} />}
               size="sm"
             >
@@ -101,13 +148,18 @@ export default function RewardClaimModal({
         <form onSubmit={handleSubmit}>
           <Stack>
             <TextInput
-              label={`Your ${paymentMethod} Mobile Number`}
-              placeholder="e.g., 0917XXXXXXX"
+              label={`Your ${
+                paymentMethod === "gcash" ? "GCash" : "Maya"
+              } Mobile Number / Account`}
+              placeholder={
+                paymentMethod === "gcash"
+                  ? "e.g., 0917XXXXXXX"
+                  : "mobile or email"
+              }
               value={accountDetails}
               onChange={(event) => setAccountDetails(event.currentTarget.value)}
               required
-              inputMode="numeric"
-              maxLength={11}
+              maxLength={64}
             />
 
             <Button
