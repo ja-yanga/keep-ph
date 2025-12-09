@@ -58,9 +58,9 @@ export default function ReferralPage() {
     useDisclosure(false);
 
   const latestClaim = claims?.[0] ?? null;
-  const hasPending =
-    latestClaim &&
-    (latestClaim.status === "PENDING" || latestClaim.status === "PROCESSING");
+  // Only two server statuses to manage: PROCESSING and PAID
+  const hasPending = latestClaim && latestClaim.status === "PROCESSING";
+  const hasAnyClaim = claims && claims.length > 0;
 
   // extract load logic into a callable function so modal can refresh after claim
   const fetchReferralData = async () => {
@@ -146,6 +146,14 @@ export default function ReferralPage() {
 
   const progressValue = Math.min((referralCount / REWARD_THRESHOLD) * 100, 100);
 
+  // Helper to mask account details in UI
+  const maskAccount = (value?: string | null) => {
+    if (!value) return "—";
+    const v = String(value);
+    if (v.length <= 6) return v.replace(/.(?=.{2})/g, "*");
+    return v.slice(0, 3) + v.slice(3, -3).replace(/./g, "*") + v.slice(-3);
+  };
+
   return (
     <Box
       style={{
@@ -193,76 +201,156 @@ export default function ReferralPage() {
           ) : (
             <Stack gap="xl">
               {/* 2. Rewards Card Section (New) */}
-              <Paper
-                withBorder
-                shadow="md"
-                radius="lg"
-                p={{ base: "lg", sm: "xl" }}
-                bg={isRewardReady ? "green.0" : "white"}
-                style={{
-                  border: isRewardReady
-                    ? "2px solid var(--mantine-color-green-5)"
-                    : "",
-                }}
-              >
-                <Group justify="space-between" align="center" wrap="wrap">
-                  <Stack gap={4}>
-                    <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
-                      {isRewardReady
-                        ? "Reward Unlocked! 🏆"
-                        : `Referral Progress (${referralCount}/${REWARD_THRESHOLD})`}
-                    </Title>
-                    <Text c="dimmed" size="sm">
-                      {isRewardReady
-                        ? "Click below to claim your cash reward now!"
-                        : `You need ${
-                            REWARD_THRESHOLD - referralCount
-                          } more referrals to claim your reward.`}
-                    </Text>
-                  </Stack>
+              {hasAnyClaim ? (
+                <Paper
+                  withBorder
+                  shadow="md"
+                  radius="lg"
+                  p={{ base: "lg", sm: "xl" }}
+                  bg="white"
+                >
+                  <Group justify="space-between" align="center" wrap="wrap">
+                    <Stack gap="xs">
+                      <Group gap="sm" align="center">
+                        <Title order={4} c="dark.7" style={{ margin: 0 }}>
+                          Reward Claim
+                        </Title>
+                        <Badge
+                          color={
+                            latestClaim?.status === "PAID" ? "green" : "orange"
+                          }
+                        >
+                          {latestClaim?.status}
+                        </Badge>
+                      </Group>
 
-                  <Stack gap="xs" maw={250} style={{ flexGrow: 1 }}>
-                    <Progress
-                      value={progressValue}
-                      size="lg"
-                      radius="xl"
-                      color={isRewardReady ? "green" : "indigo"}
-                      aria-label="Referral Progress"
-                    />
-                    <Button
-                      onClick={() => {
-                        if (hasPending || latestClaim) {
-                          openStatus();
-                        } else {
-                          open(); // opens existing RewardClaimModal for submitting
-                        }
-                      }}
-                      disabled={!isRewardReady && !latestClaim}
-                      loading={claimLoading}
-                      color={
-                        hasPending
-                          ? "orange"
-                          : latestClaim?.status === "PAID"
-                          ? "green"
-                          : isRewardReady
-                          ? "green"
-                          : "gray"
-                      }
-                      variant={isRewardReady ? "filled" : "light"}
-                      leftSection={<IconAward size={20} />}
-                      radius="xl"
+                      <Text size="sm" c="dimmed">
+                        You already requested a reward. See the claim details
+                        below.
+                      </Text>
+
+                      <Stack gap={4}>
+                        <Text size="sm">
+                          <strong>Amount:</strong> PHP{" "}
+                          {latestClaim?.amount ?? "—"}
+                        </Text>
+                        <Text size="sm">
+                          <strong>Method:</strong>{" "}
+                          {(latestClaim?.payment_method).toUpperCase() ?? "—"}
+                        </Text>
+                        <Text size="sm">
+                          <strong>Account:</strong>{" "}
+                          {maskAccount(latestClaim?.account_details)}
+                        </Text>
+                        <Text size="sm">
+                          <strong>Requested:</strong>{" "}
+                          {latestClaim?.created_at
+                            ? new Date(latestClaim.created_at).toLocaleString()
+                            : "—"}
+                        </Text>
+                      </Stack>
+                    </Stack>
+
+                    <Stack
+                      gap="xs"
+                      maw={250}
+                      style={{ alignItems: "flex-end" }}
                     >
-                      {hasPending
-                        ? "View Claim — Pending"
-                        : latestClaim?.status === "PAID"
-                        ? "View Payout — Paid"
-                        : isRewardReady
-                        ? "Claim Reward"
-                        : "Keep Referring"}
-                    </Button>
-                  </Stack>
-                </Group>
-              </Paper>
+                      <Button
+                        onClick={() => openStatus()}
+                        color={
+                          latestClaim?.status === "PAID" ? "green" : "orange"
+                        }
+                        variant="filled"
+                        leftSection={<IconAward size={18} />}
+                        radius="xl"
+                      >
+                        {latestClaim?.status === "PAID"
+                          ? "View Payout — Paid"
+                          : "View Claim — Processing"}
+                      </Button>
+                    </Stack>
+                  </Group>
+                </Paper>
+              ) : (
+                <Paper
+                  withBorder
+                  shadow="md"
+                  radius="lg"
+                  p={{ base: "lg", sm: "xl" }}
+                  bg={isRewardReady ? "green.0" : "white"}
+                  style={{
+                    border: isRewardReady
+                      ? "2px solid var(--mantine-color-green-5)"
+                      : "",
+                  }}
+                >
+                  <Group justify="space-between" align="center" wrap="wrap">
+                    <Stack gap={4}>
+                      <Title
+                        order={3}
+                        c={isRewardReady ? "green.7" : "indigo.9"}
+                      >
+                        {isRewardReady
+                          ? "Reward Unlocked! 🏆"
+                          : `Referral Progress (${referralCount}/${REWARD_THRESHOLD})`}
+                      </Title>
+                      <Text c="dimmed" size="sm">
+                        {isRewardReady
+                          ? "Click below to claim your cash reward now!"
+                          : `You need ${
+                              REWARD_THRESHOLD - referralCount
+                            } more referrals to claim your reward.`}
+                      </Text>
+                    </Stack>
+
+                    <Stack gap="xs" maw={250} style={{ flexGrow: 1 }}>
+                      <Progress
+                        value={progressValue}
+                        size="lg"
+                        radius="xl"
+                        color={isRewardReady ? "green" : "indigo"}
+                        aria-label="Referral Progress"
+                      />
+                      <Button
+                        onClick={() => {
+                          // if user already has any claim -> always view status
+                          if (hasAnyClaim) {
+                            openStatus();
+                          } else {
+                            open(); // open claim modal to submit
+                          }
+                        }}
+                        // only enable claim when eligible and no existing claim
+                        disabled={!isRewardReady && !hasAnyClaim}
+                        loading={claimLoading}
+                        color={
+                          hasPending
+                            ? "orange"
+                            : latestClaim?.status === "PAID"
+                            ? "green"
+                            : isRewardReady
+                            ? "green"
+                            : "gray"
+                        }
+                        variant={isRewardReady ? "filled" : "light"}
+                        leftSection={<IconAward size={20} />}
+                        radius="xl"
+                      >
+                        {hasPending
+                          ? "View Claim — Processing"
+                          : latestClaim?.status === "PAID"
+                          ? "View Payout — Paid"
+                          : hasAnyClaim
+                          ? "View Claim"
+                          : isRewardReady
+                          ? "Claim Reward"
+                          : "Keep Referring"}
+                      </Button>
+                    </Stack>
+                  </Group>
+                </Paper>
+              )}
 
               {/* Code Section */}
               <Paper

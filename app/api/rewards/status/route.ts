@@ -16,29 +16,33 @@ export async function GET(req: Request) {
     const THRESHOLD = 10;
     const DEFAULT_AMOUNT = 500;
 
-    const { count, error: countErr } = await supabase
+    const { count, error: cErr } = await supabase
       .from("referrals_table")
       .select("*", { count: "exact", head: true })
       .eq("referrals_user_id", userId);
-
-    if (countErr) throw countErr;
+    if (cErr) throw cErr;
     const referralCount = (count ?? 0) as number;
 
     const { data: claims, error: claimsErr } = await supabase
       .from("rewards_claims")
       .select(
-        "id, payment_method, account_details, amount, status, referral_count, created_at, processed_at"
+        "id,payment_method,account_details,amount,status,referral_count,created_at,processed_at"
       )
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
-
     if (claimsErr) throw claimsErr;
+
+    // Only consider admin-manageable statuses: PROCESSING and PAID
+    const hasClaim = (claims ?? []).some((c: any) =>
+      ["PROCESSING", "PAID"].includes(c.status)
+    );
 
     return NextResponse.json({
       threshold: THRESHOLD,
       amount: DEFAULT_AMOUNT,
       referralCount,
       eligible: referralCount >= THRESHOLD,
+      hasClaim,
       claims: claims || [],
     });
   } catch (err: any) {

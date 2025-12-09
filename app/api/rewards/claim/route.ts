@@ -3,27 +3,24 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // server-only
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { userId, paymentMethod, accountDetails } = body;
+    const { userId, paymentMethod, accountDetails } = await req.json();
     if (!userId || !paymentMethod || !accountDetails) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // eligibility rules (use rewards_config if you add one)
     const THRESHOLD = 10;
     const DEFAULT_AMOUNT = 500;
 
-    // count completed referrals for user
+    // count referrals
     const { count, error: countErr } = await supabase
       .from("referrals_table")
       .select("*", { count: "exact", head: true })
       .eq("referrals_user_id", userId);
-
     if (countErr) throw countErr;
     const referralCount = (count ?? 0) as number;
     if (referralCount < THRESHOLD) {
@@ -33,17 +30,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // prevent duplicate pending/processing claims
-    const { data: existing } = await supabase
+    // block if user already has a claim that is pending/processing/paid
+    const { data: existing, error: existErr } = await supabase
       .from("rewards_claims")
-      .select("id")
+      .select("id,status")
       .eq("user_id", userId)
-      .in("status", ["PENDING", "PROCESSING"])
+      .in("status", ["PENDING", "PROCESSING", "PAID"])
       .limit(1);
-
+    if (existErr) throw existErr;
     if (existing && existing.length > 0) {
       return NextResponse.json(
-        { error: "Existing pending request" },
+        { error: "Reward already claimed or pending" },
         { status: 409 }
       );
     }
@@ -65,7 +62,6 @@ export async function POST(req: Request) {
       .single();
 
     if (insertErr) throw insertErr;
-
     return NextResponse.json({ ok: true, claim: data });
   } catch (err: any) {
     console.error("rewards.claim:", err);

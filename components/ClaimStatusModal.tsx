@@ -165,7 +165,10 @@ export default function ClaimStatusModal({
             PAYMENT DETAILS
           </Title>
           <Stack gap={0}>
-            <ClaimDetailRow label="Method" value={claim.payment_method} />
+            <ClaimDetailRow
+              label="Method"
+              value={claim.payment_method.toUpperCase()}
+            />
             <ClaimDetailRow
               label="Account Number"
               value={claim.account_details}
