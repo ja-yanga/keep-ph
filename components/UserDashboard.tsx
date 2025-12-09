@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import useSWR, { mutate as swrMutate } from "swr";
 import {
   Badge,
   Box,
@@ -206,44 +207,42 @@ export default function UserDashboard() {
   const [sortBy, setSortBy] = useState<string | null>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  // 2. Create a reusable fetch function
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/mailroom/registrations", {
-        method: "GET",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        setError(json?.error || "Failed to load registrations");
-        setRows([]);
-        return;
-      }
-      const json = await res.json();
-      const data: RawRow[] = Array.isArray(json?.data ?? json)
-        ? json.data ?? json
-        : [];
-
-      // Use the helper function
-      const mapped = mapDataToRows(data);
-      setRows(mapped);
-    } catch (err: any) {
-      console.error("load err", err);
-      setError("Failed to load registrations.");
-      setRows([]);
-    } finally {
-      setLoading(false);
+  // 2. SWR fetcher for registrations (keeps same endpoint and credentials)
+  const fetcher = async (url: string) => {
+    const res = await fetch(url, { method: "GET", credentials: "include" });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      const err = json?.error || "Failed to load registrations";
+      throw new Error(err);
     }
-  }, []);
+    const json = await res.json();
+    const data: RawRow[] = Array.isArray(json?.data ?? json)
+      ? json.data ?? json
+      : [];
+    return data;
+  };
 
-  // Initial Load
+  // SWR key depends on session readiness
+  const swrKey = session?.user?.id ? "/api/mailroom/registrations" : null;
+  const {
+    data: apiData,
+    error: swrError,
+    isValidating,
+  } = useSWR<RawRow[] | undefined>(swrKey, fetcher, {
+    revalidateOnFocus: true,
+  });
+
+  // map API data into rows and keep as local state for UI / optimistic updates
   useEffect(() => {
-    if (session?.user?.id) {
-      fetchData();
+    setLoading(Boolean(!rows && !swrError && !apiData));
+    setError(swrError ? (swrError as Error).message : null);
+    if (Array.isArray(apiData)) {
+      const mapped = mapDataToRows(apiData);
+      setRows(mapped);
     }
-  }, [session?.user?.id, fetchData]);
+    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiData, swrError]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -306,7 +305,7 @@ export default function UserDashboard() {
   const refresh = () => {
     setRows(null);
     setError(null);
-    fetchData();
+    if (swrKey) swrMutate(swrKey);
   };
 
   // ADDED: Handle Cancel Subscription
@@ -405,7 +404,7 @@ export default function UserDashboard() {
       <Stack align="center" py="xl">
         <IconAlertCircle size={40} color="red" />
         <Text c="red">{error}</Text>
-        <Button onClick={fetchData} variant="subtle">
+        <Button onClick={refresh} variant="subtle">
           Try Again
         </Button>
       </Stack>

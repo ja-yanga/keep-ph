@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import useSWR, { mutate as swrMutate } from "swr";
 import { useRouter } from "next/navigation";
 import {
   Paper,
@@ -25,7 +26,7 @@ import {
   IconLock,
   IconArrowRight,
   IconPackage,
-  IconRefresh, // <--- Add this
+  IconRefresh,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import AnalyticsDashboard from "./AnalyticsDashboard";
@@ -112,29 +113,43 @@ function StatCard({
   );
 }
 
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `Failed to fetch ${url}`);
+  }
+  return res.json().catch(() => ({}));
+};
+
 export default function AdminDashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // Add refreshing state
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchStats = async () => {
+  const {
+    data,
+    error,
+    isValidating: isRefreshingSWR,
+  } = useSWR<DashboardStats | undefined>(
+    "/api/admin/dashboard/stats",
+    fetcher,
+    { revalidateOnFocus: true }
+  );
+
+  const loading = !data && !error;
+
+  const stats: DashboardStats | null = data ?? null;
+
+  const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/admin/dashboard/stats");
-      const data = await res.json();
-      setStats(data);
-    } catch (err) {
-      console.error(err);
+      await swrMutate("/api/admin/dashboard/stats");
+    } catch (e) {
+      console.error("refresh failed", e);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
-
-  useEffect(() => {
-    fetchStats();
-  }, []);
 
   if (loading) {
     return (
@@ -168,8 +183,8 @@ export default function AdminDashboard() {
         <Button
           variant="default"
           leftSection={<IconRefresh size={16} />}
-          loading={refreshing}
-          onClick={fetchStats}
+          loading={refreshing || isRefreshingSWR}
+          onClick={handleRefresh}
         >
           Refresh Data
         </Button>

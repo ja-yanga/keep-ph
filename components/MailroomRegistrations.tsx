@@ -3,6 +3,7 @@
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState } from "react";
+import useSWR, { mutate as swrMutate } from "swr";
 import {
   ActionIcon,
   Badge,
@@ -102,73 +103,129 @@ export default function MailroomRegistrations() {
   // NEW: Tab State
   const [activeTab, setActiveTab] = useState<string | null>("all");
 
+  // --- SWR keys & fetcher ---
+  const registrationsKey = "/api/admin/mailroom/registrations";
+  const lockersKey = "/api/admin/mailroom/lockers";
+  const assignedKey = "/api/admin/mailroom/assigned-lockers";
+  const plansKey = "/api/admin/mailroom/plans";
+  const locationsKey = "/api/admin/mailroom/locations";
+
+  const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(txt || `Failed to fetch ${url}`);
+    }
+    return res.json().catch(() => ({}));
+  };
+
+  const {
+    data: registrationsData,
+    error: registrationsError,
+    isValidating: registrationsValidating,
+  } = useSWR(registrationsKey, fetcher, { revalidateOnFocus: true });
+  const { data: lockersData, isValidating: lockersValidating } = useSWR(
+    lockersKey,
+    fetcher,
+    { revalidateOnFocus: true }
+  );
+  const { data: assignedData, isValidating: assignedValidating } = useSWR(
+    assignedKey,
+    fetcher,
+    { revalidateOnFocus: true }
+  );
+  const { data: plansData } = useSWR(plansKey, fetcher);
+  const { data: locationsData } = useSWR(locationsKey, fetcher);
+
+  // Sync SWR results to local state (keeps UI code unchanged)
+  useEffect(() => {
+    setLoading(
+      registrationsValidating || lockersValidating || assignedValidating
+    );
+
+    if (registrationsData) {
+      setRegistrations(
+        Array.isArray(registrationsData.data)
+          ? registrationsData.data
+          : Array.isArray(registrationsData)
+          ? registrationsData
+          : []
+      );
+    }
+    if (lockersData) {
+      setLockers(
+        Array.isArray(lockersData) ? lockersData : lockersData.data ?? []
+      );
+    }
+    if (assignedData) {
+      setAssignments(
+        Array.isArray(assignedData) ? assignedData : assignedData.data ?? []
+      );
+    }
+    if (plansData) {
+      setPlans(Array.isArray(plansData) ? plansData : plansData.data ?? []);
+    }
+    if (locationsData) {
+      setLocations(
+        Array.isArray(locationsData) ? locationsData : locationsData.data ?? []
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    registrationsData,
+    lockersData,
+    assignedData,
+    plansData,
+    locationsData,
+    registrationsValidating,
+    lockersValidating,
+    assignedValidating,
+  ]);
+
+  // Initial cron run and seed by revalidating SWR
   useEffect(() => {
     const init = async () => {
-      // Set loading true immediately so the spinner shows during the sync
       setLoading(true);
       try {
-        // Run the cron job silently to update statuses/renewals
         await fetch("/api/admin/mailroom/cron", { method: "POST" });
       } catch (e) {
         console.error("Auto-sync failed", e);
+      } finally {
+        // revalidate all keys
+        await Promise.all([
+          swrMutate(registrationsKey),
+          swrMutate(lockersKey),
+          swrMutate(assignedKey),
+          swrMutate(plansKey),
+          swrMutate(locationsKey),
+        ]);
+        setLoading(false);
       }
-      // Then fetch the fresh data
-      fetchData();
     };
-    init();
+    void init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // convenience refresh function used after mutations
+  const refreshAll = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        swrMutate(registrationsKey),
+        swrMutate(lockersKey),
+        swrMutate(assignedKey),
+        swrMutate(plansKey),
+        swrMutate(locationsKey),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Reset page when tab changes
   useEffect(() => {
     setPage(1);
   }, [activeTab, search]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      // Fetch plans as well
-      const [regRes, lockerRes, assignRes, planRes, locRes] = await Promise.all(
-        [
-          fetch("/api/admin/mailroom/registrations"),
-          fetch("/api/admin/mailroom/lockers"),
-          fetch("/api/admin/mailroom/assigned-lockers"),
-          fetch("/api/admin/mailroom/plans"),
-          fetch("/api/admin/mailroom/locations"), // ADDED: fetch locations
-        ]
-      );
-
-      if (regRes.ok) {
-        const data = await regRes.json();
-        setRegistrations(Array.isArray(data.data) ? data.data : data);
-      }
-      if (lockerRes.ok) {
-        const data = await lockerRes.json();
-        setLockers(data);
-      }
-      if (assignRes.ok) {
-        const data = await assignRes.json();
-        setAssignments(data.data || data);
-      }
-      if (planRes.ok) {
-        const data = await planRes.json();
-        setPlans(data.data || data);
-      }
-      // Set locations if available
-      if (locRes && locRes.ok) {
-        const data = await locRes.json();
-        setLocations(data.data ?? data ?? []);
-      }
-    } catch (error) {
-      console.error("Failed to fetch data", error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to load registrations",
-        color: "red",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleOpenLockerModal = (user: Registration) => {
     setSelectedUser(user);
@@ -213,7 +270,7 @@ export default function MailroomRegistrations() {
         color: "green",
       });
       closeLockerModal();
-      fetchData();
+      await refreshAll();
     } catch (error) {
       console.error(error);
       notifications.show({
@@ -238,7 +295,7 @@ export default function MailroomRegistrations() {
         message: "Subscription statuses updated successfully",
         color: "green",
       });
-      fetchData(); // Reload the table data
+      await refreshAll(); // Reload the table data via SWR
     } catch (error) {
       console.error(error);
       notifications.show({
@@ -691,7 +748,7 @@ export default function MailroomRegistrations() {
                       color: "green",
                     });
                     setSelectedLockerId(null);
-                    fetchData();
+                    await refreshAll();
                   } catch (e) {
                     notifications.show({
                       title: "Error",

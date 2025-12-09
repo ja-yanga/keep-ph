@@ -4,6 +4,7 @@
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState } from "react";
+import useSWR, { mutate as swrMutate } from "swr";
 import {
   ActionIcon,
   Badge,
@@ -105,12 +106,125 @@ export default function MailroomLockers() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    // SWR handles initial fetch; nothing needed here
   }, []);
 
   useEffect(() => {
     setPage(1);
   }, [search, filterLocation, activeTab]); // Updated dependency
+
+  // --- SWR Data Fetching ---
+  const lockersKey = "/api/admin/mailroom/lockers";
+  const locationsKey = "/api/admin/mailroom/locations";
+  const assignedKey = "/api/admin/mailroom/assigned-lockers";
+
+  const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `Failed to fetch ${url}`);
+    }
+    return res.json().catch(() => ({}));
+  };
+
+  const {
+    data: lockersData,
+    error: lockersError,
+    isValidating: lockersValidating,
+  } = useSWR(lockersKey, fetcher, { revalidateOnFocus: true });
+  const {
+    data: locationsData,
+    error: locationsError,
+    isValidating: locationsValidating,
+  } = useSWR(locationsKey, fetcher, { revalidateOnFocus: true });
+  const {
+    data: assignedData,
+    error: assignedError,
+    isValidating: assignedValidating,
+  } = useSWR(assignedKey, fetcher, { revalidateOnFocus: true });
+
+  // derive arrays from responses (support { data: [...] } or bare arrays)
+  const lockersArr =
+    Array.isArray(lockersData) ||
+    Array.isArray(lockersData?.data) ||
+    (lockersData && typeof lockersData === "object")
+      ? lockersData
+      : [];
+  const locationsArr =
+    Array.isArray(locationsData) ||
+    Array.isArray(locationsData?.data) ||
+    (locationsData && typeof locationsData === "object")
+      ? locationsData
+      : [];
+  const assignedArr =
+    Array.isArray(assignedData) ||
+    Array.isArray(assignedData?.data) ||
+    (assignedData && typeof assignedData === "object")
+      ? assignedData
+      : [];
+
+  // sync into local state and keep loading state in sync with SWR
+  useEffect(() => {
+    setLoading(lockersValidating || locationsValidating || assignedValidating);
+    if (lockersArr.length) setLockers(lockersArr);
+    if (locationsArr.length) setLocations(locationsArr);
+    if (assignedArr.length) setAssignedLockers(assignedArr);
+
+    // auto-fix ghost lockers (preserve previous behavior)
+    if (lockersArr.length && assignedArr.length) {
+      const assignedLockerIds = new Set(
+        assignedArr.map((a: any) => a.locker_id)
+      );
+      const ghostLockers = lockersArr.filter(
+        (l: any) => !l.is_available && !assignedLockerIds.has(l.id)
+      );
+      if (ghostLockers.length > 0) {
+        (async () => {
+          try {
+            await Promise.all(
+              ghostLockers.map((l: any) =>
+                fetch(`/api/admin/mailroom/lockers/${l.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    locker_code: l.locker_code,
+                    location_id: l.location_id,
+                    is_available: true,
+                  }),
+                })
+              )
+            );
+            notifications.show({
+              title: "System Cleanup",
+              message: `Automatically freed ${ghostLockers.length} lockers that had no active assignment.`,
+              color: "orange",
+              icon: <IconLockOpen size={16} />,
+            });
+            // revalidate lockers to reflect fixes
+            await swrMutate(lockersKey);
+          } catch (e) {
+            console.error("Auto-fix failed:", e);
+          }
+        })();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockersData, locationsData, assignedData]);
+
+  const refreshAll = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        swrMutate(lockersKey),
+        swrMutate(locationsKey),
+        swrMutate(assignedKey),
+      ]);
+    } catch (e) {
+      console.error("refreshAll failed", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // NEW: Auto-dismiss global success
   useEffect(() => {
@@ -288,7 +402,7 @@ export default function MailroomLockers() {
       );
 
       close();
-      fetchData();
+      await refreshAll();
     } catch (error: any) {
       console.error(error);
       setFormError(error.message || "Failed to save locker");
@@ -308,7 +422,7 @@ export default function MailroomLockers() {
       if (!res.ok) throw new Error("Failed to delete");
 
       setGlobalSuccess("Locker deleted successfully");
-      fetchData();
+      await refreshAll();
     } catch (error) {
       console.error(error);
       notifications.show({

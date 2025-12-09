@@ -7,6 +7,7 @@ import React, {
   useMemo,
   ElementType,
 } from "react"; // Added ElementType
+import useSWR, { mutate as swrMutate } from "swr";
 import {
   Badge,
   Group,
@@ -111,6 +112,17 @@ const SortControl: React.FC<SortControlProps> = ({
   );
 };
 
+const fetcher = async (url: string) => {
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || "Failed to fetch");
+  }
+  const json = await res.json().catch(() => ({}));
+  const scansArr = json?.scans ?? json?.data ?? json ?? [];
+  return Array.isArray(scansArr) ? scansArr : [];
+};
+
 // --- Main Component ---
 export default function AllUserScans() {
   const { session } = useSession();
@@ -120,6 +132,13 @@ export default function AllUserScans() {
   const [selected, setSelected] = useState<Scan | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // SWR key depends on session readiness
+  const swrKey = session?.user?.id ? "/api/user/storage" : null;
+  const {
+    data: apiScans,
+    error: swrError,
+    isValidating,
+  } = useSWR<Scan[] | undefined>(swrKey, fetcher, { revalidateOnFocus: true });
 
   // Search & sort state
   const [search, setSearch] = useState("");
@@ -128,30 +147,15 @@ export default function AllUserScans() {
   >("uploaded_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const fetchAllScans = useCallback(async () => {
-    if (!session?.user?.id) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/user/storage`, { credentials: "include" });
-      if (!res.ok) {
-        console.error("Failed to fetch scans:", await res.text());
-        setScans([]);
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      const scansArr = data?.scans ?? data?.data ?? data ?? [];
-      setScans(Array.isArray(scansArr) ? scansArr : []);
-    } catch (err) {
-      console.error("Error fetching scans:", err);
-      setScans([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.user?.id]);
-
+  // sync SWR results into local state (keeps existing delete/optimistic flows)
   useEffect(() => {
-    fetchAllScans();
-  }, [fetchAllScans]);
+    setLoading(Boolean(isValidating));
+    if (Array.isArray(apiScans)) setScans(apiScans);
+    if (swrError) {
+      console.error("scans fetch error:", swrError);
+      setScans([]);
+    }
+  }, [apiScans, swrError, isValidating]);
 
   const handlePreview = (scan: Scan) => {
     setSelected(scan);
@@ -159,9 +163,10 @@ export default function AllUserScans() {
   };
 
   const handleRefresh = async () => {
+    if (!swrKey) return;
     setRefreshing(true);
     try {
-      await fetchAllScans();
+      await swrMutate(swrKey);
     } finally {
       setRefreshing(false);
     }
@@ -189,33 +194,36 @@ export default function AllUserScans() {
     const url = `/api/user/storage/${encodeURIComponent(scanId)}`;
     try {
       setDeletingId(scanId);
-      console.debug("Deleting scan:", scanId, "url:", url);
-
       const res = await fetch(url, {
         method: "DELETE",
-        credentials: "same-origin", // or "include" if you need cookies sent cross-site
+        credentials: "same-origin",
         headers: {
           Accept: "application/json",
         },
       });
 
-      const text = await res.text().catch(() => "");
-      let body: any = {};
-      try {
-        body = text ? JSON.parse(text) : {};
-      } catch {
-        body = { raw: text };
-      }
-
       if (!res.ok) {
-        console.error("delete failed response:", res.status, body);
+        const text = await res.text().catch(() => "");
+        let body: any = {};
+        try {
+          body = text ? JSON.parse(text) : {};
+        } catch {
+          body = { raw: text };
+        }
         throw new Error(
           body?.error || body?.message || `Delete failed (${res.status})`
         );
       }
 
-      // optimistic update
+      // optimistic update locally and update SWR cache without immediate revalidate
       setScans((prev) => prev.filter((s) => s.id !== scanId));
+      if (swrKey) {
+        swrMutate(
+          swrKey,
+          (current: Scan[] = []) => current.filter((s) => s.id !== scanId),
+          false
+        );
+      }
     } catch (e: any) {
       console.error("delete failed", e);
       alert(e.message || "Failed to delete file");

@@ -3,6 +3,7 @@
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState } from "react";
+import useSWR, { mutate as swrMutate } from "swr";
 import {
   ActionIcon,
   Alert,
@@ -167,8 +168,106 @@ export default function MailroomPackages() {
     "Empty" | "Normal" | "Near Full" | "Full"
   >("Normal");
 
+  // SWR keys
+  const packagesKey = "/api/admin/mailroom/packages";
+  const registrationsKey = "/api/admin/mailroom/registrations";
+  const lockersKey = "/api/admin/mailroom/lockers";
+  const assignedKey = "/api/admin/mailroom/assigned-lockers";
+
+  const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `Failed to fetch ${url}`);
+    }
+    return res.json().catch(() => ({}));
+  };
+
+  const {
+    data: packagesData,
+    error: packagesError,
+    isValidating: packagesValidating,
+  } = useSWR(packagesKey, fetcher, { revalidateOnFocus: true });
+  const {
+    data: registrationsData,
+    error: registrationsError,
+    isValidating: registrationsValidating,
+  } = useSWR(registrationsKey, fetcher, { revalidateOnFocus: true });
+  const {
+    data: lockersData,
+    error: lockersError,
+    isValidating: lockersValidating,
+  } = useSWR(lockersKey, fetcher, { revalidateOnFocus: true });
+  const {
+    data: assignedData,
+    error: assignedError,
+    isValidating: assignedValidating,
+  } = useSWR(assignedKey, fetcher, { revalidateOnFocus: true });
+
+  // derived arrays (handle endpoints that return { data: [...] } or bare arrays)
+  const packagesArr = Array.isArray(packagesData?.data)
+    ? packagesData.data
+    : Array.isArray(packagesData)
+    ? packagesData
+    : [];
+  const registrationsArr = Array.isArray(registrationsData?.data)
+    ? registrationsData.data
+    : Array.isArray(registrationsData)
+    ? registrationsData
+    : [];
+  const lockersArr = Array.isArray(lockersData?.data)
+    ? lockersData.data
+    : Array.isArray(lockersData)
+    ? lockersData
+    : [];
+  const assignedArr = Array.isArray(assignedData?.data)
+    ? assignedData.data
+    : Array.isArray(assignedData)
+    ? assignedData
+    : [];
+
+  // sync SWR results into local state to avoid changing rest of the code
   useEffect(() => {
-    fetchData();
+    setLoading(
+      packagesValidating ||
+        registrationsValidating ||
+        lockersValidating ||
+        assignedValidating
+    );
+    setPackages(packagesArr);
+    setRegistrations(registrationsArr);
+    setLockers(lockersArr);
+    setAssignedLockers(assignedArr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    packagesData,
+    registrationsData,
+    lockersData,
+    assignedData,
+    packagesValidating,
+    registrationsValidating,
+    lockersValidating,
+    assignedValidating,
+  ]);
+
+  // helper to refresh all data (used after mutations)
+  const refreshAll = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        swrMutate(packagesKey),
+        swrMutate(registrationsKey),
+        swrMutate(lockersKey),
+        swrMutate(assignedKey),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch is now handled by SWR
+    // fetchData();
   }, []);
 
   useEffect(() => {
@@ -197,45 +296,6 @@ export default function MailroomPackages() {
   };
 
   const hasFilters = search || filterStatus || filterType;
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [packagesRes, registrationsRes, lockersRes, assignedRes] =
-        await Promise.all([
-          fetch("/api/admin/mailroom/packages"),
-          fetch("/api/admin/mailroom/registrations"),
-          fetch("/api/admin/mailroom/lockers"),
-          fetch("/api/admin/mailroom/assigned-lockers"),
-        ]);
-
-      if (packagesRes.ok) {
-        const data = await packagesRes.json();
-        setPackages(data.data || data);
-      }
-      if (registrationsRes.ok) {
-        const data = await registrationsRes.json();
-        setRegistrations(Array.isArray(data.data) ? data.data : data);
-      }
-      if (lockersRes.ok) {
-        const data = await lockersRes.json();
-        setLockers(Array.isArray(data) ? data : []);
-      }
-      if (assignedRes.ok) {
-        const data = await assignedRes.json();
-        setAssignedLockers(data.data || data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch data", error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to load data",
-        color: "red",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleOpenModal = (pkg?: Package) => {
     if (pkg) {
@@ -361,7 +421,7 @@ export default function MailroomPackages() {
       );
 
       close();
-      fetchData();
+      await refreshAll();
     } catch (error: any) {
       console.error(error);
       setFormError(error.message || "Failed to save package");
@@ -381,7 +441,7 @@ export default function MailroomPackages() {
       if (!res.ok) throw new Error("Failed to delete");
 
       setGlobalSuccess("Package deleted successfully");
-      fetchData();
+      await refreshAll();
     } catch (error) {
       console.error(error);
       notifications.show({
@@ -430,7 +490,7 @@ export default function MailroomPackages() {
 
       setGlobalSuccess("Package marked as DISPOSED and locker status updated");
       setDisposeModalOpen(false);
-      fetchData();
+      await refreshAll();
     } catch (error: any) {
       console.error(error);
       setFormError(error.message || "Failed to dispose package");
@@ -467,9 +527,8 @@ export default function MailroomPackages() {
       }
 
       setGlobalSuccess("Document scanned and uploaded successfully");
-
       setScanModalOpen(false);
-      fetchData();
+      await refreshAll();
     } catch (error: any) {
       setFormError(error.message || "Upload failed");
     } finally {
@@ -512,9 +571,8 @@ export default function MailroomPackages() {
       }
 
       setGlobalSuccess("Package released and locker status updated");
-
       setReleaseModalOpen(false);
-      fetchData();
+      await refreshAll();
     } catch (error: any) {
       setFormError(error.message || "Release failed");
     } finally {
@@ -888,9 +946,9 @@ export default function MailroomPackages() {
             placeholder="Select recipient"
             required
             searchable
-            data={registrations.map((r) => ({
+            // Limit displayed options to first 10 for performance/virtualization safety
+            data={registrations.slice(0, 10).map((r) => ({
               value: r.id,
-              // CHANGED: Format to "Code - Email (Plan)"
               label: `${r.mailroom_code || "No Code"} - ${r.email} (${
                 r.mailroom_plans?.name || "Unknown Plan"
               })`,
