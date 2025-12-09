@@ -350,9 +350,7 @@ export default function MailroomPackages() {
     const reg = registrations.find((r) => r.id === regId);
 
     // Determine default package type based on plan
-    let defaultType = "";
-    if (reg?.mailroom_plans?.can_receive_parcels) defaultType = "Parcel";
-    else if (reg?.mailroom_plans?.can_receive_mail) defaultType = "Document";
+    let defaultType = "Document";
 
     setFormData({
       ...formData,

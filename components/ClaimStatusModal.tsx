@@ -201,7 +201,49 @@ export default function ClaimStatusModal({
           </Stack>
         </Box>
 
-        {/* 4. Action/Message Footer */}
+        {/* 4. Proof of Payment (if available) */}
+        <Box>
+          <Title order={5} mb="sm" c="dark.5">
+            PROOF OF PAYMENT
+          </Title>
+          <Stack align="center" gap="sm">
+            {claim.proof_url ? (
+              // embed proof inside modal (PDF or image)
+              claim.proof_url.toLowerCase().endsWith(".pdf") ? (
+                <iframe
+                  src={claim.proof_url}
+                  title="Proof PDF"
+                  style={{
+                    width: "100%",
+                    height: "48vh",
+                    border: "none",
+                    borderRadius: 8,
+                  }}
+                />
+              ) : (
+                <img
+                  src={claim.proof_url}
+                  alt="proof"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "60vh",
+                    borderRadius: 8,
+                  }}
+                />
+              )
+            ) : claim.proof_path ? (
+              <Text size="sm" c="dimmed">
+                Proof uploaded — will be available once processed by admin.
+              </Text>
+            ) : (
+              <Text size="sm" c="dimmed">
+                No proof uploaded yet.
+              </Text>
+            )}
+          </Stack>
+        </Box>
+
+        {/* 5. Action/Message Footer */}
         <Box pt="sm">
           <Group wrap="nowrap" align="flex-start" gap="xs" mb="md">
             <IconInfoCircle size={16} color={theme.colors.gray[6]} />

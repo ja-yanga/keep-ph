@@ -62,7 +62,7 @@ export default function RegisterForm() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
-  const [telephone, setTelephone] = useState("");
+
   const [locations, setLocations] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
@@ -275,12 +275,6 @@ export default function RegisterForm() {
         );
         return;
       }
-
-      // NEW: Telephone Validation (7-8 digits)
-      if (telephone && !/^\d{7,8}$/.test(telephone)) {
-        setError("Invalid telephone number. Must be 7 or 8 digits.");
-        return;
-      }
     }
     setActive((current) => (current < 3 ? current + 1 : current));
   };
@@ -317,7 +311,6 @@ export default function RegisterForm() {
         full_name: `${firstName} ${lastName}`.trim() || null,
         email,
         mobile,
-        telephone,
         locationId: selectedLocation,
         planId: selectedPlanId,
         lockerQty: qty,
@@ -902,18 +895,6 @@ export default function RegisterForm() {
                         required
                       />
                     </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput
-                        label="Telephone (Optional)"
-                        placeholder="7 or 8 digits"
-                        value={telephone}
-                        onChange={(e) => {
-                          // Only allow numbers, max 8 chars
-                          const val = e.currentTarget.value.replace(/\D/g, "");
-                          if (val.length <= 8) setTelephone(val);
-                        }}
-                      />
-                    </Grid.Col>
                   </Grid>
                 </Paper>
               </Stack>
@@ -963,12 +944,6 @@ export default function RegisterForm() {
                       <Text c="dimmed">Mobile Number:</Text>
                       <Text fw={600}>{mobile}</Text>
                     </Group>
-                    {telephone && (
-                      <Group justify="space-between">
-                        <Text c="dimmed">Telephone:</Text>
-                        <Text fw={600}>{telephone}</Text>
-                      </Group>
-                    )}
                   </Stack>
                 </Paper>
 

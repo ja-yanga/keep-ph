@@ -23,17 +23,50 @@ export async function GET(req: Request) {
     if (cErr) throw cErr;
     const referralCount = (count ?? 0) as number;
 
+    // include proof_path so we can map to signed URL
     const { data: claims, error: claimsErr } = await supabase
       .from("rewards_claims")
       .select(
-        "id,payment_method,account_details,amount,status,referral_count,created_at,processed_at"
+        "id,user_id,payment_method,account_details,amount,status,referral_count,created_at,processed_at,proof_path"
       )
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     if (claimsErr) throw claimsErr;
 
+    // generate signed URLs (private bucket) or fallback to public url
+    const BUCKET = "reward-proofs";
+    const claimsWithUrls = await Promise.all(
+      (claims || []).map(async (c: any) => {
+        if (c.proof_path) {
+          // try signed url
+          try {
+            const { data: urlData, error: urlErr } = await supabase.storage
+              .from(BUCKET)
+              .createSignedUrl(c.proof_path, 60 * 60); // 1 hour
+            if (!urlErr && urlData?.signedUrl) {
+              c.proof_url = urlData.signedUrl;
+              return c;
+            }
+          } catch (e) {
+            // ignore and try public fallback
+          }
+          try {
+            const { data: pub } = supabase.storage
+              .from(BUCKET)
+              .getPublicUrl(c.proof_path);
+            c.proof_url = pub?.publicUrl ?? null;
+          } catch (e) {
+            c.proof_url = null;
+          }
+        } else {
+          c.proof_url = null;
+        }
+        return c;
+      })
+    );
+
     // Only consider admin-manageable statuses: PROCESSING and PAID
-    const hasClaim = (claims ?? []).some((c: any) =>
+    const hasClaim = (claimsWithUrls ?? []).some((c: any) =>
       ["PROCESSING", "PAID"].includes(c.status)
     );
 
@@ -43,7 +76,7 @@ export async function GET(req: Request) {
       referralCount,
       eligible: referralCount >= THRESHOLD,
       hasClaim,
-      claims: claims || [],
+      claims: claimsWithUrls || [],
     });
   } catch (err: any) {
     console.error("rewards.status:", err);

@@ -435,14 +435,6 @@ export default function MailroomPackageView({
                           {item.mobile ?? item.users?.mobile ?? "—"}
                         </Text>
                       </Box>
-                      <Box>
-                        <Text size="xs" c="dimmed">
-                          Telephone
-                        </Text>
-                        <Text fw={500}>
-                          {item.telephone ?? item.users?.telephone ?? "—"}
-                        </Text>
-                      </Box>
                     </Group>
                   </Stack>
                 </Paper>

@@ -12,6 +12,7 @@ import {
   Button,
   TextInput,
   useMantineTheme,
+  Alert,
 } from "@mantine/core";
 import { IconAward, IconWallet } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
@@ -34,6 +35,7 @@ export default function RewardClaimModal({
   const [paymentMethod, setPaymentMethod] = useState<"gcash" | "maya">("gcash");
   const [accountDetails, setAccountDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const theme = useMantineTheme();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,6 +48,18 @@ export default function RewardClaimModal({
       });
       return;
     }
+
+    // Validate mobile number: must start with 09 and be 11 digits (e.g. 09121231234)
+    const mobile = accountDetails.trim();
+    const mobileRegex = /^09\d{9}$/;
+    if (!mobileRegex.test(mobile)) {
+      // show mantine Alert in the modal instead of only a toast
+      setValidationError(
+        "Mobile number must start with 09 and be 11 digits (e.g. 09121231234)."
+      );
+      return;
+    }
+
     if (!userId) {
       notifications.show({
         title: "Not signed in",
@@ -119,6 +133,19 @@ export default function RewardClaimModal({
           typically processed within 24–48 hours.
         </Text>
 
+        {/* show validation error as a Mantine Alert */}
+        {validationError && (
+          <Alert
+            title="Invalid number"
+            color="red"
+            variant="outline"
+            onClose={() => setValidationError(null)}
+            withCloseButton
+          >
+            {validationError}
+          </Alert>
+        )}
+
         <Paper withBorder p="md" radius="md" bg={theme.colors.gray[0]}>
           <Title order={5} mb="xs">
             Reward: PHP 500.00
@@ -151,15 +178,15 @@ export default function RewardClaimModal({
               label={`Your ${
                 paymentMethod === "gcash" ? "GCash" : "Maya"
               } Mobile Number / Account`}
-              placeholder={
-                paymentMethod === "gcash"
-                  ? "e.g., 0917XXXXXXX"
-                  : "mobile or email"
-              }
+              placeholder="e.g., 0917XXXXXXX"
               value={accountDetails}
-              onChange={(event) => setAccountDetails(event.currentTarget.value)}
+              onChange={(event) => {
+                // clear validation alert on change
+                if (validationError) setValidationError(null);
+                setAccountDetails(event.currentTarget.value);
+              }}
               required
-              maxLength={64}
+              maxLength={11}
             />
 
             <Button

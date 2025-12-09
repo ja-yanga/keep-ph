@@ -292,6 +292,16 @@ export default function DashboardNav() {
                   >
                     Registration Locations
                   </Anchor>
+
+                  <Anchor
+                    component={Link}
+                    href="/admin/rewards"
+                    style={linkColor("/admin/rewards")}
+                    underline="hover"
+                  >
+                    Rewards
+                  </Anchor>
+
                   <Anchor
                     component={Link}
                     href="/admin/stats"

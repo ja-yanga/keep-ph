@@ -12,7 +12,9 @@ export type NotificationType =
   | "PACKAGE_RELEASED"
   | "PACKAGE_DISPOSED"
   | "SCAN_READY"
-  | "SYSTEM";
+  | "SYSTEM" // optional: reward-specific notification types for clearer UI handling
+  | "REWARD_PROCESSING"
+  | "REWARD_PAID";
 
 /**
  * Sends a notification to a specific user.

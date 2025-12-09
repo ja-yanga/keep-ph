@@ -48,7 +48,7 @@ export default function ReferralPage() {
   const REWARD_THRESHOLD = 10;
   const referralCount = referrals.length;
   const isRewardReady = referralCount >= REWARD_THRESHOLD;
-  // const isRewardReady = true; //testing
+  //const isRewardReady = true; //testing
 
   // New state for Modal
   const [opened, { open, close }] = useDisclosure(false);

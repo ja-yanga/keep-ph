@@ -15,7 +15,6 @@ export async function POST(req: Request) {
       full_name,
       email,
       mobile,
-      telephone,
       locationId,
       planId,
       lockerQty,
@@ -125,7 +124,6 @@ export async function POST(req: Request) {
 
     // 6. Insert Registration
     const mobileNum = mobile ? mobile.replace(/\D/g, "") : null;
-    const telephoneNum = telephone ? telephone.replace(/\D/g, "") : null;
 
     const { data: registration, error: regError } = await supabaseAdmin
       .from("mailroom_registrations")
@@ -140,7 +138,6 @@ export async function POST(req: Request) {
           full_name,
           email,
           mobile: mobileNum,
-          telephone: telephoneNum,
           mailroom_code: mailroomCode,
         },
       ])
