@@ -16,7 +16,10 @@ import {
   Center,
   Badge,
   ThemeIcon,
+  useMantineTheme,
   Divider,
+  Progress,
+  TextInput,
 } from "@mantine/core";
 import {
   IconCopy,
@@ -24,16 +27,31 @@ import {
   IconGift,
   IconUsers,
   IconTicket,
+  IconAward,
+  IconWallet,
 } from "@tabler/icons-react";
+import { useDisclosure } from "@mantine/hooks";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import { useSession } from "@/components/SessionProvider";
+import { notifications } from "@mantine/notifications";
+import RewardClaimModal from "@/components/RewardClaimModal";
 
 export default function ReferralPage() {
   const { session } = useSession();
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [referrals, setReferrals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // State for reward logic
+  const REWARD_THRESHOLD = 10;
+  const referralCount = referrals.length;
+  const isRewardReady = referralCount >= REWARD_THRESHOLD;
+  // const isRewardReady = true;
+
+  // New state for Modal and Claim processing
+  const [opened, { open, close }] = useDisclosure(false);
+  const [isClaiming, setIsClaiming] = useState(false);
 
   useEffect(() => {
     async function loadReferralData() {
@@ -75,6 +93,61 @@ export default function ReferralPage() {
     }
   }, [session]);
 
+  const handleClaimReward = async (
+    paymentMethod: string,
+    accountDetails: string
+  ) => {
+    if (!isRewardReady) return;
+
+    setIsClaiming(true);
+    close();
+
+    try {
+      // ** 1. Call your Supabase/Next.js API endpoint to record the claim **
+      const res = await fetch("/api/rewards/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: session?.user?.id,
+          paymentMethod,
+          accountDetails,
+          referralCount: referralCount,
+        }),
+      });
+
+      if (res.ok) {
+        notifications.show({
+          title: "Claim Successful! 🎉",
+          message:
+            "Your reward is being processed and will be sent to your " +
+            paymentMethod +
+            " account shortly.",
+          color: "green",
+        });
+
+        // ** 2. Optional: Refetch data to show reward as claimed or reset the referral count **
+        // In a real app, you'd likely update the user's 'rewards_claimed' status.
+      } else {
+        const errorData = await res.json();
+        notifications.show({
+          title: "Claim Failed",
+          message:
+            errorData.error ||
+            "An error occurred while claiming the reward. Please try again.",
+          color: "red",
+        });
+      }
+    } catch (error) {
+      notifications.show({
+        title: "Error",
+        message: "Network error. Could not connect to the server.",
+        color: "red",
+      });
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
   const rows = referrals.map((item) => (
     <Table.Tr key={item.referrals_id}>
       <Table.Td>
@@ -105,6 +178,8 @@ export default function ReferralPage() {
     </Table.Tr>
   ));
 
+  const progressValue = Math.min((referralCount / REWARD_THRESHOLD) * 100, 100);
+
   return (
     <Box
       style={{
@@ -116,6 +191,14 @@ export default function ReferralPage() {
     >
       <DashboardNav />
 
+      {/* 1. Modal Component */}
+      <RewardClaimModal
+        opened={opened}
+        onClose={close}
+        onClaim={handleClaimReward}
+        isLoading={isClaiming}
+      />
+
       <Box component="main" style={{ flex: 1 }} py={{ base: 48, md: 80 }}>
         <Container size="md">
           <Stack align="center" gap="md" mb={40}>
@@ -123,11 +206,11 @@ export default function ReferralPage() {
               <IconGift size={32} />
             </ThemeIcon>
             <Title order={1} style={{ fontWeight: 800, color: "#1A237E" }}>
-              Refer a Friend
+              Refer & Earn Rewards
             </Title>
             <Text c="dimmed" size="lg" ta="center" maw={600}>
-              Share your unique code below. When your friends sign up using this
-              code, you both earn rewards!
+              Share your unique code below. Refer **{REWARD_THRESHOLD} friends**
+              to unlock a cash reward!
             </Text>
           </Stack>
 
@@ -137,7 +220,59 @@ export default function ReferralPage() {
             </Center>
           ) : (
             <Stack gap="xl">
-              {/* Code Section - Redesigned to be a "Hero" card */}
+              {/* 2. Rewards Card Section (New) */}
+              <Paper
+                withBorder
+                shadow="md"
+                radius="lg"
+                p={{ base: "lg", sm: "xl" }}
+                bg={isRewardReady ? "green.0" : "white"}
+                style={{
+                  border: isRewardReady
+                    ? "2px solid var(--mantine-color-green-5)"
+                    : "",
+                }}
+              >
+                <Group justify="space-between" align="center" wrap="wrap">
+                  <Stack gap={4}>
+                    <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
+                      {isRewardReady
+                        ? "Reward Unlocked! 🏆"
+                        : `Referral Progress (${referralCount}/${REWARD_THRESHOLD})`}
+                    </Title>
+                    <Text c="dimmed" size="sm">
+                      {isRewardReady
+                        ? "Click below to claim your cash reward now!"
+                        : `You need ${
+                            REWARD_THRESHOLD - referralCount
+                          } more referrals to claim your reward.`}
+                    </Text>
+                  </Stack>
+
+                  <Stack gap="xs" maw={250} style={{ flexGrow: 1 }}>
+                    <Progress
+                      value={progressValue}
+                      size="lg"
+                      radius="xl"
+                      color={isRewardReady ? "green" : "indigo"}
+                      aria-label="Referral Progress"
+                    />
+                    <Button
+                      onClick={open}
+                      disabled={!isRewardReady || isClaiming}
+                      loading={isClaiming}
+                      color={isRewardReady ? "green" : "gray"}
+                      variant={isRewardReady ? "filled" : "light"}
+                      leftSection={<IconAward size={20} />}
+                      radius="xl"
+                    >
+                      {isRewardReady ? "Claim Reward" : "Keep Referring"}
+                    </Button>
+                  </Stack>
+                </Group>
+              </Paper>
+
+              {/* Code Section */}
               <Paper
                 withBorder
                 shadow="sm"
@@ -202,7 +337,7 @@ export default function ReferralPage() {
                     Referral History
                   </Title>
                   <Badge variant="light" color="gray" size="lg" circle>
-                    {referrals.length}
+                    {referralCount}
                   </Badge>
                 </Group>
 

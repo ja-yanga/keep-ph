@@ -71,8 +71,9 @@ CREATE TABLE public.mailroom_registrations (
   email text NOT NULL,
   mobile numeric NOT NULL,
   telephone numeric,
-  mailroom_status boolean,
+  mailroom_status boolean DEFAULT true,
   mailroom_code text,
+  auto_renew boolean DEFAULT true,
   CONSTRAINT mailroom_registrations_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT mailroom_registrations_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.mailroom_locations(id),
@@ -89,6 +90,18 @@ CREATE TABLE public.mailroom_scans (
   CONSTRAINT mailroom_scans_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_scans_package_id_fkey FOREIGN KEY (package_id) REFERENCES public.mailroom_packages(id)
 );
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  message text NOT NULL,
+  type text CHECK (type = ANY (ARRAY['PACKAGE_ARRIVED'::text, 'PACKAGE_RELEASED'::text, 'PACKAGE_DISPOSED'::text, 'SCAN_READY'::text, 'SYSTEM'::text])),
+  is_read boolean DEFAULT false,
+  link text,
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.referrals_table (
   referrals_id integer NOT NULL DEFAULT nextval('referrals_table_referrals_id_seq'::regclass),
   referrals_user_id uuid,
@@ -97,6 +110,20 @@ CREATE TABLE public.referrals_table (
   referrals_date_created timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT referrals_table_pkey PRIMARY KEY (referrals_id),
   CONSTRAINT referrals_table_referrals_user_id_fkey FOREIGN KEY (referrals_user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.rewards_claims (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  payment_method text NOT NULL,
+  account_details text NOT NULL,
+  amount numeric NOT NULL DEFAULT 500.00,
+  status text NOT NULL DEFAULT 'PENDING'::text CHECK (status = ANY (ARRAY['PENDING'::text, 'PROCESSING'::text, 'PAID'::text, 'REJECTED'::text])),
+  referral_count integer NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  processed_at timestamp with time zone,
+  processed_by uuid,
+  CONSTRAINT rewards_claims_pkey PRIMARY KEY (id),
+  CONSTRAINT rewards_claims_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
