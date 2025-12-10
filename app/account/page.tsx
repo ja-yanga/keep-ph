@@ -37,7 +37,9 @@ import {
   IconTrash,
   IconCamera,
   IconX,
+  IconMapPin,
 } from "@tabler/icons-react";
+import AccountAddresses from "@/components/AccountAddresses";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -301,6 +303,14 @@ export default function AccountPage() {
                 <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
                   Profile
                 </Tabs.Tab>
+
+                <Tabs.Tab
+                  value="addresses"
+                  leftSection={<IconMapPin size={16} />}
+                >
+                  Addresses
+                </Tabs.Tab>
+
                 <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
                   Security
                 </Tabs.Tab>
@@ -416,6 +426,19 @@ export default function AccountPage() {
                     </Grid.Col>
                   </Grid>
                 </form>
+              </Tabs.Panel>
+
+              {/* --- ADDRESSES TAB --- */}
+              <Tabs.Panel value="addresses">
+                <Container size="md" px={0}>
+                  {session?.user?.id ? (
+                    <AccountAddresses userId={session.user.id} />
+                  ) : (
+                    <Paper withBorder p="md">
+                      <Text c="dimmed">Sign in to manage your addresses.</Text>
+                    </Paper>
+                  )}
+                </Container>
               </Tabs.Panel>
 
               {/* --- SECURITY TAB --- */}

@@ -43,6 +43,8 @@ CREATE TABLE public.mailroom_packages (
   received_at timestamp with time zone DEFAULT now(),
   locker_id uuid,
   release_proof_url text,
+  release_to_name text,
+  release_address text,
   CONSTRAINT mailroom_packages_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
   CONSTRAINT mailroom_packages_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)
@@ -70,7 +72,6 @@ CREATE TABLE public.mailroom_registrations (
   full_name text NOT NULL,
   email text NOT NULL,
   mobile numeric NOT NULL,
-  telephone numeric,
   mailroom_status boolean DEFAULT true,
   mailroom_code text,
   auto_renew boolean DEFAULT true,
@@ -95,7 +96,7 @@ CREATE TABLE public.notifications (
   user_id uuid NOT NULL,
   title text NOT NULL,
   message text NOT NULL,
-  type text CHECK (type = ANY (ARRAY['PACKAGE_ARRIVED'::text, 'PACKAGE_RELEASED'::text, 'PACKAGE_DISPOSED'::text, 'SCAN_READY'::text, 'SYSTEM'::text])),
+  type text CHECK (type = ANY (ARRAY['PACKAGE_ARRIVED'::text, 'PACKAGE_RELEASED'::text, 'PACKAGE_DISPOSED'::text, 'SCAN_READY'::text, 'SYSTEM'::text, 'REWARD_PROCESSING'::text, 'REWARD_PAID'::text])),
   is_read boolean DEFAULT false,
   link text,
   created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -121,9 +122,23 @@ CREATE TABLE public.rewards_claims (
   referral_count integer NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   processed_at timestamp with time zone,
-  processed_by uuid,
+  proof_path text,
   CONSTRAINT rewards_claims_pkey PRIMARY KEY (id),
   CONSTRAINT rewards_claims_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.user_addresses (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  label text,
+  line1 text NOT NULL,
+  line2 text,
+  city text,
+  region text,
+  postal text,
+  is_default boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_addresses_pkey PRIMARY KEY (id),
+  CONSTRAINT user_addresses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
