@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR, { mutate } from "swr";
 import {
   Box,
@@ -106,6 +106,15 @@ export default function DashboardNav() {
 
   const notifications: Notification[] = Array.isArray(data) ? data : [];
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  // Ensure we fetch once when the swrKey becomes available (prevents delayed empty UI)
+  const hasFetchedRef = useRef(false);
+  useEffect(() => {
+    if (swrKey && !hasFetchedRef.current) {
+      mutate(swrKey);
+      hasFetchedRef.current = true;
+    }
+  }, [swrKey]);
 
   // Realtime subscription: mutate SWR cache on INSERT so list updates immediately
   useEffect(() => {
