@@ -76,7 +76,7 @@ interface AssignedLocker {
 
 interface Package {
   id: string;
-  tracking_number: string;
+  package_name: string;
   registration_id: string;
   locker_id?: string | null;
   package_type: "Document" | "Parcel";
@@ -123,7 +123,7 @@ export default function MailroomPackages() {
   const [opened, { open, close }] = useDisclosure(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
-    tracking_number: "",
+    package_name: "",
     registration_id: "",
     locker_id: "",
     package_type: "", // CHANGED: Default to empty string to force selection
@@ -318,7 +318,7 @@ export default function MailroomPackages() {
       }
 
       setFormData({
-        tracking_number: pkg.tracking_number,
+        package_name: pkg.package_name,
         registration_id: pkg.registration_id,
         locker_id: pkg.locker_id || "",
         package_type: pkg.package_type,
@@ -329,7 +329,7 @@ export default function MailroomPackages() {
       setEditingPackage(null);
       setLockerCapacity("Normal");
       setFormData({
-        tracking_number: "",
+        package_name: "",
         registration_id: "",
         locker_id: "",
         package_type: "Parcel",
@@ -384,7 +384,7 @@ export default function MailroomPackages() {
 
   const handleSubmit = async () => {
     if (
-      !formData.tracking_number ||
+      !formData.package_name ||
       !formData.registration_id ||
       !formData.package_type ||
       !formData.status
@@ -473,7 +473,7 @@ export default function MailroomPackages() {
 
     try {
       const payload = {
-        tracking_number: packageToDispose.tracking_number,
+        package_name: packageToDispose.package_name,
         registration_id: packageToDispose.registration_id,
         locker_id: packageToDispose.locker_id,
         package_type: packageToDispose.package_type,
@@ -638,7 +638,7 @@ export default function MailroomPackages() {
   const filteredPackages = packages.filter((p) => {
     const q = search.toLowerCase();
     const matchesSearch =
-      p.tracking_number.toLowerCase().includes(q) ||
+      p.package_name.toLowerCase().includes(q) ||
       p.registration?.full_name.toLowerCase().includes(q) ||
       p.registration?.email.toLowerCase().includes(q) ||
       p.status.toLowerCase().includes(q) ||
@@ -803,12 +803,12 @@ export default function MailroomPackages() {
           onRecordsPerPageChange={setPageSize}
           columns={[
             {
-              accessor: "tracking_number",
-              title: "Tracking #",
-              width: 150,
-              render: ({ tracking_number }) => (
+              accessor: "package_name",
+              title: "Package",
+              width: 200,
+              render: ({ package_name }) => (
                 <Text fw={500} size="sm">
-                  {tracking_number}
+                  {package_name}
                 </Text>
               ),
             },
@@ -984,14 +984,14 @@ export default function MailroomPackages() {
           )}
 
           <TextInput
-            label="Tracking Number"
-            placeholder="e.g. TN-123456"
+            label="Package Name"
+            placeholder="e.g. My Parcel / Order #1234"
             required
-            value={formData.tracking_number}
+            value={formData.package_name}
             onChange={(e) =>
               setFormData({
                 ...formData,
-                tracking_number: e.currentTarget.value,
+                package_name: e.currentTarget.value,
               })
             }
           />
@@ -1216,7 +1216,7 @@ export default function MailroomPackages() {
 
           <Text size="sm">
             Upload Proof of Release (Photo/Signature) for{" "}
-            <b>{packageToRelease?.tracking_number}</b>.
+            <b>{packageToRelease?.package_name}</b>.
           </Text>
           <FileInput
             label="Proof Image"
@@ -1371,7 +1371,7 @@ export default function MailroomPackages() {
 
           <Alert color="red" icon={<IconTrash size={16} />}>
             Are you sure you want to mark{" "}
-            <b>{packageToDispose?.tracking_number}</b> as DISPOSED? This action
+            <b>{packageToDispose?.package_name}</b> as DISPOSED? This action
             cannot be undone.
           </Alert>
 

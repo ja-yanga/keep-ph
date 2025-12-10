@@ -100,8 +100,8 @@ export default function UserPackages({
         const map: Record<string, string> = {};
         scansArr.forEach((s: any) => {
           const file = s.file_url;
-          const tracking = s.package?.tracking_number;
-          if (tracking) map[tracking] = file;
+          const pkgName = s.package?.package_name;
+          if (pkgName) map[pkgName] = file;
           if (s.package_id) map[s.package_id] = file;
         });
 
@@ -152,7 +152,7 @@ export default function UserPackages({
     if (!q) return activePackages;
     return activePackages.filter(
       (pkg) =>
-        (pkg.tracking_number?.toLowerCase().includes(q) ?? false) ||
+        (pkg.package_name?.toLowerCase().includes(q) ?? false) ||
         (pkg.package_type?.toLowerCase().includes(q) ?? false)
     );
   }, [activePackages, search]);
@@ -162,7 +162,7 @@ export default function UserPackages({
     if (!q) return historyPackages;
     return historyPackages.filter(
       (pkg) =>
-        (pkg.tracking_number?.toLowerCase().includes(q) ?? false) ||
+        (pkg.package_name?.toLowerCase().includes(q) ?? false) ||
         (pkg.package_type?.toLowerCase().includes(q) ?? false)
     );
   }, [historyPackages, search]);
@@ -344,7 +344,7 @@ export default function UserPackages({
 
   // --- Render Component for a Single Package Card ---
   const PackageCard = ({ pkg }: { pkg: any }) => {
-    const tracking = pkg.tracking_number || "—";
+    const packageName = pkg.package_name || "—";
     const type = pkg.package_type || "Parcel";
     const status = pkg.status || "STORED";
     const receivedDate = pkg.received_at;
@@ -367,7 +367,7 @@ export default function UserPackages({
       pkg.scan_url ||
       pkg.digital_scan_url ||
       pkg.scanned_file_url ||
-      scanMap[pkg.tracking_number] ||
+      scanMap[pkg.package_name] ||
       scanMap[pkg.id] ||
       null;
     const hasScan = Boolean(scanUrl);
@@ -395,7 +395,7 @@ export default function UserPackages({
             </ThemeIcon>
             <Box>
               <Text fw={600} size="sm" lh={1.2}>
-                {tracking}
+                {packageName}
               </Text>
               <Text size="xs" c="dimmed">
                 {type}
@@ -635,7 +635,7 @@ export default function UserPackages({
           {/* --- SEARCH BAR --- */}
           <Box mb="md">
             <TextInput
-              placeholder="Search by tracking number or package type..."
+              placeholder="Search by package name or package type..."
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
               leftSection={<IconSearch size={16} />}

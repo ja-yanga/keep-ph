@@ -55,7 +55,7 @@ interface Scan {
   file_size_mb: number;
   uploaded_at: string;
   package?: {
-    tracking_number?: string;
+    package_name?: string;
     id?: string;
   };
   package_id?: string;
@@ -244,9 +244,9 @@ export default function AllUserScans() {
       list = list.filter((s) => {
         const name = (s.file_name || "").toLowerCase();
 
-        const tracking = (s.package?.tracking_number || "").toLowerCase();
+        const pkgName = (s.package?.package_name || "").toLowerCase();
         const pkgId = (s.package_id || "").toLowerCase();
-        return name.includes(q) || tracking.includes(q) || pkgId.includes(q);
+        return name.includes(q) || pkgName.includes(q) || pkgId.includes(q);
       });
     }
 
@@ -311,7 +311,7 @@ export default function AllUserScans() {
         {/* Controls: search */}
         <Group gap="lg" align="center" mb="md">
           <TextInput
-            placeholder="Search files, tracking number"
+            placeholder="Search files, package name"
             size="sm"
             leftSection={<IconSearch size={16} />}
             value={search}
@@ -391,10 +391,10 @@ export default function AllUserScans() {
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        {s.package?.tracking_number ? (
-                          <Tooltip label="Tracking Number" withArrow>
+                        {s.package?.package_name ? (
+                          <Tooltip label="Package" withArrow>
                             <Badge variant="outline" color="gray" size="sm">
-                              {s.package.tracking_number}
+                              {s.package.package_name}
                             </Badge>
                           </Tooltip>
                         ) : (

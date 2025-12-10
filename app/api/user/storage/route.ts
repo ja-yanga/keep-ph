@@ -65,7 +65,7 @@ export async function GET(request: Request) {
           *,
           package:mailroom_packages!inner(
             id,
-            tracking_number,
+            package_name,
             registration_id
           )
         `

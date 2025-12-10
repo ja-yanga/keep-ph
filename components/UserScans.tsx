@@ -38,7 +38,7 @@ interface Scan {
   file_size_mb: number;
   uploaded_at: string;
   package?: {
-    tracking_number: string;
+    package_name: string;
   };
 }
 
@@ -92,14 +92,14 @@ export default function UserScans({ registrationId }: UserScansProps) {
     fetchScans();
   }, [fetchScans]);
 
-  // filtered scans by search (file name or tracking number)
+  // filtered scans by search (file name or package_name)
   const filteredScans = useMemo(() => {
     const q = (search || "").trim().toLowerCase();
     if (!q) return scans;
     return scans.filter((s) => {
       const fileName = (s.file_name || "").toLowerCase();
-      const tracking = (s.package?.tracking_number || "").toLowerCase();
-      return fileName.includes(q) || tracking.includes(q);
+      const pkgName = (s.package?.package_name || "").toLowerCase();
+      return fileName.includes(q) || pkgName.includes(q);
     });
   }, [scans, search]);
 
@@ -168,7 +168,7 @@ export default function UserScans({ registrationId }: UserScansProps) {
         {/* Search (same behavior as UserPackages) */}
         <Box mb="md">
           <TextInput
-            placeholder="Search by file name or tracking number..."
+            placeholder="Search by file name or package name..."
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
@@ -242,7 +242,7 @@ export default function UserScans({ registrationId }: UserScansProps) {
                       <Table.Td>
                         {scan.package ? (
                           <Badge variant="outline" color="gray" size="sm">
-                            {scan.package.tracking_number || "No Tracking"}
+                            {scan.package.package_name || "No Package"}
                           </Badge>
                         ) : (
                           <Text size="sm" c="dimmed">
