@@ -11,15 +11,92 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File;
-    const packageId = formData.get("packageId") as string;
-    const lockerStatus = formData.get("lockerStatus") as string;
+    const file = formData.get("file") as File | null;
+    const packageId = formData.get("packageId") as string | null;
+    const lockerStatus = formData.get("lockerStatus") as string | null;
+    const notes = (formData.get("notes") as string) || null;
+    const selectedAddressId =
+      (formData.get("selectedAddressId") as string) || null;
 
     if (!file || !packageId) {
       return NextResponse.json(
         { error: "Missing file or package ID" },
         { status: 400 }
       );
+    }
+
+    // Fetch package early to get registration_id for address validation & notification
+    const { data: pkgRow, error: pkgRowErr } = await supabaseAdmin
+      .from("mailroom_packages")
+      .select("id, registration_id, tracking_number")
+      .eq("id", packageId)
+      .single();
+
+    if (pkgRowErr || !pkgRow) {
+      return NextResponse.json({ error: "Package not found" }, { status: 404 });
+    }
+
+    // Lookup registration to get the owning user_id
+    const { data: registrationRow, error: registrationErr } =
+      await supabaseAdmin
+        .from("mailroom_registrations")
+        .select("id, user_id, full_name, mobile")
+        .eq("id", pkgRow.registration_id)
+        .single();
+
+    if (registrationErr || !registrationRow) {
+      console.warn(
+        "[release] registration not found for package",
+        pkgRow.id,
+        pkgRow.registration_id
+      );
+    }
+
+    // If selectedAddressId was provided, validate ownership and prepare snapshot fields
+    let releaseAddressId: string | null = null;
+    let releaseAddressText: string | null = null;
+    let releaseToName: string | null = null;
+
+    if (selectedAddressId) {
+      console.debug("[release] selectedAddressId:", selectedAddressId);
+      const { data: addr, error: addrErr } = await supabaseAdmin
+        .from("user_addresses")
+        .select(
+          "id, user_id, label, contact_name, line1, line2, city, region, postal, is_default"
+        )
+        .eq("id", selectedAddressId)
+        .single();
+
+      console.debug("[release] address query result:", { addr, addrErr });
+
+      if (addrErr || !addr) {
+        return NextResponse.json(
+          { error: "Selected address not found" },
+          { status: 400 }
+        );
+      }
+
+      // Ensure address belongs to the registration's user
+      const ownerUserId = registrationRow?.user_id ?? null;
+      if (ownerUserId && String(addr.user_id) !== String(ownerUserId)) {
+        return NextResponse.json(
+          { error: "Address does not belong to this registration's user" },
+          { status: 403 }
+        );
+      }
+
+      releaseAddressId = addr.id;
+      releaseToName = addr.contact_name ?? null;
+      releaseAddressText = [
+        addr.label ?? "",
+        addr.line1 ?? "",
+        addr.line2 ?? "",
+        addr.city ?? "",
+        addr.region ?? "",
+        addr.postal ?? "",
+      ]
+        .filter(Boolean)
+        .join(", ");
     }
 
     const BUCKET_NAME = "mailroom_proofs";
@@ -51,14 +128,23 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(fileName);
 
-    // 2. Update Package Status
+    // 2. Update Package Status and snapshot release address/name if provided
+    const updatePayload: any = {
+      status: "RELEASED",
+      image_url: publicUrl,
+      mailroom_full: false,
+    };
+
+    if (notes) updatePayload.notes = notes;
+    if (releaseAddressId) {
+      updatePayload.release_address_id = releaseAddressId;
+      updatePayload.release_address = releaseAddressText;
+    }
+    if (releaseToName) updatePayload.release_to_name = releaseToName;
+
     const { data: pkg, error: updateError } = await supabaseAdmin
       .from("mailroom_packages")
-      .update({
-        status: "RELEASED",
-        image_url: publicUrl,
-        mailroom_full: false,
-      })
+      .update(updatePayload)
       .eq("id", packageId)
       .select()
       .single();

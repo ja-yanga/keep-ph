@@ -19,6 +19,7 @@ import {
   Box,
   Divider,
   TextInput,
+  Select,
   useMantineTheme,
 } from "@mantine/core";
 import {
@@ -33,8 +34,10 @@ import {
   IconInbox,
   IconFileText,
   IconSearch,
+  IconEdit,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
+import { useSession } from "@/components/SessionProvider";
 
 interface UserPackagesProps {
   packages: any[];
@@ -83,6 +86,7 @@ export default function UserPackages({
     let mounted = true;
     (async () => {
       try {
+        // existing scans logic
         const res = await fetch(
           `/api/user/scans?registrationId=${encodeURIComponent(
             registrationId
@@ -172,6 +176,15 @@ export default function UserPackages({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // addresses / release fields
+  const [addresses, setAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
+    null
+  );
+  const [releaseToName, setReleaseToName] = useState<string>("");
+  // recipient is not editable in modal — derived from selected address.contact_name or package user
+  const { session } = useSession();
+
   // Image Preview State
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -183,13 +196,53 @@ export default function UserPackages({
   ) => {
     setSelectedPackage(pkg);
     setActionType(type);
-    // prefill notes only for release so user can edit existing note if present
-    setNotes(type === "RELEASE" ? pkg?.notes || "" : "");
+    // prefill notes only for non-release actions; release will use addresses + name
+    setNotes(type === "RELEASE" ? "" : pkg?.notes || "");
+    // prefill release-related fields when requesting release
+    if (type === "RELEASE") {
+      // prefill from package snapshot, fallback to user's name; do not force editing
+      const userName =
+        `${pkg?.user?.first_name ?? ""} ${pkg?.user?.last_name ?? ""}`.trim() ||
+        "";
+      setReleaseToName(pkg?.release_to_name ?? userName);
+      // selectedAddressId will be set after addresses load; set a tentative value
+      setSelectedAddressId(pkg?.release_address_id ?? null);
+    } else {
+      setReleaseToName("");
+      setSelectedAddressId(null);
+    }
     setActionModalOpen(true);
   };
 
   const submitAction = async () => {
     if (!selectedPackage || !actionType) return;
+
+    // For RELEASE: derive a final name from (in order): releaseToName, selected address contact_name, package user name.
+    let finalReleaseToName = releaseToName;
+    if (actionType === "RELEASE") {
+      if (!finalReleaseToName && selectedAddressId) {
+        const sel = addresses.find((a) => a.id === selectedAddressId);
+        finalReleaseToName = sel?.contact_name ?? finalReleaseToName;
+      }
+      if (!finalReleaseToName) {
+        const userName = `${selectedPackage?.user?.first_name ?? ""} ${
+          selectedPackage?.user?.last_name ?? ""
+        }`.trim();
+        finalReleaseToName = userName || finalReleaseToName;
+      }
+      if (!finalReleaseToName) {
+        notifications.show({
+          title: "Required field missing",
+          message:
+            "Recipient name is required. Pick an address with a contact or enter a name.",
+          color: "red",
+        });
+        return;
+      }
+      // ensure we use the resolved name going forward
+      setReleaseToName(finalReleaseToName);
+    }
+
     setSubmitting(true);
 
     try {
@@ -201,14 +254,45 @@ export default function UserPackages({
 
       if (!newStatus) return;
 
+      const body = {
+        status: newStatus,
+        ...(actionType === "RELEASE"
+          ? {
+              selected_address_id: selectedAddressId || null,
+              release_to_name: finalReleaseToName || releaseToName || null,
+            }
+          : { notes }),
+      };
+
       const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // include notes so backend can persist on mailroom_packages.notes (only meaningful for RELEASE)
-        body: JSON.stringify({ status: newStatus, notes }),
+        credentials: "include",
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) throw new Error("Failed to update package");
+
+      // Find the selected address object to populate the local state's release_address string
+      let releaseAddressString = selectedPackage.release_address || null;
+      if (actionType === "RELEASE" && selectedAddressId) {
+        const selectedAddress = addresses.find(
+          (a) => a.id === selectedAddressId
+        );
+        if (selectedAddress) {
+          // Construct a readable snapshot of the address for local state
+          releaseAddressString = [
+            selectedAddress.label || selectedAddress.contact_name,
+            selectedAddress.line1,
+            selectedAddress.line2,
+            selectedAddress.city,
+            selectedAddress.region,
+            selectedAddress.postal,
+          ]
+            .filter(Boolean)
+            .join(", ");
+        }
+      }
 
       setLocalPackages((current) =>
         current.map((p) =>
@@ -216,8 +300,11 @@ export default function UserPackages({
             ? {
                 ...p,
                 status: newStatus,
-                // persist notes locally when user submitted a release note
-                notes: actionType === "RELEASE" ? notes : p.notes,
+                // persist changes locally: release clears old notes and stores release info
+                notes: actionType === "RELEASE" ? "" : p.notes,
+                release_to_name:
+                  actionType === "RELEASE" ? releaseToName : p.release_to_name,
+                release_address: releaseAddressString, // Use the structured string
               }
             : p
         )
@@ -447,6 +534,85 @@ export default function UserPackages({
     );
   };
 
+  // add/fix effect: fetch addresses when selectedPackage changes (robust userId resolution)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!selectedPackage) {
+          if (mounted) {
+            setAddresses([]);
+            setSelectedAddressId(null);
+          }
+          return;
+        }
+
+        // resolve userId from package, fallback to session user
+        let userId: string | null =
+          selectedPackage?.user?.id ?? selectedPackage?.user_id ?? null;
+        if (!userId && session?.user?.id) userId = session.user.id;
+
+        // fallback: try reading registration -> user if registration_id exists via a registration endpoint
+        if (!userId && selectedPackage?.registration_id) {
+          try {
+            const r = await fetch(
+              `/api/registrations?id=${encodeURIComponent(
+                selectedPackage.registration_id
+              )}`,
+              { credentials: "include" }
+            );
+            if (r.ok) {
+              const j = await r.json().catch(() => ({}));
+              userId = j?.data?.user_id ?? j?.user_id ?? userId;
+            }
+          } catch (e) {
+            // ignore - fallback remains null
+          }
+        }
+
+        if (!userId) {
+          if (mounted) {
+            setAddresses([]);
+            // keep selectedAddressId as-is (might be from pkg)
+          }
+          return;
+        }
+
+        const res = await fetch(
+          `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) {
+          if (mounted) setAddresses([]);
+          return;
+        }
+        const json = await res.json().catch(() => ({}));
+        const arr = Array.isArray(json?.data) ? json.data : json || [];
+        if (!mounted) return;
+
+        setAddresses(arr);
+
+        // If package already had a release_address_id prefer that,
+        // otherwise preselect the user's default address (is_default)
+        const pkgDefaultId = selectedPackage?.release_address_id ?? null;
+        if (pkgDefaultId) {
+          setSelectedAddressId(pkgDefaultId);
+        } else {
+          const def = arr.find((a: any) => a.is_default);
+          setSelectedAddressId(def?.id ?? null);
+        }
+      } catch (e) {
+        console.error("failed to load addresses", e);
+        if (mounted) {
+          setAddresses([]);
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedPackage?.id, session?.user?.id]);
+
   return (
     <>
       <Paper p="lg" radius="md" withBorder shadow="sm">
@@ -538,15 +704,158 @@ export default function UserPackages({
               : `Are you sure you want to request to ${actionType?.toLowerCase()} this package?`}
           </Text>
 
-          {/* show additional note field only for Release requests */}
+          {/* Release Fields */}
           {actionType === "RELEASE" && (
+            <>
+              {/* IMPROVED ADDRESS SELECTOR (Required) */}
+              <Select
+                label="Shipping Address (required)"
+                placeholder="Select a saved address for shipping"
+                required
+                searchable
+                clearable={false}
+                maxDropdownHeight={320}
+                data={addresses.map((a) => ({
+                  value: a.id,
+                  label: [
+                    a.label || "Unnamed Address",
+                    a.line1,
+                    a.city,
+                    a.postal,
+                    a.is_default ? "(Default)" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
+                }))}
+                value={selectedAddressId}
+                onChange={(v) => {
+                  setSelectedAddressId(v);
+                  const sel = addresses.find((x) => x.id === v);
+                  if (sel?.contact_name) setReleaseToName(sel.contact_name);
+                }}
+                renderOption={({ option }) => {
+                  const a = addresses.find((addr) => addr.id === option.value);
+                  if (!a) return null;
+                  return (
+                    <Stack gap={2}>
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        wrap="nowrap"
+                      >
+                        <Text
+                          fw={600}
+                          size="sm"
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {a.label || "Unnamed Address"}
+                        </Text>
+                        {a.is_default && (
+                          <Badge variant="light" color="blue" size="sm">
+                            DEFAULT
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        Recipient: {a.contact_name || "N/A"}
+                      </Text>
+                      <Text size="xs" c="gray.7">
+                        {a.line1}
+                        {a.line2 ? `, ${a.line2}` : ""}
+                      </Text>
+                      <Text size="xs" c="gray.7">
+                        {[a.city, a.region, a.postal, a.country]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </Text>
+                    </Stack>
+                  );
+                }}
+              />
+
+              {/* Combined selected-address preview (includes Recipient) */}
+              <Box mt="md">
+                {selectedAddressId ? (
+                  (() => {
+                    const sel = addresses.find(
+                      (a) => a.id === selectedAddressId
+                    );
+                    if (!sel) return <Text c="dimmed">Loading address...</Text>;
+                    const fallbackUserName = `${
+                      selectedPackage?.user?.first_name ?? ""
+                    } ${selectedPackage?.user?.last_name ?? ""}`.trim();
+                    return (
+                      <Paper withBorder p="sm" radius="md" bg="gray.0">
+                        <Group justify="space-between" align="center">
+                          <div>
+                            <Text fw={600} size="sm">
+                              {sel.label || "Unnamed Address"}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              Recipient:{" "}
+                              {sel.contact_name || fallbackUserName || "N/A"}
+                            </Text>
+                          </div>
+                          {sel.is_default && (
+                            <Badge
+                              ml="xs"
+                              size="xs"
+                              color="blue"
+                              variant="light"
+                            >
+                              Default
+                            </Badge>
+                          )}
+                        </Group>
+
+                        <Text size="sm" c="dimmed" mt="8px">
+                          {sel.line1}
+                          {sel.line2 ? `, ${sel.line2}` : ""}
+                        </Text>
+                        <Text size="sm" c="dimmed">
+                          {[sel.city, sel.region, sel.postal, sel.country]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </Text>
+                        {sel.contact_phone && (
+                          <Text size="xs" c="dimmed" mt="4px">
+                            Phone: {sel.contact_phone}
+                          </Text>
+                        )}
+                      </Paper>
+                    );
+                  })()
+                ) : selectedPackage?.release_address ? (
+                  <Paper withBorder p="sm" radius="md" bg="gray.0">
+                    <Text fw={600} size="sm">
+                      Saved release snapshot
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      {selectedPackage.release_address}
+                    </Text>
+                    {selectedPackage.release_to_name && (
+                      <Text size="xs" c="dimmed" mt="4px">
+                        Recipient: {selectedPackage.release_to_name}
+                      </Text>
+                    )}
+                  </Paper>
+                ) : (
+                  <Text c="dimmed">No shipping address selected.</Text>
+                )}
+              </Box>
+            </>
+          )}
+
+          {/* Note section for other actions */}
+          {["DISPOSE", "SCAN"].includes(actionType!) && (
             <Textarea
-              placeholder="Add an optional note for the release (e.g. recipient name, pickup instructions)"
-              label="Release Note"
+              label="Notes (Optional)"
+              placeholder="Add any specific instructions for the admin."
               value={notes}
               onChange={(e) => setNotes(e.currentTarget.value)}
-              autosize
-              minRows={3}
             />
           )}
 
@@ -554,7 +863,13 @@ export default function UserPackages({
             <Button variant="default" onClick={() => setActionModalOpen(false)}>
               Cancel
             </Button>
-            <Button color="blue" onClick={submitAction} loading={submitting}>
+            <Button
+              color="blue"
+              onClick={submitAction}
+              loading={submitting}
+              // Disable if it's a release action and no shipping address selected
+              disabled={actionType === "RELEASE" && !selectedAddressId}
+            >
               Confirm
             </Button>
           </Group>

@@ -12,22 +12,25 @@ import {
   Text,
   Badge,
   Loader,
-  Grid, // ADDED: Grid for better form layout
-  Card, // CHANGED: Using Card for better address visualization
-  Checkbox, // ADDED: Checkbox for is_default
+  Grid,
+  Card,
+  Checkbox,
+  Divider, // Added Divider for visual separation in the card
 } from "@mantine/core";
 import {
   IconPlus,
   IconTrash,
   IconEdit,
-  IconMapPin, // Added for visual context
+  IconMapPin,
+  IconUser, // Added for Contact Name context
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 
-// Helper type for address data consistency
+// Helper type for address data consistency - UPDATED to include contact_name
 interface Address {
   id: string;
   label: string;
+  contact_name: string; // NEW FIELD
   line1: string;
   line2: string;
   city: string;
@@ -40,6 +43,7 @@ interface Address {
 const initialFormState: Address = {
   id: "",
   label: "",
+  contact_name: "", // NEW FIELD
   line1: "",
   line2: "",
   city: "",
@@ -53,6 +57,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Address | null>(null);
+  // Using the typed initialFormState ensures consistency
   const [form, setForm] = useState<Address>(initialFormState);
 
   const load = async () => {
@@ -88,29 +93,36 @@ export default function AccountAddresses({ userId }: { userId: string }) {
 
   const openEdit = (a: Address) => {
     setEditing(a);
-    // Use spread to copy all properties, including id and user_id for context
+    // Use spread to copy all properties
     setForm({ ...a });
     setModalOpen(true);
   };
 
   const save = async () => {
-    if (!form.line1 || !form.city || !form.region) {
+    // UPDATED VALIDATION
+    if (
+      !form.label ||
+      !form.contact_name ||
+      !form.line1 ||
+      !form.city ||
+      !form.region
+    ) {
       notifications.show({
         title: "Required fields missing",
-        message: "Address line 1, City, and Region are required.",
+        message:
+          "Label, Contact Name, Address line 1, City, and Region are required.",
         color: "red",
       });
       return;
     }
 
-    // Set loading state for the button
     setLoading(true);
 
     try {
       const payload: any = {
         ...form,
-        // Ensure label is saved, defaulting to 'Address'
-        label: form.label?.trim() || (editing ? editing.label : "Address"),
+        // Ensure label is saved
+        label: form.label.trim(),
         user_id: userId,
         // Ensure is_default is always a boolean
         is_default: !!form.is_default,
@@ -149,7 +161,6 @@ export default function AccountAddresses({ userId }: { userId: string }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Save failed");
 
-      // 1. SUCCESS NOTIFICATION REFINEMENT
       notifications.show({
         title: "Success",
         message: editing
@@ -252,7 +263,25 @@ export default function AccountAddresses({ userId }: { userId: string }) {
                       )}
                     </Group>
 
-                    {/* Line 1 and 2 */}
+                    {/* ADDED Contact Name for clarity */}
+                    {a.contact_name && (
+                      <Group gap={4}>
+                        <IconUser
+                          size={14}
+                          style={{ color: "var(--mantine-color-gray-6)" }}
+                        />
+                        <Text size="sm" c="dimmed" style={{ lineHeight: 1.4 }}>
+                          Recipient:{" "}
+                          <Text span fw={500} inherit>
+                            {a.contact_name}
+                          </Text>
+                        </Text>
+                      </Group>
+                    )}
+
+                    <Divider mt={5} mb={5} />
+
+                    {/* Address Lines */}
                     <Text size="sm" style={{ lineHeight: 1.4 }}>
                       {a.line1}
                       {a.line2 && <>, {a.line2}</>}
@@ -261,7 +290,6 @@ export default function AccountAddresses({ userId }: { userId: string }) {
                     {/* City, Region, Postal */}
                     <Text size="sm" c="dimmed" style={{ lineHeight: 1.4 }}>
                       {[a.city, a.region, a.postal].filter(Boolean).join(", ")}
-                      {/* You might add "Philippines" here if applicable */}
                     </Text>
                   </Stack>
 
@@ -306,15 +334,28 @@ export default function AccountAddresses({ userId }: { userId: string }) {
         size="lg" // Larger modal for the form
       >
         <Stack gap="md">
-          {/* Label and Address Lines */}
+          {/* Label (Required for identification) */}
           <TextInput
-            label="Label (e.g., Home, Office)"
+            label="Address Label (e.g., Home, Office)"
             placeholder="A short name for this location"
             value={form.label}
             onChange={(e) => setForm({ ...form, label: e.currentTarget.value })}
-            description="This helps you quickly identify the address."
+            description="A label helps you quickly identify this address later."
             required
           />
+          {/* Contact Name (Recipient) */}
+          <TextInput
+            label="Contact Name (Recipient)"
+            placeholder="Name of the person receiving the delivery"
+            value={form.contact_name}
+            onChange={(e) =>
+              setForm({ ...form, contact_name: e.currentTarget.value })
+            }
+            required
+          />
+          <Divider my="xs" />
+
+          {/* Address Lines */}
           <TextInput
             label="Address Line 1 (Street/Brgy/House No.)"
             placeholder="House/Unit Number, Street, Barangay"
@@ -354,7 +395,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 4 }}>
-              {/* 2. POSTAL CODE IMPROVEMENT */}
+              {/* Postal Code uses numeric input mode */}
               <TextInput
                 label="Postal Code"
                 placeholder="e.g., 1100"
@@ -362,8 +403,8 @@ export default function AccountAddresses({ userId }: { userId: string }) {
                 onChange={(e) =>
                   setForm({ ...form, postal: e.currentTarget.value })
                 }
-                type="number" // Restricts input type
-                inputMode="numeric" // Prompts numeric keyboard on mobile
+                type="number"
+                inputMode="numeric"
                 required
               />
             </Grid.Col>
@@ -382,7 +423,18 @@ export default function AccountAddresses({ userId }: { userId: string }) {
             <Button variant="default" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={save} loading={loading}>
+            <Button
+              onClick={save}
+              loading={loading}
+              disabled={
+                loading ||
+                !form.label ||
+                !form.contact_name ||
+                !form.line1 ||
+                !form.city ||
+                !form.region
+              }
+            >
               Save Address
             </Button>
           </Group>

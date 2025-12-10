@@ -15,7 +15,9 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabaseAdmin
       .from("user_addresses")
-      .select("*")
+      .select(
+        "id,user_id,label,contact_name,line1,line2,city,region,postal,is_default,created_at"
+      )
       .eq("user_id", userId)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: false });
@@ -34,8 +36,17 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { user_id, label, line1, line2, city, region, postal, is_default } =
-      body;
+    const {
+      user_id,
+      label,
+      contact_name,
+      line1,
+      line2,
+      city,
+      region,
+      postal,
+      is_default,
+    } = body;
     if (!user_id || !line1)
       return NextResponse.json(
         { error: "user_id and line1 required" },
@@ -55,6 +66,7 @@ export async function POST(req: Request) {
         {
           user_id,
           label: label || null,
+          contact_name: contact_name || null,
           line1,
           line2: line2 || null,
           city: city || null,

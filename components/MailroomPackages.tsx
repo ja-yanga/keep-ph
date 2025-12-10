@@ -8,6 +8,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Modal,
@@ -85,6 +86,10 @@ interface Package {
   received_at: string;
   registration?: Registration;
   locker?: Locker;
+  // Release/address snapshot fields
+  release_address_id?: string | null;
+  release_address?: string | null;
+  release_to_name?: string | null;
 }
 
 const PACKAGE_TYPES = ["Document", "Parcel"];
@@ -139,8 +144,11 @@ export default function MailroomPackages() {
     null
   );
   const [isReleasing, setIsReleasing] = useState(false);
-  // ADDED: admin note for release modal
   const [releaseNote, setReleaseNote] = useState<string>("");
+  const [addresses, setAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
+    null
+  );
 
   const [disposeModalOpen, setDisposeModalOpen] = useState(false);
   const [packageToDispose, setPackageToDispose] = useState<Package | null>(
@@ -535,18 +543,58 @@ export default function MailroomPackages() {
   };
 
   // --- RELEASE HANDLERS ---
-  const handleOpenRelease = (pkg: Package) => {
+  const handleOpenRelease = async (pkg: Package) => {
     setPackageToRelease(pkg);
     setReleaseFile(null);
-    // Default to "Normal" or "Empty" when releasing
     setLockerCapacity("Normal");
-    // Prefill admin note if present on package
     setReleaseNote(pkg?.notes || "");
     setReleaseModalOpen(true);
+
+    // fetch saved addresses for the registration's user
+    try {
+      setAddresses([]);
+      setSelectedAddressId(null);
+      const userId = pkg?.registration_id; // adapt if registration maps to user_id differently
+      if (!userId) return;
+      const res = await fetch(
+        `/api/user/addresses?userId=${encodeURIComponent(userId)}`
+      );
+      if (!res.ok) return;
+      const json = await res.json().catch(() => ({}));
+      const arr = Array.isArray(json?.data) ? json.data : json || [];
+      setAddresses(arr);
+      // preselect package snapshot or default
+      if (pkg.release_address_id) {
+        setSelectedAddressId(pkg.release_address_id);
+      } else {
+        const def = arr.find((a: any) => a.is_default);
+        setSelectedAddressId(def?.id ?? null);
+      }
+    } catch (e) {
+      console.error("failed to load addresses for release modal", e);
+    }
   };
 
   const handleSubmitRelease = async () => {
     if (!releaseFile || !packageToRelease) return;
+    // Determine final address id to send:
+    // priority: selectedAddressId (if previously set) -> package snapshot -> user's default address
+    const finalAddressId =
+      selectedAddressId ??
+      packageToRelease?.release_address_id ??
+      addresses.find((a) => a.is_default)?.id ??
+      null;
+
+    if (!finalAddressId) {
+      notifications.show({
+        title: "Address required",
+        message:
+          "No shipping address available for this package. Add a default address for the user or set a release address first.",
+        color: "red",
+      });
+      return;
+    }
+
     setIsReleasing(true);
     setFormError(null);
 
@@ -555,8 +603,16 @@ export default function MailroomPackages() {
       formData.append("file", releaseFile);
       formData.append("packageId", packageToRelease.id);
       formData.append("lockerStatus", lockerCapacity);
-      // include admin note to persist on mailroom_packages.notes
       if (releaseNote) formData.append("notes", releaseNote);
+      formData.append("selectedAddressId", finalAddressId);
+      // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
+      const sel = addresses.find((a) => a.id === finalAddressId);
+      const snapshotName =
+        packageToRelease.release_to_name ??
+        sel?.contact_name ??
+        packageToRelease?.registration?.full_name ??
+        "";
+      if (snapshotName) formData.append("release_to_name", snapshotName);
 
       const res = await fetch("/api/admin/mailroom/release", {
         method: "POST",
@@ -1171,15 +1227,71 @@ export default function MailroomPackages() {
             leftSection={<IconUpload size={16} />}
           />
 
-          {/* NEW: Admin note for release (persist to mailroom_packages.notes) */}
-          <Textarea
-            label="Release Notes"
-            placeholder="Optional note for this release (e.g. recipient name, remarks)..."
-            value={releaseNote}
-            onChange={(e) => setReleaseNote(e.currentTarget.value)}
-            minRows={2}
-            readOnly
-          />
+          {/* Show saved release snapshot if available, otherwise show user's default address (read-only preview) */}
+          <Box mt="sm">
+            {packageToRelease?.release_address ? (
+              <Paper withBorder p="sm" radius="md" bg="gray.0">
+                <Text fw={600} size="sm">
+                  Saved release snapshot
+                </Text>
+                <Text size="sm" c="dimmed" mt="6px">
+                  {packageToRelease.release_address}
+                </Text>
+                {packageToRelease.release_to_name && (
+                  <Text size="xs" c="dimmed" mt="6px">
+                    Recipient: {packageToRelease.release_to_name}
+                  </Text>
+                )}
+              </Paper>
+            ) : (
+              (() => {
+                const def = addresses.find((a) => a.is_default) ?? addresses[0];
+                if (def) {
+                  return (
+                    <Paper withBorder p="sm" radius="md" bg="gray.0">
+                      <Group justify="space-between" align="center">
+                        <div>
+                          <Text fw={600} size="sm">
+                            {def.label || "Unnamed Address"}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Recipient:{" "}
+                            {def.contact_name ||
+                              packageToRelease?.registration?.full_name ||
+                              "N/A"}
+                          </Text>
+                        </div>
+                        {def.is_default && (
+                          <Badge ml="xs" size="xs" color="blue" variant="light">
+                            Default
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text size="sm" c="dimmed" mt="8px">
+                        {def.line1}
+                        {def.line2 ? `, ${def.line2}` : ""}
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        {[def.city, def.region, def.postal]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </Text>
+                      {def.contact_phone && (
+                        <Text size="xs" c="dimmed" mt="4px">
+                          Phone: {def.contact_phone}
+                        </Text>
+                      )}
+                    </Paper>
+                  );
+                }
+                return (
+                  <Text c="dimmed">
+                    No shipping address on file for this user.
+                  </Text>
+                );
+              })()
+            )}
+          </Box>
 
           {/* NEW: Locker Status Selector */}
           <Stack gap={4} mt="xs">
