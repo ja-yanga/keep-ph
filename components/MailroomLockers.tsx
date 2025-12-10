@@ -143,32 +143,24 @@ export default function MailroomLockers() {
     isValidating: assignedValidating,
   } = useSWR(assignedKey, fetcher, { revalidateOnFocus: true });
 
-  // derive arrays from responses (support { data: [...] } or bare arrays)
-  const lockersArr =
-    Array.isArray(lockersData) ||
-    Array.isArray(lockersData?.data) ||
-    (lockersData && typeof lockersData === "object")
-      ? lockersData
-      : [];
-  const locationsArr =
-    Array.isArray(locationsData) ||
-    Array.isArray(locationsData?.data) ||
-    (locationsData && typeof locationsData === "object")
-      ? locationsData
-      : [];
-  const assignedArr =
-    Array.isArray(assignedData) ||
-    Array.isArray(assignedData?.data) ||
-    (assignedData && typeof assignedData === "object")
-      ? assignedData
-      : [];
+  // normalize API responses: support either an array or { data: [...] } shape
+  const toArray = (res: any) => {
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.data)) return res.data;
+    return [];
+  };
+
+  const lockersArr = toArray(lockersData);
+  const locationsArr = toArray(locationsData);
+  const assignedArr = toArray(assignedData);
 
   // sync into local state and keep loading state in sync with SWR
   useEffect(() => {
     setLoading(lockersValidating || locationsValidating || assignedValidating);
-    if (lockersArr.length) setLockers(lockersArr);
-    if (locationsArr.length) setLocations(locationsArr);
-    if (assignedArr.length) setAssignedLockers(assignedArr);
+    // always sync normalized arrays into local state
+    setLockers(lockersArr);
+    setLocations(locationsArr);
+    setAssignedLockers(assignedArr);
 
     // auto-fix ghost lockers (preserve previous behavior)
     if (lockersArr.length && assignedArr.length) {
@@ -686,6 +678,8 @@ export default function MailroomLockers() {
               setFormData({ ...formData, location_id: val || "" })
             }
             required
+            // disable location change when editing an existing locker
+            disabled={!!editingLocker}
           />
 
           {activeAssignment && (
