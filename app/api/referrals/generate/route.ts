@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "crypto";
 
 // Admin client for database operations (bypassing RLS)
 const supabaseAdmin = createClient(
@@ -50,10 +51,8 @@ export async function POST(req: Request) {
     }
 
     // 3. Generate new code if none exists
-    const code = `KEEP-${Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()}`;
+    // generate 8-hex-char code (base-16), uppercase, no prefix
+    const code = randomBytes(4).toString("hex").toUpperCase();
 
     // 4. Update 'users' table
     const { error: updateError } = await supabaseAdmin
