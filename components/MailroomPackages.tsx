@@ -636,29 +636,37 @@ export default function MailroomPackages() {
 
   // --- FILTER LOGIC ---
   const filteredPackages = packages.filter((p) => {
-    const q = search.toLowerCase();
+    const q = (search || "").toLowerCase();
+
+    const pkgName = (p.package_name ?? "").toLowerCase();
+    const regName = (p.registration?.full_name ?? "").toLowerCase();
+    const regEmail = (p.registration?.email ?? "").toLowerCase();
+    const status = (p.status ?? "").toLowerCase();
+    const lockerCode = (p.locker?.locker_code ?? "").toLowerCase();
+
     const matchesSearch =
-      p.package_name.toLowerCase().includes(q) ||
-      p.registration?.full_name.toLowerCase().includes(q) ||
-      p.registration?.email.toLowerCase().includes(q) ||
-      p.status.toLowerCase().includes(q) ||
-      p.locker?.locker_code.toLowerCase().includes(q);
+      pkgName.includes(q) ||
+      regName.includes(q) ||
+      regEmail.includes(q) ||
+      status.includes(q) ||
+      lockerCode.includes(q);
 
     const matchesStatus = filterStatus ? p.status === filterStatus : true;
     const matchesType = filterType ? p.package_type === filterType : true;
 
     // Tab Logic
     if (activeTab === "requests") {
-      return p.status.includes("REQUEST");
+      return (p.status ?? "").includes("REQUEST");
     }
     if (activeTab === "active") {
-      return p.status === "STORED";
+      return (p.status ?? "") === "STORED";
     }
     if (activeTab === "released") {
-      return p.status === "RELEASED" || p.status === "RETRIEVED";
+      const s = p.status ?? "";
+      return s === "RELEASED" || s === "RETRIEVED";
     }
     if (activeTab === "disposed") {
-      return p.status === "DISPOSED";
+      return (p.status ?? "") === "DISPOSED";
     }
 
     return matchesSearch && matchesStatus && matchesType;
