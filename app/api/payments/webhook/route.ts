@@ -330,18 +330,14 @@ export async function POST(req: Request) {
             order: payOrder,
           });
 
-          // update orders table based on payment status
-          if (payAttrs?.status === "paid" && payOrder) {
-            await sb
-              .from("orders")
-              .update({ status: "paid" })
-              .eq("order_id", payOrder);
-          } else if (payAttrs?.status === "failed" && payOrder) {
-            await sb
-              .from("orders")
-              .update({ status: "payment_failed" })
-              .eq("order_id", payOrder);
-          }
+          // Orders table updates disabled — we only store canonical payments in paymongo_payments.
+          // If you later need to update an orders table, implement that here.
+          console.debug(
+            "[paymongo webhook] orders update skipped (not configured). payment status:",
+            payAttrs?.status,
+            "order_id:",
+            payOrder
+          );
         }
       } catch (err) {
         console.warn("[paymongo webhook] DB upsert/create error", err);

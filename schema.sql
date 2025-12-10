@@ -116,18 +116,6 @@ CREATE TABLE public.paymongo_payments (
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT paymongo_payments_pkey PRIMARY KEY (id)
 );
-CREATE TABLE public.paymongo_resources (
-  id text NOT NULL,
-  order_id text,
-  type text,
-  status text,
-  amount integer,
-  currency text,
-  raw jsonb,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT paymongo_resources_pkey PRIMARY KEY (id)
-);
 CREATE TABLE public.referrals_table (
   referrals_id integer NOT NULL DEFAULT nextval('referrals_table_referrals_id_seq'::regclass),
   referrals_user_id uuid,

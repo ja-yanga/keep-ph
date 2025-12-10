@@ -4,7 +4,7 @@ import { useState } from "react";
 export default function PaymongoTestPage() {
   const [amountPhp, setAmountPhp] = useState<string>("100.00");
   const [orderId, setOrderId] = useState<string>("TEST-ORDER-1");
-  const [type, setType] = useState<string>("gcash"); // default to gcash
+  // no local payment-type selection — checkout will show all enabled methods
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,8 @@ export default function PaymongoTestPage() {
           orderId,
           amount: minor,
           currency: "PHP",
-          type,
+          // ask the server to create a checkout_session that shows all enabled methods
+          show_all: true,
           successUrl: `${
             location.origin
           }/payments/test/success?order=${encodeURIComponent(orderId)}`,
@@ -43,12 +44,18 @@ export default function PaymongoTestPage() {
       const json = await res.json();
       setResult({ status: res.status, body: json });
 
-      const redirectUrl =
+      // prefer checkout_sessions.checkout_url, fall back to older redirect fields
+      const checkoutUrl =
+        json?.data?.attributes?.checkout_url ||
         json?.data?.attributes?.redirect?.checkout_url ||
         json?.data?.attributes?.redirect?.url ||
         null;
-      if (redirectUrl) {
-        setResult((r: any) => ({ ...r, redirectUrl }));
+
+      if (checkoutUrl) {
+        setResult((r: any) => ({ ...r, redirectUrl: checkoutUrl }));
+        // auto-redirect to hosted checkout (or use window.open to open new tab)
+        window.location.href = checkoutUrl;
+        return;
       }
     } catch (err: any) {
       console.error(err);
@@ -57,6 +64,12 @@ export default function PaymongoTestPage() {
       setLoading(false);
     }
   };
+
+  // derive clientKey if server returned a checkout session with an embedded payment_intent
+  const clientKey =
+    result?.body?.data?.attributes?.client_key ??
+    result?.body?.data?.attributes?.payment_intent?.attributes?.client_key ??
+    null;
 
   return (
     <main style={{ padding: 24, maxWidth: 880, margin: "0 auto" }}>
@@ -83,19 +96,6 @@ export default function PaymongoTestPage() {
             style={{ width: "100%" }}
             inputMode="decimal"
           />
-        </label>
-
-        <label>
-          Payment type
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            style={{ width: "100%" }}
-          >
-            {/* card removed temporarily */}
-            <option value="gcash">gcash</option>
-            {/* add other supported source types here if needed */}
-          </select>
         </label>
 
         <button type="submit" disabled={loading}>
@@ -139,6 +139,9 @@ export default function PaymongoTestPage() {
           </div>
         </section>
       )}
+
+      {/* Render CardForm only if server returned a payment_intent client_key and you want client-side card flow */}
+      {clientKey && <CardForm clientKey={clientKey} orderId={orderId} />}
     </main>
   );
 }
