@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR, { mutate } from "swr";
 import {
   Box,
@@ -88,21 +88,33 @@ export default function DashboardNav() {
     return data ?? [];
   };
 
-  // trigger an immediate revalidation when key becomes available
-  useEffect(() => {
-    if (swrKey) mutate(swrKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [swrKey]);
+  // don't force an additional mutate on mount — let SWR control fetching.
+  // This avoids duplicate fetches (React StrictMode + SWR can cause multiple requests).
 
-  // useSWR provides initial fetch and revalidation
+  // useSWR provides initial fetch and revalidation.
+  // Set revalidateOnMount:false and a short dedupingInterval to avoid repeated fetches on mount.
   const { data, error } = useSWR<Notification[] | undefined>(
     swrKey,
     fetchNotifications,
-    { revalidateOnFocus: true }
+    {
+      revalidateOnFocus: true,
+      revalidateOnMount: false,
+      revalidateIfStale: false,
+      dedupingInterval: 2000,
+    }
   );
 
   const notifications: Notification[] = Array.isArray(data) ? data : [];
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  // Ensure we fetch once when the swrKey becomes available (prevents delayed empty UI)
+  const hasFetchedRef = useRef(false);
+  useEffect(() => {
+    if (swrKey && !hasFetchedRef.current) {
+      mutate(swrKey);
+      hasFetchedRef.current = true;
+    }
+  }, [swrKey]);
 
   // Realtime subscription: mutate SWR cache on INSERT so list updates immediately
   useEffect(() => {

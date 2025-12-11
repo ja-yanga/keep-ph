@@ -33,7 +33,6 @@ CREATE TABLE public.mailroom_locations (
 );
 CREATE TABLE public.mailroom_packages (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  tracking_number text NOT NULL UNIQUE,
   registration_id uuid NOT NULL,
   package_type text NOT NULL CHECK (package_type = ANY (ARRAY['Document'::text, 'Parcel'::text])),
   status text NOT NULL DEFAULT 'STORED'::text CHECK (status = ANY (ARRAY['STORED'::text, 'RELEASED'::text, 'RETRIEVED'::text, 'DISPOSED'::text, 'REQUEST_TO_RELEASE'::text, 'REQUEST_TO_DISPOSE'::text, 'REQUEST_TO_SCAN'::text])),
@@ -45,6 +44,8 @@ CREATE TABLE public.mailroom_packages (
   release_proof_url text,
   release_to_name text,
   release_address text,
+  release_address_id uuid,
+  package_name text,
   CONSTRAINT mailroom_packages_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
   CONSTRAINT mailroom_packages_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)
@@ -103,6 +104,18 @@ CREATE TABLE public.notifications (
   CONSTRAINT notifications_pkey PRIMARY KEY (id),
   CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.paymongo_payments (
+  id text NOT NULL,
+  source_id text,
+  order_id text,
+  status text,
+  amount integer,
+  currency text,
+  raw jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT paymongo_payments_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.referrals_table (
   referrals_id integer NOT NULL DEFAULT nextval('referrals_table_referrals_id_seq'::regclass),
   referrals_user_id uuid,
@@ -137,6 +150,7 @@ CREATE TABLE public.user_addresses (
   postal text,
   is_default boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT now(),
+  contact_name text,
   CONSTRAINT user_addresses_pkey PRIMARY KEY (id),
   CONSTRAINT user_addresses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );

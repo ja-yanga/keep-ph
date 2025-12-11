@@ -48,7 +48,7 @@ export async function GET() {
     // 5. Recent Packages (Last 5)
     const { data: recentPackages } = await supabaseAdmin
       .from("mailroom_packages")
-      .select("id, tracking_number, received_at, status, package_type")
+      .select("id, package_name, received_at, status, package_type")
       .order("received_at", { ascending: false })
       .limit(5);
 

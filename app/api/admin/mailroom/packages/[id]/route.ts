@@ -67,17 +67,17 @@ export async function PUT(
         const code = registration.mailroom_code || "Unknown";
         let title = "Package Update";
         // CHANGED: Added Mailroom Code to messages
-        let message = `Your package (${updatedPkg.tracking_number}) at Mailroom ${code} status is now: ${packageData.status}`;
+        let message = `Your package (${updatedPkg.package_name}) at Mailroom ${code} status is now: ${packageData.status}`;
         let type: any = "SYSTEM";
 
         // Customize message based on status
         if (packageData.status === "RELEASED") {
           title = "Package Released";
-          message = `Package (${updatedPkg.tracking_number}) from Mailroom ${code} has been picked up/released.`;
+          message = `Package (${updatedPkg.package_name}) from Mailroom ${code} has been picked up/released.`;
           type = "PACKAGE_RELEASED";
         } else if (packageData.status === "DISPOSED") {
           title = "Package Disposed";
-          message = `Package (${updatedPkg.tracking_number}) from Mailroom ${code} has been disposed.`;
+          message = `Package (${updatedPkg.package_name}) from Mailroom ${code} has been disposed.`;
           type = "PACKAGE_DISPOSED";
         }
 

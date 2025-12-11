@@ -161,6 +161,12 @@ export default function AdminDashboard() {
 
   if (!stats) return null;
 
+  // defensive: ensure recentPackages is always an array
+  const recent = stats.recentPackages ?? [];
+  if (recent.length === 0) {
+    console.debug("[AdminDashboard] recentPackages is empty or missing", stats);
+  }
+
   // Calculate Locker Occupancy
   const occupancyRate =
     stats.lockerStats.total > 0
@@ -272,18 +278,18 @@ export default function AdminDashboard() {
         <Table verticalSpacing="sm" highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Tracking Number</Table.Th>
+              <Table.Th>Package</Table.Th>
               <Table.Th>Type</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th style={{ textAlign: "right" }}>Received</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {stats.recentPackages.length > 0 ? (
-              stats.recentPackages.map((pkg) => (
+            {recent.length > 0 ? (
+              recent.map((pkg) => (
                 <Table.Tr key={pkg.id}>
                   <Table.Td fw={600} c="dark.3">
-                    {pkg.tracking_number}
+                    {pkg.package_name ?? "—"}
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm">{pkg.package_type}</Text>

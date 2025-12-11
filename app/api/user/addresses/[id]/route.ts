@@ -8,12 +8,21 @@ const supabaseAdmin = createClient(
 
 export async function PUT(
   req: Request,
-  { params }: { params: Promise<{ id: string }> } // <- params is a Promise in Next App Router
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params; // unwrap here
+    const { id } = await params;
     const body = await req.json();
-    const { label, line1, line2, city, region, postal, is_default } = body;
+    const {
+      label,
+      contact_name,
+      line1,
+      line2,
+      city,
+      region,
+      postal,
+      is_default,
+    } = body;
 
     // DEBUG: log incoming request for diagnosis
     console.log("[user.addresses.PUT] id:", id);
@@ -56,6 +65,7 @@ export async function PUT(
       .from("user_addresses")
       .update({
         label: label ?? null,
+        contact_name: contact_name ?? null,
         line1,
         line2: line2 ?? null,
         city,

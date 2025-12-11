@@ -126,9 +126,24 @@ const mapDataToRows = (data: RawRow[]): Row[] => {
       r.packages.forEach((p: any) => {
         if (uniqueIds.has(p.id)) return;
         uniqueIds.add(p.id);
-        if (p.status === "STORED") stored++;
-        else if (p.status === "RELEASED") released++;
-        else if (p.status?.includes("REQUEST")) pending++;
+
+        const s = (p.status ?? "").toUpperCase();
+
+        // Count as released if fully released/retrieved
+        if (s === "RELEASED") {
+          released++;
+        }
+
+        // Count pending requests separately for any REQUEST_* statuses
+        if (s.includes("REQUEST")) {
+          pending++;
+        }
+
+        // Items are considered "in storage" unless final statuses (released/retrieved/disposed).
+        // This ensures REQUEST_TO_* still count as items in storage.
+        if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) {
+          stored++;
+        }
       });
     }
 

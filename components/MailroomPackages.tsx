@@ -8,6 +8,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Modal,
@@ -75,7 +76,7 @@ interface AssignedLocker {
 
 interface Package {
   id: string;
-  tracking_number: string;
+  package_name: string;
   registration_id: string;
   locker_id?: string | null;
   package_type: "Document" | "Parcel";
@@ -85,6 +86,10 @@ interface Package {
   received_at: string;
   registration?: Registration;
   locker?: Locker;
+  // Release/address snapshot fields
+  release_address_id?: string | null;
+  release_address?: string | null;
+  release_to_name?: string | null;
 }
 
 const PACKAGE_TYPES = ["Document", "Parcel"];
@@ -118,7 +123,7 @@ export default function MailroomPackages() {
   const [opened, { open, close }] = useDisclosure(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
-    tracking_number: "",
+    package_name: "",
     registration_id: "",
     locker_id: "",
     package_type: "", // CHANGED: Default to empty string to force selection
@@ -139,8 +144,11 @@ export default function MailroomPackages() {
     null
   );
   const [isReleasing, setIsReleasing] = useState(false);
-  // ADDED: admin note for release modal
   const [releaseNote, setReleaseNote] = useState<string>("");
+  const [addresses, setAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
+    null
+  );
 
   const [disposeModalOpen, setDisposeModalOpen] = useState(false);
   const [packageToDispose, setPackageToDispose] = useState<Package | null>(
@@ -310,7 +318,7 @@ export default function MailroomPackages() {
       }
 
       setFormData({
-        tracking_number: pkg.tracking_number,
+        package_name: pkg.package_name,
         registration_id: pkg.registration_id,
         locker_id: pkg.locker_id || "",
         package_type: pkg.package_type,
@@ -321,7 +329,7 @@ export default function MailroomPackages() {
       setEditingPackage(null);
       setLockerCapacity("Normal");
       setFormData({
-        tracking_number: "",
+        package_name: "",
         registration_id: "",
         locker_id: "",
         package_type: "Parcel",
@@ -376,7 +384,7 @@ export default function MailroomPackages() {
 
   const handleSubmit = async () => {
     if (
-      !formData.tracking_number ||
+      !formData.package_name ||
       !formData.registration_id ||
       !formData.package_type ||
       !formData.status
@@ -465,7 +473,7 @@ export default function MailroomPackages() {
 
     try {
       const payload = {
-        tracking_number: packageToDispose.tracking_number,
+        package_name: packageToDispose.package_name,
         registration_id: packageToDispose.registration_id,
         locker_id: packageToDispose.locker_id,
         package_type: packageToDispose.package_type,
@@ -535,18 +543,58 @@ export default function MailroomPackages() {
   };
 
   // --- RELEASE HANDLERS ---
-  const handleOpenRelease = (pkg: Package) => {
+  const handleOpenRelease = async (pkg: Package) => {
     setPackageToRelease(pkg);
     setReleaseFile(null);
-    // Default to "Normal" or "Empty" when releasing
     setLockerCapacity("Normal");
-    // Prefill admin note if present on package
     setReleaseNote(pkg?.notes || "");
     setReleaseModalOpen(true);
+
+    // fetch saved addresses for the registration's user
+    try {
+      setAddresses([]);
+      setSelectedAddressId(null);
+      const userId = pkg?.registration_id; // adapt if registration maps to user_id differently
+      if (!userId) return;
+      const res = await fetch(
+        `/api/user/addresses?userId=${encodeURIComponent(userId)}`
+      );
+      if (!res.ok) return;
+      const json = await res.json().catch(() => ({}));
+      const arr = Array.isArray(json?.data) ? json.data : json || [];
+      setAddresses(arr);
+      // preselect package snapshot or default
+      if (pkg.release_address_id) {
+        setSelectedAddressId(pkg.release_address_id);
+      } else {
+        const def = arr.find((a: any) => a.is_default);
+        setSelectedAddressId(def?.id ?? null);
+      }
+    } catch (e) {
+      console.error("failed to load addresses for release modal", e);
+    }
   };
 
   const handleSubmitRelease = async () => {
     if (!releaseFile || !packageToRelease) return;
+    // Determine final address id to send:
+    // priority: selectedAddressId (if previously set) -> package snapshot -> user's default address
+    const finalAddressId =
+      selectedAddressId ??
+      packageToRelease?.release_address_id ??
+      addresses.find((a) => a.is_default)?.id ??
+      null;
+
+    if (!finalAddressId) {
+      notifications.show({
+        title: "Address required",
+        message:
+          "No shipping address available for this package. Add a default address for the user or set a release address first.",
+        color: "red",
+      });
+      return;
+    }
+
     setIsReleasing(true);
     setFormError(null);
 
@@ -555,8 +603,16 @@ export default function MailroomPackages() {
       formData.append("file", releaseFile);
       formData.append("packageId", packageToRelease.id);
       formData.append("lockerStatus", lockerCapacity);
-      // include admin note to persist on mailroom_packages.notes
       if (releaseNote) formData.append("notes", releaseNote);
+      formData.append("selectedAddressId", finalAddressId);
+      // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
+      const sel = addresses.find((a) => a.id === finalAddressId);
+      const snapshotName =
+        packageToRelease.release_to_name ??
+        sel?.contact_name ??
+        packageToRelease?.registration?.full_name ??
+        "";
+      if (snapshotName) formData.append("release_to_name", snapshotName);
 
       const res = await fetch("/api/admin/mailroom/release", {
         method: "POST",
@@ -580,29 +636,37 @@ export default function MailroomPackages() {
 
   // --- FILTER LOGIC ---
   const filteredPackages = packages.filter((p) => {
-    const q = search.toLowerCase();
+    const q = (search || "").toLowerCase();
+
+    const pkgName = (p.package_name ?? "").toLowerCase();
+    const regName = (p.registration?.full_name ?? "").toLowerCase();
+    const regEmail = (p.registration?.email ?? "").toLowerCase();
+    const status = (p.status ?? "").toLowerCase();
+    const lockerCode = (p.locker?.locker_code ?? "").toLowerCase();
+
     const matchesSearch =
-      p.tracking_number.toLowerCase().includes(q) ||
-      p.registration?.full_name.toLowerCase().includes(q) ||
-      p.registration?.email.toLowerCase().includes(q) ||
-      p.status.toLowerCase().includes(q) ||
-      p.locker?.locker_code.toLowerCase().includes(q);
+      pkgName.includes(q) ||
+      regName.includes(q) ||
+      regEmail.includes(q) ||
+      status.includes(q) ||
+      lockerCode.includes(q);
 
     const matchesStatus = filterStatus ? p.status === filterStatus : true;
     const matchesType = filterType ? p.package_type === filterType : true;
 
     // Tab Logic
     if (activeTab === "requests") {
-      return p.status.includes("REQUEST");
+      return (p.status ?? "").includes("REQUEST");
     }
     if (activeTab === "active") {
-      return p.status === "STORED";
+      return (p.status ?? "") === "STORED";
     }
     if (activeTab === "released") {
-      return p.status === "RELEASED" || p.status === "RETRIEVED";
+      const s = p.status ?? "";
+      return s === "RELEASED" || s === "RETRIEVED";
     }
     if (activeTab === "disposed") {
-      return p.status === "DISPOSED";
+      return (p.status ?? "") === "DISPOSED";
     }
 
     return matchesSearch && matchesStatus && matchesType;
@@ -747,12 +811,12 @@ export default function MailroomPackages() {
           onRecordsPerPageChange={setPageSize}
           columns={[
             {
-              accessor: "tracking_number",
-              title: "Tracking #",
-              width: 150,
-              render: ({ tracking_number }) => (
+              accessor: "package_name",
+              title: "Package",
+              width: 200,
+              render: ({ package_name }) => (
                 <Text fw={500} size="sm">
-                  {tracking_number}
+                  {package_name}
                 </Text>
               ),
             },
@@ -928,14 +992,14 @@ export default function MailroomPackages() {
           )}
 
           <TextInput
-            label="Tracking Number"
-            placeholder="e.g. TN-123456"
+            label="Package Name"
+            placeholder="e.g. My Parcel / Order #1234"
             required
-            value={formData.tracking_number}
+            value={formData.package_name}
             onChange={(e) =>
               setFormData({
                 ...formData,
-                tracking_number: e.currentTarget.value,
+                package_name: e.currentTarget.value,
               })
             }
           />
@@ -1160,7 +1224,7 @@ export default function MailroomPackages() {
 
           <Text size="sm">
             Upload Proof of Release (Photo/Signature) for{" "}
-            <b>{packageToRelease?.tracking_number}</b>.
+            <b>{packageToRelease?.package_name}</b>.
           </Text>
           <FileInput
             label="Proof Image"
@@ -1171,15 +1235,71 @@ export default function MailroomPackages() {
             leftSection={<IconUpload size={16} />}
           />
 
-          {/* NEW: Admin note for release (persist to mailroom_packages.notes) */}
-          <Textarea
-            label="Release Notes"
-            placeholder="Optional note for this release (e.g. recipient name, remarks)..."
-            value={releaseNote}
-            onChange={(e) => setReleaseNote(e.currentTarget.value)}
-            minRows={2}
-            readOnly
-          />
+          {/* Show saved release snapshot if available, otherwise show user's default address (read-only preview) */}
+          <Box mt="sm">
+            {packageToRelease?.release_address ? (
+              <Paper withBorder p="sm" radius="md" bg="gray.0">
+                <Text fw={600} size="sm">
+                  Saved release snapshot
+                </Text>
+                <Text size="sm" c="dimmed" mt="6px">
+                  {packageToRelease.release_address}
+                </Text>
+                {packageToRelease.release_to_name && (
+                  <Text size="xs" c="dimmed" mt="6px">
+                    Recipient: {packageToRelease.release_to_name}
+                  </Text>
+                )}
+              </Paper>
+            ) : (
+              (() => {
+                const def = addresses.find((a) => a.is_default) ?? addresses[0];
+                if (def) {
+                  return (
+                    <Paper withBorder p="sm" radius="md" bg="gray.0">
+                      <Group justify="space-between" align="center">
+                        <div>
+                          <Text fw={600} size="sm">
+                            {def.label || "Unnamed Address"}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Recipient:{" "}
+                            {def.contact_name ||
+                              packageToRelease?.registration?.full_name ||
+                              "N/A"}
+                          </Text>
+                        </div>
+                        {def.is_default && (
+                          <Badge ml="xs" size="xs" color="blue" variant="light">
+                            Default
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text size="sm" c="dimmed" mt="8px">
+                        {def.line1}
+                        {def.line2 ? `, ${def.line2}` : ""}
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        {[def.city, def.region, def.postal]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </Text>
+                      {def.contact_phone && (
+                        <Text size="xs" c="dimmed" mt="4px">
+                          Phone: {def.contact_phone}
+                        </Text>
+                      )}
+                    </Paper>
+                  );
+                }
+                return (
+                  <Text c="dimmed">
+                    No shipping address on file for this user.
+                  </Text>
+                );
+              })()
+            )}
+          </Box>
 
           {/* NEW: Locker Status Selector */}
           <Stack gap={4} mt="xs">
@@ -1259,7 +1379,7 @@ export default function MailroomPackages() {
 
           <Alert color="red" icon={<IconTrash size={16} />}>
             Are you sure you want to mark{" "}
-            <b>{packageToDispose?.tracking_number}</b> as DISPOSED? This action
+            <b>{packageToDispose?.package_name}</b> as DISPOSED? This action
             cannot be undone.
           </Alert>
 

@@ -60,7 +60,7 @@ export async function PATCH(
     // Second, verify that specific registration belongs to the user
     const { data: registration, error: regError } = await supabaseAdmin
       .from("mailroom_registrations")
-      .select("id")
+      .select("id, user_id")
       .eq("id", pkg.registration_id)
       .eq("user_id", userId)
       .single();
@@ -72,13 +72,68 @@ export async function PATCH(
       );
     }
 
+    // Build updates object
+    const updates: any = {};
+    if (body.status !== undefined) updates.status = body.status;
+    // keep notes support for other actions (but UI will stop using it for release)
+    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.release_to_name !== undefined)
+      updates.release_to_name = body.release_to_name;
+
+    // If client sent a selected_address_id, validate ownership and persist ID + formatted copy
+    if (body.selected_address_id) {
+      const selectedAddressId = body.selected_address_id;
+      const { data: addr, error: addrErr } = await supabaseAdmin
+        .from("user_addresses")
+        .select(
+          "id, user_id, label, contact_name, line1, line2, city, region, postal"
+        )
+        .eq("id", selectedAddressId)
+        .single();
+
+      if (addrErr || !addr) {
+        return NextResponse.json(
+          { error: "Selected address not found" },
+          { status: 400 }
+        );
+      }
+
+      // Ensure address belongs to the authenticated user (registration.user_id === userId)
+      if (String(addr.user_id) !== String(userId)) {
+        return NextResponse.json(
+          { error: "Address does not belong to this user" },
+          { status: 403 }
+        );
+      }
+
+      const formatted = [
+        addr.label ?? "",
+        addr.line1 ?? "",
+        addr.line2 ?? "",
+        addr.city ?? "",
+        addr.region ?? "",
+        addr.postal ?? "",
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      updates.release_address_id = selectedAddressId;
+      updates.release_address = formatted;
+
+      // If client didn't provide explicit release_to_name, use contact_name from address (snapshot)
+      if (
+        body.release_to_name === undefined ||
+        body.release_to_name === null ||
+        body.release_to_name === ""
+      ) {
+        updates.release_to_name = addr.contact_name ?? null;
+      }
+    }
+
     // 4. Update Package
     const { data, error } = await supabaseAdmin
       .from("mailroom_packages")
-      .update({
-        status: body.status,
-        notes: body.notes,
-      })
+      .update(updates)
       .eq("id", id)
       .select()
       .single();
@@ -87,7 +142,7 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ ok: true, package: data });
   } catch (err) {
     console.error("Update package error:", err);
     return NextResponse.json(

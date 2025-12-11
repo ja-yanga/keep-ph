@@ -33,11 +33,20 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
+    // Require package_name (tracking_number was removed from schema)
+    const packageName = body.package_name ?? null;
+    if (!packageName) {
+      return NextResponse.json(
+        { error: "package_name is required" },
+        { status: 400 }
+      );
+    }
+
     // 1. Insert Package
     const { data, error } = await supabase
       .from("mailroom_packages")
       .insert({
-        tracking_number: body.tracking_number,
+        package_name: packageName,
         registration_id: body.registration_id,
         locker_id: body.locker_id || null,
         package_type: body.package_type,
@@ -78,9 +87,9 @@ export async function POST(request: Request) {
       await sendNotification(
         registration.user_id,
         "Package Arrived",
-        `A new ${body.package_type} (${
-          body.tracking_number
-        }) has arrived at Mailroom ${registration.mailroom_code || "Unknown"}.`,
+        `A new ${body.package_type} (${packageName}) has arrived at Mailroom ${
+          registration.mailroom_code || "Unknown"
+        }.`,
         "PACKAGE_ARRIVED",
         `/mailroom/${body.registration_id}` // CHANGED: Link to specific mailroom
       );
