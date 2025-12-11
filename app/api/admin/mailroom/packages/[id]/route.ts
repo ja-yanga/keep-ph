@@ -15,21 +15,33 @@ export async function PUT(
     const body = await req.json();
     const { id } = await params; // Await params for Next.js 15 compatibility
 
-    // 1. SEPARATE locker_status from the package data
-    // This prevents the "column does not exist" error
-    const { locker_status, ...packageData } = body;
-
-    // 2. Get the OLD status first to compare
-    const { data: oldPkg } = await supabaseAdmin
+    // FETCH existing package so oldPkg is defined for later comparisons
+    const { data: oldPkg, error: fetchError } = await supabaseAdmin
       .from("mailroom_packages")
-      .select("status, registration_id")
+      .select()
       .eq("id", id)
       .single();
+    if (fetchError) {
+      console.warn(
+        "Failed to fetch existing package:",
+        fetchError.message || fetchError
+      );
+    }
 
-    // 3. Update the package (using packageData ONLY)
+    // 1. SEPARATE locker_status from the package data
+    const { locker_status, ...packageData } = body;
+
+    // Build update payload explicitly to control package_photo updates
+    const updatePayload: any = { ...packageData };
+    if (Object.prototype.hasOwnProperty.call(body, "package_photo")) {
+      // allow clearing by sending null, or set URL when provided
+      updatePayload.package_photo = body.package_photo;
+    }
+
+    // 3. Update the package (using updatePayload ONLY)
     const { data: updatedPkg, error } = await supabaseAdmin
       .from("mailroom_packages")
-      .update(packageData)
+      .update(updatePayload)
       .eq("id", id)
       .select()
       .single();

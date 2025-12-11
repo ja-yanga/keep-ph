@@ -46,6 +46,7 @@ CREATE TABLE public.mailroom_packages (
   release_address text,
   release_address_id uuid,
   package_name text,
+  package_photo text,
   CONSTRAINT mailroom_packages_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
   CONSTRAINT mailroom_packages_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)
@@ -156,6 +157,20 @@ CREATE TABLE public.user_addresses (
   contact_name text,
   CONSTRAINT user_addresses_pkey PRIMARY KEY (id),
   CONSTRAINT user_addresses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.user_kyc (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  status USER-DEFINED NOT NULL DEFAULT 'SUBMITTED'::user_kyc_status,
+  id_front_url text NOT NULL,
+  id_back_url text NOT NULL,
+  submitted_at timestamp with time zone NOT NULL DEFAULT now(),
+  verified_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  id_document_type text,
+  CONSTRAINT user_kyc_pkey PRIMARY KEY (id),
+  CONSTRAINT user_kyc_user_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

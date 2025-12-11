@@ -83,6 +83,7 @@ interface Package {
   status: string;
   notes?: string;
   image_url?: string;
+  package_photo?: string | null;
   received_at: string;
   registration?: Registration;
   locker?: Locker;
@@ -128,9 +129,31 @@ export default function MailroomPackages() {
     locker_id: "",
     package_type: "", // CHANGED: Default to empty string to force selection
     status: "STORED",
-    notes: "",
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // NEW: package photo state for Add/Edit modal
+  const [packagePhoto, setPackagePhoto] = useState<File | null>(null);
+
+  // Preview src for image display
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (packagePhoto) {
+      const url = URL.createObjectURL(packagePhoto);
+      setPreviewSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    if (editingPackage) {
+      setPreviewSrc(
+        (editingPackage as any).package_photo ||
+          (editingPackage as any).image_url ||
+          null
+      );
+    } else {
+      setPreviewSrc(null);
+    }
+  }, [packagePhoto, editingPackage]);
 
   // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -323,8 +346,10 @@ export default function MailroomPackages() {
         locker_id: pkg.locker_id || "",
         package_type: pkg.package_type,
         status: pkg.status,
-        notes: pkg.notes || "",
+        // notes: pkg.notes || "",
       });
+      // keep packagePhoto null so existing image is used unless user picks a new one
+      setPackagePhoto(null);
     } else {
       setEditingPackage(null);
       setLockerCapacity("Normal");
@@ -334,8 +359,8 @@ export default function MailroomPackages() {
         locker_id: "",
         package_type: "Parcel",
         status: "STORED",
-        notes: "",
       });
+      setPackagePhoto(null);
     }
     open();
   };
@@ -393,18 +418,46 @@ export default function MailroomPackages() {
       return;
     }
 
+    // Photo is required (either newly selected or existing on editingPackage)
+    if (
+      !packagePhoto &&
+      !(editingPackage?.package_photo || editingPackage?.image_url)
+    ) {
+      setFormError("Package photo is required");
+      return;
+    }
+
     setSubmitting(true);
     setFormError(null); // Clear previous errors
 
     try {
+      // If a new package photo was chosen, upload it first
+      let photoUrl: string | null = null;
+      if (packagePhoto) {
+        const fd = new FormData();
+        fd.append("file", packagePhoto);
+        // send registration/user id so upload route can place file under that folder
+        const userFolder =
+          formData.registration_id || editingPackage?.registration_id || "";
+        if (userFolder) fd.append("user_id", userFolder);
+        const up = await fetch("/api/admin/mailroom/packages/upload", {
+          method: "POST",
+          body: fd,
+        });
+        if (!up.ok) {
+          const j = await up.json().catch(() => ({}));
+          throw new Error(j?.error || "Failed to upload photo");
+        }
+        const uj = await up.json();
+        photoUrl = uj.url;
+      }
+
       const url = editingPackage
         ? `/api/admin/mailroom/packages/${editingPackage.id}`
         : "/api/admin/mailroom/packages";
 
       const method = editingPackage ? "PUT" : "POST";
 
-      // 3. Create payload
-      // We cast to 'any' to allow adding the optional locker_status field
       const payload: any = {
         ...formData,
       };
@@ -412,6 +465,11 @@ export default function MailroomPackages() {
       // Only send locker_status when ADDING a package
       if (!editingPackage) {
         payload.locker_status = lockerCapacity;
+      }
+
+      // include package_photo only if we uploaded one
+      if (photoUrl) {
+        payload.package_photo = photoUrl;
       }
 
       const res = await fetch(url, {
@@ -1132,15 +1190,33 @@ export default function MailroomPackages() {
             </Stack>
           )}
 
-          <Textarea
-            label="Notes"
-            placeholder="Additional details..."
-            minRows={2}
-            value={formData.notes}
-            onChange={(e) =>
-              setFormData({ ...formData, notes: e.currentTarget.value })
-            }
+          {/* NEW: Package Photo (required) */}
+          <FileInput
+            label="Package Photo"
+            placeholder="Select image"
+            accept="image/png,image/jpeg,image/jpg"
+            value={packagePhoto}
+            onChange={setPackagePhoto}
+            leftSection={<IconUpload size={16} />}
+            required
           />
+
+          {/* Preview */}
+          {previewSrc && (
+            <Group justify="center" mt="sm">
+              <img
+                src={previewSrc}
+                alt="Package preview"
+                style={{
+                  maxWidth: 200,
+                  maxHeight: 120,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.06)",
+                }}
+              />
+            </Group>
+          )}
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={close}>

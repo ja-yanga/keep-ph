@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Badge,
   Button,
@@ -49,6 +49,9 @@ interface UserPackagesProps {
   };
   isStorageFull?: boolean;
   onRefresh?: () => void | Promise<void>;
+  // injected from parent to avoid duplicate fetches
+  scanMap?: Record<string, string>;
+  scans?: any[];
 }
 
 export default function UserPackages({
@@ -57,6 +60,8 @@ export default function UserPackages({
   planCapabilities,
   isStorageFull = false,
   onRefresh,
+  scanMap: providedScanMap,
+  scans: providedScans,
 }: UserPackagesProps) {
   const theme = useMantineTheme();
   const [localPackages, setLocalPackages] = useState<any[]>(packages);
@@ -65,59 +70,41 @@ export default function UserPackages({
   // map of tracking_number|package_id -> file_url
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!packages || packages.length === 0) {
-      setScanMap({});
-      return;
-    }
-
+  // derive registrationId deterministically (primitive) to use in deps
+  const registrationId = useMemo(() => {
     const regPkg =
       packages.find((p: any) => p.registration_id) ||
       packages.find((p: any) => p.package?.registration_id);
-    const registrationId =
+    return (
       (regPkg && (regPkg.registration_id || regPkg.package?.registration_id)) ||
-      null;
+      null
+    );
+  }, [packages]); // still depends on packages but yields a primitive id
 
-    if (!registrationId) {
-      setScanMap({});
+  // if parent provided scans/scanMap, use them and skip fetching locally
+  useEffect(() => {
+    if (providedScanMap) {
+      setScanMap(providedScanMap);
       return;
     }
-
-    let mounted = true;
-    (async () => {
-      try {
-        // existing scans logic
-        const res = await fetch(
-          `/api/user/scans?registrationId=${encodeURIComponent(
-            registrationId
-          )}`,
-          { credentials: "include" }
-        );
-        if (!res.ok) return;
-        const data = await res.json().catch(() => ({}));
-        const scansArr = Array.isArray(data?.scans) ? data.scans : [];
-
-        const map: Record<string, string> = {};
-        scansArr.forEach((s: any) => {
-          const file = s.file_url;
-          const pkgName = s.package?.package_name;
-          if (pkgName) map[pkgName] = file;
-          if (s.package_id) map[s.package_id] = file;
-        });
-
-        if (mounted) setScanMap(map);
-      } catch (err) {
-        console.error("failed to load scans for packages", err);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [packages]);
+    if (providedScans) {
+      const map: Record<string, string> = {};
+      providedScans.forEach((s: any) => {
+        if (s.package_id) map[s.package_id] = s.file_url;
+      });
+      setScanMap(map);
+      return;
+    }
+    // otherwise keep existing fetch logic (unchanged) or no-op here
+  }, [providedScanMap, providedScans]);
 
   useEffect(() => {
     setLocalPackages(packages);
+  }, [packages]);
+
+  // always sync when parent prop changes (prevents stale/incorrect data)
+  useEffect(() => {
+    setLocalPackages(Array.isArray(packages) ? packages.slice() : []);
   }, [packages]);
 
   // Split packages into Active (Inbox) and History
@@ -189,6 +176,8 @@ export default function UserPackages({
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | null>(null);
+  // NEW: track whether current preview is a scanned document (true) or a package/photo/proof (false)
+  const [previewIsScan, setPreviewIsScan] = useState<boolean>(false);
 
   const handleActionClick = (
     pkg: any,
@@ -430,6 +419,15 @@ export default function UserPackages({
 
   // --- Render Component for a Single Package Card ---
   const PackageCard = ({ pkg }: { pkg: any }) => {
+    // debug: ensure each package has its own photo/url
+    console.debug(
+      "PackageCard",
+      pkg.id,
+      pkg.package_photo,
+      pkg.image_url,
+      pkg.release_proof_url
+    );
+
     const packageName = pkg.package_name || "—";
     const type = pkg.package_type || "Parcel";
     const status = pkg.status || "STORED";
@@ -453,8 +451,8 @@ export default function UserPackages({
       pkg.scan_url ||
       pkg.digital_scan_url ||
       pkg.scanned_file_url ||
-      scanMap[pkg.package_name] ||
-      scanMap[pkg.id] ||
+      scanMap[pkg.id] || // prefer id-keyed map first
+      scanMap[`name:${pkg.package_name}`] ||
       null;
     const hasScan = Boolean(scanUrl);
 
@@ -494,6 +492,35 @@ export default function UserPackages({
         </Group>
 
         <Divider my="sm" variant="dashed" />
+
+        {/* Package photo thumbnail (click to preview) */}
+        {pkg.package_photo && (
+          <Box mb="sm">
+            <img
+              key={`${pkg.id}-${pkg.package_photo}`}
+              src={pkg.package_photo}
+              alt="Package photo"
+              onClick={() => {
+                setSelectedPackage(pkg);
+                setPreviewTitle("Package Photo");
+                setPreviewImage(pkg.package_photo);
+                setPreviewIsScan(false);
+                setImageModalOpen(true);
+              }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+              style={{
+                width: 140,
+                height: 96,
+                objectFit: "cover",
+                borderRadius: 8,
+                cursor: "pointer",
+                display: "block",
+              }}
+            />
+          </Box>
+        )}
 
         <Group justify="space-between" mb="md">
           <Box>
@@ -558,6 +585,8 @@ export default function UserPackages({
                       setSelectedPackage(pkg); // <-- ensure modal actions know which package
                       setPreviewTitle("View Scan");
                       setPreviewImage(scanUrl);
+                      // this preview is a scan
+                      setPreviewIsScan(true);
                       setImageModalOpen(true);
                     }}
                   >
@@ -603,6 +632,8 @@ export default function UserPackages({
                   setSelectedPackage(pkg);
                   setPreviewTitle("Proof of Release");
                   setPreviewImage(pkg.release_proof_url || pkg.image_url);
+                  // proof image is not a scan
+                  setPreviewIsScan(false);
                   setImageModalOpen(true);
                 }}
                 style={{ whiteSpace: "nowrap", minWidth: 110 }}
@@ -700,6 +731,13 @@ export default function UserPackages({
       mounted = false;
     };
   }, [selectedPackage?.id, session?.user?.id]);
+
+  // use this helper after receiving updatedPkg from server
+  function applyUpdatedPackage(updatedPkg: any) {
+    setLocalPackages((prev) =>
+      prev.map((p) => (p.id === updatedPkg.id ? { ...p, ...updatedPkg } : p))
+    );
+  }
 
   return (
     <>
@@ -971,6 +1009,7 @@ export default function UserPackages({
           setImageModalOpen(false);
           setPreviewImage(null);
           setPreviewTitle(null);
+          setPreviewIsScan(false);
         }}
         title={previewTitle ?? "Preview"}
         size="xl"
@@ -999,18 +1038,21 @@ export default function UserPackages({
             )}
 
             <Group align="right" mt="sm" gap="xs">
-              <Button
-                size="xs"
-                color="violet"
-                onClick={requestRescanFromModal}
-                loading={submitting}
-                disabled={
-                  typeof selectedPackage?.status === "string" &&
-                  selectedPackage.status.includes("REQUEST")
-                }
-              >
-                Request Rescan
-              </Button>
+              {/* Only show Request Rescan when preview is a scanned document */}
+              {previewIsScan && (
+                <Button
+                  size="xs"
+                  color="violet"
+                  onClick={requestRescanFromModal}
+                  loading={submitting}
+                  disabled={
+                    typeof selectedPackage?.status === "string" &&
+                    selectedPackage.status.includes("REQUEST")
+                  }
+                >
+                  Request Rescan
+                </Button>
+              )}
             </Group>
           </>
         ) : (

@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         status: body.status,
         notes: body.notes,
         mailroom_full: body.mailroom_full,
+        package_photo: body.package_photo ?? null, // ADDED: store package_photo if provided
       })
       .select()
       .single();
