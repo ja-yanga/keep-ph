@@ -1175,7 +1175,7 @@ export default function MailroomPackages() {
           )}
 
           <Text size="sm">
-            Upload the PDF scan for <b>{packageToScan?.tracking_number}</b>.
+            Upload the PDF scan for <b>{packageToScan?.package_name}</b>.
           </Text>
           <FileInput
             label="Select PDF"

@@ -31,7 +31,9 @@ import {
   IconMail,
   IconPackage,
   IconScan,
+  IconCopy,
 } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
@@ -92,6 +94,73 @@ export default function MailroomPackageView({
 
     checkStorage();
   }, [item, plan.can_digitize, refreshKey]); // 3. Add refreshKey to dependency array
+
+  // Helper to build a full address (similar to UserDashboard)
+  const getFullAddressFromRaw = (raw: any): string | null => {
+    if (!raw) return null;
+    const loc = raw ?? {};
+    if (loc?.formatted_address) return String(loc.formatted_address);
+
+    const parts: string[] = [];
+    const name = loc?.name ?? null;
+    if (name) parts.push(String(name));
+
+    const street =
+      loc?.address_line ||
+      loc?.street ||
+      loc?.line1 ||
+      loc?.line ||
+      loc?.address;
+    if (street) parts.push(String(street));
+
+    const city = loc?.city || loc?.town || null;
+    const province = loc?.province || loc?.state || null;
+    const postal = loc?.postal_code || loc?.postal || loc?.zip || null;
+    const country = loc?.country || null;
+    const tail = [city, province, postal, country].filter(Boolean).join(", ");
+    if (tail) parts.push(tail);
+
+    const out = parts.filter(Boolean).join(", ").trim();
+    return out || null;
+  };
+
+  const copyFullShippingAddress = async () => {
+    const code = item?.mailroom_code ?? "-";
+    const full =
+      getFullAddressFromRaw(item?.mailroom_locations) ||
+      [
+        item?.mailroom_locations?.address,
+        item?.mailroom_locations?.city,
+        item?.mailroom_locations?.region,
+      ]
+        .filter(Boolean)
+        .join(", ") ||
+      null;
+    const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
+    if (!txt) {
+      notifications.show({
+        title: "Nothing to copy",
+        message: "No full address available",
+        color: "yellow",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(txt);
+      notifications.show({
+        title: "Copied",
+        message: "Full shipping address copied to clipboard",
+        color: "teal",
+      });
+    } catch (e: any) {
+      console.error("copy failed", e);
+      notifications.show({
+        title: "Copy failed",
+        message: e?.message ?? String(e),
+        color: "red",
+      });
+    }
+  };
 
   // Filter packages based on selected locker
   const filteredPackages = useMemo(() => {
@@ -445,9 +514,27 @@ export default function MailroomPackageView({
                     <ThemeIcon variant="light" color="orange">
                       <IconMapPin size={18} />
                     </ThemeIcon>
-                    <Text fw={600}>Location Details</Text>
+                    <Group>
+                      <Text fw={600}>Location Details</Text>
+                      <ActionIcon
+                        size="sm"
+                        variant="light"
+                        onClick={copyFullShippingAddress}
+                        title="Copy full shipping address"
+                      >
+                        <IconCopy size={14} />
+                      </ActionIcon>
+                    </Group>
                   </Group>
                   <Stack gap="sm">
+                    <Box>
+                      <Text size="xs" c="dimmed">
+                        Mailroom Code
+                      </Text>
+                      <Text fw={500} ff="monospace">
+                        {item.mailroom_code ?? "—"}
+                      </Text>
+                    </Box>
                     <Box>
                       <Text size="xs" c="dimmed">
                         Location Name
@@ -458,16 +545,22 @@ export default function MailroomPackageView({
                     </Box>
                     <Box>
                       <Text size="xs" c="dimmed">
-                        Address
+                        Full Address
                       </Text>
-                      <Text fw={500} size="sm">
-                        {[
-                          item.mailroom_locations?.address,
-                          item.mailroom_locations?.city,
-                          item.mailroom_locations?.region,
-                        ]
-                          .filter(Boolean)
-                          .join(", ") || "—"}
+                      <Text
+                        fw={500}
+                        size="sm"
+                        style={{ wordBreak: "break-word" }}
+                      >
+                        {getFullAddressFromRaw(item.mailroom_locations) ||
+                          [
+                            item.mailroom_locations?.address,
+                            item.mailroom_locations?.city,
+                            item.mailroom_locations?.region,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") ||
+                          "—"}
                       </Text>
                     </Box>
                   </Stack>

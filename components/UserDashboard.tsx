@@ -35,6 +35,7 @@ import {
   IconSortDescending,
   IconCreditCardOff, // ADDED
   IconSearch,
+  IconCopy, // added
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
@@ -363,6 +364,66 @@ export default function UserDashboard() {
     }
   };
 
+  // build a best-effort full shipping address from the API row.raw
+  const getFullAddressFromRaw = (raw: any): string | null => {
+    if (!raw) return null;
+    const loc = raw.mailroom_locations ?? raw.location ?? {};
+    // prefer a preformatted address if available
+    if (loc?.formatted_address) return String(loc.formatted_address);
+
+    const parts: string[] = [];
+    const name = loc?.name ?? raw.location_name ?? null;
+    if (name) parts.push(String(name));
+
+    const street =
+      loc?.address_line ||
+      loc?.street ||
+      loc?.line1 ||
+      loc?.line ||
+      loc?.address;
+    if (street) parts.push(String(street));
+
+    const city = loc?.city || loc?.town || null;
+    const province = loc?.province || loc?.state || null;
+    const postal = loc?.postal_code || loc?.postal || loc?.zip || null;
+    const country = loc?.country || null;
+    const tail = [city, province, postal, country].filter(Boolean).join(", ");
+    if (tail) parts.push(tail);
+
+    const out = parts.filter(Boolean).join(", ").trim();
+    return out || null;
+  };
+
+  // copy full shipping address to clipboard (mailroom code + full address)
+  const copyFullShippingAddress = async (row: Row) => {
+    const code = row.mailroom_code ?? null;
+    const full = getFullAddressFromRaw(row.raw) ?? row.location ?? null;
+    const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
+    if (!txt) {
+      notifications.show({
+        title: "Nothing to copy",
+        message: "No full address available",
+        color: "yellow",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(txt);
+      notifications.show({
+        title: "Copied",
+        message: "Full shipping address copied to clipboard",
+        color: "teal",
+      });
+    } catch (e: any) {
+      console.error("copy failed", e);
+      notifications.show({
+        title: "Copy failed",
+        message: e?.message ?? String(e),
+        color: "red",
+      });
+    }
+  };
+
   const SortIcon = ({ col }: { col: string }) => {
     if (sortBy !== col) return null;
     return sortDir === "asc" ? (
@@ -538,14 +599,21 @@ export default function UserDashboard() {
           <Card key={row.id} shadow="sm" padding="lg" radius="md" withBorder>
             <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
               <Group justify="space-between">
-                {/* CHANGED: Added quotes around "xs" */}
-                <Group gap="xs">
+                {/* CHANGED: Added copy icon beside location (full shipping address) */}
+                <Group gap="xs" align="center">
                   <ThemeIcon color="violet" variant="light">
                     <IconMapPin size={16} />
                   </ThemeIcon>
                   <Text fw={600} size="sm">
                     {row.location || "Unknown Location"}
                   </Text>
+                  <ActionIcon
+                    variant="light"
+                    onClick={() => copyFullShippingAddress(row)}
+                    title="Copy full shipping address"
+                  >
+                    <IconCopy size={16} />
+                  </ActionIcon>
                 </Group>
                 <Badge
                   // CHANGED: Update colors to handle INACTIVE/EXPIRING
@@ -566,11 +634,19 @@ export default function UserDashboard() {
             <Stack mt="md" gap="sm">
               <Group justify="space-between" align="flex-start">
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                    Mailroom Code
-                  </Text>
-                  <Text size="xl" fw={800} ff="monospace" c="violet.9">
-                    {row.mailroom_code || "PENDING"}
+                  <Group align="center" gap="xs">
+                    <div>
+                      <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        Mailroom Code
+                      </Text>
+                      <Text size="xl" fw={800} ff="monospace" c="violet.9">
+                        {row.mailroom_code || "PENDING"}
+                      </Text>
+                    </div>
+                  </Group>
+
+                  <Text size="xs" c="dimmed" mt={6}>
+                    {row.location ?? "Address not set"}
                   </Text>
                 </Box>
                 <Box ta="right">

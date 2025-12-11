@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     // Fetch package early to get registration_id for address validation & notification
     const { data: pkgRow, error: pkgRowErr } = await supabaseAdmin
       .from("mailroom_packages")
-      .select("id, registration_id, tracking_number")
+      .select("id, registration_id, package_name")
       .eq("id", packageId)
       .single();
 
@@ -182,7 +182,7 @@ export async function POST(request: Request) {
               registration.user_id,
               "Package Released",
               `Your package (${
-                pkg.tracking_number || "Unknown"
+                pkg.package_name || "Unknown"
               }) has been released and is ready for pickup.`,
               "PACKAGE_RELEASED",
               `/mailroom/${pkg.registration_id}`

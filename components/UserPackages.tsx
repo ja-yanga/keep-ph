@@ -342,6 +342,92 @@ export default function UserPackages({
     }
   };
 
+  // Download currently previewed scan (works with data URLs, same-origin, or fetches blob)
+  const downloadScan = async (): Promise<void> => {
+    if (!previewImage) return;
+    const fallbackName = (
+      previewTitle ||
+      selectedPackage?.package_name ||
+      "scan"
+    ).replace(/\s+/g, "_");
+    try {
+      const a = document.createElement("a");
+      a.href = previewImage;
+      a.target = "_blank";
+
+      let willDownloadDirectly = false;
+      if (previewImage.startsWith("data:")) willDownloadDirectly = true;
+      try {
+        const url = new URL(previewImage, location.href);
+        if (url.origin === location.origin) willDownloadDirectly = true;
+      } catch {
+        // ignore invalid URL
+      }
+
+      if (willDownloadDirectly) {
+        a.download = fallbackName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
+
+      const res = await fetch(previewImage, { credentials: "include" });
+      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      a.href = blobUrl;
+      a.download = fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      console.error("download failed", err);
+      notifications.show({
+        title: "Download failed",
+        message: err?.message || String(err),
+        color: "red",
+      });
+    }
+  };
+
+  // Request rescan for the selected package (PATCH -> status: REQUEST_TO_SCAN)
+  const requestRescanFromModal = async (): Promise<void> => {
+    if (!selectedPackage) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: "REQUEST_TO_SCAN" }),
+      });
+      if (!res.ok) throw new Error("Failed to request rescan");
+
+      setLocalPackages((current) =>
+        current.map((p) =>
+          p.id === selectedPackage.id ? { ...p, status: "REQUEST_TO_SCAN" } : p
+        )
+      );
+
+      notifications.show({
+        title: "Rescan requested",
+        message: "Your rescan request has been submitted to admin.",
+        color: "green",
+      });
+      setImageModalOpen(false);
+    } catch (err: any) {
+      notifications.show({
+        title: "Error",
+        message: err?.message || "Failed to request rescan",
+        color: "red",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // --- Render Component for a Single Package Card ---
   const PackageCard = ({ pkg }: { pkg: any }) => {
     const packageName = pkg.package_name || "—";
@@ -469,6 +555,7 @@ export default function UserPackages({
                     size="xs"
                     leftSection={<IconEye size={14} />}
                     onClick={() => {
+                      setSelectedPackage(pkg); // <-- ensure modal actions know which package
                       setPreviewTitle("View Scan");
                       setPreviewImage(scanUrl);
                       setImageModalOpen(true);
@@ -513,6 +600,7 @@ export default function UserPackages({
                 variant="default"
                 leftSection={<IconEye size={14} />}
                 onClick={() => {
+                  setSelectedPackage(pkg);
                   setPreviewTitle("Proof of Release");
                   setPreviewImage(pkg.release_proof_url || pkg.image_url);
                   setImageModalOpen(true);
@@ -890,24 +978,41 @@ export default function UserPackages({
         overlayProps={{ blur: 3, backgroundOpacity: 0.45 }}
       >
         {previewImage ? (
-          /\.pdf(\?.*)?$/i.test(previewImage) ? (
-            <iframe
-              src={previewImage}
-              title={previewTitle ?? "Preview"}
-              style={{ width: "100%", height: "70vh", border: "none" }}
-            />
-          ) : (
-            <img
-              src={previewImage}
-              alt={previewTitle ?? "Preview"}
-              style={{
-                width: "100%",
-                maxHeight: "70vh",
-                objectFit: "contain",
-                borderRadius: 8,
-              }}
-            />
-          )
+          <>
+            {/\.pdf(\?.*)?$/i.test(previewImage) ? (
+              <iframe
+                src={previewImage}
+                title={previewTitle ?? "Preview"}
+                style={{ width: "100%", height: "70vh", border: "none" }}
+              />
+            ) : (
+              <img
+                src={previewImage}
+                alt={previewTitle ?? "Preview"}
+                style={{
+                  width: "100%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  borderRadius: 8,
+                }}
+              />
+            )}
+
+            <Group align="right" mt="sm" gap="xs">
+              <Button
+                size="xs"
+                color="violet"
+                onClick={requestRescanFromModal}
+                loading={submitting}
+                disabled={
+                  typeof selectedPackage?.status === "string" &&
+                  selectedPackage.status.includes("REQUEST")
+                }
+              >
+                Request Rescan
+              </Button>
+            </Group>
+          </>
         ) : (
           <Text c="dimmed">No preview available</Text>
         )}
