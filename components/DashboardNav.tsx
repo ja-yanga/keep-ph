@@ -266,6 +266,22 @@ export default function DashboardNav() {
                   </Anchor>
                   <Anchor
                     component={Link}
+                    href="/admin/kyc"
+                    style={linkColor("/admin/kyc")}
+                    underline="hover"
+                  >
+                    KYC
+                  </Anchor>
+                  <Anchor
+                    component={Link}
+                    href="/admin/locations"
+                    style={linkColor("/admin/locations")}
+                    underline="hover"
+                  >
+                    Locations
+                  </Anchor>
+                  <Anchor
+                    component={Link}
                     href="/admin/lockers"
                     style={linkColor("/admin/lockers")}
                     underline="hover"
@@ -294,15 +310,7 @@ export default function DashboardNav() {
                     style={linkColor("/admin/plans")}
                     underline="hover"
                   >
-                    Service Plans
-                  </Anchor>
-                  <Anchor
-                    component={Link}
-                    href="/admin/locations"
-                    style={linkColor("/admin/locations")}
-                    underline="hover"
-                  >
-                    Registration Locations
+                    Plans
                   </Anchor>
 
                   <Anchor

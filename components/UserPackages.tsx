@@ -163,6 +163,11 @@ export default function UserPackages({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // pagination for package lists
+  const [inboxPage, setInboxPage] = useState<number>(1);
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const perPage = 3;
+
   // addresses / release fields
   const [addresses, setAddresses] = useState<any[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
@@ -187,6 +192,7 @@ export default function UserPackages({
     setActionType(type);
     // prefill notes only for non-release actions; release will use addresses + name
     setNotes(type === "RELEASE" ? "" : pkg?.notes || "");
+
     // prefill release-related fields when requesting release
     if (type === "RELEASE") {
       // prefill from package snapshot, fallback to user's name; do not force editing
@@ -194,8 +200,20 @@ export default function UserPackages({
         `${pkg?.user?.first_name ?? ""} ${pkg?.user?.last_name ?? ""}`.trim() ||
         "";
       setReleaseToName(pkg?.release_to_name ?? userName);
-      // selectedAddressId will be set after addresses load; set a tentative value
-      setSelectedAddressId(pkg?.release_address_id ?? null);
+
+      // If package has a saved release_address_id use it,
+      // otherwise immediately select user's default address (if already loaded).
+      const pkgDefaultId = pkg?.release_address_id ?? null;
+      const userDefaultId =
+        !pkgDefaultId && Array.isArray(addresses)
+          ? addresses.find((a) => a.is_default)?.id ?? null
+          : null;
+      setSelectedAddressId(pkgDefaultId ?? userDefaultId);
+      // if we selected a default address, prefill releaseToName from it when possible
+      if (!pkgDefaultId && userDefaultId) {
+        const sel = addresses.find((a) => a.id === userDefaultId);
+        if (sel?.contact_name) setReleaseToName(sel.contact_name);
+      }
     } else {
       setReleaseToName("");
       setSelectedAddressId(null);
@@ -243,15 +261,14 @@ export default function UserPackages({
 
       if (!newStatus) return;
 
-      const body = {
-        status: newStatus,
-        ...(actionType === "RELEASE"
-          ? {
-              selected_address_id: selectedAddressId || null,
-              release_to_name: finalReleaseToName || releaseToName || null,
-            }
-          : { notes }),
-      };
+      const body: any = { status: newStatus };
+      if (actionType === "RELEASE") {
+        body.selected_address_id = selectedAddressId || null;
+        body.release_to_name = finalReleaseToName || releaseToName || null;
+      } else if (!["DISPOSE", "SCAN"].includes(actionType || "")) {
+        // include notes for other actions, but do NOT include notes for DISPOSE/SCAN per request
+        body.notes = notes;
+      }
 
       const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
         method: "PATCH",
@@ -763,7 +780,11 @@ export default function UserPackages({
             <TextInput
               placeholder="Search by package name or package type..."
               value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                setInboxPage(1);
+                setHistoryPage(1);
+              }}
               leftSection={<IconSearch size={16} />}
               size="md"
               __clearable
@@ -772,11 +793,59 @@ export default function UserPackages({
 
           <Tabs.Panel value="inbox">
             {filteredActivePackages.length > 0 ? (
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {filteredActivePackages.map((pkg) => (
-                  <PackageCard key={pkg.id} pkg={pkg} />
-                ))}
-              </SimpleGrid>
+              <>
+                {(() => {
+                  const total = filteredActivePackages.length;
+                  const start = (inboxPage - 1) * perPage;
+                  const pageItems = filteredActivePackages.slice(
+                    start,
+                    start + perPage
+                  );
+                  return (
+                    <>
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+                        {pageItems.map((pkg) => (
+                          <PackageCard key={pkg.id} pkg={pkg} />
+                        ))}
+                      </SimpleGrid>
+                      {total > perPage && (
+                        <Group
+                          justify="space-between"
+                          mt="md"
+                          align="center"
+                          style={{ width: "100%" }}
+                        >
+                          <Text size="sm" c="dimmed">
+                            Showing {Math.min(start + 1, total)}–
+                            {Math.min(start + pageItems.length, total)} of{" "}
+                            {total}
+                          </Text>
+                          <Group>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={inboxPage === 1}
+                              onClick={() =>
+                                setInboxPage((p) => Math.max(1, p - 1))
+                              }
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={start + perPage >= total}
+                              onClick={() => setInboxPage((p) => p + 1)}
+                            >
+                              Next
+                            </Button>
+                          </Group>
+                        </Group>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
             ) : (
               <Stack
                 align="center"
@@ -792,11 +861,59 @@ export default function UserPackages({
 
           <Tabs.Panel value="history">
             {filteredHistoryPackages.length > 0 ? (
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {filteredHistoryPackages.map((pkg) => (
-                  <PackageCard key={pkg.id} pkg={pkg} />
-                ))}
-              </SimpleGrid>
+              <>
+                {(() => {
+                  const total = filteredHistoryPackages.length;
+                  const start = (historyPage - 1) * perPage;
+                  const pageItems = filteredHistoryPackages.slice(
+                    start,
+                    start + perPage
+                  );
+                  return (
+                    <>
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+                        {pageItems.map((pkg) => (
+                          <PackageCard key={pkg.id} pkg={pkg} />
+                        ))}
+                      </SimpleGrid>
+                      {total > perPage && (
+                        <Group
+                          justify="apart"
+                          mt="md"
+                          align="center"
+                          style={{ width: "100%" }}
+                        >
+                          <Text size="sm" c="dimmed">
+                            Showing {Math.min(start + 1, total)}–
+                            {Math.min(start + pageItems.length, total)} of{" "}
+                            {total}
+                          </Text>
+                          <Group>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={historyPage === 1}
+                              onClick={() =>
+                                setHistoryPage((p) => Math.max(1, p - 1))
+                              }
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={start + perPage >= total}
+                              onClick={() => setHistoryPage((p) => p + 1)}
+                            >
+                              Next
+                            </Button>
+                          </Group>
+                        </Group>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
             ) : (
               <Stack
                 align="center"
@@ -976,14 +1093,7 @@ export default function UserPackages({
           )}
 
           {/* Note section for other actions */}
-          {["DISPOSE", "SCAN"].includes(actionType!) && (
-            <Textarea
-              label="Notes (Optional)"
-              placeholder="Add any specific instructions for the admin."
-              value={notes}
-              onChange={(e) => setNotes(e.currentTarget.value)}
-            />
-          )}
+          {/* Notes removed for DISPOSE and SCAN requests as requested */}
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setActionModalOpen(false)}>
@@ -1037,7 +1147,7 @@ export default function UserPackages({
               />
             )}
 
-            <Group align="right" mt="sm" gap="xs">
+            <Group justify="flex-end" mt="sm" gap="xs">
               {/* Only show Request Rescan when preview is a scanned document */}
               {previewIsScan && (
                 <Button
