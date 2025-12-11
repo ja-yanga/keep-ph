@@ -329,6 +329,40 @@ export default function UserPackages({
 
       if (!res.ok) throw new Error("Failed to update package");
 
+      // prefer server-returned updated package to keep local state consistent
+      const serverJson = await res.json().catch(() => null);
+      const updatedFromServer =
+        serverJson?.data ?? serverJson?.package ?? serverJson ?? null;
+      if (updatedFromServer && updatedFromServer.id) {
+        applyUpdatedPackage(updatedFromServer);
+        // ensure selectedPackage reference is updated if modal remains open
+        if (selectedPackage?.id === updatedFromServer.id) {
+          setSelectedPackage((prev: any) => ({
+            ...(prev ?? {}),
+            ...updatedFromServer,
+          }));
+        }
+      } else {
+        // fallback optimistic update if server didn't return object
+        setLocalPackages((current) =>
+          current.map((p) =>
+            p.id === selectedPackage.id
+              ? {
+                  ...p,
+                  status: newStatus,
+                  notes: actionType === "RELEASE" ? body.notes ?? "" : p.notes,
+                  release_to_name:
+                    actionType === "RELEASE"
+                      ? releaseToName
+                      : p.release_to_name,
+                  release_address: releaseAddressString,
+                  updated_at: new Date().toISOString(),
+                }
+              : p
+          )
+        );
+      }
+
       // Find the selected address object to populate the local state's release_address string
       let releaseAddressString = selectedPackage.release_address || null;
       if (actionType === "RELEASE" && selectedAddressId) {
@@ -365,6 +399,11 @@ export default function UserPackages({
             : p
         )
       );
+
+      // ensure pagination stays on a valid page after the update
+      // reset to first page so the updated lists are visible immediately
+      setInboxPage(1);
+      setHistoryPage(1);
 
       notifications.show({
         title: "Success",

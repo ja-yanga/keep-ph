@@ -70,47 +70,46 @@ function SignInContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null); // Clear previous errors
+    setError(null);
 
     try {
       const res = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // <-- required for Set-Cookie to be stored by browser
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error || "Signin failed"); // Set error state instead of alert
+        setError(data?.error || "Signin failed");
         setLoading(false);
         return;
       }
 
-      // client supabase also holds session; optional fetch:
       await supabase.auth.getSession();
-
-      // Force the session provider to update before redirecting
       await refresh();
 
-      // 1. Priority: API mandated redirect (e.g. onboarding)
-      if (data?.redirectTo) {
-        router.push(data.redirectTo);
+      // Client decides onboarding redirect by fetching profile (fast) after login
+      const profRes = await fetch("/api/user/profile", {
+        credentials: "include",
+      });
+      const profJson = await profRes.json().catch(() => null);
+      const needsOnboarding = profJson?.needsOnboarding ?? false;
+
+      if (needsOnboarding) {
+        router.push("/onboarding");
         return;
       }
-
-      // 2. Priority: User intended destination (from middleware redirect)
       if (next) {
         router.push(next);
         return;
       }
-
-      // 3. Default: Dashboard
       router.push("/dashboard");
     } catch (err) {
       console.error(err);
-      setError("An unexpected error occurred. Please try again."); // Set error state
+      setError("An unexpected error occurred. Please try again.");
       setLoading(false);
     }
   };

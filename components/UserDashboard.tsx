@@ -492,29 +492,6 @@ export default function UserDashboard() {
     );
   }
 
-  // Empty State
-  if (rows && rows.length === 0) {
-    return (
-      <Container size="sm">
-        <Paper p="xl" radius="md" withBorder ta="center">
-          <ThemeIcon size={60} radius="xl" color="blue" variant="light" mb="md">
-            <IconBox size={30} />
-          </ThemeIcon>
-          <Title order={3} mb="xs">
-            No Mailroom Services Yet
-          </Title>
-          <Text c="dimmed" mb="xl">
-            You haven't registered for a mailroom service yet. Get your own
-            address today!
-          </Text>
-          <Button component={Link} href="/mailroom/register" size="md">
-            Register New Service
-          </Button>
-        </Paper>
-      </Container>
-    );
-  }
-
   return (
     <Stack gap="xl">
       {/* 1. Welcome Section */}

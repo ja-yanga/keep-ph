@@ -39,33 +39,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    // 3. Check Onboarding (using Admin client to bypass RLS)
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    let needsOnboarding = true;
-    if (data.user?.id) {
-      const { data: profile } = await supabaseAdmin
-        .from("users")
-        .select("first_name, last_name, needs_onboarding")
-        .eq("id", data.user.id)
-        .single();
-
-      if (profile) {
-        if (typeof profile.needs_onboarding === "boolean") {
-          needsOnboarding = profile.needs_onboarding;
-        } else {
-          needsOnboarding = !profile.first_name || !profile.last_name;
-        }
-      }
-    }
-
+    // Return quickly; client will fetch profile to decide onboarding/redirect
     return NextResponse.json({
       ok: true,
-      needsOnboarding,
-      redirectTo: needsOnboarding ? "/onboarding" : "/dashboard",
+      userId: data.user?.id ?? null,
     });
   } catch (err: any) {
     console.error("Signin error:", err);
