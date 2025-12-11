@@ -10,6 +10,7 @@ import {
   Badge,
   Box,
   Button,
+  Divider,
   Group,
   Modal,
   Paper,
@@ -51,6 +52,7 @@ interface Registration {
   full_name: string;
   email: string;
   mailroom_code?: string | null;
+  mobile?: string | null; // added so release modal can show phone from registrations API
   // CHANGED: Added specific plan capabilities
   mailroom_plans?: {
     name: string;
@@ -754,6 +756,80 @@ export default function MailroomPackages() {
     p.status.includes("REQUEST")
   ).length;
 
+  // helper to extract phone for release snapshot
+  const getSnapshotPhone = (pkg: Package | null) => {
+    if (!pkg) return null;
+    // 1) explicit registration mobile
+    const regPhone = pkg.registration?.mobile ?? null;
+    if (regPhone) return regPhone;
+    // 2) explicit release snapshot field (if any)
+    // use bracket access in case field not declared in interface
+    const releasePhone = (pkg as any).release_contact_phone ?? null;
+    if (releasePhone) return releasePhone;
+    // 3) parse notes JSON for pickup_on_behalf.mobile
+    try {
+      const n = pkg.notes;
+      if (typeof n === "string" && n.trim().startsWith("{")) {
+        const parsed = JSON.parse(n);
+        if (parsed?.pickup_on_behalf?.mobile)
+          return parsed.pickup_on_behalf.mobile;
+        if (parsed?.mobile) return parsed.mobile;
+      } else if (typeof n === "string" && /^\+?\d/.test(n.trim())) {
+        // plain phone string stored in notes
+        return n.trim();
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  // helper to extract pickup-on-behalf object from notes JSON
+  const getPickupOnBehalf = (pkg: Package | null) => {
+    if (!pkg) return null;
+    try {
+      const n = pkg.notes;
+      if (typeof n !== "string") return null;
+      const trimmed = n.trim();
+      if (!trimmed.startsWith("{")) return null;
+      const parsed = JSON.parse(trimmed);
+      const pb = parsed?.pickup_on_behalf ?? null;
+      if (pb) {
+        return {
+          name: pb.name ?? null,
+          mobile: pb.mobile ?? null,
+          contact_mode: pb.contact_mode ?? null,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  // safe notes parser (returns pickup object or null)
+  const parsePickupFromNotes = (notes?: string | null) => {
+    if (!notes || typeof notes !== "string") return null;
+    try {
+      const parsed = JSON.parse(notes);
+      if (parsed?.pickup_on_behalf) {
+        // support both object or boolean-flag style
+        const pb =
+          typeof parsed.pickup_on_behalf === "object"
+            ? parsed.pickup_on_behalf
+            : parsed;
+        return {
+          name: pb.name ?? parsed.name ?? null,
+          mobile: pb.mobile ?? parsed.mobile ?? null,
+          contact_mode: pb.contact_mode ?? parsed.contact_mode ?? null,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   return (
     <Stack align="center">
       {/* GLOBAL SUCCESS ALERT */}
@@ -1313,69 +1389,186 @@ export default function MailroomPackages() {
 
           {/* Show saved release snapshot if available, otherwise show user's default address (read-only preview) */}
           <Box mt="sm">
-            {packageToRelease?.release_address ? (
-              <Paper withBorder p="sm" radius="md" bg="gray.0">
-                <Text fw={600} size="sm">
-                  Saved release snapshot
-                </Text>
-                <Text size="sm" c="dimmed" mt="6px">
-                  {packageToRelease.release_address}
-                </Text>
-                {packageToRelease.release_to_name && (
-                  <Text size="xs" c="dimmed" mt="6px">
-                    Recipient: {packageToRelease.release_to_name}
-                  </Text>
-                )}
-              </Paper>
-            ) : (
-              (() => {
-                const def = addresses.find((a) => a.is_default) ?? addresses[0];
-                if (def) {
+            {packageToRelease?.release_address
+              ? // --- PATH 1: Saved Release Snapshot (Confirmed/Historical Details)
+                (() => {
+                  const pickup = parsePickupFromNotes(packageToRelease?.notes);
+                  const phone = getSnapshotPhone(packageToRelease);
                   return (
-                    <Paper withBorder p="sm" radius="md" bg="gray.0">
-                      <Group justify="space-between" align="center">
-                        <div>
-                          <Text fw={600} size="sm">
-                            {def.label || "Unnamed Address"}
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            Recipient:{" "}
-                            {def.contact_name ||
-                              packageToRelease?.registration?.full_name ||
-                              "N/A"}
-                          </Text>
-                        </div>
-                        {def.is_default && (
-                          <Badge ml="xs" size="xs" color="blue" variant="light">
-                            Default
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="sm" c="dimmed" mt="8px">
-                        {def.line1}
-                        {def.line2 ? `, ${def.line2}` : ""}
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        {[def.city, def.region, def.postal]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </Text>
-                      {def.contact_phone && (
-                        <Text size="xs" c="dimmed" mt="4px">
-                          Phone: {def.contact_phone}
+                    <Paper withBorder p="md" radius="md" bg="gray.0">
+                      <Stack gap={4}>
+                        {/* Title */}
+                        <Text fw={700} size="md">
+                          Saved Release Snapshot
                         </Text>
-                      )}
+                        <Divider />
+
+                        {/* Delivery Address (Label on top, Value below) */}
+                        <Stack gap={2}>
+                          <Text fw={700} size="sm" c="dimmed">
+                            Delivery Address
+                          </Text>
+                          <Text size="sm" fw={500}>
+                            {packageToRelease.release_address}
+                          </Text>
+                        </Stack>
+
+                        {/* Recipient and Phone (Side by side) */}
+                        <Group grow mt="xs">
+                          {packageToRelease.release_to_name && (
+                            <Stack gap={2}>
+                              <Text fw={700} size="sm" c="dimmed">
+                                Recipient Name
+                              </Text>
+                              <Text size="sm" fw={500}>
+                                {packageToRelease.release_to_name}
+                              </Text>
+                            </Stack>
+                          )}
+                          {phone && (
+                            <Stack gap={2}>
+                              <Text fw={700} size="sm" c="dimmed">
+                                Contact Phone
+                              </Text>
+                              <Text size="sm" fw={500}>
+                                {phone}
+                              </Text>
+                            </Stack>
+                          )}
+                        </Group>
+
+                        {/* Pickup-on-behalf details (Nested box for visual separation) */}
+                        {pickup && (
+                          <Paper
+                            p="sm"
+                            radius="sm"
+                            bg="white"
+                            withBorder
+                            mt="xs"
+                          >
+                            <Stack gap={4}>
+                              <Text size="sm" fw={700} c="blue">
+                                Pickup on Behalf Details
+                              </Text>
+                              {/* Details as label: value pairs */}
+                              {pickup.name && (
+                                <Text size="sm" c="dimmed">
+                                  Name:{" "}
+                                  <Text span fw={500} c="dark">
+                                    {pickup.name}
+                                  </Text>
+                                </Text>
+                              )}
+                              {pickup.mobile && (
+                                <Text size="sm" c="dimmed">
+                                  Mobile:{" "}
+                                  <Text span fw={500} c="dark">
+                                    {pickup.mobile}
+                                  </Text>
+                                </Text>
+                              )}
+                              {pickup.contact_mode && (
+                                <Text size="sm" c="dimmed">
+                                  Contact via:{" "}
+                                  <Text span fw={500} c="dark">
+                                    {String(pickup.contact_mode).toUpperCase()}
+                                  </Text>
+                                </Text>
+                              )}
+                            </Stack>
+                          </Paper>
+                        )}
+                      </Stack>
                     </Paper>
                   );
-                }
-                return (
-                  <Text c="dimmed">
-                    No shipping address on file for this user.
-                  </Text>
-                );
-              })()
-            )}
+                })()
+              : // --- PATH 2: Default Address (Suggested Details)
+                (() => {
+                  const def =
+                    addresses.find((a) => a.is_default) ?? addresses[0];
+                  if (def) {
+                    return (
+                      <Paper withBorder p="md" radius="md" bg="gray.0">
+                        <Stack gap={4}>
+                          {/* Title and Badge - Separated */}
+                          <Group justify="space-between" align="center">
+                            <Text fw={700} size="md">
+                              Suggested Address:{" "}
+                              {def.label || "Unnamed Address"}
+                            </Text>
+                            {def.is_default && (
+                              <Badge size="sm" color="blue" variant="light">
+                                Default
+                              </Badge>
+                            )}
+                          </Group>
+                          <Divider />
+
+                          {/* Recipient (Label on top, Value below) */}
+                          <Stack gap={2}>
+                            <Text fw={700} size="sm" c="dimmed">
+                              Recipient Name
+                            </Text>
+                            <Text size="sm" fw={500}>
+                              {def.contact_name ||
+                                packageToRelease?.registration?.full_name ||
+                                "N/A"}
+                            </Text>
+                          </Stack>
+
+                          {/* Address and Phone (Side by side) */}
+                          <Group grow mt="xs">
+                            <Stack gap={2}>
+                              <Text fw={700} size="sm" c="dimmed">
+                                Address
+                              </Text>
+                              <Stack gap={0}>
+                                <Text size="sm" fw={500}>
+                                  {def.line1}
+                                  {def.line2 ? `, ${def.line2}` : ""}
+                                </Text>
+                                <Text size="sm" fw={500}>
+                                  {[def.city, def.region, def.postal]
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </Text>
+                              </Stack>
+                            </Stack>
+
+                            {def.contact_phone && (
+                              <Stack gap={2}>
+                                <Text fw={700} size="sm" c="dimmed">
+                                  Contact Phone
+                                </Text>
+                                <Text size="sm" fw={500}>
+                                  {def.contact_phone}
+                                </Text>
+                              </Stack>
+                            )}
+                          </Group>
+                        </Stack>
+                      </Paper>
+                    );
+                  }
+                  return (
+                    <Text c="dimmed">
+                      No shipping address on file for this user.
+                    </Text>
+                  );
+                })()}
           </Box>
+
+          {/* Locker info (show which locker this package is in) */}
+          <Stack gap={4} mt="xs">
+            <Text size="sm" fw={500}>
+              Locker
+            </Text>
+            <Text size="sm" fw={500}>
+              {packageToRelease?.locker?.locker_code ??
+                packageToRelease?.locker_id ??
+                "—"}
+            </Text>
+          </Stack>
 
           {/* NEW: Locker Status Selector */}
           <Stack gap={4} mt="xs">

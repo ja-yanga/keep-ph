@@ -21,6 +21,7 @@ import {
   TextInput,
   Select,
   useMantineTheme,
+  Checkbox,
 } from "@mantine/core";
 import {
   IconPackage,
@@ -163,6 +164,12 @@ export default function UserPackages({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // preview modal state (was missing)
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string | null>(null);
+  const [previewIsScan, setPreviewIsScan] = useState<boolean>(false);
+
   // pagination for package lists
   const [inboxPage, setInboxPage] = useState<number>(1);
   const [historyPage, setHistoryPage] = useState<number>(1);
@@ -177,12 +184,16 @@ export default function UserPackages({
   // recipient is not editable in modal — derived from selected address.contact_name or package user
   const { session } = useSession();
 
-  // Image Preview State
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState<string | null>(null);
-  // NEW: track whether current preview is a scanned document (true) or a package/photo/proof (false)
-  const [previewIsScan, setPreviewIsScan] = useState<boolean>(false);
+  // pickup-on-behalf fields (stored in mailroom_packages.notes as JSON)
+  const [pickupOnBehalf, setPickupOnBehalf] = useState<boolean>(false);
+  const [behalfName, setBehalfName] = useState<string>("");
+  const [behalfMobile, setBehalfMobile] = useState<string>("");
+  const [behalfContactMode, setBehalfContactMode] = useState<
+    "sms" | "viber" | "whatsapp"
+  >("sms");
+
+  // validate Philippines mobile: starts with 09 and total 11 digits (e.g. 09121231234)
+  const isBehalfMobileValid = /^09\d{9}$/.test(behalfMobile);
 
   const handleActionClick = (
     pkg: any,
@@ -201,6 +212,26 @@ export default function UserPackages({
         "";
       setReleaseToName(pkg?.release_to_name ?? userName);
 
+      // try to parse previous notes JSON for pickup-on-behalf data
+      setPickupOnBehalf(false);
+      setBehalfName("");
+      setBehalfMobile("");
+      setBehalfContactMode("sms");
+      try {
+        const n = pkg?.notes;
+        if (typeof n === "string" && n.trim().startsWith("{")) {
+          const parsed = JSON.parse(n);
+          if (parsed?.pickup_on_behalf) {
+            setPickupOnBehalf(true);
+            setBehalfName(parsed.name ?? "");
+            setBehalfMobile(parsed.mobile ?? "");
+            setBehalfContactMode(parsed.contact_mode ?? "sms");
+          }
+        }
+      } catch {
+        /* ignore invalid notes */
+      }
+
       // If package has a saved release_address_id use it,
       // otherwise immediately select user's default address (if already loaded).
       const pkgDefaultId = pkg?.release_address_id ?? null;
@@ -208,7 +239,10 @@ export default function UserPackages({
         !pkgDefaultId && Array.isArray(addresses)
           ? addresses.find((a) => a.is_default)?.id ?? null
           : null;
-      setSelectedAddressId(pkgDefaultId ?? userDefaultId);
+      // if pickup on behalf was previously selected, prefer clearing address to indicate pickup
+      setSelectedAddressId(
+        pkgDefaultId ?? (pickupOnBehalf ? null : userDefaultId)
+      );
       // if we selected a default address, prefill releaseToName from it when possible
       if (!pkgDefaultId && userDefaultId) {
         const sel = addresses.find((a) => a.id === userDefaultId);
@@ -217,6 +251,10 @@ export default function UserPackages({
     } else {
       setReleaseToName("");
       setSelectedAddressId(null);
+      setPickupOnBehalf(false);
+      setBehalfName("");
+      setBehalfMobile("");
+      setBehalfContactMode("sms");
     }
     setActionModalOpen(true);
   };
@@ -265,6 +303,18 @@ export default function UserPackages({
       if (actionType === "RELEASE") {
         body.selected_address_id = selectedAddressId || null;
         body.release_to_name = finalReleaseToName || releaseToName || null;
+        // include pickup-on-behalf data in notes as JSON when selected
+        if (pickupOnBehalf) {
+          body.notes = JSON.stringify({
+            pickup_on_behalf: true,
+            name: behalfName,
+            mobile: behalfMobile,
+            contact_mode: behalfContactMode,
+          });
+        } else {
+          // clear prior pickup notes on normal release
+          body.notes = null;
+        }
       } else if (!["DISPOSE", "SCAN"].includes(actionType || "")) {
         // include notes for other actions, but do NOT include notes for DISPOSE/SCAN per request
         body.notes = notes;
@@ -307,7 +357,7 @@ export default function UserPackages({
                 ...p,
                 status: newStatus,
                 // persist changes locally: release clears old notes and stores release info
-                notes: actionType === "RELEASE" ? "" : p.notes,
+                notes: actionType === "RELEASE" ? body.notes ?? "" : p.notes,
                 release_to_name:
                   actionType === "RELEASE" ? releaseToName : p.release_to_name,
                 release_address: releaseAddressString, // Use the structured string
@@ -1089,6 +1139,63 @@ export default function UserPackages({
                   <Text c="dimmed">No shipping address selected.</Text>
                 )}
               </Box>
+
+              {/* Pickup on behalf option */}
+              <Group align="center" mt="sm" mb="sm" gap="sm">
+                <Checkbox
+                  checked={pickupOnBehalf}
+                  onChange={(e) => {
+                    const val = !!e.currentTarget.checked;
+                    setPickupOnBehalf(val);
+                    // if opting for pickup on behalf, clear selected address (not shipping)
+                    if (val) setSelectedAddressId(null);
+                  }}
+                  label="Pickup on behalf"
+                />
+              </Group>
+
+              {pickupOnBehalf && (
+                <Stack>
+                  <TextInput
+                    label="Name of person picking up (required)"
+                    placeholder="Full name"
+                    value={behalfName}
+                    onChange={(e) => setBehalfName(e.currentTarget.value)}
+                    required
+                  />
+                  <TextInput
+                    label="Mobile number (required)"
+                    placeholder="0912XXXXXXX"
+                    value={behalfMobile}
+                    onChange={(e) => {
+                      // allow digits only and trim to 11 chars
+                      const digits = e.currentTarget.value
+                        .replace(/\D/g, "")
+                        .slice(0, 11);
+                      setBehalfMobile(digits);
+                    }}
+                    required
+                    maxLength={11}
+                    error={
+                      behalfMobile.length > 0 && !isBehalfMobileValid
+                        ? "Mobile must start with 09 and be 11 digits (e.g. 09121231234)"
+                        : undefined
+                    }
+                  />
+                  <Select
+                    label="Preferred contact method"
+                    data={[
+                      { value: "sms", label: "SMS" },
+                      { value: "viber", label: "Viber" },
+                      { value: "whatsapp", label: "WhatsApp" },
+                    ]}
+                    value={behalfContactMode}
+                    onChange={(v: any) =>
+                      setBehalfContactMode(v as "sms" | "viber" | "whatsapp")
+                    }
+                  />
+                </Stack>
+              )}
             </>
           )}
 
@@ -1103,8 +1210,12 @@ export default function UserPackages({
               color="blue"
               onClick={submitAction}
               loading={submitting}
-              // Disable if it's a release action and no shipping address selected
-              disabled={actionType === "RELEASE" && !selectedAddressId}
+              // Disable if it's a release action and no shipping address selected or pickup fields invalid
+              disabled={
+                actionType === "RELEASE" &&
+                ((!selectedAddressId && !pickupOnBehalf) ||
+                  (pickupOnBehalf && (!behalfName || !isBehalfMobileValid)))
+              }
             >
               Confirm
             </Button>
