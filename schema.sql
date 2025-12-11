@@ -169,6 +169,10 @@ CREATE TABLE public.user_kyc (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   id_document_type text,
+  full_name text,
+  first_name text,
+  last_name text,
+  address jsonb,
   CONSTRAINT user_kyc_pkey PRIMARY KEY (id),
   CONSTRAINT user_kyc_user_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );

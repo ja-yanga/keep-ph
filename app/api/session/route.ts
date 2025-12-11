@@ -65,11 +65,28 @@ export async function GET(request: Request) {
       console.error("profile lookup error:", e);
     }
 
+    // 4. Fetch KYC status for the user (only status needed)
+    // default to UNVERIFIED when no record exists
+    let kyc: Record<string, any> = { status: "UNVERIFIED" };
+    try {
+      const { data: kycData, error: kycErr } = await supabaseAdmin
+        .from("user_kyc")
+        .select("status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!kycErr && kycData) kyc = kycData;
+    } catch (e) {
+      console.error("kyc lookup error:", e);
+      // keep default UNVERIFIED on error
+    }
+
     return NextResponse.json({
       ok: true,
       user: user,
       profile,
       role: profile?.role ?? null,
+      kyc: kyc, // { status: "VERIFIED" | "SUBMITTED" | "UNVERIFIED" }
+      isKycVerified: kyc.status === "VERIFIED",
     });
   } catch (err) {
     console.error("session GET error:", err);
