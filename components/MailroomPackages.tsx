@@ -204,7 +204,8 @@ export default function MailroomPackages() {
   // Single SWR key for combined endpoint
   const packagesKey = "/api/admin/mailroom/packages";
   const fetcher = async (url: string) => {
-    const res = await fetch(url);
+    // avoid stale cached responses when revalidating
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(text || `Failed to fetch ${url}`);
@@ -435,7 +436,8 @@ export default function MailroomPackages() {
       });
 
       if (!res.ok) throw new Error("Failed to save");
-      const saved = await res.json().catch(() => null);
+      const raw = await res.json().catch(() => null);
+      const saved = raw?.data ?? raw;
 
       // optimistic local update: merge returned fields into existing package
       setPackages((cur) => {

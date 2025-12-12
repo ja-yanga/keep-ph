@@ -623,6 +623,7 @@ export default function UserPackages({
                 borderRadius: 8,
                 cursor: "pointer",
                 display: "block",
+                margin: "0 auto",
               }}
             />
           </Box>
