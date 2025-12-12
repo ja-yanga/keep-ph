@@ -39,11 +39,14 @@ export async function PUT(
     }
 
     // 3. Update the package (using updatePayload ONLY)
+    // return the updated row with joined registration (and its plan) and locker
     const { data: updatedPkg, error } = await supabaseAdmin
       .from("mailroom_packages")
       .update(updatePayload)
       .eq("id", id)
-      .select()
+      .select(
+        "*, registration:mailroom_registrations(id, full_name, email, mobile, mailroom_code, mailroom_plans:mailroom_plans(name, can_receive_mail, can_receive_parcels)), locker:location_lockers(id, locker_code)"
+      )
       .single();
 
     if (error) throw error;

@@ -57,6 +57,8 @@ export async function GET(req: Request) {
           "status",
           "id_document_type",
           "id_document_number",
+          "id_front_url",
+          "id_back_url",
           "first_name",
           "last_name",
           "full_name",

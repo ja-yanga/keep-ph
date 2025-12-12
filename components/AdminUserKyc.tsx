@@ -17,6 +17,7 @@ import {
   Avatar,
   Tooltip,
   Grid,
+  Image,
 } from "@mantine/core";
 import { DataTable } from "mantine-datatable";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
+import { useDisclosure } from "@mantine/hooks";
 
 interface KycRow {
   id: string;
@@ -34,6 +36,8 @@ interface KycRow {
   status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
   id_document_type?: string | null;
   id_document_number?: string | null;
+  id_front_url?: string | null;
+  id_back_url?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   full_name?: string | null;
@@ -124,6 +128,27 @@ export default function AdminUserKyc() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<KycRow | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [resolvedFront, setResolvedFront] = useState<string | null>(null);
+  const [resolvedBack, setResolvedBack] = useState<string | null>(null);
+  const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
+  const [zoomOpen, { open: openZoom, close: closeZoom }] = useDisclosure(false);
+
+  // track image load failures for fallback UI
+  const [failedImages, setFailedImages] = useState<{
+    front?: boolean;
+    back?: boolean;
+  }>({});
+
+  // Normalize a stored or relative URL to an absolute URL for the browser
+  const normalizeImageUrl = (url?: string | null) => {
+    if (!url) return null;
+    if (url.startsWith("http") || url.startsWith("data:")) return url;
+    if (typeof window !== "undefined") {
+      const prefix = url.startsWith("/") ? "" : "/";
+      return `${window.location.origin}${prefix}${url}`;
+    }
+    return url;
+  };
 
   useEffect(() => {
     const arr = Array.isArray(data?.data)
@@ -369,7 +394,7 @@ export default function AdminUserKyc() {
                     {selected.id_document_type ?? "—"}
                   </Text>
                   <Text size="xs" c="dimmed">
-                    {maskId(String(selected.id_document_number ?? ""))}
+                    {selected.id_document_number ?? "—"}
                   </Text>
                 </DetailStack>
               </Grid.Col>
@@ -404,6 +429,86 @@ export default function AdminUserKyc() {
               </Grid.Col>
             </Grid>
 
+            <Grid>
+              <Grid.Col span={6}>
+                <DetailStack label="ID Front">
+                  {selected.id_front_url && (
+                    <div>
+                      <Text size="xs" c="dimmed">
+                        Front
+                      </Text>
+                      {(() => {
+                        const src =
+                          resolvedFront ??
+                          normalizeImageUrl(selected.id_front_url);
+                        return src ? (
+                          <Image
+                            src={src}
+                            alt="ID front"
+                            width={240}
+                            height={160}
+                            fit="cover"
+                            radius="sm"
+                            style={{ cursor: "zoom-in" }}
+                            onClick={() => {
+                              setModalImageSrc(src);
+                              openZoom();
+                            }}
+                            onError={() =>
+                              setFailedImages((s) => ({ ...s, front: true }))
+                            }
+                          />
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            Image unavailable
+                          </Text>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </DetailStack>
+              </Grid.Col>
+
+              <Grid.Col span={6}>
+                <DetailStack label="ID Back">
+                  {selected.id_back_url && (
+                    <div>
+                      <Text size="xs" c="dimmed">
+                        Back
+                      </Text>
+                      {(() => {
+                        const src =
+                          resolvedBack ??
+                          normalizeImageUrl(selected.id_back_url);
+                        return src ? (
+                          <Image
+                            src={src}
+                            alt="ID back"
+                            width={240}
+                            height={160}
+                            fit="cover"
+                            radius="sm"
+                            style={{ cursor: "zoom-in" }}
+                            onClick={() => {
+                              setModalImageSrc(src);
+                              openZoom();
+                            }}
+                            onError={() =>
+                              setFailedImages((s) => ({ ...s, back: true }))
+                            }
+                          />
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            Image unavailable
+                          </Text>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </DetailStack>
+              </Grid.Col>
+            </Grid>
+
             <Group justify="flex-end" mt="xl">
               <Button variant="outline" onClick={() => setModalOpen(false)}>
                 Close
@@ -432,6 +537,19 @@ export default function AdminUserKyc() {
                 </Button>
               )}
             </Group>
+
+            {/* Zoom modal for clicked ID image */}
+            <Modal opened={zoomOpen} onClose={closeZoom} size="lg" centered>
+              {modalImageSrc && (
+                <Image
+                  src={modalImageSrc}
+                  alt="ID preview"
+                  fit="contain"
+                  mah="80vh"
+                  w="100%"
+                />
+              )}
+            </Modal>
           </Stack>
         ) : (
           <Center>

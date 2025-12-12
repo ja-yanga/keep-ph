@@ -201,12 +201,8 @@ export default function MailroomPackages() {
     "Empty" | "Normal" | "Near Full" | "Full"
   >("Normal");
 
-  // SWR keys
+  // Single SWR key for combined endpoint
   const packagesKey = "/api/admin/mailroom/packages";
-  const registrationsKey = "/api/admin/mailroom/registrations";
-  const lockersKey = "/api/admin/mailroom/lockers";
-  const assignedKey = "/api/admin/mailroom/assigned-lockers";
-
   const fetcher = async (url: string) => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -217,82 +213,40 @@ export default function MailroomPackages() {
   };
 
   const {
-    data: packagesData,
-    error: packagesError,
-    isValidating: packagesValidating,
+    data: combinedData,
+    error: combinedError,
+    isValidating,
   } = useSWR(packagesKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: registrationsData,
-    error: registrationsError,
-    isValidating: registrationsValidating,
-  } = useSWR(registrationsKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: lockersData,
-    error: lockersError,
-    isValidating: lockersValidating,
-  } = useSWR(lockersKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: assignedData,
-    error: assignedError,
-    isValidating: assignedValidating,
-  } = useSWR(assignedKey, fetcher, { revalidateOnFocus: true });
 
-  // derived arrays (handle endpoints that return { data: [...] } or bare arrays)
-  const packagesArr = Array.isArray(packagesData?.data)
-    ? packagesData.data
-    : Array.isArray(packagesData)
-    ? packagesData
-    : [];
-  const registrationsArr = Array.isArray(registrationsData?.data)
-    ? registrationsData.data
-    : Array.isArray(registrationsData)
-    ? registrationsData
-    : [];
-  const lockersArr = Array.isArray(lockersData?.data)
-    ? lockersData.data
-    : Array.isArray(lockersData)
-    ? lockersData
-    : [];
-  const assignedArr = Array.isArray(assignedData?.data)
-    ? assignedData.data
-    : Array.isArray(assignedData)
-    ? assignedData
-    : [];
-
-  // sync SWR results into local state to avoid changing rest of the code
+  // sync SWR combined response into local state
   useEffect(() => {
-    setLoading(
-      packagesValidating ||
-        registrationsValidating ||
-        lockersValidating ||
-        assignedValidating
-    );
-    setPackages(packagesArr);
-    setRegistrations(registrationsArr);
-    setLockers(lockersArr);
-    setAssignedLockers(assignedArr);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    packagesData,
-    registrationsData,
-    lockersData,
-    assignedData,
-    packagesValidating,
-    registrationsValidating,
-    lockersValidating,
-    assignedValidating,
-  ]);
+    setLoading(!!isValidating);
+    const payload = combinedData ?? {};
+    const pkgs = Array.isArray(payload.packages)
+      ? payload.packages
+      : Array.isArray(payload.data)
+      ? payload.data
+      : [];
+    const regs = Array.isArray(payload.registrations)
+      ? payload.registrations
+      : [];
+    const lks = Array.isArray(payload.lockers) ? payload.lockers : [];
+    const assigned = Array.isArray(payload.assignedLockers)
+      ? payload.assignedLockers
+      : [];
 
-  // helper to refresh all data (used after mutations)
+    setPackages(pkgs);
+    setRegistrations(regs);
+    setLockers(lks);
+    setAssignedLockers(assigned);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combinedData, isValidating]);
+
+  // helper to refresh combined data (used after mutations)
   const refreshAll = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        swrMutate(packagesKey),
-        swrMutate(registrationsKey),
-        swrMutate(lockersKey),
-        swrMutate(assignedKey),
-      ]);
+      await swrMutate(packagesKey);
     } finally {
       setLoading(false);
     }
@@ -481,6 +435,24 @@ export default function MailroomPackages() {
       });
 
       if (!res.ok) throw new Error("Failed to save");
+      const saved = await res.json().catch(() => null);
+
+      // optimistic local update: merge returned fields into existing package
+      setPackages((cur) => {
+        if (!saved?.id) return cur;
+        try {
+          if (editingPackage) {
+            return cur.map((p) =>
+              p.id === saved.id ? { ...p, ...(saved as Partial<Package>) } : p
+            );
+          } else {
+            // prepend new package (server should return joined shape)
+            return [saved as Package, ...cur];
+          }
+        } catch {
+          return cur;
+        }
+      });
 
       setGlobalSuccess(
         `Package ${editingPackage ? "updated" : "created"} successfully`
@@ -1143,12 +1115,19 @@ export default function MailroomPackages() {
             required
             searchable
             // Limit displayed options to first 10 for performance/virtualization safety
-            data={registrations.slice(0, 10).map((r) => ({
-              value: r.id,
-              label: `${r.mailroom_code || "No Code"} - ${r.email} (${
-                r.mailroom_plans?.name || "Unknown Plan"
-              })`,
-            }))}
+            data={registrations.slice(0, 10).map((r) => {
+              const planName = Array.isArray(
+                r.mailroom_plans
+              ) /* API may return array */
+                ? r.mailroom_plans[0]?.name
+                : (r.mailroom_plans as any)?.name;
+              return {
+                value: r.id,
+                label: `${r.mailroom_code || "No Code"} - ${r.email} (${
+                  planName || "Unknown Plan"
+                })`,
+              };
+            })}
             value={formData.registration_id}
             onChange={(val) => handleRegistrationChange(val)}
             // Custom filter allows searching by any part of the label string
