@@ -8,7 +8,7 @@ import {
   MantineProvider,
   mantineHtmlProps,
 } from "@mantine/core";
-import { SessionProvider } from "@/components/SessionProvider";
+import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 
 const geistSans = Geist({
@@ -46,7 +46,7 @@ export default function RootLayout({
         )}
 
         <MantineProvider>
-          <SessionProvider>{children}</SessionProvider>
+          <ServerSessionProvider>{children}</ServerSessionProvider>
         </MantineProvider>
       </body>
     </html>

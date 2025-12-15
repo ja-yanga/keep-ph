@@ -39,8 +39,17 @@ const SessionContext = createContext<ContextValue>({
   refresh: async () => {},
 });
 
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionPayload>(null);
+export function SessionProvider({
+  children,
+  initialSession,
+}: {
+  children: ReactNode;
+  initialSession?: SessionPayload | null;
+}) {
+  // hydrate from server-provided session when available
+  const [session, setSession] = useState<SessionPayload>(
+    initialSession ?? null
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
 
@@ -95,7 +104,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    fetchSession();
+    // only fetch if we don't have initial data
+    if (!initialSession) fetchSession();
   }, []);
 
   return (

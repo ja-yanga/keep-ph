@@ -175,7 +175,11 @@ const mapDataToRows = (data: RawRow[]): Row[] => {
   });
 };
 
-export default function UserDashboard() {
+export default function UserDashboard({
+  initialData,
+}: {
+  initialData?: any[] | null;
+}) {
   const { session } = useSession();
   // pagination for registrations
   const [page, setPage] = useState<number>(1);
@@ -251,6 +255,7 @@ export default function UserDashboard() {
     isValidating,
   } = useSWR<RawRow[] | undefined>(swrKey, fetcher, {
     revalidateOnFocus: true,
+    fallbackData: initialData ?? undefined, // hydrate from server
   });
 
   // map API data into rows and keep as local state for UI / optimistic updates
