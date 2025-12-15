@@ -46,6 +46,7 @@ CREATE TABLE public.mailroom_packages (
   release_address text,
   release_address_id uuid,
   package_name text,
+  package_photo text,
   CONSTRAINT mailroom_packages_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_packages_registration_id_fkey FOREIGN KEY (registration_id) REFERENCES public.mailroom_registrations(id),
   CONSTRAINT mailroom_packages_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.location_lockers(id)
@@ -72,10 +73,13 @@ CREATE TABLE public.mailroom_registrations (
   created_at timestamp without time zone NOT NULL DEFAULT now(),
   full_name text NOT NULL,
   email text NOT NULL,
-  mobile numeric NOT NULL,
+  mobile text NOT NULL,
   mailroom_status boolean DEFAULT true,
-  mailroom_code text,
+  mailroom_code text UNIQUE,
   auto_renew boolean DEFAULT true,
+  order_id text UNIQUE,
+  paid boolean DEFAULT false,
+  paymongo_payment_id text,
   CONSTRAINT mailroom_registrations_pkey PRIMARY KEY (id),
   CONSTRAINT mailroom_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT mailroom_registrations_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.mailroom_locations(id),
@@ -153,6 +157,24 @@ CREATE TABLE public.user_addresses (
   contact_name text,
   CONSTRAINT user_addresses_pkey PRIMARY KEY (id),
   CONSTRAINT user_addresses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.user_kyc (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  status USER-DEFINED NOT NULL DEFAULT 'SUBMITTED'::user_kyc_status,
+  id_front_url text NOT NULL,
+  id_back_url text NOT NULL,
+  submitted_at timestamp with time zone NOT NULL DEFAULT now(),
+  verified_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  id_document_type text,
+  full_name text,
+  first_name text,
+  last_name text,
+  address jsonb,
+  CONSTRAINT user_kyc_pkey PRIMARY KEY (id),
+  CONSTRAINT user_kyc_user_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

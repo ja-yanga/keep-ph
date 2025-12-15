@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Badge,
   Button,
@@ -21,6 +21,7 @@ import {
   TextInput,
   Select,
   useMantineTheme,
+  Checkbox,
 } from "@mantine/core";
 import {
   IconPackage,
@@ -49,6 +50,9 @@ interface UserPackagesProps {
   };
   isStorageFull?: boolean;
   onRefresh?: () => void | Promise<void>;
+  // injected from parent to avoid duplicate fetches
+  scanMap?: Record<string, string>;
+  scans?: any[];
 }
 
 export default function UserPackages({
@@ -57,6 +61,8 @@ export default function UserPackages({
   planCapabilities,
   isStorageFull = false,
   onRefresh,
+  scanMap: providedScanMap,
+  scans: providedScans,
 }: UserPackagesProps) {
   const theme = useMantineTheme();
   const [localPackages, setLocalPackages] = useState<any[]>(packages);
@@ -65,59 +71,41 @@ export default function UserPackages({
   // map of tracking_number|package_id -> file_url
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!packages || packages.length === 0) {
-      setScanMap({});
-      return;
-    }
-
+  // derive registrationId deterministically (primitive) to use in deps
+  const registrationId = useMemo(() => {
     const regPkg =
       packages.find((p: any) => p.registration_id) ||
       packages.find((p: any) => p.package?.registration_id);
-    const registrationId =
+    return (
       (regPkg && (regPkg.registration_id || regPkg.package?.registration_id)) ||
-      null;
+      null
+    );
+  }, [packages]); // still depends on packages but yields a primitive id
 
-    if (!registrationId) {
-      setScanMap({});
+  // if parent provided scans/scanMap, use them and skip fetching locally
+  useEffect(() => {
+    if (providedScanMap) {
+      setScanMap(providedScanMap);
       return;
     }
-
-    let mounted = true;
-    (async () => {
-      try {
-        // existing scans logic
-        const res = await fetch(
-          `/api/user/scans?registrationId=${encodeURIComponent(
-            registrationId
-          )}`,
-          { credentials: "include" }
-        );
-        if (!res.ok) return;
-        const data = await res.json().catch(() => ({}));
-        const scansArr = Array.isArray(data?.scans) ? data.scans : [];
-
-        const map: Record<string, string> = {};
-        scansArr.forEach((s: any) => {
-          const file = s.file_url;
-          const pkgName = s.package?.package_name;
-          if (pkgName) map[pkgName] = file;
-          if (s.package_id) map[s.package_id] = file;
-        });
-
-        if (mounted) setScanMap(map);
-      } catch (err) {
-        console.error("failed to load scans for packages", err);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [packages]);
+    if (providedScans) {
+      const map: Record<string, string> = {};
+      providedScans.forEach((s: any) => {
+        if (s.package_id) map[s.package_id] = s.file_url;
+      });
+      setScanMap(map);
+      return;
+    }
+    // otherwise keep existing fetch logic (unchanged) or no-op here
+  }, [providedScanMap, providedScans]);
 
   useEffect(() => {
     setLocalPackages(packages);
+  }, [packages]);
+
+  // always sync when parent prop changes (prevents stale/incorrect data)
+  useEffect(() => {
+    setLocalPackages(Array.isArray(packages) ? packages.slice() : []);
   }, [packages]);
 
   // Split packages into Active (Inbox) and History
@@ -176,6 +164,17 @@ export default function UserPackages({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // preview modal state (was missing)
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string | null>(null);
+  const [previewIsScan, setPreviewIsScan] = useState<boolean>(false);
+
+  // pagination for package lists
+  const [inboxPage, setInboxPage] = useState<number>(1);
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const perPage = 3;
+
   // addresses / release fields
   const [addresses, setAddresses] = useState<any[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
@@ -185,10 +184,16 @@ export default function UserPackages({
   // recipient is not editable in modal — derived from selected address.contact_name or package user
   const { session } = useSession();
 
-  // Image Preview State
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState<string | null>(null);
+  // pickup-on-behalf fields (stored in mailroom_packages.notes as JSON)
+  const [pickupOnBehalf, setPickupOnBehalf] = useState<boolean>(false);
+  const [behalfName, setBehalfName] = useState<string>("");
+  const [behalfMobile, setBehalfMobile] = useState<string>("");
+  const [behalfContactMode, setBehalfContactMode] = useState<
+    "sms" | "viber" | "whatsapp"
+  >("sms");
+
+  // validate Philippines mobile: starts with 09 and total 11 digits (e.g. 09121231234)
+  const isBehalfMobileValid = /^09\d{9}$/.test(behalfMobile);
 
   const handleActionClick = (
     pkg: any,
@@ -198,6 +203,7 @@ export default function UserPackages({
     setActionType(type);
     // prefill notes only for non-release actions; release will use addresses + name
     setNotes(type === "RELEASE" ? "" : pkg?.notes || "");
+
     // prefill release-related fields when requesting release
     if (type === "RELEASE") {
       // prefill from package snapshot, fallback to user's name; do not force editing
@@ -205,11 +211,50 @@ export default function UserPackages({
         `${pkg?.user?.first_name ?? ""} ${pkg?.user?.last_name ?? ""}`.trim() ||
         "";
       setReleaseToName(pkg?.release_to_name ?? userName);
-      // selectedAddressId will be set after addresses load; set a tentative value
-      setSelectedAddressId(pkg?.release_address_id ?? null);
+
+      // try to parse previous notes JSON for pickup-on-behalf data
+      setPickupOnBehalf(false);
+      setBehalfName("");
+      setBehalfMobile("");
+      setBehalfContactMode("sms");
+      try {
+        const n = pkg?.notes;
+        if (typeof n === "string" && n.trim().startsWith("{")) {
+          const parsed = JSON.parse(n);
+          if (parsed?.pickup_on_behalf) {
+            setPickupOnBehalf(true);
+            setBehalfName(parsed.name ?? "");
+            setBehalfMobile(parsed.mobile ?? "");
+            setBehalfContactMode(parsed.contact_mode ?? "sms");
+          }
+        }
+      } catch {
+        /* ignore invalid notes */
+      }
+
+      // If package has a saved release_address_id use it,
+      // otherwise immediately select user's default address (if already loaded).
+      const pkgDefaultId = pkg?.release_address_id ?? null;
+      const userDefaultId =
+        !pkgDefaultId && Array.isArray(addresses)
+          ? addresses.find((a) => a.is_default)?.id ?? null
+          : null;
+      // if pickup on behalf was previously selected, prefer clearing address to indicate pickup
+      setSelectedAddressId(
+        pkgDefaultId ?? (pickupOnBehalf ? null : userDefaultId)
+      );
+      // if we selected a default address, prefill releaseToName from it when possible
+      if (!pkgDefaultId && userDefaultId) {
+        const sel = addresses.find((a) => a.id === userDefaultId);
+        if (sel?.contact_name) setReleaseToName(sel.contact_name);
+      }
     } else {
       setReleaseToName("");
       setSelectedAddressId(null);
+      setPickupOnBehalf(false);
+      setBehalfName("");
+      setBehalfMobile("");
+      setBehalfContactMode("sms");
     }
     setActionModalOpen(true);
   };
@@ -254,15 +299,26 @@ export default function UserPackages({
 
       if (!newStatus) return;
 
-      const body = {
-        status: newStatus,
-        ...(actionType === "RELEASE"
-          ? {
-              selected_address_id: selectedAddressId || null,
-              release_to_name: finalReleaseToName || releaseToName || null,
-            }
-          : { notes }),
-      };
+      const body: any = { status: newStatus };
+      if (actionType === "RELEASE") {
+        body.selected_address_id = selectedAddressId || null;
+        body.release_to_name = finalReleaseToName || releaseToName || null;
+        // include pickup-on-behalf data in notes as JSON when selected
+        if (pickupOnBehalf) {
+          body.notes = JSON.stringify({
+            pickup_on_behalf: true,
+            name: behalfName,
+            mobile: behalfMobile,
+            contact_mode: behalfContactMode,
+          });
+        } else {
+          // clear prior pickup notes on normal release
+          body.notes = null;
+        }
+      } else if (!["DISPOSE", "SCAN"].includes(actionType || "")) {
+        // include notes for other actions, but do NOT include notes for DISPOSE/SCAN per request
+        body.notes = notes;
+      }
 
       const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
         method: "PATCH",
@@ -272,6 +328,40 @@ export default function UserPackages({
       });
 
       if (!res.ok) throw new Error("Failed to update package");
+
+      // prefer server-returned updated package to keep local state consistent
+      const serverJson = await res.json().catch(() => null);
+      const updatedFromServer =
+        serverJson?.data ?? serverJson?.package ?? serverJson ?? null;
+      if (updatedFromServer && updatedFromServer.id) {
+        applyUpdatedPackage(updatedFromServer);
+        // ensure selectedPackage reference is updated if modal remains open
+        if (selectedPackage?.id === updatedFromServer.id) {
+          setSelectedPackage((prev: any) => ({
+            ...(prev ?? {}),
+            ...updatedFromServer,
+          }));
+        }
+      } else {
+        // fallback optimistic update if server didn't return object
+        setLocalPackages((current) =>
+          current.map((p) =>
+            p.id === selectedPackage.id
+              ? {
+                  ...p,
+                  status: newStatus,
+                  notes: actionType === "RELEASE" ? body.notes ?? "" : p.notes,
+                  release_to_name:
+                    actionType === "RELEASE"
+                      ? releaseToName
+                      : p.release_to_name,
+                  release_address: releaseAddressString,
+                  updated_at: new Date().toISOString(),
+                }
+              : p
+          )
+        );
+      }
 
       // Find the selected address object to populate the local state's release_address string
       let releaseAddressString = selectedPackage.release_address || null;
@@ -301,7 +391,7 @@ export default function UserPackages({
                 ...p,
                 status: newStatus,
                 // persist changes locally: release clears old notes and stores release info
-                notes: actionType === "RELEASE" ? "" : p.notes,
+                notes: actionType === "RELEASE" ? body.notes ?? "" : p.notes,
                 release_to_name:
                   actionType === "RELEASE" ? releaseToName : p.release_to_name,
                 release_address: releaseAddressString, // Use the structured string
@@ -309,6 +399,11 @@ export default function UserPackages({
             : p
         )
       );
+
+      // ensure pagination stays on a valid page after the update
+      // reset to first page so the updated lists are visible immediately
+      setInboxPage(1);
+      setHistoryPage(1);
 
       notifications.show({
         title: "Success",
@@ -342,8 +437,103 @@ export default function UserPackages({
     }
   };
 
+  // Download currently previewed scan (works with data URLs, same-origin, or fetches blob)
+  const downloadScan = async (): Promise<void> => {
+    if (!previewImage) return;
+    const fallbackName = (
+      previewTitle ||
+      selectedPackage?.package_name ||
+      "scan"
+    ).replace(/\s+/g, "_");
+    try {
+      const a = document.createElement("a");
+      a.href = previewImage;
+      a.target = "_blank";
+
+      let willDownloadDirectly = false;
+      if (previewImage.startsWith("data:")) willDownloadDirectly = true;
+      try {
+        const url = new URL(previewImage, location.href);
+        if (url.origin === location.origin) willDownloadDirectly = true;
+      } catch {
+        // ignore invalid URL
+      }
+
+      if (willDownloadDirectly) {
+        a.download = fallbackName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
+
+      const res = await fetch(previewImage, { credentials: "include" });
+      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      a.href = blobUrl;
+      a.download = fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      console.error("download failed", err);
+      notifications.show({
+        title: "Download failed",
+        message: err?.message || String(err),
+        color: "red",
+      });
+    }
+  };
+
+  // Request rescan for the selected package (PATCH -> status: REQUEST_TO_SCAN)
+  const requestRescanFromModal = async (): Promise<void> => {
+    if (!selectedPackage) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: "REQUEST_TO_SCAN" }),
+      });
+      if (!res.ok) throw new Error("Failed to request rescan");
+
+      setLocalPackages((current) =>
+        current.map((p) =>
+          p.id === selectedPackage.id ? { ...p, status: "REQUEST_TO_SCAN" } : p
+        )
+      );
+
+      notifications.show({
+        title: "Rescan requested",
+        message: "Your rescan request has been submitted to admin.",
+        color: "green",
+      });
+      setImageModalOpen(false);
+    } catch (err: any) {
+      notifications.show({
+        title: "Error",
+        message: err?.message || "Failed to request rescan",
+        color: "red",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // --- Render Component for a Single Package Card ---
   const PackageCard = ({ pkg }: { pkg: any }) => {
+    // debug: ensure each package has its own photo/url
+    console.debug(
+      "PackageCard",
+      pkg.id,
+      pkg.package_photo,
+      pkg.image_url,
+      pkg.release_proof_url
+    );
+
     const packageName = pkg.package_name || "—";
     const type = pkg.package_type || "Parcel";
     const status = pkg.status || "STORED";
@@ -367,8 +557,8 @@ export default function UserPackages({
       pkg.scan_url ||
       pkg.digital_scan_url ||
       pkg.scanned_file_url ||
-      scanMap[pkg.package_name] ||
-      scanMap[pkg.id] ||
+      scanMap[pkg.id] || // prefer id-keyed map first
+      scanMap[`name:${pkg.package_name}`] ||
       null;
     const hasScan = Boolean(scanUrl);
 
@@ -408,6 +598,36 @@ export default function UserPackages({
         </Group>
 
         <Divider my="sm" variant="dashed" />
+
+        {/* Package photo thumbnail (click to preview) */}
+        {pkg.package_photo && (
+          <Box mb="sm">
+            <img
+              key={`${pkg.id}-${pkg.package_photo}`}
+              src={pkg.package_photo}
+              alt="Package photo"
+              onClick={() => {
+                setSelectedPackage(pkg);
+                setPreviewTitle("Package Photo");
+                setPreviewImage(pkg.package_photo);
+                setPreviewIsScan(false);
+                setImageModalOpen(true);
+              }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+              style={{
+                width: 140,
+                height: 96,
+                objectFit: "cover",
+                borderRadius: 8,
+                cursor: "pointer",
+                display: "block",
+                margin: "0 auto",
+              }}
+            />
+          </Box>
+        )}
 
         <Group justify="space-between" mb="md">
           <Box>
@@ -469,8 +689,11 @@ export default function UserPackages({
                     size="xs"
                     leftSection={<IconEye size={14} />}
                     onClick={() => {
+                      setSelectedPackage(pkg); // <-- ensure modal actions know which package
                       setPreviewTitle("View Scan");
                       setPreviewImage(scanUrl);
+                      // this preview is a scan
+                      setPreviewIsScan(true);
                       setImageModalOpen(true);
                     }}
                   >
@@ -513,8 +736,11 @@ export default function UserPackages({
                 variant="default"
                 leftSection={<IconEye size={14} />}
                 onClick={() => {
+                  setSelectedPackage(pkg);
                   setPreviewTitle("Proof of Release");
                   setPreviewImage(pkg.release_proof_url || pkg.image_url);
+                  // proof image is not a scan
+                  setPreviewIsScan(false);
                   setImageModalOpen(true);
                 }}
                 style={{ whiteSpace: "nowrap", minWidth: 110 }}
@@ -613,6 +839,13 @@ export default function UserPackages({
     };
   }, [selectedPackage?.id, session?.user?.id]);
 
+  // use this helper after receiving updatedPkg from server
+  function applyUpdatedPackage(updatedPkg: any) {
+    setLocalPackages((prev) =>
+      prev.map((p) => (p.id === updatedPkg.id ? { ...p, ...updatedPkg } : p))
+    );
+  }
+
   return (
     <>
       <Paper p="lg" radius="md" withBorder shadow="sm">
@@ -637,7 +870,11 @@ export default function UserPackages({
             <TextInput
               placeholder="Search by package name or package type..."
               value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                setInboxPage(1);
+                setHistoryPage(1);
+              }}
               leftSection={<IconSearch size={16} />}
               size="md"
               __clearable
@@ -646,11 +883,59 @@ export default function UserPackages({
 
           <Tabs.Panel value="inbox">
             {filteredActivePackages.length > 0 ? (
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {filteredActivePackages.map((pkg) => (
-                  <PackageCard key={pkg.id} pkg={pkg} />
-                ))}
-              </SimpleGrid>
+              <>
+                {(() => {
+                  const total = filteredActivePackages.length;
+                  const start = (inboxPage - 1) * perPage;
+                  const pageItems = filteredActivePackages.slice(
+                    start,
+                    start + perPage
+                  );
+                  return (
+                    <>
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+                        {pageItems.map((pkg) => (
+                          <PackageCard key={pkg.id} pkg={pkg} />
+                        ))}
+                      </SimpleGrid>
+                      {total > perPage && (
+                        <Group
+                          justify="space-between"
+                          mt="md"
+                          align="center"
+                          style={{ width: "100%" }}
+                        >
+                          <Text size="sm" c="dimmed">
+                            Showing {Math.min(start + 1, total)}–
+                            {Math.min(start + pageItems.length, total)} of{" "}
+                            {total}
+                          </Text>
+                          <Group>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={inboxPage === 1}
+                              onClick={() =>
+                                setInboxPage((p) => Math.max(1, p - 1))
+                              }
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={start + perPage >= total}
+                              onClick={() => setInboxPage((p) => p + 1)}
+                            >
+                              Next
+                            </Button>
+                          </Group>
+                        </Group>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
             ) : (
               <Stack
                 align="center"
@@ -666,11 +951,59 @@ export default function UserPackages({
 
           <Tabs.Panel value="history">
             {filteredHistoryPackages.length > 0 ? (
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-                {filteredHistoryPackages.map((pkg) => (
-                  <PackageCard key={pkg.id} pkg={pkg} />
-                ))}
-              </SimpleGrid>
+              <>
+                {(() => {
+                  const total = filteredHistoryPackages.length;
+                  const start = (historyPage - 1) * perPage;
+                  const pageItems = filteredHistoryPackages.slice(
+                    start,
+                    start + perPage
+                  );
+                  return (
+                    <>
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+                        {pageItems.map((pkg) => (
+                          <PackageCard key={pkg.id} pkg={pkg} />
+                        ))}
+                      </SimpleGrid>
+                      {total > perPage && (
+                        <Group
+                          justify="apart"
+                          mt="md"
+                          align="center"
+                          style={{ width: "100%" }}
+                        >
+                          <Text size="sm" c="dimmed">
+                            Showing {Math.min(start + 1, total)}–
+                            {Math.min(start + pageItems.length, total)} of{" "}
+                            {total}
+                          </Text>
+                          <Group>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={historyPage === 1}
+                              onClick={() =>
+                                setHistoryPage((p) => Math.max(1, p - 1))
+                              }
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={start + perPage >= total}
+                              onClick={() => setHistoryPage((p) => p + 1)}
+                            >
+                              Next
+                            </Button>
+                          </Group>
+                        </Group>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
             ) : (
               <Stack
                 align="center"
@@ -846,18 +1179,68 @@ export default function UserPackages({
                   <Text c="dimmed">No shipping address selected.</Text>
                 )}
               </Box>
+
+              {/* Pickup on behalf option */}
+              <Group align="center" mt="sm" mb="sm" gap="sm">
+                <Checkbox
+                  checked={pickupOnBehalf}
+                  onChange={(e) => {
+                    const val = !!e.currentTarget.checked;
+                    setPickupOnBehalf(val);
+                    // if opting for pickup on behalf, clear selected address (not shipping)
+                    if (val) setSelectedAddressId(null);
+                  }}
+                  label="Pickup on behalf"
+                />
+              </Group>
+
+              {pickupOnBehalf && (
+                <Stack>
+                  <TextInput
+                    label="Name of person picking up (required)"
+                    placeholder="Full name"
+                    value={behalfName}
+                    onChange={(e) => setBehalfName(e.currentTarget.value)}
+                    required
+                  />
+                  <TextInput
+                    label="Mobile number (required)"
+                    placeholder="0912XXXXXXX"
+                    value={behalfMobile}
+                    onChange={(e) => {
+                      // allow digits only and trim to 11 chars
+                      const digits = e.currentTarget.value
+                        .replace(/\D/g, "")
+                        .slice(0, 11);
+                      setBehalfMobile(digits);
+                    }}
+                    required
+                    maxLength={11}
+                    error={
+                      behalfMobile.length > 0 && !isBehalfMobileValid
+                        ? "Mobile must start with 09 and be 11 digits (e.g. 09121231234)"
+                        : undefined
+                    }
+                  />
+                  <Select
+                    label="Preferred contact method"
+                    data={[
+                      { value: "sms", label: "SMS" },
+                      { value: "viber", label: "Viber" },
+                      { value: "whatsapp", label: "WhatsApp" },
+                    ]}
+                    value={behalfContactMode}
+                    onChange={(v: any) =>
+                      setBehalfContactMode(v as "sms" | "viber" | "whatsapp")
+                    }
+                  />
+                </Stack>
+              )}
             </>
           )}
 
           {/* Note section for other actions */}
-          {["DISPOSE", "SCAN"].includes(actionType!) && (
-            <Textarea
-              label="Notes (Optional)"
-              placeholder="Add any specific instructions for the admin."
-              value={notes}
-              onChange={(e) => setNotes(e.currentTarget.value)}
-            />
-          )}
+          {/* Notes removed for DISPOSE and SCAN requests as requested */}
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setActionModalOpen(false)}>
@@ -867,8 +1250,12 @@ export default function UserPackages({
               color="blue"
               onClick={submitAction}
               loading={submitting}
-              // Disable if it's a release action and no shipping address selected
-              disabled={actionType === "RELEASE" && !selectedAddressId}
+              // Disable if it's a release action and no shipping address selected or pickup fields invalid
+              disabled={
+                actionType === "RELEASE" &&
+                ((!selectedAddressId && !pickupOnBehalf) ||
+                  (pickupOnBehalf && (!behalfName || !isBehalfMobileValid)))
+              }
             >
               Confirm
             </Button>
@@ -883,6 +1270,7 @@ export default function UserPackages({
           setImageModalOpen(false);
           setPreviewImage(null);
           setPreviewTitle(null);
+          setPreviewIsScan(false);
         }}
         title={previewTitle ?? "Preview"}
         size="xl"
@@ -890,24 +1278,44 @@ export default function UserPackages({
         overlayProps={{ blur: 3, backgroundOpacity: 0.45 }}
       >
         {previewImage ? (
-          /\.pdf(\?.*)?$/i.test(previewImage) ? (
-            <iframe
-              src={previewImage}
-              title={previewTitle ?? "Preview"}
-              style={{ width: "100%", height: "70vh", border: "none" }}
-            />
-          ) : (
-            <img
-              src={previewImage}
-              alt={previewTitle ?? "Preview"}
-              style={{
-                width: "100%",
-                maxHeight: "70vh",
-                objectFit: "contain",
-                borderRadius: 8,
-              }}
-            />
-          )
+          <>
+            {/\.pdf(\?.*)?$/i.test(previewImage) ? (
+              <iframe
+                src={previewImage}
+                title={previewTitle ?? "Preview"}
+                style={{ width: "100%", height: "70vh", border: "none" }}
+              />
+            ) : (
+              <img
+                src={previewImage}
+                alt={previewTitle ?? "Preview"}
+                style={{
+                  width: "100%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  borderRadius: 8,
+                }}
+              />
+            )}
+
+            <Group justify="flex-end" mt="sm" gap="xs">
+              {/* Only show Request Rescan when preview is a scanned document */}
+              {previewIsScan && (
+                <Button
+                  size="xs"
+                  color="violet"
+                  onClick={requestRescanFromModal}
+                  loading={submitting}
+                  disabled={
+                    typeof selectedPackage?.status === "string" &&
+                    selectedPackage.status.includes("REQUEST")
+                  }
+                >
+                  Request Rescan
+                </Button>
+              )}
+            </Group>
+          </>
         ) : (
           <Text c="dimmed">No preview available</Text>
         )}

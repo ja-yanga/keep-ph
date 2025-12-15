@@ -21,6 +21,8 @@ type SessionPayload = {
   user?: any;
   profile?: Profile;
   role?: string | null;
+  kyc?: { status?: string } | null;
+  isKycVerified?: boolean;
 } | null;
 
 type ContextValue = {
@@ -74,7 +76,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       // debug: log session payload (don't leak secrets in prod)
       console.log("[SessionProvider] session payload:", data);
-      setSession(data);
+      // normalize minimal shape to avoid undefined access in consumers
+      setSession({
+        ok: data?.ok ?? false,
+        user: data?.user ?? null,
+        profile: data?.profile ?? null,
+        role: data?.role ?? null,
+        kyc: data?.kyc ?? null,
+        isKycVerified: Boolean(data?.isKycVerified),
+      });
     } catch (err: any) {
       console.error("[SessionProvider] session fetch error:", err);
       setSession(null);

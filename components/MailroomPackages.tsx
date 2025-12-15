@@ -10,6 +10,7 @@ import {
   Badge,
   Box,
   Button,
+  Divider,
   Group,
   Modal,
   Paper,
@@ -51,6 +52,7 @@ interface Registration {
   full_name: string;
   email: string;
   mailroom_code?: string | null;
+  mobile?: string | null; // added so release modal can show phone from registrations API
   // CHANGED: Added specific plan capabilities
   mailroom_plans?: {
     name: string;
@@ -83,6 +85,7 @@ interface Package {
   status: string;
   notes?: string;
   image_url?: string;
+  package_photo?: string | null;
   received_at: string;
   registration?: Registration;
   locker?: Locker;
@@ -128,9 +131,31 @@ export default function MailroomPackages() {
     locker_id: "",
     package_type: "", // CHANGED: Default to empty string to force selection
     status: "STORED",
-    notes: "",
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // NEW: package photo state for Add/Edit modal
+  const [packagePhoto, setPackagePhoto] = useState<File | null>(null);
+
+  // Preview src for image display
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (packagePhoto) {
+      const url = URL.createObjectURL(packagePhoto);
+      setPreviewSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    if (editingPackage) {
+      setPreviewSrc(
+        (editingPackage as any).package_photo ||
+          (editingPackage as any).image_url ||
+          null
+      );
+    } else {
+      setPreviewSrc(null);
+    }
+  }, [packagePhoto, editingPackage]);
 
   // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -176,14 +201,11 @@ export default function MailroomPackages() {
     "Empty" | "Normal" | "Near Full" | "Full"
   >("Normal");
 
-  // SWR keys
+  // Single SWR key for combined endpoint
   const packagesKey = "/api/admin/mailroom/packages";
-  const registrationsKey = "/api/admin/mailroom/registrations";
-  const lockersKey = "/api/admin/mailroom/lockers";
-  const assignedKey = "/api/admin/mailroom/assigned-lockers";
-
   const fetcher = async (url: string) => {
-    const res = await fetch(url);
+    // avoid stale cached responses when revalidating
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(text || `Failed to fetch ${url}`);
@@ -192,82 +214,40 @@ export default function MailroomPackages() {
   };
 
   const {
-    data: packagesData,
-    error: packagesError,
-    isValidating: packagesValidating,
+    data: combinedData,
+    error: combinedError,
+    isValidating,
   } = useSWR(packagesKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: registrationsData,
-    error: registrationsError,
-    isValidating: registrationsValidating,
-  } = useSWR(registrationsKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: lockersData,
-    error: lockersError,
-    isValidating: lockersValidating,
-  } = useSWR(lockersKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: assignedData,
-    error: assignedError,
-    isValidating: assignedValidating,
-  } = useSWR(assignedKey, fetcher, { revalidateOnFocus: true });
 
-  // derived arrays (handle endpoints that return { data: [...] } or bare arrays)
-  const packagesArr = Array.isArray(packagesData?.data)
-    ? packagesData.data
-    : Array.isArray(packagesData)
-    ? packagesData
-    : [];
-  const registrationsArr = Array.isArray(registrationsData?.data)
-    ? registrationsData.data
-    : Array.isArray(registrationsData)
-    ? registrationsData
-    : [];
-  const lockersArr = Array.isArray(lockersData?.data)
-    ? lockersData.data
-    : Array.isArray(lockersData)
-    ? lockersData
-    : [];
-  const assignedArr = Array.isArray(assignedData?.data)
-    ? assignedData.data
-    : Array.isArray(assignedData)
-    ? assignedData
-    : [];
-
-  // sync SWR results into local state to avoid changing rest of the code
+  // sync SWR combined response into local state
   useEffect(() => {
-    setLoading(
-      packagesValidating ||
-        registrationsValidating ||
-        lockersValidating ||
-        assignedValidating
-    );
-    setPackages(packagesArr);
-    setRegistrations(registrationsArr);
-    setLockers(lockersArr);
-    setAssignedLockers(assignedArr);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    packagesData,
-    registrationsData,
-    lockersData,
-    assignedData,
-    packagesValidating,
-    registrationsValidating,
-    lockersValidating,
-    assignedValidating,
-  ]);
+    setLoading(!!isValidating);
+    const payload = combinedData ?? {};
+    const pkgs = Array.isArray(payload.packages)
+      ? payload.packages
+      : Array.isArray(payload.data)
+      ? payload.data
+      : [];
+    const regs = Array.isArray(payload.registrations)
+      ? payload.registrations
+      : [];
+    const lks = Array.isArray(payload.lockers) ? payload.lockers : [];
+    const assigned = Array.isArray(payload.assignedLockers)
+      ? payload.assignedLockers
+      : [];
 
-  // helper to refresh all data (used after mutations)
+    setPackages(pkgs);
+    setRegistrations(regs);
+    setLockers(lks);
+    setAssignedLockers(assigned);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combinedData, isValidating]);
+
+  // helper to refresh combined data (used after mutations)
   const refreshAll = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        swrMutate(packagesKey),
-        swrMutate(registrationsKey),
-        swrMutate(lockersKey),
-        swrMutate(assignedKey),
-      ]);
+      await swrMutate(packagesKey);
     } finally {
       setLoading(false);
     }
@@ -323,8 +303,10 @@ export default function MailroomPackages() {
         locker_id: pkg.locker_id || "",
         package_type: pkg.package_type,
         status: pkg.status,
-        notes: pkg.notes || "",
+        // notes: pkg.notes || "",
       });
+      // keep packagePhoto null so existing image is used unless user picks a new one
+      setPackagePhoto(null);
     } else {
       setEditingPackage(null);
       setLockerCapacity("Normal");
@@ -334,8 +316,8 @@ export default function MailroomPackages() {
         locker_id: "",
         package_type: "Parcel",
         status: "STORED",
-        notes: "",
       });
+      setPackagePhoto(null);
     }
     open();
   };
@@ -393,18 +375,46 @@ export default function MailroomPackages() {
       return;
     }
 
+    // Photo is required (either newly selected or existing on editingPackage)
+    if (
+      !packagePhoto &&
+      !(editingPackage?.package_photo || editingPackage?.image_url)
+    ) {
+      setFormError("Package photo is required");
+      return;
+    }
+
     setSubmitting(true);
     setFormError(null); // Clear previous errors
 
     try {
+      // If a new package photo was chosen, upload it first
+      let photoUrl: string | null = null;
+      if (packagePhoto) {
+        const fd = new FormData();
+        fd.append("file", packagePhoto);
+        // send registration/user id so upload route can place file under that folder
+        const userFolder =
+          formData.registration_id || editingPackage?.registration_id || "";
+        if (userFolder) fd.append("user_id", userFolder);
+        const up = await fetch("/api/admin/mailroom/packages/upload", {
+          method: "POST",
+          body: fd,
+        });
+        if (!up.ok) {
+          const j = await up.json().catch(() => ({}));
+          throw new Error(j?.error || "Failed to upload photo");
+        }
+        const uj = await up.json();
+        photoUrl = uj.url;
+      }
+
       const url = editingPackage
         ? `/api/admin/mailroom/packages/${editingPackage.id}`
         : "/api/admin/mailroom/packages";
 
       const method = editingPackage ? "PUT" : "POST";
 
-      // 3. Create payload
-      // We cast to 'any' to allow adding the optional locker_status field
       const payload: any = {
         ...formData,
       };
@@ -414,6 +424,11 @@ export default function MailroomPackages() {
         payload.locker_status = lockerCapacity;
       }
 
+      // include package_photo only if we uploaded one
+      if (photoUrl) {
+        payload.package_photo = photoUrl;
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -421,6 +436,25 @@ export default function MailroomPackages() {
       });
 
       if (!res.ok) throw new Error("Failed to save");
+      const raw = await res.json().catch(() => null);
+      const saved = raw?.data ?? raw;
+
+      // optimistic local update: merge returned fields into existing package
+      setPackages((cur) => {
+        if (!saved?.id) return cur;
+        try {
+          if (editingPackage) {
+            return cur.map((p) =>
+              p.id === saved.id ? { ...p, ...(saved as Partial<Package>) } : p
+            );
+          } else {
+            // prepend new package (server should return joined shape)
+            return [saved as Package, ...cur];
+          }
+        } catch {
+          return cur;
+        }
+      });
 
       setGlobalSuccess(
         `Package ${editingPackage ? "updated" : "created"} successfully`
@@ -695,6 +729,80 @@ export default function MailroomPackages() {
   const requestCount = packages.filter((p) =>
     p.status.includes("REQUEST")
   ).length;
+
+  // helper to extract phone for release snapshot
+  const getSnapshotPhone = (pkg: Package | null) => {
+    if (!pkg) return null;
+    // 1) explicit registration mobile
+    const regPhone = pkg.registration?.mobile ?? null;
+    if (regPhone) return regPhone;
+    // 2) explicit release snapshot field (if any)
+    // use bracket access in case field not declared in interface
+    const releasePhone = (pkg as any).release_contact_phone ?? null;
+    if (releasePhone) return releasePhone;
+    // 3) parse notes JSON for pickup_on_behalf.mobile
+    try {
+      const n = pkg.notes;
+      if (typeof n === "string" && n.trim().startsWith("{")) {
+        const parsed = JSON.parse(n);
+        if (parsed?.pickup_on_behalf?.mobile)
+          return parsed.pickup_on_behalf.mobile;
+        if (parsed?.mobile) return parsed.mobile;
+      } else if (typeof n === "string" && /^\+?\d/.test(n.trim())) {
+        // plain phone string stored in notes
+        return n.trim();
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  // helper to extract pickup-on-behalf object from notes JSON
+  const getPickupOnBehalf = (pkg: Package | null) => {
+    if (!pkg) return null;
+    try {
+      const n = pkg.notes;
+      if (typeof n !== "string") return null;
+      const trimmed = n.trim();
+      if (!trimmed.startsWith("{")) return null;
+      const parsed = JSON.parse(trimmed);
+      const pb = parsed?.pickup_on_behalf ?? null;
+      if (pb) {
+        return {
+          name: pb.name ?? null,
+          mobile: pb.mobile ?? null,
+          contact_mode: pb.contact_mode ?? null,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  // safe notes parser (returns pickup object or null)
+  const parsePickupFromNotes = (notes?: string | null) => {
+    if (!notes || typeof notes !== "string") return null;
+    try {
+      const parsed = JSON.parse(notes);
+      if (parsed?.pickup_on_behalf) {
+        // support both object or boolean-flag style
+        const pb =
+          typeof parsed.pickup_on_behalf === "object"
+            ? parsed.pickup_on_behalf
+            : parsed;
+        return {
+          name: pb.name ?? parsed.name ?? null,
+          mobile: pb.mobile ?? parsed.mobile ?? null,
+          contact_mode: pb.contact_mode ?? parsed.contact_mode ?? null,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <Stack align="center">
@@ -1009,12 +1117,19 @@ export default function MailroomPackages() {
             required
             searchable
             // Limit displayed options to first 10 for performance/virtualization safety
-            data={registrations.slice(0, 10).map((r) => ({
-              value: r.id,
-              label: `${r.mailroom_code || "No Code"} - ${r.email} (${
-                r.mailroom_plans?.name || "Unknown Plan"
-              })`,
-            }))}
+            data={registrations.slice(0, 10).map((r) => {
+              const planName = Array.isArray(
+                r.mailroom_plans
+              ) /* API may return array */
+                ? r.mailroom_plans[0]?.name
+                : (r.mailroom_plans as any)?.name;
+              return {
+                value: r.id,
+                label: `${r.mailroom_code || "No Code"} - ${r.email} (${
+                  planName || "Unknown Plan"
+                })`,
+              };
+            })}
             value={formData.registration_id}
             onChange={(val) => handleRegistrationChange(val)}
             // Custom filter allows searching by any part of the label string
@@ -1132,15 +1247,33 @@ export default function MailroomPackages() {
             </Stack>
           )}
 
-          <Textarea
-            label="Notes"
-            placeholder="Additional details..."
-            minRows={2}
-            value={formData.notes}
-            onChange={(e) =>
-              setFormData({ ...formData, notes: e.currentTarget.value })
-            }
+          {/* NEW: Package Photo (required) */}
+          <FileInput
+            label="Package Photo"
+            placeholder="Select image"
+            accept="image/png,image/jpeg,image/jpg"
+            value={packagePhoto}
+            onChange={setPackagePhoto}
+            leftSection={<IconUpload size={16} />}
+            required
           />
+
+          {/* Preview */}
+          {previewSrc && (
+            <Group justify="center" mt="sm">
+              <img
+                src={previewSrc}
+                alt="Package preview"
+                style={{
+                  maxWidth: 200,
+                  maxHeight: 120,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.06)",
+                }}
+              />
+            </Group>
+          )}
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={close}>
@@ -1175,7 +1308,7 @@ export default function MailroomPackages() {
           )}
 
           <Text size="sm">
-            Upload the PDF scan for <b>{packageToScan?.tracking_number}</b>.
+            Upload the PDF scan for <b>{packageToScan?.package_name}</b>.
           </Text>
           <FileInput
             label="Select PDF"
@@ -1237,69 +1370,186 @@ export default function MailroomPackages() {
 
           {/* Show saved release snapshot if available, otherwise show user's default address (read-only preview) */}
           <Box mt="sm">
-            {packageToRelease?.release_address ? (
-              <Paper withBorder p="sm" radius="md" bg="gray.0">
-                <Text fw={600} size="sm">
-                  Saved release snapshot
-                </Text>
-                <Text size="sm" c="dimmed" mt="6px">
-                  {packageToRelease.release_address}
-                </Text>
-                {packageToRelease.release_to_name && (
-                  <Text size="xs" c="dimmed" mt="6px">
-                    Recipient: {packageToRelease.release_to_name}
-                  </Text>
-                )}
-              </Paper>
-            ) : (
-              (() => {
-                const def = addresses.find((a) => a.is_default) ?? addresses[0];
-                if (def) {
+            {packageToRelease?.release_address
+              ? // --- PATH 1: Saved Release Snapshot (Confirmed/Historical Details)
+                (() => {
+                  const pickup = parsePickupFromNotes(packageToRelease?.notes);
+                  const phone = getSnapshotPhone(packageToRelease);
                   return (
-                    <Paper withBorder p="sm" radius="md" bg="gray.0">
-                      <Group justify="space-between" align="center">
-                        <div>
-                          <Text fw={600} size="sm">
-                            {def.label || "Unnamed Address"}
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            Recipient:{" "}
-                            {def.contact_name ||
-                              packageToRelease?.registration?.full_name ||
-                              "N/A"}
-                          </Text>
-                        </div>
-                        {def.is_default && (
-                          <Badge ml="xs" size="xs" color="blue" variant="light">
-                            Default
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="sm" c="dimmed" mt="8px">
-                        {def.line1}
-                        {def.line2 ? `, ${def.line2}` : ""}
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        {[def.city, def.region, def.postal]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </Text>
-                      {def.contact_phone && (
-                        <Text size="xs" c="dimmed" mt="4px">
-                          Phone: {def.contact_phone}
+                    <Paper withBorder p="md" radius="md" bg="gray.0">
+                      <Stack gap={4}>
+                        {/* Title */}
+                        <Text fw={700} size="md">
+                          Saved Release Snapshot
                         </Text>
-                      )}
+                        <Divider />
+
+                        {/* Delivery Address (Label on top, Value below) */}
+                        <Stack gap={2}>
+                          <Text fw={700} size="sm" c="dimmed">
+                            Delivery Address
+                          </Text>
+                          <Text size="sm" fw={500}>
+                            {packageToRelease.release_address}
+                          </Text>
+                        </Stack>
+
+                        {/* Recipient and Phone (Side by side) */}
+                        <Group grow mt="xs">
+                          {packageToRelease.release_to_name && (
+                            <Stack gap={2}>
+                              <Text fw={700} size="sm" c="dimmed">
+                                Recipient Name
+                              </Text>
+                              <Text size="sm" fw={500}>
+                                {packageToRelease.release_to_name}
+                              </Text>
+                            </Stack>
+                          )}
+                          {phone && (
+                            <Stack gap={2}>
+                              <Text fw={700} size="sm" c="dimmed">
+                                Contact Phone
+                              </Text>
+                              <Text size="sm" fw={500}>
+                                {phone}
+                              </Text>
+                            </Stack>
+                          )}
+                        </Group>
+
+                        {/* Pickup-on-behalf details (Nested box for visual separation) */}
+                        {pickup && (
+                          <Paper
+                            p="sm"
+                            radius="sm"
+                            bg="white"
+                            withBorder
+                            mt="xs"
+                          >
+                            <Stack gap={4}>
+                              <Text size="sm" fw={700} c="blue">
+                                Pickup on Behalf Details
+                              </Text>
+                              {/* Details as label: value pairs */}
+                              {pickup.name && (
+                                <Text size="sm" c="dimmed">
+                                  Name:{" "}
+                                  <Text span fw={500} c="dark">
+                                    {pickup.name}
+                                  </Text>
+                                </Text>
+                              )}
+                              {pickup.mobile && (
+                                <Text size="sm" c="dimmed">
+                                  Mobile:{" "}
+                                  <Text span fw={500} c="dark">
+                                    {pickup.mobile}
+                                  </Text>
+                                </Text>
+                              )}
+                              {pickup.contact_mode && (
+                                <Text size="sm" c="dimmed">
+                                  Contact via:{" "}
+                                  <Text span fw={500} c="dark">
+                                    {String(pickup.contact_mode).toUpperCase()}
+                                  </Text>
+                                </Text>
+                              )}
+                            </Stack>
+                          </Paper>
+                        )}
+                      </Stack>
                     </Paper>
                   );
-                }
-                return (
-                  <Text c="dimmed">
-                    No shipping address on file for this user.
-                  </Text>
-                );
-              })()
-            )}
+                })()
+              : // --- PATH 2: Default Address (Suggested Details)
+                (() => {
+                  const def =
+                    addresses.find((a) => a.is_default) ?? addresses[0];
+                  if (def) {
+                    return (
+                      <Paper withBorder p="md" radius="md" bg="gray.0">
+                        <Stack gap={4}>
+                          {/* Title and Badge - Separated */}
+                          <Group justify="space-between" align="center">
+                            <Text fw={700} size="md">
+                              Suggested Address:{" "}
+                              {def.label || "Unnamed Address"}
+                            </Text>
+                            {def.is_default && (
+                              <Badge size="sm" color="blue" variant="light">
+                                Default
+                              </Badge>
+                            )}
+                          </Group>
+                          <Divider />
+
+                          {/* Recipient (Label on top, Value below) */}
+                          <Stack gap={2}>
+                            <Text fw={700} size="sm" c="dimmed">
+                              Recipient Name
+                            </Text>
+                            <Text size="sm" fw={500}>
+                              {def.contact_name ||
+                                packageToRelease?.registration?.full_name ||
+                                "N/A"}
+                            </Text>
+                          </Stack>
+
+                          {/* Address and Phone (Side by side) */}
+                          <Group grow mt="xs">
+                            <Stack gap={2}>
+                              <Text fw={700} size="sm" c="dimmed">
+                                Address
+                              </Text>
+                              <Stack gap={0}>
+                                <Text size="sm" fw={500}>
+                                  {def.line1}
+                                  {def.line2 ? `, ${def.line2}` : ""}
+                                </Text>
+                                <Text size="sm" fw={500}>
+                                  {[def.city, def.region, def.postal]
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </Text>
+                              </Stack>
+                            </Stack>
+
+                            {def.contact_phone && (
+                              <Stack gap={2}>
+                                <Text fw={700} size="sm" c="dimmed">
+                                  Contact Phone
+                                </Text>
+                                <Text size="sm" fw={500}>
+                                  {def.contact_phone}
+                                </Text>
+                              </Stack>
+                            )}
+                          </Group>
+                        </Stack>
+                      </Paper>
+                    );
+                  }
+                  return (
+                    <Text c="dimmed">
+                      No shipping address on file for this user.
+                    </Text>
+                  );
+                })()}
           </Box>
+
+          {/* Locker info (show which locker this package is in) */}
+          <Stack gap={4} mt="xs">
+            <Text size="sm" fw={500}>
+              Locker
+            </Text>
+            <Text size="sm" fw={500}>
+              {packageToRelease?.locker?.locker_code ??
+                packageToRelease?.locker_id ??
+                "—"}
+            </Text>
+          </Stack>
 
           {/* NEW: Locker Status Selector */}
           <Stack gap={4} mt="xs">

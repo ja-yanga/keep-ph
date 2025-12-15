@@ -306,58 +306,65 @@ export default function RegisterForm() {
     setLoading(true);
     setError(null);
     try {
-      const payload = {
-        userId: session?.user?.id,
-        full_name: `${firstName} ${lastName}`.trim() || null,
+      // build a stable order id
+      const orderId = `reg_${session?.user?.id ?? "anon"}_${Date.now()}`;
+
+      // flatten and stringify minimal metadata (strings only)
+      const registrationMetadata = {
+        order_id: orderId,
+        user_id: session?.user?.id ?? "",
+        full_name: `${firstName} ${lastName}`.trim() || "",
         email,
         mobile,
-        locationId: selectedLocation,
-        planId: selectedPlanId,
-        lockerQty: qty,
-        months: months, // This is now controlled by the toggle (1 or 12)
-        notes,
-        referralCode: referralValid ? referralCode : null,
+        location_id: selectedLocation ?? "",
+        plan_id: selectedPlanId ?? "",
+        locker_qty: String(qty),
+        months: String(months),
+        notes: notes || "",
+        referral_code: referralValid ? referralCode : "",
       };
 
-      const res = await fetch("/api/mailroom/register", {
+      // Create checkout session (server will call PayMongo)
+      const minor = Math.round(Number(totalCost) * 100);
+      const payRes = await fetch("/api/payments/create", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          orderId,
+          amount: minor,
+          currency: "PHP",
+          show_all: true,
+          metadata: registrationMetadata,
+          // redirect back to the mailroom register pages (same route as API)
+          successUrl: `${
+            location.origin
+          }/mailroom/register/success?order=${encodeURIComponent(orderId)}`,
+          failedUrl: `${
+            location.origin
+          }/mailroom/register/failed?order=${encodeURIComponent(orderId)}`,
+        }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data?.error || "Failed to register");
+      const payJson = await payRes.json().catch(() => null);
+      const checkoutUrl =
+        payJson?.data?.attributes?.checkout_url ||
+        payJson?.data?.attributes?.redirect?.checkout_url ||
+        payJson?.data?.attributes?.redirect?.url ||
+        null;
+
+      if (!checkoutUrl) {
+        setError(
+          payJson?.errors?.[0]?.detail ||
+            payJson?.error ||
+            "Failed to create payment session"
+        );
         close();
         return;
       }
 
-      if (referralCode.trim()) {
-        try {
-          await fetch("/api/referrals/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              referral_code: referralCode.trim(),
-              referred_email: email,
-              service_type: "Mailroom Subscription",
-            }),
-          });
-        } catch (refErr) {
-          console.error("Error processing referral:", refErr);
-        }
-      }
-
-      close();
-      setSuccess("Registered successfully! Redirecting...");
-
-      // Scroll to top to ensure the success alert is visible
-      window.scrollTo({ top: 0, behavior: "smooth" });
-
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 2000);
+      // Redirect to hosted checkout. Webhook will finalize registration on paid.
+      window.location.href = checkoutUrl;
+      return;
     } catch (err) {
       console.error(err);
       setError("An unexpected error occurred");

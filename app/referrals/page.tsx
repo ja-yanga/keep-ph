@@ -65,32 +65,49 @@ export default function ReferralPage() {
   // extract load logic into a callable function so modal can refresh after claim
   const fetchReferralData = async () => {
     if (!session?.user?.id) return;
+    setLoading(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      setLoading(true);
+      // run generate (only if we don't already have a code) and list in parallel
+      const genPromise = !referralCode
+        ? fetch("/api/referrals/generate", {
+            method: "POST",
+            signal: controller.signal,
+          }).catch(() => null)
+        : Promise.resolve(null);
+      const listPromise = fetch(
+        `/api/referrals/list?user_id=${session.user.id}`,
+        { signal: controller.signal }
+      ).catch(() => null);
 
-      // 1. Call API to get or generate the referral code
-      const resCode = await fetch("/api/referrals/generate", {
-        method: "POST",
-      });
-      const dataCode = await resCode.json();
-      if (dataCode.referral_code) setReferralCode(dataCode.referral_code);
+      const [genRes, listRes] = await Promise.allSettled([
+        genPromise,
+        listPromise,
+      ]);
 
-      // 2. Call API to fetch referrals list
-      const resList = await fetch(
-        `/api/referrals/list?user_id=${session.user.id}`
-      );
-      const dataList = await resList.json();
-      if (resList.ok && dataList.referrals) {
-        setReferrals(dataList.referrals);
-      } else {
-        console.error("Failed to fetch referrals list:", dataList.error);
+      if (genRes.status === "fulfilled" && genRes.value) {
+        const dataCode = await genRes.value.json().catch(() => ({}));
+        if (dataCode.referral_code) setReferralCode(dataCode.referral_code);
       }
-    } catch (err) {
-      console.error("Error loading referrals:", err);
+
+      if (listRes.status === "fulfilled" && listRes.value) {
+        const dataList = await listRes.value.json().catch(() => ({}));
+        if (listRes.value.ok && dataList.referrals) {
+          setReferrals(dataList.referrals);
+        } else {
+          console.error("Failed to fetch referrals list:", dataList.error);
+        }
+      }
+
+      // fetch rewards status in background (non-blocking)
+      fetchRewardsStatus();
+    } catch (err: any) {
+      if (err.name !== "AbortError")
+        console.error("Error loading referrals:", err);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
-      // refresh claim status after referrals load
-      await fetchRewardsStatus();
     }
   };
 

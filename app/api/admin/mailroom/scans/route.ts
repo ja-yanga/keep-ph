@@ -63,7 +63,8 @@ export async function POST(request: Request) {
       .from("mailroom_packages")
       .update({ status: "STORED" })
       .eq("id", packageId)
-      .select("registration_id, tracking_number")
+      // tracking_number was removed; use package_name instead
+      .select("registration_id, package_name")
       .single();
 
     if (updateError) {
@@ -80,13 +81,12 @@ export async function POST(request: Request) {
     // 6. Send Notification
     if (registration?.user_id) {
       try {
+        const label = pkgData?.package_name ?? "Unknown";
         await sendNotification(
           registration.user_id,
           "Document Scanned",
-          `Your document (${
-            pkgData.tracking_number || "Unknown"
-          }) has been scanned and is ready to view.`,
-          "SCAN_READY", // CHANGED: use allowed NotificationType
+          `Your document (${label}) has been scanned and is ready to view.`,
+          "SCAN_READY",
           `/mailroom/${pkgData.registration_id}`
         );
       } catch (notifyErr) {

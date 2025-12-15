@@ -61,14 +61,24 @@ export default function AccountAddresses({ userId }: { userId: string }) {
   const [form, setForm] = useState<Address>(initialFormState);
 
   const load = async () => {
+    console.time("addresses.load.total");
     setLoading(true);
+    const t0 = performance.now();
     try {
       const res = await fetch(
         `/api/user/addresses?userId=${encodeURIComponent(userId)}`
       );
       const json = await res.json();
-      // Ensure data is structured and typed correctly
-      setAddresses(Array.isArray(json?.data) ? json.data : json || []);
+      const data = Array.isArray(json?.data) ? json.data : json || [];
+
+      // avoid blocking render by scheduling large state updates as non-urgent
+      // React.startTransition prevents blocking the loader animation
+      React.startTransition(() => {
+        setAddresses(data);
+      });
+
+      const t1 = performance.now();
+      console.log("addresses.fetch.ms", Math.round(t1 - t0));
     } catch (e) {
       console.error(e);
       notifications.show({
@@ -78,6 +88,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
       });
     } finally {
       setLoading(false);
+      console.timeEnd("addresses.load.total");
     }
   };
 

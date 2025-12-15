@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { orderId, amount, currency = "PHP", type } = body;
+  const body = await req.json().catch(() => ({} as any));
+  const { orderId, amount, currency = "PHP", type, show_all, metadata } = body;
 
   const secret = process.env.PAYMONGO_SECRET_KEY;
   if (!secret)
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
   const auth = `Basic ${Buffer.from(`${secret}:`).toString("base64")}`;
 
-  // --- checkout_sessions branch (support single-type or "all") ---
+  // checkout_sessions flow (supports explicit types or 'show_all')
   const CHECKOUT_SUPPORTED = [
     "gcash",
     "paymaya",
@@ -23,15 +23,12 @@ export async function POST(req: Request) {
     "shopee_pay",
     "qrph",
   ];
-
-  // If client requests "all" (or omits type), create a checkout session that shows all enabled methods.
-  const wantAll = type === "all" || !type || body.show_all === true;
+  const wantAll = show_all === true || !type || type === "all";
 
   if (wantAll || CHECKOUT_SUPPORTED.includes(type)) {
-    // If the client passes explicit payment_method_types array, use it.
-    // When "show all" is requested, explicitly pass the methods you want shown.
-    // PayMongo requires payment_method_types for checkout_sessions.
+    // When asking to show all, explicitly provide the list PayMongo expects
     const DEFAULT_CHECKOUT_METHODS = ["gcash", "paymaya", "card"];
+
     const paymentMethodTypes = Array.isArray(body.payment_method_types)
       ? body.payment_method_types
       : wantAll
@@ -44,26 +41,30 @@ export async function POST(req: Request) {
       show_description: true,
       show_line_items: true,
       description: `Order ${orderId}`,
-      metadata: { order_id: orderId },
+      metadata: metadata ?? { order_id: orderId },
     };
 
-    // use the provided absolute URLs so PayMongo will redirect back on completion/cancel
+    if (paymentMethodTypes) attrs.payment_method_types = paymentMethodTypes;
     if (body.successUrl) attrs.success_url = body.successUrl;
     if (body.failedUrl) attrs.cancel_url = body.failedUrl;
-    if (paymentMethodTypes) attrs.payment_method_types = paymentMethodTypes;
 
     const payload = { data: { attributes: attrs } };
 
     const res = await fetch("https://api.paymongo.com/v1/checkout_sessions", {
       method: "POST",
-      headers: { Authorization: auth, "Content-Type": "application/json" },
+      headers: {
+        Authorization: auth,
+        "Content-Type": "application/json",
+        accept: "application/json",
+      },
       body: JSON.stringify(payload),
     });
+
     const json = await res.json().catch(() => null);
     return NextResponse.json(json, { status: res.status || 500 });
   }
 
-  // --- existing non‑card (sources) logic follows ---
+  // Fallback: existing sources flow (unchanged)
   const srcPayload = {
     data: {
       attributes: {

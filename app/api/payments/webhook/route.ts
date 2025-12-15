@@ -1,370 +1,266 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
-  const raw = await req.text();
-  const sigHeader =
-    req.headers.get("paymongo-signature") ||
-    req.headers.get("Paymongo-Signature") ||
-    "";
+  const payload = await req.json().catch(() => null);
+  console.debug(
+    "[webhook] payload:",
+    JSON.stringify(payload?.data ?? payload, null, 2)
+  );
 
-  console.debug("[paymongo webhook] raw:", raw);
-  console.debug("[paymongo webhook] sig header:", sigHeader);
+  const sbUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const sbKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+  if (!sbUrl || !sbKey) {
+    console.error("[webhook] missing supabase envs", {
+      sbUrl: !!sbUrl,
+      sbKey: !!sbKey,
+    });
+    return NextResponse.json(
+      { error: "supabase env missing" },
+      { status: 500 }
+    );
+  }
+
+  const sb = createClient(sbUrl, sbKey);
+  const data = payload?.data;
+  if (!data) return NextResponse.json({ ok: false }, { status: 400 });
+
+  // helper that upserts a payment resource (shape: { id, type: 'payment', attributes: { ... } })
+  async function upsertPaymentResource(payRes: any) {
+    const payId = payRes?.id;
+    const attrs = payRes?.attributes ?? {};
+    const metadata = attrs?.metadata ?? {};
+    const orderId = metadata?.order_id ?? null;
+
+    const upsertRes = (await sb.from("paymongo_payments").upsert(
+      {
+        id: payId,
+        source_id: attrs?.source?.id ?? null,
+        order_id: orderId,
+        status: attrs?.status ?? null,
+        amount: attrs?.amount ?? null,
+        currency: attrs?.currency ?? null,
+        raw: payRes,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    )) as any;
+
+    console.debug("[webhook] upsertPaymentResource result:", {
+      id: payId,
+      data: Array.isArray(upsertRes?.data)
+        ? upsertRes.data.slice(0, 5)
+        : upsertRes?.data ?? null,
+      error: upsertRes?.error,
+    });
+
+    if (upsertRes?.error) {
+      throw upsertRes.error;
+    }
+
+    // finalize server-side registration immediately after a successful upsert
+    try {
+      await finalizeRegistrationFromPayment(payRes);
+    } catch (finalErr) {
+      console.error(
+        "[webhook] finalizeRegistrationFromPayment error:",
+        finalErr
+      );
+      // don't throw here — we already upserted payment; finalize is best-effort and idempotent
+    }
+
+    return { id: payId, orderId };
+  }
+
+  async function finalizeRegistrationFromPayment(payRes: any) {
+    const attrs = payRes?.attributes ?? {};
+    const meta = attrs?.metadata ?? {};
+    const orderId = meta?.order_id ?? null;
+    if (!orderId) {
+      console.debug("[webhook] finalize skipped: no order_id in metadata");
+      return;
+    }
+
+    const userId = meta.user_id ?? "";
+    const fullName = meta.full_name ?? "";
+    const email = meta.email ?? "";
+    const mobile = meta.mobile ?? "";
+    const locationId = meta.location_id ?? "";
+    const planId = meta.plan_id ?? "";
+    const lockerQty = Math.max(1, Number(meta.locker_qty ?? 1));
+    const months = Math.max(1, Number(meta.months ?? 1));
+    const notes = meta.notes ?? "";
+    const paymentId = payRes?.id ?? null;
+
+    if (!userId || !locationId || !planId) {
+      console.warn("[webhook] finalize skipped: missing required metadata", {
+        orderId,
+        userId,
+        locationId,
+        planId,
+      });
+      return;
+    }
+
+    try {
+      // 1) Check if registration already finalized (idempotency)
+      const { data: existing } = await sb
+        .from("mailroom_registrations")
+        .select("*")
+        .eq("order_id", orderId)
+        .maybeSingle();
+
+      if (existing && existing.paid) {
+        console.info("[webhook] registration already finalized", {
+          orderId,
+          registrationId: existing.id,
+        });
+        return;
+      }
+
+      // 2) Check available lockers
+      const { data: availableLockers } = await sb
+        .from("location_lockers")
+        .select("id")
+        .eq("location_id", locationId)
+        .eq("is_available", true)
+        .limit(lockerQty);
+
+      if (!availableLockers || availableLockers.length < lockerQty) {
+        console.error("[webhook] insufficient lockers for order", {
+          orderId,
+          available: availableLockers?.length ?? 0,
+          needed: lockerQty,
+        });
+        // Optionally notify admin / store a flag; return 200 so webhook isn't retried endlessly
+        return;
+      }
+
+      // 3) Upsert registration using order_id for idempotency
+      const insertPayload = {
+        user_id: userId,
+        location_id: locationId,
+        plan_id: planId,
+        locker_qty: lockerQty,
+        months,
+        notes,
+        full_name: fullName,
+        email,
+        mobile,
+        order_id: orderId,
+        paid: true,
+        paymongo_payment_id: paymentId,
+        mailroom_code: null,
+        mailroom_status: true,
+      };
+
+      const { data: upserted, error: upsertErr } = await sb
+        .from("mailroom_registrations")
+        .upsert([insertPayload], { onConflict: "order_id" })
+        .select()
+        .maybeSingle();
+
+      if (upsertErr) {
+        console.error("[webhook] registration upsert failed", upsertErr);
+        return;
+      }
+      const registration = upserted;
+
+      // 4) Generate unique mailroom_code if missing (best-effort)
+      if (!registration?.mailroom_code) {
+        let attempts = 0;
+        let created = false;
+        while (!created && attempts < 6) {
+          const code = `KPH-${Math.random()
+            .toString(36)
+            .slice(2, 6)
+            .toUpperCase()}`;
+          const { error: codeErr } = await sb
+            .from("mailroom_registrations")
+            .update({ mailroom_code: code })
+            .eq("id", registration.id)
+            .is("mailroom_code", null);
+          if (!codeErr) created = true;
+          attempts++;
+        }
+        if (!created) {
+          console.error(
+            "[webhook] failed to generate unique mailroom_code for registration",
+            registration.id
+          );
+        }
+      }
+
+      // 5) Assign lockers: mark them unavailable and insert assignment rows
+      const lockerIds = availableLockers.map((l: any) => l.id);
+      await sb
+        .from("location_lockers")
+        .update({ is_available: false })
+        .in("id", lockerIds);
+
+      const assignments = lockerIds.map((lockerId: any) => ({
+        registration_id: registration.id,
+        locker_id: lockerId,
+        status: "Normal",
+      }));
+      await sb.from("mailroom_assigned_lockers").insert(assignments);
+
+      console.info("[webhook] finalized registration from payment", {
+        orderId,
+        registrationId: registration.id,
+      });
+    } catch (err) {
+      console.error("[webhook] finalizeRegistrationFromPayment error:", err);
+    }
+  }
 
   try {
-    // lazy create supabase service client and validate env
-    const getSupabase = () => {
-      const url = process.env.SUPABASE_URL;
-      const key =
-        process.env.SUPABASE_SERVICE_ROLE_KEY ??
-        process.env.SUPABASE_SERVICE_KEY;
-      if (!url || !key) return null;
-      return createClient(url, key);
-    };
-    const sb = getSupabase();
-    if (!sb) {
-      console.error(
-        "[paymongo webhook] missing SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_KEY or SUPABASE_URL"
-      );
-      return NextResponse.json(
-        {
-          error:
-            "Server misconfiguration: SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY) and SUPABASE_URL required",
-        },
-        { status: 500 }
-      );
-    }
-
-    // Verify signature if webhook secret is configured
-    const webhookSecret =
-      process.env.PAYMONGO_WEBHOOK_SECRET ||
-      process.env.PAYMONGO_WEBHOOK_SECRET?.trim();
-
-    if (webhookSecret) {
-      // build map from header kv pairs
-      const parts = sigHeader
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const hdrMap: Record<string, string> = {};
-      for (const p of parts) {
-        const [k, ...rest] = p.split("=");
-        if (!k) continue;
-        hdrMap[k.trim()] = rest
-          .join("=")
-          .replace(/^"(.*)"$/, "$1")
-          .trim();
-      }
-
-      // candidate signature strings from common keys
-      const candidates = [
-        hdrMap["v1"],
-        hdrMap["te"],
-        hdrMap["sha256"],
-        hdrMap["sig"],
-        hdrMap["signature"],
-      ].filter(Boolean) as string[];
-
-      const ts = hdrMap["t"] || hdrMap["timestamp"] || "";
-
-      const hmac = (input: string) =>
-        crypto.createHmac("sha256", webhookSecret).update(input).digest();
-
-      const expectedRaw = hmac(raw);
-      const expectedWithTs = ts ? hmac(`${ts}.${raw}`) : null;
-
-      let valid = false;
-      for (const c of candidates) {
-        let sigBuf: Buffer | null = null;
-        // try hex
-        if (/^[0-9a-fA-F]+$/.test(c)) {
-          try {
-            sigBuf = Buffer.from(c, "hex");
-          } catch {}
-        }
-        // try base64 fallback
-        if (!sigBuf) {
-          try {
-            sigBuf = Buffer.from(c, "base64");
-          } catch {}
-        }
-        if (!sigBuf) continue;
-
-        try {
-          if (
-            sigBuf.length === expectedRaw.length &&
-            crypto.timingSafeEqual(sigBuf, expectedRaw)
-          ) {
-            valid = true;
-            break;
-          }
-          if (
-            expectedWithTs &&
-            sigBuf.length === expectedWithTs.length &&
-            crypto.timingSafeEqual(sigBuf, expectedWithTs)
-          ) {
-            valid = true;
-            break;
-          }
-        } catch (e) {
-          // ignore and continue
-        }
-      }
-
-      console.debug("[paymongo webhook] signature verification result:", {
-        valid,
-        ts,
-        candidates,
-      });
-      if (!valid) {
-        console.warn("[paymongo webhook] signature mismatch", {
-          // log a truncated expected hex for debugging only
-          expectedRaw: expectedRaw.toString("hex").slice(0, 32),
-          expectedWithTs: expectedWithTs
-            ? expectedWithTs.toString("hex").slice(0, 32)
-            : null,
-          candidates,
-        });
-        return NextResponse.json(
-          { error: "invalid signature" },
-          { status: 400 }
-        );
-      }
-      console.debug("[paymongo webhook] signature verified");
-    } else {
-      console.debug(
-        "[paymongo webhook] PAYMONGO_WEBHOOK_SECRET not set — skipping signature verification"
-      );
-    }
-
-    const body = JSON.parse(raw);
-
-    // Resolve resource id/type from event
-    const eventType = body?.data?.attributes?.type ?? body?.type ?? "";
-    const nested = body?.data?.attributes?.data ?? null;
-    const resourceId = nested?.id ?? body?.data?.id ?? null;
-    const resourceKind =
-      nested?.type ??
-      (eventType.includes("payment_intent")
-        ? "payment_intent"
-        : eventType.includes("source")
-        ? "source"
-        : null);
-
-    console.debug(
-      "[paymongo webhook] eventType:",
-      eventType,
-      "resolvedResource:",
-      { resourceId, resourceKind }
-    );
-
-    const secret = process.env.PAYMONGO_SECRET_KEY;
-    if (secret && resourceId) {
-      const auth = `Basic ${Buffer.from(`${secret}:`).toString("base64")}`;
-
-      // choose endpoint by id prefix / type
-      let endpoint = `https://api.paymongo.com/v1/sources/${resourceId}`;
-      if (resourceId.startsWith("pay_"))
-        endpoint = `https://api.paymongo.com/v1/payments/${resourceId}`;
-      else if (resourceId.startsWith("pi_"))
-        endpoint = `https://api.paymongo.com/v1/payment_intents/${resourceId}`;
-      else if (
-        resourceKind === "payment_intent" ||
-        /payment_intent|payment_intents/i.test(eventType)
-      )
-        endpoint = `https://api.paymongo.com/v1/payment_intents/${resourceId}`;
-      else if (
-        resourceKind === "payment" ||
-        /(^|\.)payment(\.|$)/i.test(eventType)
-      )
-        endpoint = `https://api.paymongo.com/v1/payments/${resourceId}`;
-
-      let resource = null;
-      try {
-        const res = await fetch(endpoint, { headers: { Authorization: auth } });
-        resource = await res.json().catch(() => null);
-        console.debug("[paymongo webhook] fetched resource:", resource);
-      } catch (err) {
-        console.warn(
-          "[paymongo webhook] failed to fetch resource for validation",
-          err
-        );
-      }
-
-      // upsert paymongo_resources
-      try {
-        const resId = resource?.data?.id ?? resourceId;
-        const meta = resource?.data?.attributes?.metadata ?? {};
-        const metaOrder = meta?.order_id ?? meta?.order ?? null;
-
-        // avoid duplicating payment rows in paymongo_resources
-        const isPaymentResource =
-          resource?.data?.type === "payment" ||
-          String(resId).startsWith("pay_");
-        if (resId && !isPaymentResource) {
-          await sb.from("paymongo_resources").upsert(
-            {
-              id: resId,
-              order_id: metaOrder,
-              type: resource?.data?.type ?? resourceKind ?? null,
-              status: resource?.data?.attributes?.status ?? null,
-              amount: resource?.data?.attributes?.amount ?? null,
-              currency: resource?.data?.attributes?.currency ?? null,
-              raw: resource,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "id" }
-          );
-          console.debug("[paymongo webhook] upserted paymongo_resources", {
-            id: resId,
-            order_id: metaOrder,
-          });
-        } else if (isPaymentResource) {
-          console.debug(
-            "[paymongo webhook] skipping paymongo_resources upsert for payment",
-            resId
-          );
-        }
-
-        // Auto-charge: if this is a chargeable source, create a Payment idempotently
-        const isSource =
-          resource?.data?.type === "source" || String(resId).startsWith("src_");
-        const srcAttrs = resource?.data?.attributes ?? {};
-        const isChargeable = isSource && srcAttrs?.status === "chargeable";
-
-        if (isChargeable) {
-          const sourceId = resId;
-          // ensure no payment already exists for this source or order
-          const { data: existingPayments } = await sb
-            .from("paymongo_payments")
-            .select("id")
-            .or(`source_id.eq.${sourceId},order_id.eq.${metaOrder}`)
-            .limit(1);
-
-          if (!existingPayments || existingPayments.length === 0) {
-            // create PayMongo Payment
-            const payPayload = {
-              data: {
-                attributes: {
-                  amount: srcAttrs.amount,
-                  currency: srcAttrs.currency ?? "PHP",
-                  source: { id: sourceId, type: "source" },
-                  metadata: { order_id: metaOrder ?? null },
-                },
-              },
-            };
-
+    // 1) direct payment resource (some webhooks may send this shape)
+    if (data.type === "payment") {
+      await upsertPaymentResource(data);
+    } else if (data.type === "event") {
+      // 2) event wrapper (checkout_session.payment.paid etc.)
+      const eventType = data?.attributes?.type;
+      const nested = data?.attributes?.data; // the nested resource (checkout_session)
+      if (nested?.type === "checkout_session") {
+        const payments = nested?.attributes?.payments ?? [];
+        if (!Array.isArray(payments) || payments.length === 0) {
+          console.debug("[webhook] checkout_session has no payments array");
+        } else {
+          for (const p of payments) {
             try {
-              const payRes = await fetch(
-                "https://api.paymongo.com/v1/payments",
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: auth,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify(payPayload),
-                }
-              );
-              const payJson = await payRes.json().catch(() => null);
-              const payId = payJson?.data?.id ?? null;
-              const payAttrs = payJson?.data?.attributes ?? {};
-
-              // upsert payment row
-              await sb.from("paymongo_payments").upsert(
-                {
-                  id: payId ?? `pay_from_${sourceId}_${Date.now()}`,
-                  source_id: sourceId,
-                  order_id: payAttrs?.metadata?.order_id ?? metaOrder,
-                  status: payAttrs?.status ?? null,
-                  amount: payAttrs?.amount ?? srcAttrs.amount,
-                  currency: payAttrs?.currency ?? srcAttrs.currency,
-                  raw: payJson,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: "id" }
-              );
-              console.info(
-                "[paymongo webhook] created payment for source",
-                sourceId,
-                payId
-              );
+              await upsertPaymentResource(p);
             } catch (err) {
-              console.warn(
-                "[paymongo webhook] failed creating payment for chargeable source",
-                err
+              console.error("[webhook] upsert nested payment failed:", err);
+              return NextResponse.json(
+                { error: "upsert_nested_failed", details: String(err) },
+                { status: 500 }
               );
             }
-          } else {
-            console.debug(
-              "[paymongo webhook] payment already exists for source/order",
-              sourceId,
-              metaOrder
-            );
           }
         }
-
-        // If this is a payment resource, upsert into paymongo_payments and update orders
-        // reuse isPaymentResource computed above
-        if (isPaymentResource) {
-          const pay = resource.data;
-          const payAttrs = pay?.attributes ?? {};
-          const payOrder = payAttrs?.metadata?.order_id ?? null;
-          await sb.from("paymongo_payments").upsert(
-            {
-              id: pay.id,
-              source_id: payAttrs?.source?.id ?? null,
-              order_id: payOrder,
-              status: payAttrs?.status ?? null,
-              amount: payAttrs?.amount ?? null,
-              currency: payAttrs?.currency ?? null,
-              raw: resource,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "id" }
-          );
-          console.debug("[paymongo webhook] upserted paymongo_payments", {
-            id: pay.id,
-            order: payOrder,
-          });
-
-          // Orders table updates disabled — we only store canonical payments in paymongo_payments.
-          // If you later need to update an orders table, implement that here.
-          console.debug(
-            "[paymongo webhook] orders update skipped (not configured). payment status:",
-            payAttrs?.status,
-            "order_id:",
-            payOrder
-          );
-        }
-      } catch (err) {
-        console.warn("[paymongo webhook] DB upsert/create error", err);
+      } else if (nested?.type === "payment") {
+        // event wrapping a single payment resource
+        await upsertPaymentResource(nested);
+      } else {
+        console.debug(
+          "[webhook] unhandled event nested type:",
+          nested?.type,
+          "eventType:",
+          eventType
+        );
       }
     } else {
-      console.debug(
-        "[paymongo webhook] no resource id resolved or PAYMONGO_SECRET_KEY missing",
-        { resourceId, resourceKind }
-      );
+      console.debug("[webhook] unhandled data.type:", data.type);
     }
 
-    // map and log canonical event
-    const rawEvent = body?.data?.attributes?.type ?? body?.type ?? "unknown";
-    const eventMap: Record<string, string> = {
-      "source.chargeable": "source.chargeable",
-      "payment.paid": "payment.paid",
-      "payment.failed": "payment.failed",
-      "payment.refund.updated": "payment.refund.updated",
-      "checkout_session.payment.paid": "checkout_session.payment.paid",
-      "link.payment.paid": "link.payment.paid",
-    };
-    const eventName = eventMap[rawEvent] ?? rawEvent;
-    console.info("[paymongo webhook] received event", eventName);
-
-    return NextResponse.json({ received: true });
-  } catch (e) {
-    console.error("webhook parse error", e);
-    return NextResponse.json({ error: "invalid webhook" }, { status: 400 });
+    // existing finalize logic (if you want to finalize registrations here, you can
+    // extract the order_id from inserted payments as needed)
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("[webhook] error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

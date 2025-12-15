@@ -50,9 +50,15 @@ interface StorageUsage {
 
 interface UserScansProps {
   registrationId: string;
+  scans?: Scan[];
+  usage?: StorageUsage | null;
 }
 
-export default function UserScans({ registrationId }: UserScansProps) {
+export default function UserScans({
+  registrationId,
+  scans: providedScans,
+  usage: providedUsage,
+}: UserScansProps) {
   const [scans, setScans] = useState<Scan[]>([]);
   const [search, setSearch] = useState("");
   const [usage, setUsage] = useState<StorageUsage>({
@@ -66,8 +72,13 @@ export default function UserScans({ registrationId }: UserScansProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchScans = useCallback(async () => {
+    if (providedScans) {
+      setScans(providedScans);
+      setUsage(providedUsage ?? { used_mb: 0, limit_mb: 0, percentage: 0 });
+      setLoading(false);
+      return;
+    }
     if (!registrationId) return;
-
     try {
       setLoading(true);
       const res = await fetch(
@@ -86,7 +97,7 @@ export default function UserScans({ registrationId }: UserScansProps) {
     } finally {
       setLoading(false);
     }
-  }, [registrationId]);
+  }, [registrationId, providedScans, providedUsage]);
 
   useEffect(() => {
     fetchScans();
@@ -154,11 +165,6 @@ export default function UserScans({ registrationId }: UserScansProps) {
             <Title order={4}>Digital Storage</Title>
           </Group>
           <Group>
-            <Tooltip label="Refresh Files">
-              <ActionIcon variant="subtle" color="gray" onClick={fetchScans}>
-                <IconRefresh size={16} />
-              </ActionIcon>
-            </Tooltip>
             <Badge variant="light" size="lg" color="violet">
               {scans.length} Files
             </Badge>

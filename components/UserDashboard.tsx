@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
@@ -35,6 +37,7 @@ import {
   IconSortDescending,
   IconCreditCardOff, // ADDED
   IconSearch,
+  IconCopy, // added
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
@@ -174,6 +177,9 @@ const mapDataToRows = (data: RawRow[]): Row[] => {
 
 export default function UserDashboard() {
   const { session } = useSession();
+  // pagination for registrations
+  const [page, setPage] = useState<number>(1);
+  const perPage = 2;
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,6 +369,66 @@ export default function UserDashboard() {
     }
   };
 
+  // build a best-effort full shipping address from the API row.raw
+  const getFullAddressFromRaw = (raw: any): string | null => {
+    if (!raw) return null;
+    const loc = raw.mailroom_locations ?? raw.location ?? {};
+    // prefer a preformatted address if available
+    if (loc?.formatted_address) return String(loc.formatted_address);
+
+    const parts: string[] = [];
+    const name = loc?.name ?? raw.location_name ?? null;
+    if (name) parts.push(String(name));
+
+    const street =
+      loc?.address_line ||
+      loc?.street ||
+      loc?.line1 ||
+      loc?.line ||
+      loc?.address;
+    if (street) parts.push(String(street));
+
+    const city = loc?.city || loc?.town || null;
+    const province = loc?.province || loc?.state || null;
+    const postal = loc?.postal_code || loc?.postal || loc?.zip || null;
+    const country = loc?.country || null;
+    const tail = [city, province, postal, country].filter(Boolean).join(", ");
+    if (tail) parts.push(tail);
+
+    const out = parts.filter(Boolean).join(", ").trim();
+    return out || null;
+  };
+
+  // copy full shipping address to clipboard (mailroom code + full address)
+  const copyFullShippingAddress = async (row: Row) => {
+    const code = row.mailroom_code ?? null;
+    const full = getFullAddressFromRaw(row.raw) ?? row.location ?? null;
+    const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
+    if (!txt) {
+      notifications.show({
+        title: "Nothing to copy",
+        message: "No full address available",
+        color: "yellow",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(txt);
+      notifications.show({
+        title: "Copied",
+        message: "Full shipping address copied to clipboard",
+        color: "teal",
+      });
+    } catch (e: any) {
+      console.error("copy failed", e);
+      notifications.show({
+        title: "Copy failed",
+        message: e?.message ?? String(e),
+        color: "red",
+      });
+    }
+  };
+
   const SortIcon = ({ col }: { col: string }) => {
     if (sortBy !== col) return null;
     return sortDir === "asc" ? (
@@ -426,29 +492,6 @@ export default function UserDashboard() {
     );
   }
 
-  // Empty State
-  if (rows && rows.length === 0) {
-    return (
-      <Container size="sm">
-        <Paper p="xl" radius="md" withBorder ta="center">
-          <ThemeIcon size={60} radius="xl" color="blue" variant="light" mb="md">
-            <IconBox size={30} />
-          </ThemeIcon>
-          <Title order={3} mb="xs">
-            No Mailroom Services Yet
-          </Title>
-          <Text c="dimmed" mb="xl">
-            You haven't registered for a mailroom service yet. Get your own
-            address today!
-          </Text>
-          <Button component={Link} href="/mailroom/register" size="md">
-            Register New Service
-          </Button>
-        </Paper>
-      </Container>
-    );
-  }
-
   return (
     <Stack gap="xl">
       {/* 1. Welcome Section */}
@@ -463,7 +506,10 @@ export default function UserDashboard() {
           <TextInput
             placeholder="Search mailrooms"
             value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
+            onChange={(e) => {
+              setSearch(e.currentTarget.value);
+              setPage(1);
+            }}
             leftSection={<IconSearch size={16} />}
             size="md"
             __clearable
@@ -533,145 +579,215 @@ export default function UserDashboard() {
       <Divider label="Your Active Subscriptions" labelPosition="center" />
 
       {/* 3. Subscription Cards (Replaces the Table) */}
-      <SimpleGrid cols={{ base: 1, md: 2 }}>
-        {filtered.map((row) => (
-          <Card key={row.id} shadow="sm" padding="lg" radius="md" withBorder>
-            <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
-              <Group justify="space-between">
-                {/* CHANGED: Added quotes around "xs" */}
-                <Group gap="xs">
-                  <ThemeIcon color="violet" variant="light">
-                    <IconMapPin size={16} />
-                  </ThemeIcon>
-                  <Text fw={600} size="sm">
-                    {row.location || "Unknown Location"}
-                  </Text>
-                </Group>
-                <Badge
-                  // CHANGED: Update colors to handle INACTIVE/EXPIRING
-                  color={
-                    row.mailroom_status === "ACTIVE"
-                      ? "green"
-                      : row.mailroom_status === "EXPIRING"
-                      ? "yellow"
-                      : "red"
-                  }
-                  variant="dot"
-                >
-                  {row.mailroom_status}
-                </Badge>
-              </Group>
-            </Card.Section>
-
-            <Stack mt="md" gap="sm">
-              <Group justify="space-between" align="flex-start">
-                <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                    Mailroom Code
-                  </Text>
-                  <Text size="xl" fw={800} ff="monospace" c="violet.9">
-                    {row.mailroom_code || "PENDING"}
-                  </Text>
-                </Box>
-                <Box ta="right">
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                    Plan
-                  </Text>
-                  <Text fw={600}>{row.plan}</Text>
-                </Box>
-              </Group>
-
-              {/* ADDED: Subscriber Details */}
-              <Box>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                  Subscriber
-                </Text>
-                <Text fw={600} size="sm" lh={1.2}>
-                  {row.name}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {row.email}
-                </Text>
-              </Box>
-
-              <Divider my="xs" variant="dashed" />
-
-              <Group grow>
-                <Box>
-                  <Group gap={6} mb={4}>
-                    <IconPackage size={14} color="gray" />
-                    <Text size="xs" c="dimmed">
-                      Current Inventory
-                    </Text>
-                  </Group>
-                  <Text fw={700} size="lg">
-                    {row.stats.stored}{" "}
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 400,
-                        color: "#868e96",
-                      }}
-                    >
-                      items
-                    </span>
-                  </Text>
-                </Box>
-                <Box style={{ textAlign: "right" }}>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                    {row.auto_renew ? "Renews On" : "Expires On"}
-                  </Text>
-                  <Text fw={500} size="sm" c={row.auto_renew ? "dark" : "red"}>
-                    {row.expiry_at
-                      ? new Date(row.expiry_at).toLocaleDateString()
-                      : "N/A"}
-                  </Text>
-                </Box>
-              </Group>
-
-              {/* show released count and pending requests per mailroom */}
-              <Group mt="sm" style={{ gap: 8 }}>
-                <Badge color="teal" variant="light">
-                  Released: {row.stats.released}
-                </Badge>
-                <Badge
-                  color={row.stats.pending > 0 ? "orange" : "gray"}
-                  variant={row.stats.pending > 0 ? "filled" : "light"}
-                >
-                  {row.stats.pending} request
-                  {row.stats.pending !== 1 ? "s" : ""}
-                </Badge>
-              </Group>
-            </Stack>
-
-            {/* CHANGED: Added Group for buttons */}
-            <Group mt="md" grow>
-              <Button
-                component={Link}
-                href={`/mailroom/${row.id}`}
-                radius="md"
-                rightSection={<IconChevronRight size={16} />}
-              >
-                Manage Mailbox
-              </Button>
-              {/* ADDED: Cancel Button */}
-              {row.auto_renew && row.mailroom_status === "ACTIVE" && (
-                <Button
-                  variant="light"
-                  color="red"
+      {(() => {
+        const total = filtered.length;
+        const start = (page - 1) * perPage;
+        const pageItems = filtered.slice(start, start + perPage);
+        return (
+          <>
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              {pageItems.map((row) => (
+                <Card
+                  key={row.id}
+                  shadow="sm"
+                  padding="lg"
                   radius="md"
-                  onClick={() => {
-                    setSelectedSubId(row.id);
-                    setCancelModalOpen(true);
-                  }}
+                  withBorder
                 >
-                  Cancel Renewal
-                </Button>
-              )}
-            </Group>
-          </Card>
-        ))}
-      </SimpleGrid>
+                  <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
+                    <Group justify="space-between">
+                      {/* CHANGED: Added copy icon beside location (full shipping address) */}
+                      <Group gap="xs" align="center">
+                        <ThemeIcon color="violet" variant="light">
+                          <IconMapPin size={16} />
+                        </ThemeIcon>
+                        <Text fw={600} size="sm">
+                          {row.location || "Unknown Location"}
+                        </Text>
+                        <ActionIcon
+                          variant="light"
+                          onClick={() => copyFullShippingAddress(row)}
+                          title="Copy full shipping address"
+                        >
+                          <IconCopy size={16} />
+                        </ActionIcon>
+                      </Group>
+                      <Badge
+                        // CHANGED: Update colors to handle INACTIVE/EXPIRING
+                        color={
+                          row.mailroom_status === "ACTIVE"
+                            ? "green"
+                            : row.mailroom_status === "EXPIRING"
+                            ? "yellow"
+                            : "red"
+                        }
+                        variant="dot"
+                      >
+                        {row.mailroom_status}
+                      </Badge>
+                    </Group>
+                  </Card.Section>
+
+                  <Stack mt="md" gap="sm">
+                    <Group justify="space-between" align="flex-start">
+                      <Box>
+                        <Group align="center" gap="xs">
+                          <div>
+                            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                              Mailroom Code
+                            </Text>
+                            <Text
+                              size="xl"
+                              fw={800}
+                              ff="monospace"
+                              c="violet.9"
+                            >
+                              {row.mailroom_code || "PENDING"}
+                            </Text>
+                          </div>
+                        </Group>
+
+                        <Text size="xs" c="dimmed" mt={6}>
+                          {row.location ?? "Address not set"}
+                        </Text>
+                      </Box>
+                      <Box ta="right">
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                          Plan
+                        </Text>
+                        <Text fw={600}>{row.plan}</Text>
+                      </Box>
+                    </Group>
+
+                    {/* ADDED: Subscriber Details */}
+                    <Box>
+                      <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        Subscriber
+                      </Text>
+                      <Text fw={600} size="sm" lh={1.2}>
+                        {row.name}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {row.email}
+                      </Text>
+                    </Box>
+
+                    <Divider my="xs" variant="dashed" />
+
+                    <Group grow>
+                      <Box>
+                        <Group gap={6} mb={4}>
+                          <IconPackage size={14} color="gray" />
+                          <Text size="xs" c="dimmed">
+                            Current Inventory
+                          </Text>
+                        </Group>
+                        <Text fw={700} size="lg">
+                          {row.stats.stored}{" "}
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 400,
+                              color: "#868e96",
+                            }}
+                          >
+                            items
+                          </span>
+                        </Text>
+                      </Box>
+                      <Box style={{ textAlign: "right" }}>
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                          {row.auto_renew ? "Renews On" : "Expires On"}
+                        </Text>
+                        <Text
+                          fw={500}
+                          size="sm"
+                          c={row.auto_renew ? "dark" : "red"}
+                        >
+                          {row.expiry_at
+                            ? new Date(row.expiry_at).toLocaleDateString()
+                            : "N/A"}
+                        </Text>
+                      </Box>
+                    </Group>
+
+                    {/* show released count and pending requests per mailroom */}
+                    <Group mt="sm" style={{ gap: 8 }}>
+                      <Badge color="teal" variant="light">
+                        Released: {row.stats.released}
+                      </Badge>
+                      <Badge
+                        color={row.stats.pending > 0 ? "orange" : "gray"}
+                        variant={row.stats.pending > 0 ? "filled" : "light"}
+                      >
+                        {row.stats.pending} request
+                        {row.stats.pending !== 1 ? "s" : ""}
+                      </Badge>
+                    </Group>
+                  </Stack>
+
+                  {/* CHANGED: Added Group for buttons */}
+                  <Group mt="md" grow>
+                    <Button
+                      component={Link}
+                      href={`/mailroom/${row.id}`}
+                      radius="md"
+                      rightSection={<IconChevronRight size={16} />}
+                    >
+                      Manage Mailbox
+                    </Button>
+                    {/* ADDED: Cancel Button */}
+                    {row.auto_renew && row.mailroom_status === "ACTIVE" && (
+                      <Button
+                        variant="light"
+                        color="red"
+                        radius="md"
+                        onClick={() => {
+                          setSelectedSubId(row.id);
+                          setCancelModalOpen(true);
+                        }}
+                      >
+                        Cancel Renewal
+                      </Button>
+                    )}
+                  </Group>
+                </Card>
+              ))}
+            </SimpleGrid>
+            {total > perPage && (
+              <Group
+                justify="space-between"
+                mt="md"
+                align="center"
+                style={{ width: "100%" }}
+              >
+                <Text size="sm" c="dimmed">
+                  Showing {Math.min(start + 1, total)}–
+                  {Math.min(start + pageItems.length, total)} of {total}
+                </Text>
+                <Group>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={page === 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={start + perPage >= total}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </Group>
+              </Group>
+            )}
+          </>
+        );
+      })()}
 
       {/* ADDED: Cancel Confirmation Modal */}
       <Modal

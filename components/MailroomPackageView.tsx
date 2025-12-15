@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react"; // Added useEffect
+import { useState, useMemo, useEffect } from "react";
 import {
   Badge,
   Box,
@@ -31,7 +31,9 @@ import {
   IconMail,
   IconPackage,
   IconScan,
+  IconCopy,
 } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
@@ -49,7 +51,8 @@ interface MailroomPackageViewProps {
   item: any;
   loading: boolean;
   error: string | null;
-  onRefresh: () => void;
+  // allow onRefresh to return a Promise<void> or void and be optional
+  onRefresh?: () => void | Promise<void>;
 }
 
 export default function MailroomPackageView({
@@ -63,39 +66,205 @@ export default function MailroomPackageView({
   // 1. Add a refresh key state to force updates
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // LOCAL copy of item so this view can refetch and render fresh data
+  const [localItem, setLocalItem] = useState<any | null>(item ?? null);
+
+  // Keep localItem in sync when parent provides a new item object/id
+  useEffect(() => {
+    setLocalItem(item ?? null);
+  }, [item?.id]);
+
+  const source = localItem ?? item;
+
+  // CENTRALIZED scans state / map / usage
+  const [scans, setScans] = useState<any[]>([]);
+  const [scanMap, setScanMap] = useState<Record<string, string>>({});
+  const [scansUsage, setScansUsage] = useState<any | null>(null);
+  const [scansLoading, setScansLoading] = useState(false);
+
   // 2. Create a wrapper function that triggers both local and parent refresh
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshKey((prev) => prev + 1);
-    onRefresh();
+    try {
+      // call parent refresh if available (may perform broader refresh)
+      if (typeof onRefresh === "function") {
+        const res = onRefresh();
+        // guard against void: only await when a Promise is returned
+        if (res !== undefined && typeof (res as any)?.then === "function") {
+          await res;
+        }
+      }
+    } catch (e) {
+      console.warn("parent onRefresh failed", e);
+    }
+
+    // fetch fresh registration and update local state so view updates immediately
+    const id = item?.id ?? localItem?.id;
+    if (id) {
+      const fresh = await fetchRegistration(id);
+      if (fresh) setLocalItem(fresh);
+    }
+  };
+
+  const fetchRegistration = async (id?: string) => {
+    if (!id) return null;
+    try {
+      const res = await fetch(
+        `/api/mailroom/registrations/${encodeURIComponent(id)}`,
+        {
+          credentials: "include",
+        }
+      );
+      if (!res.ok) return null;
+      const json = await res.json().catch(() => ({}));
+      // depending on API shape, registration may be in json or json.data
+      return json?.data ?? json;
+    } catch (e) {
+      console.error("failed to fetch registration", e);
+      return null;
+    }
   };
 
   // Plan Capabilities
-  const plan = item?.mailroom_plans || {};
+  const plan = source?.mailroom_plans || {};
 
   // Check storage usage
   useEffect(() => {
+    const controller = new AbortController();
     const checkStorage = async () => {
-      if (item?.id && plan.can_digitize) {
-        try {
-          const res = await fetch(`/api/user/scans?registrationId=${item.id}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.usage) {
-              setIsStorageFull(data.usage.used_mb >= data.usage.limit_mb);
-            }
+      if (!source?.id || !plan.can_digitize) return;
+      try {
+        const res = await fetch(`/api/user/scans?registrationId=${source.id}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.usage) {
+            setIsStorageFull(data.usage.used_mb >= data.usage.limit_mb);
           }
-        } catch (e) {
+        }
+      } catch (e) {
+        if ((e as any).name !== "AbortError") {
           console.error("Failed to check storage usage", e);
         }
       }
     };
 
     checkStorage();
-  }, [item, plan.can_digitize, refreshKey]); // 3. Add refreshKey to dependency array
+    return () => controller.abort();
+  }, [source?.id, plan.can_digitize, refreshKey]); // use primitive id
+
+  // CENTRALIZED scans state / map / usage
+  useEffect(() => {
+    if (!source?.id || !plan.can_digitize) {
+      setScans([]);
+      setScanMap({});
+      setScansUsage(null);
+      return;
+    }
+    const controller = new AbortController();
+    let mounted = true;
+    (async () => {
+      try {
+        setScansLoading(true);
+        const res = await fetch(`/api/user/scans?registrationId=${source.id}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        const arr = Array.isArray(data?.scans) ? data.scans : [];
+        const map: Record<string, string> = {};
+        arr.forEach((s: any) => {
+          if (s.package_id) map[s.package_id] = s.file_url;
+        });
+        if (!mounted) return;
+        setScans(arr);
+        setScanMap(map);
+        setScansUsage(data.usage ?? null);
+      } catch (err) {
+        if ((err as any).name !== "AbortError") console.error(err);
+      } finally {
+        if (mounted) setScansLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [source?.id, plan.can_digitize, refreshKey]);
+
+  // Helper to build a full address (similar to UserDashboard)
+  const getFullAddressFromRaw = (raw: any): string | null => {
+    if (!raw) return null;
+    const loc = raw ?? {};
+    if (loc?.formatted_address) return String(loc.formatted_address);
+
+    const parts: string[] = [];
+    const name = loc?.name ?? null;
+    if (name) parts.push(String(name));
+
+    const street =
+      loc?.address_line ||
+      loc?.street ||
+      loc?.line1 ||
+      loc?.line ||
+      loc?.address;
+    if (street) parts.push(String(street));
+
+    const city = loc?.city || loc?.town || null;
+    const province = loc?.province || loc?.state || null;
+    const postal = loc?.postal_code || loc?.postal || loc?.zip || null;
+    const country = loc?.country || null;
+    const tail = [city, province, postal, country].filter(Boolean).join(", ");
+    if (tail) parts.push(tail);
+
+    const out = parts.filter(Boolean).join(", ").trim();
+    return out || null;
+  };
+
+  const copyFullShippingAddress = async () => {
+    const code = item?.mailroom_code ?? "-";
+    const full =
+      getFullAddressFromRaw(item?.mailroom_locations) ||
+      [
+        item?.mailroom_locations?.address,
+        item?.mailroom_locations?.city,
+        item?.mailroom_locations?.region,
+      ]
+        .filter(Boolean)
+        .join(", ") ||
+      null;
+    const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
+    if (!txt) {
+      notifications.show({
+        title: "Nothing to copy",
+        message: "No full address available",
+        color: "yellow",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(txt);
+      notifications.show({
+        title: "Copied",
+        message: "Full shipping address copied to clipboard",
+        color: "teal",
+      });
+    } catch (e: any) {
+      console.error("copy failed", e);
+      notifications.show({
+        title: "Copy failed",
+        message: e?.message ?? String(e),
+        color: "red",
+      });
+    }
+  };
 
   // Filter packages based on selected locker
   const filteredPackages = useMemo(() => {
-    const pkgs = Array.isArray(item?.packages) ? item.packages : [];
+    const pkgs = Array.isArray(source?.packages) ? source.packages : [];
     if (!selectedLockerId) return pkgs;
 
     return pkgs.filter((p: any) => {
@@ -110,7 +279,7 @@ export default function MailroomPackageView({
 
       return assigned && assigned.id === selectedLockerId;
     });
-  }, [item, selectedLockerId]);
+  }, [source, selectedLockerId]);
 
   if (loading) {
     return (
@@ -372,20 +541,27 @@ export default function MailroomPackageView({
                 {/* Packages Section */}
                 <UserPackages
                   packages={filteredPackages}
-                  lockers={item.lockers}
+                  lockers={source.lockers}
                   planCapabilities={{
                     can_receive_mail: plan.can_receive_mail === true,
                     can_receive_parcels: plan.can_receive_parcels === true,
                     can_digitize: plan.can_digitize === true,
                   }}
                   isStorageFull={isStorageFull}
-                  onRefresh={handleRefresh} // 5. Pass handleRefresh here too so actions update the UI
+                  onRefresh={handleRefresh}
+                  scanMap={scanMap}
+                  scans={scans}
                 />
 
                 {/* Digital Storage Section (Only if plan allows) */}
                 {/* 6. Add key={refreshKey} to force UserScans to remount/refetch */}
                 {plan.can_digitize && (
-                  <UserScans key={refreshKey} registrationId={item.id} />
+                  <UserScans
+                    key={refreshKey}
+                    registrationId={source.id}
+                    scans={scans}
+                    usage={scansUsage}
+                  />
                 )}
               </Stack>
             </Grid.Col>
@@ -445,9 +621,27 @@ export default function MailroomPackageView({
                     <ThemeIcon variant="light" color="orange">
                       <IconMapPin size={18} />
                     </ThemeIcon>
-                    <Text fw={600}>Location Details</Text>
+                    <Group>
+                      <Text fw={600}>Location Details</Text>
+                      <ActionIcon
+                        size="sm"
+                        variant="light"
+                        onClick={copyFullShippingAddress}
+                        title="Copy full shipping address"
+                      >
+                        <IconCopy size={14} />
+                      </ActionIcon>
+                    </Group>
                   </Group>
                   <Stack gap="sm">
+                    <Box>
+                      <Text size="xs" c="dimmed">
+                        Mailroom Code
+                      </Text>
+                      <Text fw={500} ff="monospace">
+                        {item.mailroom_code ?? "—"}
+                      </Text>
+                    </Box>
                     <Box>
                       <Text size="xs" c="dimmed">
                         Location Name
@@ -458,16 +652,22 @@ export default function MailroomPackageView({
                     </Box>
                     <Box>
                       <Text size="xs" c="dimmed">
-                        Address
+                        Full Address
                       </Text>
-                      <Text fw={500} size="sm">
-                        {[
-                          item.mailroom_locations?.address,
-                          item.mailroom_locations?.city,
-                          item.mailroom_locations?.region,
-                        ]
-                          .filter(Boolean)
-                          .join(", ") || "—"}
+                      <Text
+                        fw={500}
+                        size="sm"
+                        style={{ wordBreak: "break-word" }}
+                      >
+                        {getFullAddressFromRaw(item.mailroom_locations) ||
+                          [
+                            item.mailroom_locations?.address,
+                            item.mailroom_locations?.city,
+                            item.mailroom_locations?.region,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") ||
+                          "—"}
                       </Text>
                     </Box>
                   </Stack>

@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
@@ -69,6 +70,36 @@ export async function middleware(request: NextRequest) {
     // If not logged in and trying to access protected page (like /dashboard)
     url.pathname = "/signin";
     return NextResponse.redirect(url);
+  }
+
+  // 6. Prevent unverified users from accessing mailroom registration
+  // Only run this check when user exists and target path is /mailroom/register
+  if (user && url.pathname === "/mailroom/register") {
+    try {
+      // use service role client to bypass RLS for this server-side check
+      const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+      const { data: kyc, error: kycErr } = await supabaseAdmin
+        .from("user_kyc")
+        .select("status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (kycErr) {
+        console.error("middleware KYC lookup error:", kycErr);
+        url.pathname = "/mailroom/kyc";
+        return NextResponse.redirect(url);
+      }
+      if (!kyc || kyc.status !== "VERIFIED") {
+        url.pathname = "/mailroom/kyc";
+        return NextResponse.redirect(url);
+      }
+    } catch (e) {
+      // on error, fall back to blocking access to be safe
+      url.pathname = "/mailroom/kyc";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;

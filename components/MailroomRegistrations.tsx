@@ -104,12 +104,7 @@ export default function MailroomRegistrations() {
   const [activeTab, setActiveTab] = useState<string | null>("all");
 
   // --- SWR keys & fetcher ---
-  const registrationsKey = "/api/admin/mailroom/registrations";
-  const lockersKey = "/api/admin/mailroom/lockers";
-  const assignedKey = "/api/admin/mailroom/assigned-lockers";
-  const plansKey = "/api/admin/mailroom/plans";
-  const locationsKey = "/api/admin/mailroom/locations";
-
+  const combinedKey = "/api/admin/mailroom/registrations";
   const fetcher = async (url: string) => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -120,67 +115,39 @@ export default function MailroomRegistrations() {
   };
 
   const {
-    data: registrationsData,
-    error: registrationsError,
-    isValidating: registrationsValidating,
-  } = useSWR(registrationsKey, fetcher, { revalidateOnFocus: true });
-  const { data: lockersData, isValidating: lockersValidating } = useSWR(
-    lockersKey,
-    fetcher,
-    { revalidateOnFocus: true }
-  );
-  const { data: assignedData, isValidating: assignedValidating } = useSWR(
-    assignedKey,
-    fetcher,
-    { revalidateOnFocus: true }
-  );
-  const { data: plansData } = useSWR(plansKey, fetcher);
-  const { data: locationsData } = useSWR(locationsKey, fetcher);
+    data: combinedData,
+    error: combinedError,
+    isValidating,
+  } = useSWR(combinedKey, fetcher, { revalidateOnFocus: true });
 
-  // Sync SWR results to local state (keeps UI code unchanged)
+  // Sync SWR combined response into local state
   useEffect(() => {
-    setLoading(
-      registrationsValidating || lockersValidating || assignedValidating
-    );
+    setLoading(!!isValidating);
+    const payload = combinedData ?? {};
 
-    if (registrationsData) {
-      setRegistrations(
-        Array.isArray(registrationsData.data)
-          ? registrationsData.data
-          : Array.isArray(registrationsData)
-          ? registrationsData
-          : []
-      );
-    }
-    if (lockersData) {
-      setLockers(
-        Array.isArray(lockersData) ? lockersData : lockersData.data ?? []
-      );
-    }
-    if (assignedData) {
-      setAssignments(
-        Array.isArray(assignedData) ? assignedData : assignedData.data ?? []
-      );
-    }
-    if (plansData) {
-      setPlans(Array.isArray(plansData) ? plansData : plansData.data ?? []);
-    }
-    if (locationsData) {
-      setLocations(
-        Array.isArray(locationsData) ? locationsData : locationsData.data ?? []
-      );
-    }
+    // normalize registrations: map `mobile` from API to `phone_number` used by UI
+    const rawRegs = Array.isArray(payload.registrations)
+      ? payload.registrations
+      : [];
+    const normalizedRegs = rawRegs.map((r: any) => ({
+      ...r,
+      phone_number: r.mobile ?? r.phone ?? r.phone_number ?? null,
+      // keep backward-compatible plan/location fields if the server returned nested relations
+      plan_id: r.plan_id ?? r.plan?.id ?? null,
+      plan_name: r.plan_name ?? r.plan?.name ?? null,
+      location_id: r.location_id ?? r.location?.id ?? null,
+      location_name: r.location_name ?? r.location?.name ?? null,
+    }));
+    setRegistrations(normalizedRegs);
+
+    setLockers(Array.isArray(payload.lockers) ? payload.lockers : []);
+    setAssignments(
+      Array.isArray(payload.assignedLockers) ? payload.assignedLockers : []
+    );
+    setPlans(Array.isArray(payload.plans) ? payload.plans : []);
+    setLocations(Array.isArray(payload.locations) ? payload.locations : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    registrationsData,
-    lockersData,
-    assignedData,
-    plansData,
-    locationsData,
-    registrationsValidating,
-    lockersValidating,
-    assignedValidating,
-  ]);
+  }, [combinedData, isValidating]);
 
   // Initial cron run and seed by revalidating SWR
   useEffect(() => {
@@ -192,13 +159,7 @@ export default function MailroomRegistrations() {
         console.error("Auto-sync failed", e);
       } finally {
         // revalidate all keys
-        await Promise.all([
-          swrMutate(registrationsKey),
-          swrMutate(lockersKey),
-          swrMutate(assignedKey),
-          swrMutate(plansKey),
-          swrMutate(locationsKey),
-        ]);
+        await Promise.all([swrMutate(combinedKey)]);
         setLoading(false);
       }
     };
@@ -206,17 +167,11 @@ export default function MailroomRegistrations() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // convenience refresh function used after mutations
+  // convenience refresh function used after mutations (only refresh combined key)
   const refreshAll = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        swrMutate(registrationsKey),
-        swrMutate(lockersKey),
-        swrMutate(assignedKey),
-        swrMutate(plansKey),
-        swrMutate(locationsKey),
-      ]);
+      await swrMutate(combinedKey);
     } finally {
       setLoading(false);
     }

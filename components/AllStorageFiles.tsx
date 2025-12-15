@@ -132,6 +132,13 @@ export default function AllUserScans() {
   const [selected, setSelected] = useState<Scan | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // confirm delete modal state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<{
+    id: string;
+    name?: string;
+  } | null>(null);
   // SWR key depends on session readiness
   const swrKey = session?.user?.id ? "/api/user/storage" : null;
   const {
@@ -183,23 +190,25 @@ export default function AllUserScans() {
     }
   };
 
-  const handleDelete = async (scanId?: string) => {
-    if (!scanId) {
-      alert("Invalid file id");
-      return;
-    }
+  // open confirm modal
+  const handleDelete = (scan?: Scan) => {
+    if (!scan?.id) return;
+    setToDelete({ id: scan.id, name: scan.file_name });
+    setConfirmOpen(true);
+  };
 
-    if (!confirm("Delete this file permanently?")) return;
-
+  // perform actual delete after confirmation
+  const performDelete = async () => {
+    if (!toDelete?.id) return;
+    const scanId = toDelete.id;
     const url = `/api/user/storage/${encodeURIComponent(scanId)}`;
+    setConfirmOpen(false);
     try {
       setDeletingId(scanId);
       const res = await fetch(url, {
         method: "DELETE",
         credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-        },
+        headers: { Accept: "application/json" },
       });
 
       if (!res.ok) {
@@ -226,9 +235,10 @@ export default function AllUserScans() {
       }
     } catch (e: any) {
       console.error("delete failed", e);
-      alert(e.message || "Failed to delete file");
+      // keep UI simple and non-blocking
     } finally {
       setDeletingId(null);
+      setToDelete(null);
     }
   };
 
@@ -448,7 +458,7 @@ export default function AllUserScans() {
                             <ActionIcon
                               color="red"
                               variant="light"
-                              onClick={() => handleDelete(s.id)}
+                              onClick={() => handleDelete(s)}
                               disabled={deletingId === s.id}
                             >
                               <IconTrash size={18} />
@@ -522,6 +532,37 @@ export default function AllUserScans() {
             <Text c="dimmed">No file selected</Text>
           </Center>
         )}
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        opened={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Confirm delete"
+        centered
+        size="sm"
+      >
+        <Stack gap="sm">
+          <Text>
+            Are you sure you want to permanently delete{" "}
+            <Text component="span" fw={700}>
+              {toDelete?.name ?? toDelete?.id}
+            </Text>
+            ?
+          </Text>
+          <Group justify="right" gap="xs">
+            <Button variant="default" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={() => void performDelete()}
+              loading={!!deletingId && deletingId === toDelete?.id}
+            >
+              Delete
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
     </Box>
   );
