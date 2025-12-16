@@ -1,17 +1,3 @@
--- Drop existing users table if it exists
-drop table if exists public.users cascade;
-
--- Create users table
-create table public.users (
-    id uuid primary key default gen_random_uuid(),
-    email text not null unique,
-    password text, -- optional if using Supabase Auth
-    first_name text not null,
-    last_name text not null,
-    role text not null default 'user', -- 'user' or 'admin'
-    created_at timestamp with time zone default now()
-);
-
 -- Enable row-level security
 alter table public.users enable row level security;
 
