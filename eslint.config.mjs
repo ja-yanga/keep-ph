@@ -3,11 +3,7 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-import prettierFlat from "eslint-config-prettier/flat";
-
-const prettierItems = Array.isArray(prettierFlat)
-  ? prettierFlat
-  : [prettierFlat];
+import prettierConfig from "eslint-config-prettier";
 
 export default defineConfig([
   // Next recommended flat configs
@@ -51,5 +47,5 @@ export default defineConfig([
     },
   },
 
-  ...prettierItems,
+  prettierConfig,
 ]);
