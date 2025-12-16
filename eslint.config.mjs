@@ -16,13 +16,29 @@ export default defineConfig([
   // shared rules/plugins that don't require parserOptions.project
   {
     plugins: { "@typescript-eslint": tsPlugin },
+    ignores: [
+      "node_modules/**",
+      ".next/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+    ],
     rules: {
       "prefer-const": "error",
-      "@typescript-eslint/no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
-      ],
+      "@typescript-eslint/no-unused-vars": "error",
       "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/consistent-type-definitions": ["error", "type"],
+      "@typescript-eslint/no-var-requires": "warn",
+      "no-empty": ["error", { allowEmptyCatch: false }],
+      "comma-spacing": [
+        "error",
+        {
+          before: false,
+          after: true,
+        },
+      ],
+      "react-hooks/exhaustive-deps": "off",
+      "no-nested-ternary": "error",
     },
   },
 
