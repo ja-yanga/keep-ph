@@ -4,6 +4,7 @@ import nextTypescript from "eslint-config-next/typescript";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import prettierConfig from "eslint-config-prettier";
+import eslintComments from "eslint-plugin-eslint-comments";
 
 export default defineConfig([
   // Next recommended flat configs
@@ -15,14 +16,10 @@ export default defineConfig([
 
   // shared rules/plugins that don't require parserOptions.project
   {
-    plugins: { "@typescript-eslint": tsPlugin },
-    ignores: [
-      "node_modules/**",
-      ".next/**",
-      "out/**",
-      "build/**",
-      "next-env.d.ts",
-    ],
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+      "eslint-comments": eslintComments,
+    },
     rules: {
       "prefer-const": "error",
       "@typescript-eslint/no-unused-vars": "error",
@@ -30,15 +27,19 @@ export default defineConfig([
       "@typescript-eslint/consistent-type-definitions": ["error", "type"],
       "@typescript-eslint/no-var-requires": "warn",
       "no-empty": ["error", { allowEmptyCatch: false }],
-      "comma-spacing": [
-        "error",
-        {
-          before: false,
-          after: true,
-        },
-      ],
+      "comma-spacing": ["error", { before: false, after: true }],
       "react-hooks/exhaustive-deps": "off",
+
+      // core rule
       "no-nested-ternary": "error",
+
+      // eslint-disable discipline
+      "eslint-comments/no-unlimited-disable": "error",
+      "eslint-comments/require-description": [
+        "error",
+        { ignore: ["eslint-enable"] },
+      ],
+      "eslint-comments/no-unused-disable": "error",
     },
   },
 
