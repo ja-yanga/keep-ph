@@ -1,6 +1,4 @@
-"use client";
-
-import { Box, Container, Title } from "@mantine/core";
+import {Box, Container} from "@mantine/core";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import AllStorageFiles from "@/components/AllStorageFiles";
@@ -16,7 +14,7 @@ export default function AllStoragePage() {
       }}
     >
       <DashboardNav />
-      <main style={{ flex: 1 }}>
+      <main style={{flex: 1}}>
         <Container size="xl" py="xl">
           <AllStorageFiles />
         </Container>
