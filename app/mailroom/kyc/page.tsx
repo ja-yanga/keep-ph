@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, {useEffect, useState} from "react";
+import {useRouter} from "next/navigation";
 import {
   Container,
   Title,
@@ -25,7 +25,7 @@ import {
   SimpleGrid, // Added SimpleGrid for better layout
   Box,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import {useDisclosure} from "@mantine/hooks";
 import {
   IconId,
   IconCheck,
@@ -81,9 +81,9 @@ export default function KycPage() {
 
   // modal state for image preview
   const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
-  const [opened, { open, close }] = useDisclosure(false);
+  const [opened, {open, close}] = useDisclosure(false);
   // confirm modal for submit
-  const [confirmOpen, { open: openConfirm, close: closeConfirm }] =
+  const [confirmOpen, {open: openConfirm, close: closeConfirm}] =
     useDisclosure(false);
 
   // load real KYC status from session on mount
@@ -95,7 +95,7 @@ export default function KycPage() {
 
       try {
         // Get session first (fast, includes kyc.status)
-        const res = await fetch("/api/session", { credentials: "include" });
+        const res = await fetch("/api/session", {credentials: "include"});
         if (!res.ok) {
           if (mounted) setInitialLoading(false);
           return;
@@ -117,7 +117,7 @@ export default function KycPage() {
       if (!mounted || (kycStatus !== "SUBMITTED" && kycStatus !== "VERIFIED"))
         return;
       try {
-        const r = await fetch("/api/user/kyc", { credentials: "include" });
+        const r = await fetch("/api/user/kyc", {credentials: "include"});
         if (!r.ok) return;
         const payload = await r.json();
         const row = payload?.kyc;
@@ -266,7 +266,7 @@ export default function KycPage() {
       <Navbar />
       <Container size="sm" py="xl">
         {initialLoading ? (
-          <Center style={{ padding: 80 }}>
+          <Center style={{padding: 80}}>
             <Loader />
           </Center>
         ) : (
@@ -274,9 +274,9 @@ export default function KycPage() {
             <Group
               justify="space-between"
               align="center"
-              style={{ width: "100%" }}
+              style={{width: "100%"}}
             >
-              <Title order={2} fw={700} style={{ margin: 0 }}>
+              <Title order={2} fw={700} style={{margin: 0}}>
                 <Group gap="xs" align="center">
                   <IconId size={30} />
                   Identity Verification (KYC)
@@ -473,7 +473,7 @@ export default function KycPage() {
                         3. Upload ID Images
                       </Title>
                       <Grid>
-                        <Grid.Col span={{ base: 12, sm: 6 }}>
+                        <Grid.Col span={{base: 12, sm: 6}}>
                           <FileInput
                             label="Front of ID"
                             placeholder="Choose front image"
@@ -485,7 +485,7 @@ export default function KycPage() {
                             disabled={isLocked}
                           />
                         </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6 }}>
+                        <Grid.Col span={{base: 12, sm: 6}}>
                           <FileInput
                             label="Back of ID"
                             placeholder="Choose back image"
@@ -525,7 +525,7 @@ export default function KycPage() {
                             p="sm"
                             radius="md"
                             onClick={() => handlePreviewClick(frontPreview)}
-                            style={{ cursor: "pointer", flexBasis: "50%" }}
+                            style={{cursor: "pointer", flexBasis: "50%"}}
                           >
                             <Stack gap="xs" align="center">
                               <Image
@@ -550,7 +550,7 @@ export default function KycPage() {
                             withBorder
                             p="xl"
                             radius="md"
-                            style={{ flexBasis: "50%" }}
+                            style={{flexBasis: "50%"}}
                           >
                             <Text c="dimmed" size="sm" ta="center">
                               Front ID preview will appear here.
@@ -564,7 +564,7 @@ export default function KycPage() {
                             p="sm"
                             radius="md"
                             onClick={() => handlePreviewClick(backPreview)}
-                            style={{ cursor: "pointer", flexBasis: "50%" }}
+                            style={{cursor: "pointer", flexBasis: "50%"}}
                           >
                             <Stack gap="xs" align="center">
                               <Image
@@ -589,7 +589,7 @@ export default function KycPage() {
                             withBorder
                             p="xl"
                             radius="md"
-                            style={{ flexBasis: "50%" }}
+                            style={{flexBasis: "50%"}}
                           >
                             <Text c="dimmed" size="sm" ta="center">
                               Back ID preview will appear here.
@@ -678,7 +678,7 @@ export default function KycPage() {
                   </Alert>
 
                   {/* SimpleGrid for Snapshot Details */}
-                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl">
+                  <SimpleGrid cols={{base: 1, sm: 2}} spacing="xl">
                     {/* Document Details Card */}
                     <Paper withBorder p="md" radius="md">
                       <Stack gap="xs">
@@ -730,10 +730,10 @@ export default function KycPage() {
 
                         {/* Address Detail (Label-Top, Value-Bottom) */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
+                          <Text size="sm" c="dimmed" style={{flexShrink: 0}}>
                             Address:
                           </Text>
-                          <Text fw={500} style={{ wordBreak: "break-word" }}>
+                          <Text fw={500} style={{wordBreak: "break-word"}}>
                             {fullAddress}
                           </Text>
                         </Stack>

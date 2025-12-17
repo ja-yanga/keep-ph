@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { Box, Container, Loader, Center } from "@mantine/core";
-import { useSession } from "@/components/SessionProvider";
+import React, {useEffect} from "react";
+import {useRouter} from "next/navigation";
+import {Box, Container, Loader, Center} from "@mantine/core";
+import {useSession} from "@/components/SessionProvider";
 
 // Components
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
@@ -11,7 +11,7 @@ import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 
 export default function AdminStatsPage() {
-  const { session, loading } = useSession();
+  const {session, loading} = useSession();
   const router = useRouter();
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function AdminStatsPage() {
       }}
     >
       <DashboardNav />
-      <main style={{ flex: 1 }}>
+      <main style={{flex: 1}}>
         <Container size="xl" py="xl">
           <AnalyticsDashboard />
         </Container>
