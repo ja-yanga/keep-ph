@@ -28,20 +28,14 @@ CREATE TYPE payment_type AS ENUM ('SUBSCRIPTION', 'ONE_TIME', 'REFUND');
 -- Mail Action Request Status
 CREATE TYPE mail_action_request_status AS ENUM ('PROCESSING', 'COMPLETED');
 
--- Mail Action Request Type
-CREATE TYPE mail_action_request_type AS ENUM ('SCAN', 'RELEASE', 'DISPOSE', 'CANCEL', 'REFUND', 'REWARD', 'OTHER');
-
--- Mailroom File Type
-CREATE TYPE mailroom_file_type AS ENUM ('RECEIVED', 'SCANNED', 'RELEASED');
-
--- Activity Type
-CREATE TYPE activity_type AS ENUM ('USER_REQUEST_SCAN', 'USER_REQUEST_RELEASE', 'USER_REQUEST_DISPOSE', 'USER_REQUEST_CANCEL', 'USER_REQUEST_REFUND', 'USER_REQUEST_REWARD', 'USER_REQUEST_OTHERS', 'USER_LOGIN', 'USER_LOGOUT', 'USER_UPDATE_PROFILE', 'USER_KYC_SUBMIT', 'USER_KYC_VERIFY', 'ADMIN_ACTION', 'SYSTEM_EVENT');
-
 
 -- Users
 CREATE TABLE users_table (
     users_id UUID NOT NULL DEFAULT gen_random_uuid(),
     users_email TEXT NOT NULL UNIQUE,
+    -- users_password TEXT,
+    -- users_first_name TEXT NOT NULL,
+    -- users_last_name TEXT NOT NULL,
     users_role TEXT NOT NULL DEFAULT 'user',
     users_created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     users_avatar_url TEXT,
@@ -51,6 +45,15 @@ CREATE TABLE users_table (
     CONSTRAINT users_table_pkey PRIMARY KEY (users_id)
 );
 
+-- billing cutoff
+
+-- cashout needs KYC verification
+-- KYC verification first before mail services
+-- User KYC (one-to-one with Users)
+-- address is required (segmented)
+-- dob
+-- agreements
+-- rejected reasons
 CREATE TABLE user_kyc_table (
     user_kyc_id UUID NOT NULL DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL UNIQUE REFERENCES users_table(users_id),
@@ -178,6 +181,7 @@ CREATE TABLE mailroom_assigned_locker_table (
 );
 
 -- Mailroom Packages (one-to-many with Mailroom Registrations, optional one-to-one with Locker)
+--   mailbox_item_receiver TEXT, mailbox_item_social_media TEXT, -- whatsapp, viber, telegram, etc. (ENUM)
 CREATE TABLE mailbox_item_table (
     mailbox_item_id UUID NOT NULL DEFAULT gen_random_uuid(),
     mailroom_registration_id UUID NOT NULL REFERENCES mailroom_registration_table(mailroom_registration_id),
@@ -192,14 +196,17 @@ CREATE TABLE mailbox_item_table (
     mailbox_item_created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     mailbox_item_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     CONSTRAINT mailbox_item_table_pkey PRIMARY KEY (mailbox_item_id)
+    mailroom_file_table 
+
 );
 
 -- Mail Action Requests (one-to-many with Mailbox Items)
+-- connect to mailroom_scan_table
 CREATE TABLE mail_action_request_table (
     mail_action_request_id UUID NOT NULL DEFAULT gen_random_uuid(),
     mailbox_item_id UUID NOT NULL REFERENCES mailbox_item_table(mailbox_item_id),
     user_id UUID NOT NULL REFERENCES users_table(users_id),
-    mail_action_request_type mail_action_request_type NOT NULL,
+    mail_action_request_type TEXT NOT NULL, -- Example values: SCAN, RELEASE, DISPOSE, CANCEL, REFUND, REWARD, OTHER (ENUM)
     mail_action_request_status mail_action_request_status NOT NULL DEFAULT 'PROCESSING',
     mail_action_request_forward_address TEXT,
     mail_action_request_forward_tracking_number TEXT,
@@ -222,7 +229,7 @@ CREATE TABLE mailroom_file_table (
     mailroom_file_size_mb NUMERIC NOT NULL DEFAULT 0,
     mailroom_file_mime_type TEXT,
     mailroom_file_uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    mailroom_file_type mailroom_file_type NOT NULL,
+    mailroom_file_type TEXT NOT NULL, -- ENUM('RECEIVED', 'SCANNED', 'RELEASED')
     CONSTRAINT mailroom_file_table_pkey PRIMARY KEY (mailroom_file_id)
 );
 
@@ -264,16 +271,15 @@ CREATE TABLE rewards_claim_table (
     CONSTRAINT rewards_claim_table_pkey PRIMARY KEY (rewards_claim_id)
 );
 
--- Activity Log (one-to-many with Users)
--- Standalone audit table - preserves activity history even if referenced entities are deleted
+ActivityLog 
+-- user_id, activity_type, activity_details, activity_created_at
 CREATE TABLE activity_log_table (
     activity_log_id UUID NOT NULL DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users_table(users_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users_table(users_id),
     activity_action TEXT NOT NULL, -- update, create, delete, etc.
-    activity_type activity_type NOT NULL,
-    activity_request_id UUID REFERENCES mail_action_request_table(mail_action_request_id) ON DELETE SET NULL,
-    activity_details JSONB NOT NULL, -- Can store related entity IDs (e.g., user_kyc_id, payment_transaction_id, etc.)
-    activity_ip_address TEXT,
+    activity_type TEXT NOT NULL, -- USER_REQUEST_SCAN, USER_REQUEST_RELEASE, USER_REQUEST_DISPOSE, USER_REQUEST_CANCEL, USER_REQUEST_REFUND, USER_REQUEST_REWARD, USER_REQUEST_OTHERS etc. (ENUM)
+    activity_request_id UUID REFERENCES mailbox_item_table(mailbox_item_id), -- if activity_type is USER_REQUEST_SCAN, USER_REQUEST_RELEASE, USER_REQUEST_DISPOSE, USER_REQUEST_CANCEL, USER_REQUEST_REFUND, USER_REQUEST_REWARD, USER_REQUEST_OTHERS etc.
+    activity_details TEXT NOT NULL, -- jsonb, ip_address (optional) { "user_id": "123", "activity_type": "USER_REQUEST_SCAN", "activity_details": { "request_id": "123", "request_type": "SCAN", "request_status": "PENDING", "request_created_at": "2021-01-01 00:00:00" } } 
     activity_created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     CONSTRAINT activity_log_table_pkey PRIMARY KEY (activity_log_id)
 );
@@ -331,10 +337,9 @@ CREATE INDEX idx_mail_action_request_status ON mail_action_request_table(mail_ac
 CREATE INDEX idx_mail_action_request_type ON mail_action_request_table(mail_action_request_type);
 CREATE INDEX idx_mail_action_request_created_at ON mail_action_request_table(mail_action_request_created_at);
 
--- Mailroom Files
-CREATE INDEX idx_mailroom_file_item_id ON mailroom_file_table(mailbox_item_id);
-CREATE INDEX idx_mailroom_file_type ON mailroom_file_table(mailroom_file_type);
-CREATE INDEX idx_mailroom_file_uploaded_at ON mailroom_file_table(mailroom_file_uploaded_at);
+-- Mailroom Scans
+CREATE INDEX idx_mailroom_scan_item_id ON mailroom_scan_table(mailbox_item_id);
+CREATE INDEX idx_mailroom_scan_uploaded_at ON mailroom_scan_table(mailroom_scan_uploaded_at);
 
 -- Notifications
 CREATE INDEX idx_notification_user_id ON notification_table(user_id);
@@ -342,15 +347,8 @@ CREATE INDEX idx_notification_is_read ON notification_table(notification_is_read
 CREATE INDEX idx_notification_created_at ON notification_table(notification_created_at);
 
 -- Referrals
-CREATE INDEX idx_referral_referrer_user_id ON referral_table(referral_referrer_user_id);
-CREATE INDEX idx_referral_referred_user_id ON referral_table(referral_referred_user_id);
-CREATE INDEX idx_referral_service_type ON referral_table(referral_service_type);
-
--- Activity Log
-CREATE INDEX idx_activity_log_user_id ON activity_log_table(user_id);
-CREATE INDEX idx_activity_log_type ON activity_log_table(activity_type);
-CREATE INDEX idx_activity_log_request_id ON activity_log_table(activity_request_id);
-CREATE INDEX idx_activity_log_created_at ON activity_log_table(activity_created_at);
+CREATE INDEX idx_referral_user_id ON referral_table(user_id);
+CREATE INDEX idx_referral_referred_email ON referral_table(referral_referred_email);
 
 -- Rewards Claims
 CREATE INDEX idx_rewards_claim_user_id ON rewards_claim_table(user_id);

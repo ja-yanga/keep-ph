@@ -1,6 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
-import { NextResponse, type NextRequest } from "next/server";
+import {createServerClient} from "@supabase/ssr";
+import {createClient} from "@supabase/supabase-js";
+import {NextResponse, type NextRequest} from "next/server";
 
 export async function middleware(request: NextRequest) {
   // 1. Create an initial response
@@ -21,13 +21,13 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           // This allows the middleware to refresh the token if needed
-          cookiesToSet.forEach(({ name, value, options }) =>
+          cookiesToSet.forEach(({name, value, options}) =>
             request.cookies.set(name, value)
           );
           response = NextResponse.next({
             request,
           });
-          cookiesToSet.forEach(({ name, value, options }) =>
+          cookiesToSet.forEach(({name, value, options}) =>
             response.cookies.set(name, value, options)
           );
         },
@@ -38,7 +38,7 @@ export async function middleware(request: NextRequest) {
   // 3. Check Session
   // This will read the 'sb-<project>-auth-token' cookie correctly
   const {
-    data: { user },
+    data: {user},
   } = await supabase.auth.getUser();
 
   // 4. Define Protected and Auth Paths
@@ -81,7 +81,7 @@ export async function middleware(request: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
       );
-      const { data: kyc, error: kycErr } = await supabaseAdmin
+      const {data: kyc, error: kycErr} = await supabaseAdmin
         .from("user_kyc")
         .select("status")
         .eq("user_id", user.id)
