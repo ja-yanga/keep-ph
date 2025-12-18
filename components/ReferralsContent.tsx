@@ -1,6 +1,6 @@
 "use client";
 
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Container,
@@ -16,7 +16,6 @@ import {
   Center,
   Badge,
   ThemeIcon,
-  Divider,
   Progress,
 } from "@mantine/core";
 import {
@@ -27,15 +26,58 @@ import {
   IconTicket,
   IconAward,
 } from "@tabler/icons-react";
-import {useDisclosure} from "@mantine/hooks";
-import {useSession} from "@/components/SessionProvider";
+import { useDisclosure } from "@mantine/hooks";
+import { useSession } from "@/components/SessionProvider";
 import RewardClaimModal from "@/components/RewardClaimModal";
 import ClaimStatusModal from "@/components/ClaimStatusModal";
 
+type ReferralRow = {
+  referral_id?: string;
+  referrals_id?: string;
+  id?: string;
+  referral_service_type?: string | null;
+  referrals_service_type?: string | null;
+  service_type?: string | null;
+  referrals_referred_email?: string | null;
+  referral_referred_email?: string | null;
+  referral_referred_user_email?: string | null;
+  referred_email?: string | null;
+  referral_referred_user_id?: string | number | null;
+  referral_date_created?: string | null;
+  referrals_date_created?: string | null;
+  date_created?: string | null;
+  created_at?: string | null;
+};
+
+type ClaimRow = {
+  id?: string;
+  amount?: number | null;
+  payment_method?: string | null;
+  account_details?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+};
+
 export default function ReferralsContent() {
-  const {session} = useSession();
+  const { session } = useSession();
+  // helper: pick first string-valued key from record
+  const pickString = (rec: Record<string, unknown>, ...keys: string[]) => {
+    for (const k of keys) {
+      const v = rec[k];
+      if (typeof v === "string") return v;
+    }
+    return null;
+  };
+  // helper: pick first number-valued key
+  const pickNumber = (rec: Record<string, unknown>, ...keys: string[]) => {
+    for (const k of keys) {
+      const v = rec[k];
+      if (typeof v === "number") return v;
+    }
+    return undefined;
+  };
   const [referralCode, setReferralCode] = useState<string | null>(null);
-  const [referrals, setReferrals] = useState<any[]>([]);
+  const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // State for reward logic
@@ -44,34 +86,32 @@ export default function ReferralsContent() {
   const isRewardReady = referralCount >= REWARD_THRESHOLD;
 
   // New state for Modal
-  const [opened, {open, close}] = useDisclosure(false);
-  const [claims, setClaims] = useState<any[]>([]);
+  const [opened, { open, close }] = useDisclosure(false);
+  const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [claimLoading, setClaimLoading] = useState(false);
-  const [statusOpened, {open: openStatus, close: closeStatus}] =
+  const [statusOpened, { open: openStatus, close: closeStatus }] =
     useDisclosure(false);
 
-  const latestClaim = claims?.[0] ?? null;
-  // Only two server statuses to manage: PROCESSING and PAID
-  const hasPending = latestClaim && latestClaim.status === "PROCESSING";
-  const hasAnyClaim = claims && claims.length > 0;
+  const latestClaim: ClaimRow | null = claims?.[0] ?? null;
+  const hasPending = latestClaim?.status === "PROCESSING";
+  const hasAnyClaim = claims.length > 0;
 
-  // extract load logic into a callable function so modal can refresh after claim
   const fetchReferralData = async () => {
     if (!session?.user?.id) return;
     setLoading(true);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      // run generate (only if we don't already have a code) and list in parallel
       const genPromise = !referralCode
         ? fetch("/api/referrals/generate", {
             method: "POST",
             signal: controller.signal,
           }).catch(() => null)
-        : Promise.resolve(null);
+        : Promise.resolve<Response | null>(null);
+
       const listPromise = fetch(
         `/api/referrals/list?user_id=${session.user.id}`,
-        {signal: controller.signal}
+        { signal: controller.signal },
       ).catch(() => null);
 
       const [genRes, listRes] = await Promise.allSettled([
@@ -80,24 +120,40 @@ export default function ReferralsContent() {
       ]);
 
       if (genRes.status === "fulfilled" && genRes.value) {
-        const dataCode = await genRes.value.json().catch(() => ({}));
-        if (dataCode.referral_code) setReferralCode(dataCode.referral_code);
+        try {
+          const dataCode = await genRes.value.json();
+          if (dataCode && dataCode.referral_code) {
+            setReferralCode(String(dataCode.referral_code));
+          }
+        } catch {
+          // ignore malformed response
+        }
       }
 
       if (listRes.status === "fulfilled" && listRes.value) {
-        const dataList = await listRes.value.json().catch(() => ({}));
-        if (listRes.value.ok && dataList.referrals) {
-          setReferrals(dataList.referrals);
-        } else {
-          console.error("Failed to fetch referrals list:", dataList.error);
+        try {
+          const dataList = await listRes.value.json();
+          if (listRes.value.ok && Array.isArray(dataList.referrals)) {
+            setReferrals(dataList.referrals as ReferralRow[]);
+          } else {
+            // attempt to tolerate different payloads
+            if (Array.isArray(dataList.data)) {
+              setReferrals(dataList.data as ReferralRow[]);
+            } else {
+              console.error("Failed to fetch referrals list:", dataList);
+            }
+          }
+        } catch {
+          // ignore parse errors
         }
       }
 
       // fetch rewards status in background (non-blocking)
-      fetchRewardsStatus();
-    } catch (err: any) {
-      if (err.name !== "AbortError")
+      void fetchRewardsStatus();
+    } catch (err: unknown) {
+      if (!(err instanceof Error && err.name === "AbortError")) {
         console.error("Error loading referrals:", err);
+      }
     } finally {
       clearTimeout(timeout);
       setLoading(false);
@@ -111,52 +167,110 @@ export default function ReferralsContent() {
       const res = await fetch(`/api/rewards/status?userId=${session.user.id}`);
       if (!res.ok) return;
       const json = await res.json();
-      setClaims(json.claims || []);
-    } catch (e) {
-      console.error("fetchRewardsStatus", e);
+      if (Array.isArray(json.claims)) {
+        // normalize shape
+        const mapped = json.claims.map((c: unknown) => {
+          const rec = c as Record<string, unknown>;
+          const id = pickString(rec, "id");
+          const amount = pickNumber(rec, "amount");
+          const payment_method = pickString(
+            rec,
+            "payment_method",
+            "rewards_claim_payment_method",
+          );
+          const account_details = pickString(
+            rec,
+            "account_details",
+            "rewards_claim_account_details",
+          );
+          const status = pickString(rec, "status", "rewards_claim_status");
+          const created_at = pickString(
+            rec,
+            "created_at",
+            "rewards_claim_created_at",
+          );
+          return {
+            id: id ?? undefined,
+            amount,
+            payment_method,
+            account_details,
+            status,
+            created_at,
+          } as ClaimRow;
+        });
+        setClaims(mapped);
+      }
+    } catch (err: unknown) {
+      console.error("fetchRewardsStatus", err);
     } finally {
       setClaimLoading(false);
     }
   };
 
   useEffect(() => {
-    if (session) fetchReferralData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (session) void fetchReferralData();
   }, [session]);
 
-  const rows = referrals.map((item) => (
-    <Table.Tr key={item.referrals_id}>
-      <Table.Td>
-        <Group gap="sm">
-          <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
-            <IconUsers size={12} />
-          </ThemeIcon>
-          <Text fw={500} size="sm" c="dark.6">
-            {item.referrals_service_type || "General Referral"}
+  // tolerate both old (referrals_*) and new (referral_*) column names
+  const rows = referrals.map((item) => {
+    const id =
+      item.referral_id ??
+      item.referrals_id ??
+      item.id ??
+      Math.random().toString(36).slice(2, 9);
+    const service =
+      item.referral_service_type ??
+      item.referrals_service_type ??
+      item.service_type ??
+      "General Referral";
+    const email =
+      item.referrals_referred_email ??
+      item.referral_referred_email ??
+      item.referral_referred_user_email ??
+      item.referred_email ??
+      (item.referral_referred_user_id
+        ? `User: ${item.referral_referred_user_id}`
+        : "N/A");
+    const dateVal =
+      item.referral_date_created ??
+      item.referrals_date_created ??
+      item.date_created ??
+      item.created_at;
+    const dateText = dateVal ? new Date(dateVal).toLocaleDateString() : "—";
+
+    return (
+      <Table.Tr key={id}>
+        <Table.Td>
+          <Group gap="sm">
+            <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
+              <IconUsers size={12} />
+            </ThemeIcon>
+            <Text fw={500} size="sm" c="dark.6">
+              {service}
+            </Text>
+          </Group>
+        </Table.Td>
+        <Table.Td>
+          <Text size="sm" c="dimmed">
+            {email}
           </Text>
-        </Group>
-      </Table.Td>
-      <Table.Td>
-        <Text size="sm" c="dimmed">
-          {item.referrals_referred_email || "N/A"}
-        </Text>
-      </Table.Td>
-      <Table.Td>
-        <Text c="dimmed" size="sm">
-          {new Date(item.referrals_date_created).toLocaleDateString()}
-        </Text>
-      </Table.Td>
-      <Table.Td style={{textAlign: "right"}}>
-        <Badge color="green" variant="light" size="sm">
-          Completed
-        </Badge>
-      </Table.Td>
-    </Table.Tr>
-  ));
+        </Table.Td>
+        <Table.Td>
+          <Text c="dimmed" size="sm">
+            {dateText}
+          </Text>
+        </Table.Td>
+        <Table.Td style={{ textAlign: "right" }}>
+          <Badge color="green" variant="light" size="sm">
+            Completed
+          </Badge>
+        </Table.Td>
+      </Table.Tr>
+    );
+  });
 
   const progressValue = Math.min((referralCount / REWARD_THRESHOLD) * 100, 100);
 
-  // Helper to mask account details in UI
   const maskAccount = (value?: string | null) => {
     if (!value) return "—";
     const v = String(value);
@@ -164,15 +278,36 @@ export default function ReferralsContent() {
     return v.slice(0, 3) + v.slice(3, -3).replace(/./g, "*") + v.slice(-3);
   };
 
+  // compute button color and label without nested ternaries
+  let buttonColor = "gray";
+  if (hasPending) {
+    buttonColor = "orange";
+  } else if (latestClaim?.status === "PAID") {
+    buttonColor = "green";
+  } else if (isRewardReady) {
+    buttonColor = "green";
+  }
+
+  let buttonLabel = "Keep Referring";
+  if (hasPending) {
+    buttonLabel = "View Claim — Processing";
+  } else if (latestClaim?.status === "PAID") {
+    buttonLabel = "View Payout — Paid";
+  } else if (hasAnyClaim) {
+    buttonLabel = "View Claim";
+  } else if (isRewardReady) {
+    buttonLabel = "Claim Reward";
+  }
+
   return (
-    <Box component="main" style={{flex: 1}} py={{base: 48, md: 80}}>
+    <Box component="main" style={{ flex: 1 }} py={{ base: 48, md: 80 }}>
       <Container size="md">
         {/* 1. Modal Component */}
         <RewardClaimModal
           opened={opened}
-          onClose={close}
+          onCloseAction={close}
           userId={session?.user?.id}
-          onSuccess={fetchReferralData}
+          onSuccessAction={fetchReferralData}
           isLoading={false}
         />
         <ClaimStatusModal
@@ -185,12 +320,12 @@ export default function ReferralsContent() {
           <ThemeIcon size={60} radius="xl" color="indigo" variant="light">
             <IconGift size={32} />
           </ThemeIcon>
-          <Title order={1} style={{fontWeight: 800, color: "#1A237E"}}>
+          <Title order={1} style={{ fontWeight: 800, color: "#1A237E" }}>
             Refer & Earn Rewards
           </Title>
           <Text c="dimmed" size="lg" ta="center" maw={600}>
-            Share your unique code below. Refer **{REWARD_THRESHOLD} friends**
-            to unlock a cash reward!
+            Share your unique code below. Refer{" "}
+            <strong>{REWARD_THRESHOLD} friends</strong> to unlock a cash reward!
           </Text>
         </Stack>
 
@@ -206,13 +341,13 @@ export default function ReferralsContent() {
                 withBorder
                 shadow="md"
                 radius="lg"
-                p={{base: "lg", sm: "xl"}}
+                p={{ base: "lg", sm: "xl" }}
                 bg="white"
               >
                 <Group justify="space-between" align="center" wrap="wrap">
                   <Stack gap="xs">
                     <Group gap="sm" align="center">
-                      <Title order={4} c="dark.7" style={{margin: 0}}>
+                      <Title order={4} c="dark.7" style={{ margin: 0 }}>
                         Reward Claim
                       </Title>
                       <Badge
@@ -220,7 +355,7 @@ export default function ReferralsContent() {
                           latestClaim?.status === "PAID" ? "green" : "orange"
                         }
                       >
-                        {latestClaim?.status}
+                        {latestClaim?.status ?? "—"}
                       </Badge>
                     </Group>
 
@@ -236,7 +371,7 @@ export default function ReferralsContent() {
                       </Text>
                       <Text size="sm">
                         <strong>Method:</strong>{" "}
-                        {(latestClaim?.payment_method).toUpperCase() ?? "—"}
+                        {(latestClaim?.payment_method ?? "—").toUpperCase()}
                       </Text>
                       <Text size="sm">
                         <strong>Account:</strong>{" "}
@@ -251,7 +386,7 @@ export default function ReferralsContent() {
                     </Stack>
                   </Stack>
 
-                  <Stack gap="xs" maw={250} style={{alignItems: "flex-end"}}>
+                  <Stack gap="xs" maw={250} style={{ alignItems: "flex-end" }}>
                     <Button
                       onClick={() => openStatus()}
                       color={
@@ -273,7 +408,7 @@ export default function ReferralsContent() {
                 withBorder
                 shadow="md"
                 radius="lg"
-                p={{base: "lg", sm: "xl"}}
+                p={{ base: "lg", sm: "xl" }}
                 bg={isRewardReady ? "green.0" : "white"}
                 style={{
                   border: isRewardReady
@@ -283,10 +418,7 @@ export default function ReferralsContent() {
               >
                 <Group justify="space-between" align="center" wrap="wrap">
                   <Stack gap={4}>
-                    <Title
-                      order={3}
-                      c={isRewardReady ? "green.7" : "indigo.9"}
-                    >
+                    <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
                       {isRewardReady
                         ? "Reward Unlocked! 🏆"
                         : `Referral Progress (${referralCount}/${REWARD_THRESHOLD})`}
@@ -294,13 +426,11 @@ export default function ReferralsContent() {
                     <Text c="dimmed" size="sm">
                       {isRewardReady
                         ? "Click below to claim your cash reward now!"
-                        : `You need ${
-                            REWARD_THRESHOLD - referralCount
-                          } more referrals to claim your reward.`}
+                        : `You need ${REWARD_THRESHOLD - referralCount} more referrals to claim your reward.`}
                     </Text>
                   </Stack>
 
-                  <Stack gap="xs" maw={250} style={{flexGrow: 1}}>
+                  <Stack gap="xs" maw={250} style={{ flexGrow: 1 }}>
                     <Progress
                       value={progressValue}
                       size="lg"
@@ -310,38 +440,20 @@ export default function ReferralsContent() {
                     />
                     <Button
                       onClick={() => {
-                        // if user already has any claim -> always view status
                         if (hasAnyClaim) {
                           openStatus();
                         } else {
-                          open(); // open claim modal to submit
+                          open();
                         }
                       }}
-                      // only enable claim when eligible and no existing claim
                       disabled={!isRewardReady && !hasAnyClaim}
                       loading={claimLoading}
-                      color={
-                        hasPending
-                          ? "orange"
-                          : latestClaim?.status === "PAID"
-                          ? "green"
-                          : isRewardReady
-                          ? "green"
-                          : "gray"
-                      }
+                      color={buttonColor}
                       variant={isRewardReady ? "filled" : "light"}
                       leftSection={<IconAward size={20} />}
                       radius="xl"
                     >
-                      {hasPending
-                        ? "View Claim — Processing"
-                        : latestClaim?.status === "PAID"
-                        ? "View Payout — Paid"
-                        : hasAnyClaim
-                        ? "View Claim"
-                        : isRewardReady
-                        ? "Claim Reward"
-                        : "Keep Referring"}
+                      {buttonLabel}
                     </Button>
                   </Stack>
                 </Group>
@@ -353,7 +465,7 @@ export default function ReferralsContent() {
               withBorder
               shadow="sm"
               radius="lg"
-              p={{base: "lg", sm: "xl"}}
+              p={{ base: "lg", sm: "xl" }}
               bg="white"
             >
               <Stack align="center" gap="xs">
@@ -364,7 +476,7 @@ export default function ReferralsContent() {
                     fw={700}
                     c="dimmed"
                     tt="uppercase"
-                    style={{letterSpacing: 1}}
+                    style={{ letterSpacing: 1 }}
                   >
                     Your Unique Referral Code
                   </Text>
@@ -374,14 +486,14 @@ export default function ReferralsContent() {
                   size="3.5rem"
                   fw={900}
                   c="indigo.9"
-                  style={{lineHeight: 1, letterSpacing: 2}}
+                  style={{ lineHeight: 1, letterSpacing: 2 }}
                   ta="center"
                 >
                   {referralCode || "..."}
                 </Text>
 
                 <CopyButton value={referralCode || ""} timeout={2000}>
-                  {({copied, copy}) => (
+                  {({ copied, copy }) => (
                     <Button
                       color={copied ? "teal" : "indigo"}
                       variant={copied ? "filled" : "light"}
@@ -409,7 +521,7 @@ export default function ReferralsContent() {
             <Box>
               <Group mb="md" align="center">
                 <IconUsers size={20} color="#1A237E" />
-                <Title order={3} style={{color: "#1A237E"}}>
+                <Title order={3} style={{ color: "#1A237E" }}>
                   Referral History
                 </Title>
                 <Badge variant="light" color="gray" size="lg" circle>
@@ -421,7 +533,7 @@ export default function ReferralsContent() {
                 withBorder
                 radius="md"
                 shadow="sm"
-                style={{overflow: "hidden"}}
+                style={{ overflow: "hidden" }}
               >
                 {referrals.length > 0 ? (
                   <Table verticalSpacing="md" highlightOnHover>
@@ -430,7 +542,7 @@ export default function ReferralsContent() {
                         <Table.Th>Service Type</Table.Th>
                         <Table.Th>Referred Email</Table.Th>
                         <Table.Th>Date Joined</Table.Th>
-                        <Table.Th style={{textAlign: "right"}}>
+                        <Table.Th style={{ textAlign: "right" }}>
                           Status
                         </Table.Th>
                       </Table.Tr>
@@ -463,6 +575,3 @@ export default function ReferralsContent() {
     </Box>
   );
 }
-
-
-

@@ -1,8 +1,8 @@
-import {createServerClient} from "@supabase/ssr";
-import {createClient} from "@supabase/supabase-js";
-import {NextResponse, type NextRequest} from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // 1. Create an initial response
   let response = NextResponse.next({
     request: {
@@ -21,30 +21,30 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           // This allows the middleware to refresh the token if needed
-          cookiesToSet.forEach(({name, value, options}) =>
-            request.cookies.set(name, value)
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value),
           );
           response = NextResponse.next({
             request,
           });
-          cookiesToSet.forEach(({name, value, options}) =>
-            response.cookies.set(name, value, options)
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
           );
         },
       },
-    }
+    },
   );
 
   // 3. Check Session
   // This will read the 'sb-<project>-auth-token' cookie correctly
   const {
-    data: {user},
+    data: { user },
   } = await supabase.auth.getUser();
 
   // 4. Define Protected and Auth Paths
   const url = request.nextUrl.clone();
   const isAuthPage = ["/signin", "/signup", "/forgot-password"].includes(
-    url.pathname
+    url.pathname,
   );
 
   // CHANGED: Added "/update-password" to public pages to prevent middleware blocking
@@ -79,9 +79,9 @@ export async function middleware(request: NextRequest) {
       // use service role client to bypass RLS for this server-side check
       const supabaseAdmin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
       );
-      const {data: kyc, error: kycErr} = await supabaseAdmin
+      const { data: kyc, error: kycErr } = await supabaseAdmin
         .from("user_kyc")
         .select("status")
         .eq("user_id", user.id)
@@ -95,7 +95,8 @@ export async function middleware(request: NextRequest) {
         url.pathname = "/mailroom/kyc";
         return NextResponse.redirect(url);
       }
-    } catch (e) {
+    } catch (err: unknown) {
+      console.error("middleware KYC lookup error (unexpected):", err);
       // on error, fall back to blocking access to be safe
       url.pathname = "/mailroom/kyc";
       return NextResponse.redirect(url);
