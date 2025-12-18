@@ -86,7 +86,7 @@ export async function GET(req: Request) {
       : [];
 
     // generate signed URLs (private bucket) or fallback to public url
-    const BUCKET = "reward-proofs";
+    const BUCKET = "REWARD-PROOFS";
     const claimsWithUrls: ClaimWithUrl[] = await Promise.all(
       rows.map(async (c) => {
         const claim: ClaimWithUrl = {

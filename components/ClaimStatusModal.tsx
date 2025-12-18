@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import {
   Modal,
   Stack,
@@ -10,50 +11,61 @@ import {
   Title,
   Button,
   Divider,
-  ThemeIcon, // New
-  Box, // New
-  useMantineTheme, // New
-  Paper, // New
+  ThemeIcon,
+  Box,
+  useMantineTheme,
+  Paper,
 } from "@mantine/core";
 import {
   IconClock,
   IconCheck,
   IconX,
   IconInfoCircle,
-  IconCoins, // For Amount
-  IconCalendar, // For Date
 } from "@tabler/icons-react";
 
-interface ClaimStatusModalProps {
-  opened: boolean;
-  onClose: () => void;
-  claim?: any | null; // Define a proper interface for 'claim' in a real app
-}
+type Claim = {
+  id?: string | null;
+  amount?: number | null;
+  payment_method?: string | null;
+  account_details?: string | null;
+  referral_count?: number | null;
+  status?: string | null;
+  created_at?: string | null;
+  processed_at?: string | null;
+  proof_url?: string | null;
+  proof_path?: string | null;
+};
 
-// Helper component for structured data rows
+type ClaimStatusModalProps = {
+  opened: boolean;
+  onCloseAction: () => void;
+  claim?: Claim | null;
+};
+
 const ClaimDetailRow: React.FC<{
   label: string;
-  value: string | number;
+  value?: string | number | null;
 }> = ({ label, value }) => (
   <Group justify="space-between" wrap="nowrap" py={2}>
     <Text size="sm" fw={500} c="dimmed" style={{ minWidth: 100 }}>
       {label}
     </Text>
     <Text size="sm" fw={600} style={{ textAlign: "right", flex: 1 }}>
-      {value}
+      {value ?? "—"}
     </Text>
   </Group>
 );
 
 export default function ClaimStatusModal({
   opened,
-  onClose,
+  onCloseAction,
   claim,
 }: ClaimStatusModalProps) {
   const theme = useMantineTheme();
 
-  // --- Status and Color Logic ---
-  const status = claim?.status?.toUpperCase() || "UNKNOWN";
+  const statusRaw = claim?.status ?? "UNKNOWN";
+  const status =
+    typeof statusRaw === "string" ? statusRaw.toUpperCase() : "UNKNOWN";
 
   const {
     color,
@@ -81,7 +93,7 @@ export default function ClaimStatusModal({
           color: "red",
           icon: IconX,
           description:
-            "Your request was rejected. Please contact support immediately for assistance and details.",
+            "Your request was rejected. Please contact support for assistance.",
         };
       default:
         return {
@@ -92,15 +104,23 @@ export default function ClaimStatusModal({
     }
   }, [status]);
 
+  const formatDate = (d?: string | null) =>
+    d ? new Date(d).toLocaleString() : "—";
+
   if (!claim) {
     return (
-      <Modal opened={opened} onClose={onClose} title="Claim Status" centered>
+      <Modal
+        opened={opened}
+        onClose={onCloseAction}
+        title="Claim Status"
+        centered
+      >
         <Stack align="center" gap="md">
           <ThemeIcon size={48} color="gray" radius="xl" variant="light">
             <IconInfoCircle size={28} />
           </ThemeIcon>
           <Text fw={600}>No claim data available.</Text>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onCloseAction}>
             Close
           </Button>
         </Stack>
@@ -108,13 +128,70 @@ export default function ClaimStatusModal({
     );
   }
 
-  // --- Main Modal Content ---
+  const paymentMethodLabel =
+    typeof claim.payment_method === "string"
+      ? claim.payment_method.toUpperCase()
+      : "—";
+
+  const accountLabel = claim.account_details ?? "—";
+  const referralsUsed = claim.referral_count ?? "—";
+  const amountLabel = claim.amount != null ? `PHP ${claim.amount}` : "—";
+
+  const proofUrl = typeof claim.proof_url === "string" ? claim.proof_url : null;
+  const isPdf = proofUrl ? proofUrl.toLowerCase().endsWith(".pdf") : false;
+
+  // avoid nested ternaries by computing proof content ahead of render
+  let proofContent: React.ReactNode;
+  if (proofUrl) {
+    proofContent = isPdf ? (
+      <iframe
+        src={proofUrl}
+        title="Proof PDF"
+        style={{
+          width: "100%",
+          height: "48vh",
+          border: "none",
+          borderRadius: 8,
+        }}
+      />
+    ) : (
+      // use next/image to improve LCP/layout; unoptimized to avoid remote config for signed URLs
+      <div
+        style={{
+          width: "100%",
+          height: "60vh",
+          position: "relative",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <Image
+          src={proofUrl}
+          alt="proof"
+          fill
+          style={{ objectFit: "contain", borderRadius: 8 }}
+          unoptimized
+        />
+      </div>
+    );
+  } else if (claim.proof_path) {
+    proofContent = (
+      <Text size="sm" c="dimmed">
+        Proof uploaded — will be available once processed by admin.
+      </Text>
+    );
+  } else {
+    proofContent = (
+      <Text size="sm" c="dimmed">
+        No proof uploaded yet.
+      </Text>
+    );
+  }
+
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
-      // Avoid rendering a semantic heading inside the modal header's <h2>.
-      // Render a non-heading container (div) instead to prevent nested <h*> tags.
+      onClose={onCloseAction}
       title={
         <Box>
           <Text fw={700} c="dark.7">
@@ -126,12 +203,11 @@ export default function ClaimStatusModal({
       size="sm"
     >
       <Stack gap="xl">
-        {/* 1. Enhanced Status Header Card */}
         <Paper
           p="md"
           radius="md"
           withBorder
-          bg={theme.colors[color][0]} // Light background color from theme
+          bg={theme.colors[color][0]}
           style={{ borderLeft: `5px solid ${theme.colors[color][6]}` }}
         >
           <Group wrap="nowrap" align="center" gap="md">
@@ -149,40 +225,29 @@ export default function ClaimStatusModal({
                   {status}
                 </Title>
                 <Badge color={color} variant="filled" size="lg">
-                  PHP {claim.amount ?? "—"}
+                  {amountLabel}
                 </Badge>
               </Group>
               <Text size="xs" c="dimmed">
-                ID: {claim.id?.slice(0, 8)}
+                ID: {claim.id ? String(claim.id).slice(0, 8) : "—"}
               </Text>
             </Stack>
           </Group>
         </Paper>
 
-        {/* 2. Key Details Section */}
         <Box>
           <Title order={5} mb="sm" c="dark.5">
             PAYMENT DETAILS
           </Title>
           <Stack gap={0}>
-            <ClaimDetailRow
-              label="Method"
-              value={claim.payment_method.toUpperCase()}
-            />
-            <ClaimDetailRow
-              label="Account Number"
-              value={claim.account_details}
-            />
-            <ClaimDetailRow
-              label="Referrals Used"
-              value={claim.referral_count}
-            />
+            <ClaimDetailRow label="Method" value={paymentMethodLabel} />
+            <ClaimDetailRow label="Account Number" value={accountLabel} />
+            <ClaimDetailRow label="Referrals Used" value={referralsUsed} />
           </Stack>
         </Box>
 
         <Divider />
 
-        {/* 3. Timeline Section */}
         <Box>
           <Title order={5} mb="sm" c="dark.5">
             TIMELINE
@@ -190,60 +255,26 @@ export default function ClaimStatusModal({
           <Stack gap={0}>
             <ClaimDetailRow
               label="Requested On"
-              value={new Date(claim.created_at).toLocaleString()}
+              value={formatDate(claim.created_at)}
             />
             {claim.processed_at && (
               <ClaimDetailRow
                 label="Processed On"
-                value={new Date(claim.processed_at).toLocaleString()}
+                value={formatDate(claim.processed_at)}
               />
             )}
           </Stack>
         </Box>
 
-        {/* 4. Proof of Payment (if available) */}
         <Box>
           <Title order={5} mb="sm" c="dark.5">
             PROOF OF PAYMENT
           </Title>
           <Stack align="center" gap="sm">
-            {claim.proof_url ? (
-              // embed proof inside modal (PDF or image)
-              claim.proof_url.toLowerCase().endsWith(".pdf") ? (
-                <iframe
-                  src={claim.proof_url}
-                  title="Proof PDF"
-                  style={{
-                    width: "100%",
-                    height: "48vh",
-                    border: "none",
-                    borderRadius: 8,
-                  }}
-                />
-              ) : (
-                <img
-                  src={claim.proof_url}
-                  alt="proof"
-                  style={{
-                    maxWidth: "100%",
-                    maxHeight: "60vh",
-                    borderRadius: 8,
-                  }}
-                />
-              )
-            ) : claim.proof_path ? (
-              <Text size="sm" c="dimmed">
-                Proof uploaded — will be available once processed by admin.
-              </Text>
-            ) : (
-              <Text size="sm" c="dimmed">
-                No proof uploaded yet.
-              </Text>
-            )}
+            {proofContent}
           </Stack>
         </Box>
 
-        {/* 5. Action/Message Footer */}
         <Box pt="sm">
           <Group wrap="nowrap" align="flex-start" gap="xs" mb="md">
             <IconInfoCircle size={16} color={theme.colors.gray[6]} />
@@ -251,7 +282,7 @@ export default function ClaimStatusModal({
               {description}
             </Text>
           </Group>
-          <Button onClick={onClose} fullWidth size="md">
+          <Button onClick={onCloseAction} fullWidth size="md">
             Got It
           </Button>
         </Box>

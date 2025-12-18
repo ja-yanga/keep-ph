@@ -55,7 +55,11 @@ type ClaimRow = {
   payment_method?: string | null;
   account_details?: string | null;
   status?: string | null;
+  referral_count?: number | null;
   created_at?: string | null;
+  processed_at?: string | null;
+  proof_path?: string | null;
+  proof_url?: string | null;
 };
 
 export default function ReferralsContent() {
@@ -184,18 +188,39 @@ export default function ReferralsContent() {
             "rewards_claim_account_details",
           );
           const status = pickString(rec, "status", "rewards_claim_status");
+          const referral_count = pickNumber(
+            rec,
+            "referral_count",
+            "rewards_claim_referral_count",
+          );
           const created_at = pickString(
             rec,
             "created_at",
             "rewards_claim_created_at",
           );
+          const processed_at = pickString(
+            rec,
+            "processed_at",
+            "rewards_claim_processed_at",
+          );
+          const proof_path = pickString(
+            rec,
+            "proof_path",
+            "rewards_claim_proof_path",
+          );
+          const proof_url = pickString(rec, "proof_url");
+
           return {
             id: id ?? undefined,
             amount,
             payment_method,
             account_details,
             status,
+            referral_count,
             created_at,
+            processed_at,
+            proof_path,
+            proof_url,
           } as ClaimRow;
         });
         setClaims(mapped);
@@ -312,7 +337,7 @@ export default function ReferralsContent() {
         />
         <ClaimStatusModal
           opened={statusOpened}
-          onClose={closeStatus}
+          onCloseAction={closeStatus}
           claim={latestClaim}
         />
 
