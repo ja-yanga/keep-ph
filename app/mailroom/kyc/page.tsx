@@ -1,7 +1,7 @@
 "use client";
 
-import React, {useEffect, useState} from "react";
-import {useRouter} from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Container,
   Title,
@@ -22,10 +22,9 @@ import {
   Divider,
   Center,
   Loader,
-  SimpleGrid, // Added SimpleGrid for better layout
-  Box,
+  SimpleGrid,
 } from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import { useDisclosure } from "@mantine/hooks";
 import {
   IconId,
   IconCheck,
@@ -39,12 +38,16 @@ import {
   IconMapPin,
   IconAlertCircle,
   IconFileCertificate, // Added for document details
-  IconMailOpened, // Added for address
 } from "@tabler/icons-react";
 
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
 import Navbar from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
+import { getStatusFormat } from "@/utils/functions";
+import {
+  FORM_NAME,
+  IDENTITY_VERIFICATION_KYC,
+} from "@/utils/constants/constants";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -63,7 +66,7 @@ export default function KycPage() {
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
   const [status, setStatus] = useState<"NONE" | "SUBMITTED" | "VERIFIED">(
-    "NONE"
+    "NONE",
   );
   // NEW: name & address snapshot fields
   const [firstName, setFirstName] = useState<string>("");
@@ -81,66 +84,53 @@ export default function KycPage() {
 
   // modal state for image preview
   const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
-  const [opened, {open, close}] = useDisclosure(false);
+  const [opened, { open, close }] = useDisclosure(false);
   // confirm modal for submit
-  const [confirmOpen, {open: openConfirm, close: closeConfirm}] =
+  const [confirmOpen, { open: openConfirm, close: closeConfirm }] =
     useDisclosure(false);
 
-  // load real KYC status from session on mount
+  // load real KYC status from API on mount
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      let kycStatus: string = "UNVERIFIED";
-
       try {
-        // Get session first (fast, includes kyc.status)
-        const res = await fetch("/api/session", {credentials: "include"});
-        if (!res.ok) {
+        const r = await fetch("/api/user/kyc", { credentials: "include" });
+        if (!r.ok) {
+          if (mounted) setStatus("NONE");
           if (mounted) setInitialLoading(false);
           return;
         }
-        const data = await res.json();
-        kycStatus = data?.kyc?.status ?? "UNVERIFIED";
+        const payload = await r.json();
+        const row = payload?.kyc;
+        if (!mounted || !row) {
+          if (mounted) setStatus("NONE");
+          if (mounted) setInitialLoading(false);
+          return;
+        }
 
+        // Set status based on user_kyc_status
+        const kycStatus = row.user_kyc_status;
         if (kycStatus === "VERIFIED") setStatus("VERIFIED");
         else if (kycStatus === "SUBMITTED") setStatus("SUBMITTED");
         else setStatus("NONE");
-      } catch (e) {
+
+        // Populate form fields from the data
+        setDocType(row.user_kyc_id_document_type ?? "Government ID");
+        setDocNumber(row.id_document_number ?? ""); // Note: schema doesn't have this, but keeping for now
+        setFirstName(row.user_kyc_first_name ?? "");
+        setLastName(row.user_kyc_last_name ?? "");
+        setBirthDate(row.user_kyc_date_of_birth ?? "");
+        setFrontPreview(row.user_kyc_id_front_url ?? null);
+        setBackPreview(row.user_kyc_id_back_url ?? null);
+
+        // For address, need to fetch from user_kyc_address_table if separate
+        // But since the route doesn't return address, perhaps fetch separately or assume not populated on load for now
+        // TODO: If address needs to be shown, add fetch for address
+      } catch {
         if (mounted) setStatus("NONE");
       } finally {
-        // un-block UI as soon as we know status
         if (mounted) setInitialLoading(false);
-      }
-
-      // If submitted/verified, fetch the snapshot in background (non-blocking)
-      if (!mounted || (kycStatus !== "SUBMITTED" && kycStatus !== "VERIFIED"))
-        return;
-      try {
-        const r = await fetch("/api/user/kyc", {credentials: "include"});
-        if (!r.ok) return;
-        const payload = await r.json();
-        const row = payload?.kyc;
-        if (!mounted || !row) return;
-
-        setDocType(row.id_document_type ?? ((d) => d)(docType));
-        setDocNumber(row.id_document_number ?? "");
-        setFirstName(
-          row.first_name ??
-            (row.full_name ? String(row.full_name).split(" ")[0] : "")
-        );
-        setLastName(row.last_name ?? "");
-        const addr = row.address ?? {};
-        setAddressLine1(addr.line1 ?? "");
-        setAddressLine2(addr.line2 ?? "");
-        setCity(addr.city ?? "");
-        setRegion(addr.region ?? "");
-        setPostal(addr.postal ?? "");
-        setBirthDate(row.birth_date ?? "");
-        setFrontPreview(row.id_front_url ?? null);
-        setBackPreview(row.id_back_url ?? null);
-      } catch {
-        /* ignore background fetch errors */
       }
     })();
 
@@ -195,7 +185,11 @@ export default function KycPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setServerError(json?.error || "Failed to submit. Please try again.");
+        setServerError(
+          typeof json?.error === "string"
+            ? json.error
+            : json?.error?.message || "Failed to submit. Please try again.",
+        );
         return;
       }
       // success → reflect SUBMITTED state
@@ -203,9 +197,9 @@ export default function KycPage() {
       setFrontFile(null);
       setBackFile(null);
       setServerError(null);
-    } catch (err: any) {
-      console.error("KYC submit error", err);
-      setServerError(err?.message || "Unexpected error");
+    } catch {
+      console.error("KYC submit error");
+      setServerError("Unexpected error");
     } finally {
       setSubmitting(false);
     }
@@ -250,23 +244,31 @@ export default function KycPage() {
     open();
   };
 
-  const StatusIcon =
-    status === "VERIFIED"
-      ? IconCheck
-      : status === "SUBMITTED"
-      ? IconHourglass
-      : IconX;
+  const getStatusIcon = (status: string) => {
+    if (status === "VERIFIED") return IconCheck;
+    if (status === "SUBMITTED") return IconHourglass;
+    return IconX;
+  };
+
+  const statusTextMap = {
+    VERIFIED: "Verified",
+    SUBMITTED: "Under review",
+    REJECTED: "Rejected",
+    NONE: "Not submitted",
+  } as const;
 
   const fullAddress = [addressLine1, addressLine2, city, region, postal]
     .filter(Boolean)
     .join(", ");
+
+  const StatusIconComponent = getStatusIcon(status);
 
   return (
     <>
       <Navbar />
       <Container size="sm" py="xl">
         {initialLoading ? (
-          <Center style={{padding: 80}}>
+          <Center style={{ padding: 80 }}>
             <Loader />
           </Center>
         ) : (
@@ -274,12 +276,12 @@ export default function KycPage() {
             <Group
               justify="space-between"
               align="center"
-              style={{width: "100%"}}
+              style={{ width: "100%" }}
             >
-              <Title order={2} fw={700} style={{margin: 0}}>
+              <Title order={2} fw={700} style={{ margin: 0 }}>
                 <Group gap="xs" align="center">
                   <IconId size={30} />
-                  Identity Verification (KYC)
+                  {IDENTITY_VERIFICATION_KYC.section_header.title}
                 </Group>
               </Title>
               <Button
@@ -296,32 +298,20 @@ export default function KycPage() {
             <Paper withBorder p="lg" radius="md">
               <Stack gap="md">
                 <Text>
-                  Before you can register for our mailroom service, we need to
-                  verify your identity. This helps keep everyone's parcels
-                  secure.
+                  {IDENTITY_VERIFICATION_KYC.section_header.sub_title}
                 </Text>
 
                 <Group justify="space-between" align="center">
                   <Text size="sm" c="dimmed">
-                    Current status
+                    {IDENTITY_VERIFICATION_KYC.section_header.status}
                   </Text>
                   <Badge
-                    color={
-                      status === "VERIFIED"
-                        ? "green"
-                        : status === "SUBMITTED"
-                        ? "yellow"
-                        : "gray"
-                    }
+                    color={getStatusFormat(status)}
                     size="lg"
                     variant="light"
-                    leftSection={<StatusIcon size={14} />}
+                    leftSection={<StatusIconComponent size={14} />}
                   >
-                    {status === "NONE"
-                      ? "Not submitted"
-                      : status === "SUBMITTED"
-                      ? "Under review"
-                      : "Verified"}
+                    {statusTextMap[status as keyof typeof statusTextMap]}
                   </Badge>
                 </Group>
               </Stack>
@@ -332,7 +322,10 @@ export default function KycPage() {
               <Paper withBorder p="lg" radius="md">
                 <Stack gap="xl">
                   <Title order={3} fw={600}>
-                    Submit Identity Documents
+                    {
+                      IDENTITY_VERIFICATION_KYC.section_form.section_header
+                        .title
+                    }
                   </Title>
 
                   <Alert
@@ -341,12 +334,16 @@ export default function KycPage() {
                     variant="light"
                   >
                     <Text size="sm" fw={600}>
-                      Required Information
+                      {
+                        IDENTITY_VERIFICATION_KYC.section_form.section_header
+                          .alert_title
+                      }
                     </Text>
                     <Text size="sm">
-                      Please ensure the Name and Address entered below **exactly
-                      match** the details on your uploaded ID. This information
-                      is required for compliance and mailroom registration.
+                      {
+                        IDENTITY_VERIFICATION_KYC.section_form.section_header
+                          .alert_description
+                      }
                     </Text>
                   </Alert>
 
@@ -354,7 +351,10 @@ export default function KycPage() {
                   <Paper withBorder p="md" radius="md">
                     <Stack gap="md">
                       <Title order={4} fw={600}>
-                        1. Document Details
+                        {
+                          IDENTITY_VERIFICATION_KYC.section_form
+                            .section_form_title.details
+                        }
                       </Title>
                       <NativeSelect
                         data={["Government ID", "Passport", "Driver's License"]}
@@ -380,12 +380,15 @@ export default function KycPage() {
                   <Paper withBorder p="md" radius="md">
                     <Stack gap="md">
                       <Title order={4} fw={600}>
-                        2. Personal Details Snapshot
+                        {
+                          IDENTITY_VERIFICATION_KYC.section_form
+                            .section_form_title.personal
+                        }
                       </Title>
                       <Group grow gap="md">
                         <TextInput
-                          label="First name"
-                          placeholder="First name"
+                          label={FORM_NAME.first_name}
+                          placeholder={FORM_NAME.first_name}
                           value={firstName}
                           onChange={(e) => setFirstName(e.currentTarget.value)}
                           required
@@ -393,15 +396,15 @@ export default function KycPage() {
                           disabled={isLocked}
                         />
                         <TextInput
-                          label="Last name"
-                          placeholder="Last name"
+                          label={FORM_NAME.last_name}
+                          placeholder={FORM_NAME.last_name}
                           value={lastName}
                           onChange={(e) => setLastName(e.currentTarget.value)}
                           required
                           disabled={isLocked}
                         />
                         <TextInput
-                          label="Date of birth"
+                          label={FORM_NAME.date_of_birth}
                           placeholder="YYYY-MM-DD"
                           type="date"
                           value={birthDate}
@@ -422,7 +425,7 @@ export default function KycPage() {
                       />
 
                       <TextInput
-                        label="Address line 1"
+                        label={FORM_NAME.address_line_one}
                         placeholder="Street, building"
                         value={addressLine1}
                         onChange={(e) => setAddressLine1(e.currentTarget.value)}
@@ -430,7 +433,7 @@ export default function KycPage() {
                         disabled={isLocked}
                       />
                       <TextInput
-                        label="Address line 2 (Optional)"
+                        label={FORM_NAME.address_line_two}
                         placeholder="Unit / Barangay"
                         value={addressLine2}
                         onChange={(e) => setAddressLine2(e.currentTarget.value)}
@@ -439,24 +442,24 @@ export default function KycPage() {
 
                       <Group grow>
                         <TextInput
-                          label="City"
-                          placeholder="City"
+                          label={FORM_NAME.city}
+                          placeholder={FORM_NAME.city}
                           value={city}
                           onChange={(e) => setCity(e.currentTarget.value)}
                           required
                           disabled={isLocked}
                         />
                         <TextInput
-                          label="Region"
-                          placeholder="Region"
+                          label={FORM_NAME.region}
+                          placeholder={FORM_NAME.region}
                           value={region}
                           onChange={(e) => setRegion(e.currentTarget.value)}
                           required
                           disabled={isLocked}
                         />
                         <TextInput
-                          label="Postal code"
-                          placeholder="Postal"
+                          label={FORM_NAME.postal}
+                          placeholder={FORM_NAME.postal}
                           value={postal}
                           onChange={(e) => setPostal(e.currentTarget.value)}
                           required
@@ -470,12 +473,15 @@ export default function KycPage() {
                   <Paper withBorder p="md" radius="md">
                     <Stack gap="md">
                       <Title order={4} fw={600}>
-                        3. Upload ID Images
+                        {
+                          IDENTITY_VERIFICATION_KYC.section_form
+                            .section_form_title.upload_id
+                        }
                       </Title>
                       <Grid>
-                        <Grid.Col span={{base: 12, sm: 6}}>
+                        <Grid.Col span={{ base: 12, sm: 6 }}>
                           <FileInput
-                            label="Front of ID"
+                            label={FORM_NAME.front}
                             placeholder="Choose front image"
                             accept="image/*"
                             value={frontFile}
@@ -485,9 +491,9 @@ export default function KycPage() {
                             disabled={isLocked}
                           />
                         </Grid.Col>
-                        <Grid.Col span={{base: 12, sm: 6}}>
+                        <Grid.Col span={{ base: 12, sm: 6 }}>
                           <FileInput
-                            label="Back of ID"
+                            label={FORM_NAME.back}
                             placeholder="Choose back image"
                             accept="image/*"
                             value={backFile}
@@ -514,7 +520,10 @@ export default function KycPage() {
                   >
                     <Stack gap="md">
                       <Title order={4} fw={600}>
-                        4. Photo Previews (Click to zoom)
+                        {
+                          IDENTITY_VERIFICATION_KYC.section_form
+                            .section_form_title.previews
+                        }
                       </Title>
 
                       {/* Previews are now laid out horizontally if space allows */}
@@ -525,7 +534,7 @@ export default function KycPage() {
                             p="sm"
                             radius="md"
                             onClick={() => handlePreviewClick(frontPreview)}
-                            style={{cursor: "pointer", flexBasis: "50%"}}
+                            style={{ cursor: "pointer", flexBasis: "50%" }}
                           >
                             <Stack gap="xs" align="center">
                               <Image
@@ -550,7 +559,7 @@ export default function KycPage() {
                             withBorder
                             p="xl"
                             radius="md"
-                            style={{flexBasis: "50%"}}
+                            style={{ flexBasis: "50%" }}
                           >
                             <Text c="dimmed" size="sm" ta="center">
                               Front ID preview will appear here.
@@ -564,7 +573,7 @@ export default function KycPage() {
                             p="sm"
                             radius="md"
                             onClick={() => handlePreviewClick(backPreview)}
-                            style={{cursor: "pointer", flexBasis: "50%"}}
+                            style={{ cursor: "pointer", flexBasis: "50%" }}
                           >
                             <Stack gap="xs" align="center">
                               <Image
@@ -589,7 +598,7 @@ export default function KycPage() {
                             withBorder
                             p="xl"
                             radius="md"
-                            style={{flexBasis: "50%"}}
+                            style={{ flexBasis: "50%" }}
                           >
                             <Text c="dimmed" size="sm" ta="center">
                               Back ID preview will appear here.
@@ -678,7 +687,7 @@ export default function KycPage() {
                   </Alert>
 
                   {/* SimpleGrid for Snapshot Details */}
-                  <SimpleGrid cols={{base: 1, sm: 2}} spacing="xl">
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl">
                     {/* Document Details Card */}
                     <Paper withBorder p="md" radius="md">
                       <Stack gap="xs">
@@ -730,10 +739,10 @@ export default function KycPage() {
 
                         {/* Address Detail (Label-Top, Value-Bottom) */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed" style={{flexShrink: 0}}>
+                          <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
                             Address:
                           </Text>
-                          <Text fw={500} style={{wordBreak: "break-word"}}>
+                          <Text fw={500} style={{ wordBreak: "break-word" }}>
                             {fullAddress}
                           </Text>
                         </Stack>

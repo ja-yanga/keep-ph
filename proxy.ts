@@ -82,8 +82,8 @@ export async function proxy(request: NextRequest) {
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
       );
       const { data: kyc, error: kycErr } = await supabaseAdmin
-        .from("user_kyc")
-        .select("status")
+        .from("user_kyc_table")
+        .select("user_kyc_status")
         .eq("user_id", user.id)
         .maybeSingle();
       if (kycErr) {
@@ -91,12 +91,11 @@ export async function proxy(request: NextRequest) {
         url.pathname = "/mailroom/kyc";
         return NextResponse.redirect(url);
       }
-      if (!kyc || kyc.status !== "VERIFIED") {
+      if (!kyc || kyc.user_kyc_status !== "VERIFIED") {
         url.pathname = "/mailroom/kyc";
         return NextResponse.redirect(url);
       }
-    } catch (err: unknown) {
-      console.error("middleware KYC lookup error (unexpected):", err);
+    } catch {
       // on error, fall back to blocking access to be safe
       url.pathname = "/mailroom/kyc";
       return NextResponse.redirect(url);
