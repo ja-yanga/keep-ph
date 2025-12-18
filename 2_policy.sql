@@ -1,17 +1,3 @@
--- Drop existing users table if it exists
-drop table if exists public.users cascade;
-
--- Create users table
-create table public.users (
-    id uuid primary key default gen_random_uuid(),
-    email text not null unique,
-    password text, -- optional if using Supabase Auth
-    first_name text not null,
-    last_name text not null,
-    role text not null default 'user', -- 'user' or 'admin'
-    created_at timestamp with time zone default now()
-);
-
 -- Enable row-level security
 alter table public.users enable row level security;
 
@@ -42,3 +28,29 @@ create policy "Allow insert for everyone"
 on public.users
 for insert
 with check (true);
+
+-- Only allow users to access objects in their own bucket by auth.uid()
+CREATE POLICY mailroom_proofs_policy
+ON storage.objects
+FOR ALL
+USING (bucket_id = 'mailroom_proofs' AND owner = auth.uid());
+
+CREATE POLICY mailroom_scans_policy
+ON storage.objects
+FOR ALL
+USING (bucket_id = 'mailroom_scans' AND owner = auth.uid());
+
+CREATE POLICY reward_proofs_policy
+ON storage.objects
+FOR ALL
+USING (bucket_id = 'reward_proofs' AND owner = auth.uid());
+
+CREATE POLICY avatars_policy
+ON storage.objects
+FOR ALL
+USING (bucket_id = 'avatars' AND owner = auth.uid());
+
+CREATE POLICY user_kyc_policy
+ON storage.objects
+FOR ALL
+USING (bucket_id = 'user-kyc' AND owner = auth.uid());
