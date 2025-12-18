@@ -37,6 +37,119 @@ CREATE TYPE mailroom_file_type AS ENUM ('RECEIVED', 'SCANNED', 'RELEASED');
 -- Activity Type
 CREATE TYPE activity_type AS ENUM ('USER_REQUEST_SCAN', 'USER_REQUEST_RELEASE', 'USER_REQUEST_DISPOSE', 'USER_REQUEST_CANCEL', 'USER_REQUEST_REFUND', 'USER_REQUEST_REWARD', 'USER_REQUEST_OTHERS', 'USER_LOGIN', 'USER_LOGOUT', 'USER_UPDATE_PROFILE', 'USER_KYC_SUBMIT', 'USER_KYC_VERIFY', 'ADMIN_ACTION', 'SYSTEM_EVENT');
 
+-- Activity Entity Type
+CREATE TYPE activity_entity_type AS ENUM ('MAIL_ACTION_REQUEST', 'USER_KYC', 'PAYMENT_TRANSACTION', 'SUBSCRIPTION', 'MAILBOX_ITEM', 'MAILROOM_REGISTRATION', 'USER_ADDRESS', 'REWARDS_CLAIM', 'REFERRAL', 'NOTIFICATION', 'MAILROOM_FILE', 'MAILROOM_ASSIGNED_LOCKER', 'USER');
+
+-- Activity Action
+CREATE TYPE activity_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'VIEW', 'SUBMIT', 'APPROVE', 'REJECT', 'PROCESS', 'COMPLETE', 'CANCEL', 'VERIFY', 'PAY', 'REFUND', 'LOGIN', 'LOGOUT', 'REGISTER', 'CLAIM', 'RELEASE', 'DISPOSE', 'SCAN');
+
+-- Error Type
+CREATE TYPE error_type AS ENUM ('API_ERROR', 'DATABASE_ERROR', 'VALIDATION_ERROR', 'AUTHENTICATION_ERROR', 'AUTHORIZATION_ERROR', 'PAYMENT_ERROR', 'EXTERNAL_SERVICE_ERROR', 'SYSTEM_ERROR', 'UNKNOWN_ERROR');
+
+-- Error Code
+CREATE TYPE error_code AS ENUM (
+    -- Authentication & Authorization Errors
+    'AUTH_401_UNAUTHORIZED',
+    'AUTH_403_FORBIDDEN',
+    'AUTH_TOKEN_EXPIRED',
+    'AUTH_TOKEN_INVALID',
+    'AUTH_SESSION_NOT_FOUND',
+    'AUTH_USER_NOT_FOUND',
+    'AUTH_INVALID_CREDENTIALS',
+    'AUTH_EMAIL_NOT_VERIFIED',
+    
+    -- Database Errors
+    'DB_CONN_TIMEOUT',
+    'DB_QUERY_ERROR',
+    'DB_CONSTRAINT_VIOLATION',
+    'DB_FOREIGN_KEY_VIOLATION',
+    'DB_UNIQUE_VIOLATION',
+    'DB_TRANSACTION_FAILED',
+    'DB_CONNECTION_LOST',
+    
+    -- Validation Errors
+    'VALIDATION_EMAIL_REQUIRED',
+    'VALIDATION_EMAIL_INVALID',
+    'VALIDATION_MOBILE_REQUIRED',
+    'VALIDATION_MOBILE_INVALID',
+    'VALIDATION_PASSWORD_REQUIRED',
+    'VALIDATION_PASSWORD_TOO_WEAK',
+    'VALIDATION_FIELD_REQUIRED',
+    'VALIDATION_INVALID_FORMAT',
+    'VALIDATION_INVALID_VALUE',
+    'VALIDATION_REFERRAL_CODE_INVALID',
+    'VALIDATION_SELF_REFERRAL_NOT_ALLOWED',
+    
+    -- KYC Errors
+    'KYC_NOT_SUBMITTED',
+    'KYC_PENDING_VERIFICATION',
+    'KYC_REJECTED',
+    'KYC_ALREADY_VERIFIED',
+    'KYC_DOCUMENT_MISSING',
+    'KYC_DOCUMENT_INVALID',
+    
+    -- Mailroom Errors
+    'MAILROOM_LOCATION_NOT_FOUND',
+    'MAILROOM_LOCKER_NOT_AVAILABLE',
+    'MAILROOM_LOCKER_QUANTITY_EXCEEDED',
+    'MAILROOM_REGISTRATION_NOT_FOUND',
+    'MAILROOM_PLAN_NOT_FOUND',
+    'MAILROOM_ITEM_NOT_FOUND',
+    'MAILROOM_ACTION_REQUEST_INVALID',
+    'MAILROOM_ACTION_REQUEST_NOT_ALLOWED',
+    'MAILROOM_LOCKER_FULL',
+    
+    -- Payment Errors
+    'PAYMENT_TRANSACTION_FAILED',
+    'PAYMENT_INSUFFICIENT_FUNDS',
+    'PAYMENT_METHOD_INVALID',
+    'PAYMENT_GATEWAY_ERROR',
+    'PAYMENT_REFUND_FAILED',
+    'PAYMENT_ALREADY_PROCESSED',
+    'PAYMENT_AMOUNT_INVALID',
+    
+    -- Subscription Errors
+    'SUBSCRIPTION_NOT_FOUND',
+    'SUBSCRIPTION_EXPIRED',
+    'SUBSCRIPTION_ALREADY_ACTIVE',
+    'SUBSCRIPTION_CANCEL_FAILED',
+    'SUBSCRIPTION_RENEWAL_FAILED',
+    
+    -- Referral Errors
+    'REFERRAL_CODE_NOT_FOUND',
+    'REFERRAL_CODE_ALREADY_USED',
+    'REFERRAL_SELF_REFERRAL',
+    'REFERRAL_INVALID',
+    
+    -- Rewards Errors
+    'REWARD_CLAIM_NOT_ELIGIBLE',
+    'REWARD_CLAIM_MINIMUM_NOT_MET',
+    'REWARD_CLAIM_ALREADY_PROCESSED',
+    'REWARD_CLAIM_PAYMENT_FAILED',
+    'REWARD_CLAIM_NOT_FOUND',
+    
+    -- User Address Errors
+    'ADDRESS_NOT_FOUND',
+    'ADDRESS_INVALID',
+    'ADDRESS_REQUIRED',
+    
+    -- File/Upload Errors
+    'FILE_UPLOAD_FAILED',
+    'FILE_SIZE_EXCEEDED',
+    'FILE_TYPE_INVALID',
+    'FILE_NOT_FOUND',
+    
+    -- External Service Errors
+    'EXTERNAL_SERVICE_TIMEOUT',
+    'EXTERNAL_SERVICE_UNAVAILABLE',
+    'EXTERNAL_SERVICE_ERROR',
+    
+    -- System Errors
+    'SYSTEM_INTERNAL_ERROR',
+    'SYSTEM_MAINTENANCE',
+    'SYSTEM_RATE_LIMIT_EXCEEDED'
+);
+
 
 -- Users
 CREATE TABLE users_table (
@@ -265,17 +378,44 @@ CREATE TABLE rewards_claim_table (
 );
 
 -- Activity Log (one-to-many with Users)
--- Standalone audit table - preserves activity history even if referenced entities are deleted
+-- General-purpose audit table - tracks all user activities across the system
+-- Related entity information is stored in activity_details JSONB field
 CREATE TABLE activity_log_table (
     activity_log_id UUID NOT NULL DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users_table(users_id) ON DELETE CASCADE,
-    activity_action TEXT NOT NULL, -- update, create, delete, etc.
+    activity_action activity_action NOT NULL,
     activity_type activity_type NOT NULL,
-    activity_request_id UUID REFERENCES mail_action_request_table(mail_action_request_id) ON DELETE SET NULL,
-    activity_details JSONB NOT NULL, -- Can store related entity IDs (e.g., user_kyc_id, payment_transaction_id, etc.)
+    activity_entity_type activity_entity_type, -- Optional: type of entity this activity relates to
+    activity_entity_id UUID, -- Optional: ID of the related entity (no FK constraint for flexibility)
+    activity_details JSONB NOT NULL, -- Stores full context: related entity IDs, request data, changes, etc.
     activity_ip_address TEXT,
     activity_created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     CONSTRAINT activity_log_table_pkey PRIMARY KEY (activity_log_id)
+);
+
+-- Error Log (standalone)
+-- Tracks system errors, API errors, and exceptions for debugging and monitoring
+CREATE TABLE error_log_table (
+    error_log_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users_table(users_id) ON DELETE SET NULL, -- Optional: user who triggered the error
+    error_type error_type NOT NULL,
+    error_message TEXT NOT NULL,
+    error_code error_code, -- Predefined error code
+    error_stack TEXT, -- Stack trace for exceptions
+    request_path TEXT, -- API endpoint path
+    request_method TEXT, -- HTTP method (GET, POST, etc.)
+    request_body JSONB, -- Request body for debugging
+    request_headers JSONB, -- Request headers
+    response_status INTEGER, -- HTTP response status code
+    error_details JSONB, -- Additional error context and metadata
+    ip_address TEXT,
+    user_agent TEXT,
+    error_resolved BOOLEAN DEFAULT false,
+    error_resolved_at TIMESTAMP WITH TIME ZONE,
+    error_resolved_by UUID REFERENCES users_table(users_id), -- Admin who resolved the error
+    error_resolution_notes TEXT,
+    error_created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    CONSTRAINT error_log_table_pkey PRIMARY KEY (error_log_id)
 );
 
 -- Users
@@ -349,8 +489,16 @@ CREATE INDEX idx_referral_service_type ON referral_table(referral_service_type);
 -- Activity Log
 CREATE INDEX idx_activity_log_user_id ON activity_log_table(user_id);
 CREATE INDEX idx_activity_log_type ON activity_log_table(activity_type);
-CREATE INDEX idx_activity_log_request_id ON activity_log_table(activity_request_id);
+CREATE INDEX idx_activity_log_entity ON activity_log_table(activity_entity_type, activity_entity_id);
 CREATE INDEX idx_activity_log_created_at ON activity_log_table(activity_created_at);
+
+-- Error Log
+CREATE INDEX idx_error_log_user_id ON error_log_table(user_id);
+CREATE INDEX idx_error_log_type ON error_log_table(error_type);
+CREATE INDEX idx_error_log_resolved ON error_log_table(error_resolved);
+CREATE INDEX idx_error_log_created_at ON error_log_table(error_created_at);
+CREATE INDEX idx_error_log_request_path ON error_log_table(request_path);
+CREATE INDEX idx_error_log_error_code ON error_log_table(error_code);
 
 -- Rewards Claims
 CREATE INDEX idx_rewards_claim_user_id ON rewards_claim_table(user_id);
