@@ -1,0 +1,4 @@
+# npx tsc --noEmit && npx eslint . && npx prettier --write .
+# the above is redundant as you are now using lint-staged with a .lintstagedrc.js config file
+
+# npx lint-staged
