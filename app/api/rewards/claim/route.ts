@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 export async function POST(req: Request) {
@@ -16,46 +16,46 @@ export async function POST(req: Request) {
     const THRESHOLD = 10;
     const DEFAULT_AMOUNT = 500;
 
-    // count referrals
+    // count referrals where this user is the referrer (updated schema)
     const { count, error: countErr } = await supabase
-      .from("referrals_table")
+      .from("referral_table")
       .select("*", { count: "exact", head: true })
-      .eq("referrals_user_id", userId);
+      .eq("referral_referrer_user_id", userId);
     if (countErr) throw countErr;
     const referralCount = (count ?? 0) as number;
     if (referralCount < THRESHOLD) {
       return NextResponse.json(
         { error: "Not enough referrals" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    // block if user already has a claim that is pending/processing/paid
+    // block if user already has a claim that is pending/processing/paid (updated schema)
     const { data: existing, error: existErr } = await supabase
-      .from("rewards_claims")
-      .select("id,status")
+      .from("rewards_claim_table")
+      .select("rewards_claim_id,rewards_claim_status")
       .eq("user_id", userId)
-      .in("status", ["PENDING", "PROCESSING", "PAID"])
+      .in("rewards_claim_status", ["PENDING", "PROCESSING", "PAID"])
       .limit(1);
     if (existErr) throw existErr;
     if (existing && existing.length > 0) {
       return NextResponse.json(
         { error: "Reward already claimed or pending" },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
-    // insert claim
+    // insert claim using updated schema column names
     const { data, error: insertErr } = await supabase
-      .from("rewards_claims")
+      .from("rewards_claim_table")
       .insert([
         {
           user_id: userId,
-          payment_method: paymentMethod,
-          account_details: accountDetails,
-          amount: DEFAULT_AMOUNT,
-          status: "PENDING",
-          referral_count: referralCount,
+          rewards_claim_payment_method: paymentMethod,
+          rewards_claim_account_details: accountDetails,
+          rewards_claim_amount: DEFAULT_AMOUNT,
+          rewards_claim_status: "PENDING",
+          rewards_claim_referral_count: referralCount,
         },
       ])
       .select()
@@ -63,11 +63,12 @@ export async function POST(req: Request) {
 
     if (insertErr) throw insertErr;
     return NextResponse.json({ ok: true, claim: data });
-  } catch (err: any) {
-    console.error("rewards.claim:", err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("rewards.claim:", message);
     return NextResponse.json(
-      { error: err.message || "Server error" },
-      { status: 500 }
+      { error: message || "Server error" },
+      { status: 500 },
     );
   }
 }

@@ -17,19 +17,19 @@ import {
 import { IconAward, IconWallet } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 
-interface RewardClaimModalProps {
+type RewardClaimModalProps = {
   opened: boolean;
-  onClose: () => void;
+  onCloseAction: () => void;
   userId?: string | null;
-  onSuccess?: () => void;
+  onSuccessAction?: () => void;
   isLoading?: boolean;
-}
+};
 
 export default function RewardClaimModal({
   opened,
-  onClose,
+  onCloseAction,
   userId,
-  onSuccess,
+  onSuccessAction,
   isLoading = false,
 }: RewardClaimModalProps) {
   const [paymentMethod, setPaymentMethod] = useState<"gcash" | "maya">("gcash");
@@ -55,7 +55,7 @@ export default function RewardClaimModal({
     if (!mobileRegex.test(mobile)) {
       // show mantine Alert in the modal instead of only a toast
       setValidationError(
-        "Mobile number must start with 09 and be 11 digits (e.g. 09121231234)."
+        "Mobile number must start with 09 and be 11 digits (e.g. 09121231234).",
       );
       return;
     }
@@ -71,43 +71,56 @@ export default function RewardClaimModal({
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/rewards/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          paymentMethod: paymentMethod.toLowerCase(),
-          accountDetails,
-        }),
-      });
+      const mobileToSend = accountDetails.trim();
+      const methodToSend = paymentMethod.toUpperCase();
 
-      const payload = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        notifications.show({
-          title: "Claim Submitted",
-          message: "Your reward request is submitted and will be processed.",
-          color: "green",
+      try {
+        const res = await fetch("/api/rewards/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            paymentMethod: methodToSend,
+            accountDetails: mobileToSend,
+          }),
         });
-        if (onSuccess) await onSuccess();
-        onClose();
-      } else {
-        // DEBUG: log server response so you can see why it failed in console + network
-        console.error("rewards.claim failed:", res.status, payload);
+
+        const payload = await res.json().catch(() => ({}));
+
+        if (res.ok) {
+          notifications.show({
+            title: "Claim Submitted",
+            message: "Your reward request is submitted and will be processed.",
+            color: "green",
+          });
+          if (onSuccessAction) await onSuccessAction();
+          onCloseAction();
+        } else {
+          // DEBUG: log server response so you can see why it failed in console + network
+          console.error("rewards.claim failed:", res.status, payload);
+          notifications.show({
+            title: "Claim Failed",
+            message: payload?.error || "Failed to submit claim",
+            color: "red",
+          });
+        }
+      } catch (err) {
+        console.error("reward claim error", err);
         notifications.show({
-          title: "Claim Failed",
-          message: payload?.error || "Failed to submit claim",
+          title: "Error",
+          message: "Network error. Please try again later.",
           color: "red",
         });
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (err) {
-      console.error("reward claim error", err);
+    } catch (error) {
+      console.error("Unexpected error:", error);
       notifications.show({
         title: "Error",
-        message: "Network error. Please try again later.",
+        message: "An unexpected error occurred. Please try again.",
         color: "red",
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -115,7 +128,7 @@ export default function RewardClaimModal({
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={onCloseAction}
       title={
         <Group>
           <ThemeIcon size="lg" radius="xl" color="green">
