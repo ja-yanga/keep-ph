@@ -11,17 +11,34 @@ import React, {
 type Profile = {
   first_name?: string | null;
   last_name?: string | null;
-  role?: string | null;
-  needs_onboarding?: string | null;
+  user_role?: string | null;
+  users_role?: string | null;
+  needs_onboarding?: boolean | string | null;
   avatar_url?: string | null;
+  users_avatar_url?: string | null;
+  referral_code?: string | null;
+  users_referral_code?: string | null;
+} | null;
+
+type UserPayload = {
+  id?: string;
+  email?: string;
+  // new-schema aliases
+  users_id?: string;
+  users_email?: string;
+} | null;
+
+type KycPayload = {
+  status?: string | null;
+  user_kyc_status?: string | null;
 } | null;
 
 type SessionPayload = {
   ok?: boolean;
-  user?: any;
+  user?: UserPayload;
   profile?: Profile;
   role?: string | null;
-  kyc?: { status?: string } | null;
+  kyc?: KycPayload | null;
   isKycVerified?: boolean;
 } | null;
 
@@ -48,10 +65,58 @@ export function SessionProvider({
 }) {
   // hydrate from server-provided session when available
   const [session, setSession] = useState<SessionPayload>(
-    initialSession ?? null
+    initialSession ?? null,
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(
+    initialSession ? false : true,
+  );
   const [error, setError] = useState<unknown>(null);
+
+  const normalizeUser = (raw: unknown): UserPayload | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const rec = raw as Record<string, unknown>;
+    return {
+      id: (rec.id as string) ?? (rec.users_id as string) ?? undefined,
+      email: (rec.email as string) ?? (rec.users_email as string) ?? undefined,
+      users_id: rec.users_id as string | undefined,
+      users_email: rec.users_email as string | undefined,
+    };
+  };
+
+  const normalizeProfile = (raw: unknown): Profile | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const rec = raw as Record<string, unknown>;
+    return {
+      first_name: (rec.first_name as string) ?? null,
+      last_name: (rec.last_name as string) ?? null,
+      user_role:
+        (rec.user_role as string) ?? (rec.users_role as string) ?? null,
+      users_role: (rec.users_role as string) ?? null,
+      avatar_url:
+        (rec.avatar_url as string) ?? (rec.users_avatar_url as string) ?? null,
+      referral_code:
+        (rec.referral_code as string) ??
+        (rec.users_referral_code as string) ??
+        null,
+      needs_onboarding:
+        typeof rec.needs_onboarding === "boolean"
+          ? (rec.needs_onboarding as boolean)
+          : ((rec.needs_onboarding as string) ?? null),
+    };
+  };
+
+  const normalizeKyc = (raw: unknown): KycPayload | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const rec = raw as Record<string, unknown>;
+    return {
+      status:
+        (rec.status as string) ??
+        (rec.user_kyc_status as string) ??
+        (rec.user_kyc_status as string) ??
+        null,
+      user_kyc_status: (rec.user_kyc_status as string) ?? null,
+    };
+  };
 
   const fetchSession = async (signal?: AbortSignal) => {
     setLoading(true);
@@ -64,37 +129,41 @@ export function SessionProvider({
         signal,
       });
 
-      // debug: log status and headers info
-      console.log("[SessionProvider] /api/onboarding response", {
-        status: res.status,
-        ok: res.ok,
-      });
-
       if (!res.ok) {
         const bodyText = await res.text().catch(() => null);
-        console.warn(
-          "[SessionProvider] session fetch failed:",
-          res.status,
-          bodyText
-        );
         setSession(null);
         setError({ status: res.status, body: bodyText });
         return;
       }
 
-      const data = await res.json();
-      // debug: log session payload (don't leak secrets in prod)
-      console.log("[SessionProvider] session payload:", data);
-      // normalize minimal shape to avoid undefined access in consumers
-      setSession({
-        ok: data?.ok ?? false,
-        user: data?.user ?? null,
-        profile: data?.profile ?? null,
-        role: data?.role ?? null,
-        kyc: data?.kyc ?? null,
-        isKycVerified: Boolean(data?.isKycVerified),
-      });
-    } catch (err: any) {
+      const data = await res.json().catch(() => null);
+
+      const rawUser = data?.user ?? null;
+      const rawProfile = data?.profile ?? null;
+      const rawKyc = data?.kyc ?? null;
+
+      const normalized = {
+        ok: Boolean(data?.ok ?? true),
+        user: normalizeUser(rawUser),
+        profile: normalizeProfile(rawProfile),
+        role:
+          (data?.role as string) ??
+          (rawProfile &&
+            ((rawProfile as Record<string, unknown>).user_role as string)) ??
+          (rawProfile &&
+            ((rawProfile as Record<string, unknown>).users_role as string)) ??
+          null,
+        kyc: normalizeKyc(rawKyc),
+        isKycVerified:
+          (rawKyc &&
+            ((rawKyc as Record<string, unknown>).status === "VERIFIED" ||
+              (rawKyc as Record<string, unknown>).user_kyc_status ===
+                "VERIFIED")) ??
+          Boolean(data?.isKycVerified),
+      } as SessionPayload;
+
+      setSession(normalized);
+    } catch (err: unknown) {
       console.error("[SessionProvider] session fetch error:", err);
       setSession(null);
       setError(err);
@@ -105,8 +174,11 @@ export function SessionProvider({
 
   useEffect(() => {
     // only fetch if we don't have initial data
-    if (!initialSession) fetchSession();
-  }, []);
+    if (!initialSession) {
+      void fetchSession();
+    }
+    // include initialSession in deps to satisfy lint rules
+  }, [initialSession]);
 
   return (
     <SessionContext.Provider

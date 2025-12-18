@@ -6,10 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 // Admin client for fetching profile data (bypassing RLS if needed)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
+  // reference unused param to satisfy ESLint
+  void _request;
   try {
     const cookieStore = await cookies();
 
@@ -23,11 +25,12 @@ export async function GET(request: Request) {
           getAll() {
             return cookieStore.getAll();
           },
-          setAll(cookiesToSet) {
-            // We are only reading here, so we don't need to set cookies
+          // accept cookies to set (no-op) and reference param to satisfy ESLint
+          setAll(_cookiesToSet) {
+            void _cookiesToSet;
           },
         },
-      }
+      },
     );
 
     // 2. Get the user from the session
@@ -40,59 +43,77 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 3. Fetch profile data
-    let profile: Record<string, any> | null = null;
+    // 3. Fetch profile data (updated schema: users_table)
+    let profile: Record<string, unknown> | null = null;
     let needs_onboarding = true;
+    let resolvedRole: string | null = null;
 
     try {
       const { data: profileData, error: profileErr } = await supabaseAdmin
-        .from("users")
+        .from("users_table")
         .select(
-          "first_name, last_name, role, needs_onboarding, avatar_url, referral_code"
+          "users_id, users_email, users_role, users_avatar_url, users_referral_code, users_is_verified, mobile_number",
         )
-        .eq("id", user.id)
+        .eq("users_id", user.id)
         .maybeSingle();
 
       if (!profileErr && profileData) {
-        profile = profileData;
-        if (typeof profileData.needs_onboarding === "boolean") {
-          needs_onboarding = profileData.needs_onboarding;
+        profile = profileData as Record<string, unknown>;
+        // prefer explicit users_role, fall back to older keys if present
+        resolvedRole =
+          ((profileData as Record<string, unknown>).users_role as string) ??
+          ((profileData as Record<string, unknown>).user_role as string) ??
+          null;
+
+        // determine onboarding: prefer explicit boolean flag; otherwise infer
+        if (
+          typeof (profileData as Record<string, unknown>).needs_onboarding ===
+          "boolean"
+        ) {
+          needs_onboarding = (profileData as Record<string, unknown>)
+            .needs_onboarding as boolean;
         } else {
-          needs_onboarding = !(profileData.first_name && profileData.last_name);
+          const first = (profileData as Record<string, unknown>).users_email as
+            | string
+            | undefined;
+          const verified = (profileData as Record<string, unknown>)
+            .users_is_verified;
+          needs_onboarding = !(first && verified);
         }
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("profile lookup error:", e);
     }
 
     // 4. Fetch KYC status for the user (only status needed)
     // default to UNVERIFIED when no record exists
-    let kyc: Record<string, any> = { status: "UNVERIFIED" };
+    let kyc: Record<string, unknown> = { status: "UNVERIFIED" };
     try {
       const { data: kycData, error: kycErr } = await supabaseAdmin
         .from("user_kyc")
         .select("status")
         .eq("user_id", user.id)
         .maybeSingle();
-      if (!kycErr && kycData) kyc = kycData;
-    } catch (e) {
+      if (!kycErr && kycData) kyc = kycData as Record<string, unknown>;
+    } catch (e: unknown) {
       console.error("kyc lookup error:", e);
       // keep default UNVERIFIED on error
     }
 
     return NextResponse.json({
       ok: true,
-      user: user,
+      user,
       profile,
-      role: profile?.role ?? null,
-      kyc: kyc, // { status: "VERIFIED" | "SUBMITTED" | "UNVERIFIED" }
-      isKycVerified: kyc.status === "VERIFIED",
+      role: resolvedRole ?? null,
+      kyc,
+      isKycVerified: (kyc as Record<string, unknown>).status === "VERIFIED",
+      needs_onboarding,
     });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("session GET error:", err);
     return NextResponse.json(
       { error: "Unexpected server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
