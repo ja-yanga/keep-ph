@@ -9,7 +9,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabaseAdmin = createSupabaseClient(
   SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY
+  SUPABASE_SERVICE_ROLE_KEY,
 );
 
 export async function POST(req: Request) {
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const first_name = String(form.get("first_name") ?? "");
     const last_name = String(form.get("last_name") ?? "");
     const full_name = String(
-      form.get("full_name") ?? `${first_name} ${last_name}`
+      form.get("full_name") ?? `${first_name} ${last_name}`,
     ).trim();
     const address_line1 = String(form.get("address_line1") ?? "");
     const address_line2 = String(form.get("address_line2") ?? "");
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
           error:
             "document_type, document_number, front and back files are required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     if ((front.size ?? 0) > MAX_BYTES || (back.size ?? 0) > MAX_BYTES) {
       return NextResponse.json(
         { error: "Files must be <= 10MB" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -138,7 +138,7 @@ export async function POST(req: Request) {
     console.error("KYC submit error:", err);
     return NextResponse.json(
       { error: err?.message ?? String(err) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -178,7 +178,7 @@ export async function GET(req: Request) {
     console.error("KYC fetch error:", err);
     return NextResponse.json(
       { error: err?.message ?? String(err) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
