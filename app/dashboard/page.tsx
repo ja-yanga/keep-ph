@@ -1,10 +1,9 @@
-import React, { Suspense } from "react";
-import ServerUserDashboard from "@/components/ServerUserDashboard";
+import {Box} from "@mantine/core";
 import DashboardNav from "../../components/DashboardNav";
 import Footer from "@/components/Footer";
-import { Box, Container, Loader, Center } from "@mantine/core";
+import DashboardContent from "@/components/DashboardContent";
 
-export default async function DashboardPage() {
+export default function DashboardPage() {
   return (
     <Box
       style={{
@@ -15,19 +14,7 @@ export default async function DashboardPage() {
       }}
     >
       <DashboardNav />
-      <Box style={{ flex: 1, paddingTop: 32, paddingBottom: 32 }}>
-        <Container size="xl" py="xl">
-          <Suspense
-            fallback={
-              <Center py="xl">
-                <Loader />
-              </Center>
-            }
-          >
-            <ServerUserDashboard />
-          </Suspense>
-        </Container>
-      </Box>
+      <DashboardContent />
       <Footer />
     </Box>
   );

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import {useEffect, useState} from "react";
+import {useParams, useRouter} from "next/navigation";
 import MailroomPackageView from "@/components/MailroomPackageView";
 
 export default function MailroomPackagePage() {
