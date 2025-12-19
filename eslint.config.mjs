@@ -43,13 +43,26 @@ export default defineConfig([
     },
   },
 
-  // Apply TypeScript parser + project only to TS/TSX files
+  // Apply TypeScript parser + project only to TS/TSX files (excluding test files)
   {
     files: ["**/*.ts", "**/*.tsx"],
+    ignores: ["__tests__/**"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
         project: "./tsconfig.json",
+        ecmaVersion: 2020,
+        sourceType: "module",
+      },
+    },
+  },
+
+  // Test files - use TypeScript parser without project reference
+  {
+    files: ["__tests__/**/*.ts", "__tests__/**/*.tsx"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
         ecmaVersion: 2020,
         sourceType: "module",
       },
