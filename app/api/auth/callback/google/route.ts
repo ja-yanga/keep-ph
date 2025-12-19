@@ -1,87 +1,82 @@
-import { createSupabaseServiceClient } from "@/utils/supabase/serviceClient";
-
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { createSupabaseServiceClient } from "@/utils/supabase/serviceClient";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  // Default to dashboard if no 'next' param is provided
-  let next = searchParams.get("next") ?? "/dashboard";
+  const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
-    // 1. Client for Auth Session (Cookie handling)
-    const supabase = createSupabaseServiceClient();
+    const cookieStore = await cookies();
 
-    // 2. Exchange the code for a session
-    const { error, data } = await supabase.auth.exchangeCodeForSession(code);
+    // 1. Initialize Supabase Client (Handles Cookies Automatically for PKCE)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options),
+            );
+          },
+        },
+      },
+    );
 
-    if (!error && data?.user) {
-      try {
-        // 3. Admin Client for Database Operations (Bypass RLS)
-        const supabaseAdmin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        );
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+
+      // Get the session after exchange
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        const supabaseAdmin = createSupabaseServiceClient();
 
         // Check if user exists in public 'users' table
         const { data: existingUser } = await supabaseAdmin
           .from("users_table")
           .select("users_id")
-          .eq("users_id", data.user.id)
+          .eq("users_id", session.user.id)
           .single();
 
         if (!existingUser) {
-          console.log("Creating new user record for:", data.user.email);
-
-          // const fullName = data.user.user_metadata?.full_name || "";
-          // const firstName = fullName.split(" ")[0] || "";
-          // const lastName = fullName.split(" ").slice(1).join(" ") || "";
-
           const { error: insertError } = await supabaseAdmin
             .from("users_table")
             .insert({
-              users_id: data.user.id,
-              users_email: data.user.email,
-              // first_name: firstName,
-              // last_name: lastName,
-              users_avatar_url: data.user.user_metadata?.avatar_url || null,
-              // needs_onboarding: true, // Explicitly set for new users
+              users_id: session.user.id,
+              users_email: session.user.email,
+              users_avatar_url: session.user.user_metadata?.avatar_url || null,
+              users_role: "user",
             });
 
           if (insertError) {
-            console.error(
-              "Failed to insert user into public table:",
-              insertError,
-            );
-            return NextResponse.redirect(
-              `${origin}/signin?error=${encodeURIComponent("Database error saving new user")}`,
-            );
+            console.error("Failed to insert user:", insertError);
+            // Continue even if insert fails, as the auth session is valid
           }
-          // needsOnboarding = true;
-          next = "/dashboard";
-        } else {
-          // Check existing user status
         }
 
-        // 4. Redirect logic
-        next = "/dashboard";
-      } catch (dbError) {
-        console.error("Database operation failed:", dbError);
-        return NextResponse.redirect(
-          `${origin}/signin?error=${encodeURIComponent("Database error saving new user")}`,
-        );
+        return NextResponse.redirect(`${origin}${next}`);
       }
-
-      return NextResponse.redirect(`${origin}${next}`);
-    } else if (error) {
-      console.error("Google Callback Error:", error);
+    } catch (error) {
+      console.error("Google OAuth error:", error);
       return NextResponse.redirect(
-        `${origin}/signin?error=${encodeURIComponent(error.message)}`,
+        `${origin}/signin?error=${encodeURIComponent(
+          error instanceof Error ? error.message : "Authentication failed",
+        )}`,
       );
     }
   }
 
-  // Return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/signin?error=auth_code_error`);
+  return NextResponse.redirect(
+    `${origin}/signin?error=${encodeURIComponent("No authentication code provided")}`,
+  );
 }
