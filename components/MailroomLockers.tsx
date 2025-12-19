@@ -1,6 +1,5 @@
 "use client";
 
-// Add this import to fix the table layout and pagination styles
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState } from "react";
@@ -16,14 +15,12 @@ import {
   Stack,
   Text,
   TextInput,
-  Title,
   Tooltip,
   SegmentedControl,
   Tabs,
-  Alert, // Added Alert
+  Alert,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-// Added useSearchParams
 import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
@@ -34,61 +31,212 @@ import {
   IconLockOpen,
   IconBox,
   IconLayoutGrid,
-  IconCheck, // Added IconCheck
-  IconAlertCircle, // Added IconAlertCircle
+  IconCheck,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
 
-interface Location {
+type Location = {
   id: string;
   name: string;
-}
+};
 
-interface Locker {
+type Locker = {
   id: string;
   locker_code: string;
   location_id: string;
   is_available: boolean;
-  location?: Location;
-}
+  location?: Location | null;
+  // keep optional DB-style keys that may appear in payloads
+  location_locker_id?: string;
+  // optional assigned payload embedded on lockers (overview expanded)
+  assigned?: {
+    id?: string;
+    registration_id?: string;
+    status?: string;
+    registration?: {
+      id?: string;
+      full_name?: string;
+      email: string;
+    } | null;
+  } | null;
+};
 
-interface AssignedLocker {
+type AssignedLocker = {
   id: string;
   registration_id: string;
   locker_id: string;
-  status: "Normal" | "Near Full" | "Full";
+  status: "Empty" | "Normal" | "Near Full" | "Full";
   registration?: {
     id: string;
     full_name: string;
     email: string;
-  };
-}
+  } | null;
+};
+
+const fetcherLockers = async (
+  url: string,
+): Promise<{
+  lockers: Locker[];
+  locations: Location[];
+  assigned: AssignedLocker[];
+}> => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `Failed to fetch ${url}`);
+  }
+  const payload = (await res
+    .json()
+    .catch(() => ({}) as Record<string, unknown>)) as Record<string, unknown>;
+  const data: unknown = payload.data ?? payload;
+
+  let rawLockers: unknown[] = [];
+  if (Array.isArray(data)) {
+    rawLockers = data as unknown[];
+  } else if (Array.isArray((data as Record<string, unknown>)?.lockers)) {
+    rawLockers = (data as Record<string, unknown>).lockers as unknown[];
+  } else {
+    rawLockers = [];
+  }
+  const lockers = (rawLockers ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    const locationTable = row.mailroom_location_table as
+      | Record<string, unknown>
+      | undefined;
+    const assignedRow = (row.assigned ??
+      (row as Record<string, unknown>).assigned) as
+      | Record<string, unknown>
+      | undefined;
+
+    const assignedMapped =
+      assignedRow == null
+        ? null
+        : {
+            id: String(
+              assignedRow.mailroom_assigned_locker_id ?? assignedRow.id ?? "",
+            ),
+            registration_id: String(
+              assignedRow.mailroom_registration_id ??
+                assignedRow.registration_id ??
+                "",
+            ),
+            locker_id: String(
+              assignedRow.location_locker_id ??
+                assignedRow.locker_id ??
+                row.location_locker_id ??
+                row.id ??
+                "",
+            ),
+            status: String(
+              assignedRow.mailroom_assigned_locker_status ??
+                assignedRow.status ??
+                "Normal",
+            ) as AssignedLocker["status"],
+            registration: assignedRow.registration
+              ? {
+                  id: String(
+                    (assignedRow.registration as Record<string, unknown>)
+                      .mailroom_registration_id ??
+                      (assignedRow.registration as Record<string, unknown>)
+                        .id ??
+                      "",
+                  ),
+                  full_name: String(
+                    (assignedRow.registration as Record<string, unknown>)
+                      .full_name ?? "",
+                  ),
+                  email: String(
+                    (assignedRow.registration as Record<string, unknown>)
+                      .email ?? "",
+                  ),
+                }
+              : null,
+          };
+
+    return {
+      id: String(row.id ?? row.location_locker_id ?? ""),
+      locker_code: String(row.code ?? row.location_locker_code ?? ""),
+      location_id: String(row.location_id ?? row.mailroom_location_id ?? ""),
+      is_available: Boolean(
+        row.is_available ?? row.location_locker_is_available ?? true,
+      ),
+      location: locationTable
+        ? {
+            id: String(locationTable.mailroom_location_id ?? ""),
+            name: String(locationTable.mailroom_location_name ?? ""),
+          }
+        : ((row.location as Locker["location"]) ?? null),
+      // preserve DB-style id for matching
+      location_locker_id: String(row.location_locker_id ?? row.id ?? ""),
+      assigned: assignedMapped,
+    } as Locker;
+  });
+
+  const rawLocations: unknown[] = Array.isArray(
+    (data as Record<string, unknown>)?.locations,
+  )
+    ? ((data as Record<string, unknown>).locations as unknown[])
+    : [];
+  const locations = (rawLocations ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? row.mailroom_location_id ?? ""),
+      name: String(row.name ?? row.mailroom_location_name ?? ""),
+    } as Location;
+  });
+
+  const dataRecord = data as Record<string, unknown>;
+  let rawAssigned: unknown[] = [];
+  if (Array.isArray(dataRecord.assigned)) {
+    rawAssigned = dataRecord.assigned as unknown[];
+  } else if (Array.isArray(dataRecord.assigned_lockers)) {
+    rawAssigned = dataRecord.assigned_lockers as unknown[];
+  }
+
+  const assigned = (rawAssigned ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? row.assigned_locker_id ?? ""),
+      registration_id: String(row.registration_id ?? ""),
+      locker_id: String(row.locker_id ?? row.location_locker_id ?? ""),
+      status: (row.status as AssignedLocker["status"]) ?? "Normal",
+      registration: row.registration
+        ? {
+            id: String((row.registration as Record<string, unknown>).id ?? ""),
+            full_name: String(
+              (row.registration as Record<string, unknown>).full_name ?? "",
+            ),
+            email: String(
+              (row.registration as Record<string, unknown>).email ?? "",
+            ),
+          }
+        : null,
+    } as AssignedLocker;
+  });
+
+  return { lockers, locations, assigned };
+};
 
 export default function MailroomLockers() {
   const [lockers, setLockers] = useState<Locker[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]);
+  const [assignedMap, setAssignedMap] = useState<
+    Record<string, AssignedLocker | undefined>
+  >({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-
   const [filterLocation, setFilterLocation] = useState<string | null>(null);
-
-  // CHANGED: Replaced filterStatus with activeTab
-  const [activeTab, setActiveTab] = useState<string | null>("all");
-
-  // NEW: Alert States
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // NEW: Handle URL Query Params for Tab Selection
   const searchParams = useSearchParams();
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
+    if (tabParam) setActiveTab(tabParam);
   }, [searchParams]);
 
   const [page, setPage] = useState(1);
@@ -105,76 +253,150 @@ export default function MailroomLockers() {
   const [capacityStatus, setCapacityStatus] = useState<string>("Normal");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    // SWR handles initial fetch; nothing needed here
-  }, []);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, filterLocation, activeTab]); // Updated dependency
-
-  // --- SWR Data Fetching ---
-  const lockersKey = "/api/admin/mailroom/lockers";
+  const lockersKey = "/api/admin/mailroom/lockers?expanded=1";
   const locationsKey = "/api/admin/mailroom/locations";
-  const assignedKey = "/api/admin/mailroom/assigned-lockers";
 
-  const fetcher = async (url: string) => {
+  const fetcherLocations = async (url: string): Promise<Location[]> => {
     const res = await fetch(url);
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || `Failed to fetch ${url}`);
+      const txt = await res.text().catch(() => "");
+      throw new Error(txt || `Failed to fetch ${url}`);
     }
-    return res.json().catch(() => ({}));
+    const payload = await res
+      .json()
+      .catch(() => ({}) as Record<string, unknown>);
+    const data = payload.data ?? payload;
+    if (!Array.isArray(data)) return [];
+    return (data as unknown[]).map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: String(row.id ?? row.mailroom_location_id ?? ""),
+        name: String(row.name ?? row.mailroom_location_name ?? ""),
+      } as Location;
+    });
   };
 
-  const {
-    data: lockersData,
-    error: lockersError,
-    isValidating: lockersValidating,
-  } = useSWR(lockersKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: locationsData,
-    error: locationsError,
-    isValidating: locationsValidating,
-  } = useSWR(locationsKey, fetcher, { revalidateOnFocus: true });
-  const {
-    data: assignedData,
-    error: assignedError,
-    isValidating: assignedValidating,
-  } = useSWR(assignedKey, fetcher, { revalidateOnFocus: true });
+  const { data: overviewData, isValidating: overviewValidating } = useSWR(
+    lockersKey,
+    fetcherLockers,
+    { revalidateOnFocus: true },
+  );
+  const { data: locationsData } = useSWR(locationsKey, fetcherLocations, {
+    revalidateOnFocus: true,
+  });
 
-  // normalize API responses: support either an array or { data: [...] } shape
-  const toArray = (res: any) => {
-    if (Array.isArray(res)) return res;
-    if (res && Array.isArray(res.data)) return res.data;
-    return [];
-  };
-
-  const lockersArr = toArray(lockersData);
-  const locationsArr = toArray(locationsData);
-  const assignedArr = toArray(assignedData);
-
-  // sync into local state and keep loading state in sync with SWR
   useEffect(() => {
-    setLoading(lockersValidating || locationsValidating || assignedValidating);
-    // always sync normalized arrays into local state
-    setLockers(lockersArr);
-    setLocations(locationsArr);
-    setAssignedLockers(assignedArr);
+    setLoading(Boolean(overviewValidating));
+    if (overviewData) {
+      // keep raw locker fields (including DB-style keys) on objects
+      const lockersPayload = (overviewData.lockers ?? []).map((lk) => ({
+        ...lk,
+        // ensure DB-style id field is present for matching
+        location_locker_id: String(
+          (lk as Record<string, unknown>).location_locker_id ??
+            (lk as Record<string, unknown>).id ??
+            "",
+        ),
+      })) as Locker[];
+      setLockers(lockersPayload);
 
-    // auto-fix ghost lockers (preserve previous behavior)
-    if (lockersArr.length && assignedArr.length) {
-      const assignedLockerIds = new Set(
-        assignedArr.map((a: any) => a.locker_id)
+      // prefer dedicated locations endpoint; fallback to overviewData.locations; final fallback derive from lockers
+      if (Array.isArray(locationsData) && locationsData.length > 0) {
+        setLocations(locationsData);
+      } else if (
+        Array.isArray(overviewData.locations) &&
+        overviewData.locations.length > 0
+      ) {
+        setLocations(overviewData.locations as Location[]);
+      } else {
+        const fromLockers: Location[] = [];
+        const raw = overviewData.lockers ?? [];
+        for (const lk of raw) {
+          if (!lk.location) continue;
+          if (!fromLockers.some((x) => x.id === lk.location!.id)) {
+            fromLockers.push(lk.location);
+          }
+        }
+        setLocations(fromLockers);
+      }
+      // build assignedLockers array and a fast lookup map keyed by normalized locker id
+      let derivedAssigned: AssignedLocker[] = [];
+      if (
+        Array.isArray(overviewData.assigned) &&
+        overviewData.assigned.length > 0
+      ) {
+        derivedAssigned = overviewData.assigned as AssignedLocker[];
+      } else {
+        const rawLockers = overviewData.lockers ?? [];
+        for (const lk of rawLockers) {
+          if (!lk || !(lk as Locker).assigned) continue;
+          const aRec = (lk as Locker).assigned as Record<string, unknown>;
+          const regRec = (aRec.registration ?? undefined) as
+            | Record<string, unknown>
+            | undefined;
+
+          const id = String(aRec.id ?? aRec.mailroom_assigned_locker_id ?? "");
+          const registrationId = String(
+            aRec.registration_id ?? aRec.mailroom_registration_id ?? "",
+          );
+          const lockerId = String(
+            (lk as Record<string, unknown>).id ??
+              (lk as Record<string, unknown>).location_locker_id ??
+              "",
+          );
+          const status = String(
+            aRec.status ?? aRec.mailroom_assigned_locker_status ?? "Normal",
+          ) as AssignedLocker["status"];
+
+          const registration = regRec
+            ? {
+                id: String(regRec.id ?? regRec.mailroom_registration_id ?? ""),
+                full_name: String(regRec.full_name ?? ""),
+                email: String(regRec.email ?? ""),
+              }
+            : null;
+
+          derivedAssigned.push({
+            id,
+            registration_id: registrationId,
+            locker_id: lockerId,
+            status,
+            registration,
+          });
+        }
+      }
+      // build lookup map from derivedAssigned (do not assign array to map state)
+
+      const map: Record<string, AssignedLocker | undefined> = {};
+      const normalizeKey = (v?: string | null) =>
+        (v ?? "").toLowerCase().trim();
+      for (const a of derivedAssigned) {
+        const key = normalizeKey(a.locker_id);
+        if (key) map[key] = a;
+      }
+      setAssignedMap(map);
+    } else {
+      setLockers([]);
+      setLocations([]);
+      setAssignedMap({});
+    }
+
+    // auto-fix ghost lockers (no console logs)
+    if (
+      (overviewData?.lockers?.length ?? 0) > 0 &&
+      (overviewData?.assigned?.length ?? 0) > 0
+    ) {
+      const assignedIds = new Set(
+        (overviewData?.assigned ?? []).map((a) => a.locker_id),
       );
-      const ghostLockers = lockersArr.filter(
-        (l: any) => !l.is_available && !assignedLockerIds.has(l.id)
+      const ghost = (overviewData?.lockers ?? []).filter(
+        (l) => !l.is_available && !assignedIds.has(l.id),
       );
-      if (ghostLockers.length > 0) {
+      if (ghost.length > 0) {
         (async () => {
           try {
             await Promise.all(
-              ghostLockers.map((l: any) =>
+              ghost.map((l) =>
                 fetch(`/api/admin/mailroom/lockers/${l.id}`, {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
@@ -183,54 +405,45 @@ export default function MailroomLockers() {
                     location_id: l.location_id,
                     is_available: true,
                   }),
-                })
-              )
+                }),
+              ),
             );
             notifications.show({
               title: "System Cleanup",
-              message: `Automatically freed ${ghostLockers.length} lockers that had no active assignment.`,
+              message: `Automatically freed ${ghost.length} lockers that had no active assignment.`,
               color: "orange",
               icon: <IconLockOpen size={16} />,
             });
-            // revalidate lockers to reflect fixes
             await swrMutate(lockersKey);
-          } catch (e) {
-            console.error("Auto-fix failed:", e);
+          } catch (err: unknown) {
+            void err;
           }
         })();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lockersData, locationsData, assignedData]);
+  }, [overviewData, overviewValidating]);
 
   const refreshAll = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        swrMutate(lockersKey),
-        swrMutate(locationsKey),
-        swrMutate(assignedKey),
-      ]);
-    } catch (e) {
-      console.error("refreshAll failed", e);
+      await swrMutate(lockersKey);
+    } catch {
+      // noop
     } finally {
       setLoading(false);
     }
   };
 
-  // NEW: Auto-dismiss global success
   useEffect(() => {
     if (globalSuccess) {
       const timer = setTimeout(() => setGlobalSuccess(null), 5000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [globalSuccess]);
 
-  // NEW: Clear form errors when modal opens
   useEffect(() => {
-    if (opened) {
-      setFormError(null);
-    }
+    if (opened) setFormError(null);
   }, [opened]);
 
   const clearFilters = () => {
@@ -239,94 +452,18 @@ export default function MailroomLockers() {
     setActiveTab("all");
   };
 
-  const hasFilters = search || filterLocation || activeTab !== "all";
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [lockersRes, locationsRes, assignedRes] = await Promise.all([
-        fetch("/api/admin/mailroom/lockers"),
-        fetch("/api/admin/mailroom/locations"),
-        fetch("/api/admin/mailroom/assigned-lockers"),
-      ]);
-
-      let fetchedLockers: Locker[] = [];
-      let fetchedAssignments: AssignedLocker[] = [];
-
-      if (lockersRes.ok) {
-        const data = await lockersRes.json();
-        fetchedLockers = Array.isArray(data) ? data : data.data || [];
-      }
-      if (locationsRes.ok) {
-        const data = await locationsRes.json();
-        setLocations(Array.isArray(data) ? data : data.data || []);
-      }
-      if (assignedRes.ok) {
-        const data = await assignedRes.json();
-        fetchedAssignments = Array.isArray(data) ? data : data.data || [];
-      }
-
-      // --- AUTO-FIX LOGIC ---
-      // If both fetches succeeded, check for lockers marked 'Occupied' but have no assignment
-      if (lockersRes.ok && assignedRes.ok) {
-        const assignedLockerIds = new Set(
-          fetchedAssignments.map((a) => a.locker_id)
-        );
-
-        const ghostLockers = fetchedLockers.filter(
-          (l) => !l.is_available && !assignedLockerIds.has(l.id)
-        );
-
-        if (ghostLockers.length > 0) {
-          console.log("Fixing ghost lockers:", ghostLockers);
-
-          // Update them in the database
-          await Promise.all(
-            ghostLockers.map((l) =>
-              fetch(`/api/admin/mailroom/lockers/${l.id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  locker_code: l.locker_code,
-                  location_id: l.location_id,
-                  is_available: true, // Force available
-                }),
-              })
-            )
-          );
-
-          notifications.show({
-            title: "System Cleanup",
-            message: `Automatically freed ${ghostLockers.length} lockers that had no active assignment.`,
-            color: "orange",
-            icon: <IconLockOpen size={16} />,
-          });
-
-          // Update local state immediately so UI reflects the fix
-          fetchedLockers = fetchedLockers.map((l) =>
-            ghostLockers.find((g) => g.id === l.id)
-              ? { ...l, is_available: true }
-              : l
-          );
-        }
-      }
-      // ----------------------
-
-      setLockers(fetchedLockers);
-      setAssignedLockers(fetchedAssignments);
-    } catch (error) {
-      console.error("Failed to fetch data", error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to load data",
-        color: "red",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleOpenModal = (locker?: Locker) => {
+    const normalize = (v?: string | null) => (v ?? "").toLowerCase().trim();
+    const findAssignmentForLocker = (l: Locker | undefined) => {
+      if (!l) return undefined;
+      return (
+        assignedMap[normalize(l.id)] ??
+        assignedMap[normalize(l.location_locker_id ?? "")] ??
+        assignedMap[normalize(l.location_id ?? "")] ??
+        assignedMap[normalize(l.locker_code ?? "")]
+      );
+    };
+
     if (locker) {
       setEditingLocker(locker);
       setFormData({
@@ -334,18 +471,14 @@ export default function MailroomLockers() {
         location_id: locker.location_id,
         is_available: locker.is_available,
       });
-
-      const assignment = assignedLockers.find((a) => a.locker_id === locker.id);
-      setCapacityStatus(assignment?.status || "Normal");
+      const assignment = findAssignmentForLocker(locker);
+      setCapacityStatus(assignment?.status ?? "Normal");
     } else {
       setEditingLocker(null);
-      setFormData({
-        locker_code: "",
-        location_id: "",
-        is_available: true,
-      });
+      setFormData({ locker_code: "", location_id: "", is_available: true });
       setCapacityStatus("Normal");
     }
+
     open();
   };
 
@@ -356,13 +489,12 @@ export default function MailroomLockers() {
     }
 
     setSubmitting(true);
-    setFormError(null); // Clear previous errors
+    setFormError(null);
 
     try {
       const url = editingLocker
         ? `/api/admin/mailroom/lockers/${editingLocker.id}`
         : "/api/admin/mailroom/lockers";
-
       const method = editingLocker ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -371,11 +503,20 @@ export default function MailroomLockers() {
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error("Failed to save locker");
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Failed to save locker");
+      }
 
-      const assignment = editingLocker
-        ? assignedLockers.find((a) => a.locker_id === editingLocker.id)
-        : null;
+      // if locker has an assignment, update its capacity status
+      const normalize = (v?: string | null) => (v ?? "").toLowerCase().trim();
+      const assignment =
+        (editingLocker
+          ? (assignedMap[normalize(editingLocker.id)] ??
+            assignedMap[normalize(editingLocker.location_locker_id ?? "")] ??
+            assignedMap[normalize(editingLocker.location_id ?? "")] ??
+            assignedMap[normalize(editingLocker.locker_code ?? "")])
+          : undefined) ?? null;
 
       if (editingLocker && assignment && capacityStatus !== assignment.status) {
         const statusRes = await fetch(
@@ -384,20 +525,21 @@ export default function MailroomLockers() {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: capacityStatus }),
-          }
+          },
         );
-        if (!statusRes.ok) console.error("Failed to update capacity status");
+        if (!statusRes.ok) {
+          void (await statusRes.text().catch(() => ""));
+        }
       }
 
       setGlobalSuccess(
-        `Locker ${editingLocker ? "updated" : "created"} successfully`
+        `Locker ${editingLocker ? "updated" : "created"} successfully`,
       );
-
       close();
       await refreshAll();
-    } catch (error: any) {
-      console.error(error);
-      setFormError(error.message || "Failed to save locker");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFormError(msg || "Failed to save locker");
     } finally {
       setSubmitting(false);
     }
@@ -410,54 +552,72 @@ export default function MailroomLockers() {
       const res = await fetch(`/api/admin/mailroom/lockers/${id}`, {
         method: "DELETE",
       });
-
-      if (!res.ok) throw new Error("Failed to delete");
-
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Failed to delete");
+      }
       setGlobalSuccess("Locker deleted successfully");
       await refreshAll();
-    } catch (error) {
-      console.error(error);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       notifications.show({
         title: "Error",
-        message: "Failed to delete locker",
+        message: msg || "Failed to delete locker",
         color: "red",
       });
     }
   };
 
+  const matchesStatus = (l: Locker): boolean => {
+    if (activeTab === "available") return l.is_available;
+    if (activeTab === "occupied") return !l.is_available;
+    return true;
+  };
+
   const filteredLockers = lockers.filter((l) => {
     const q = search.toLowerCase();
     const matchesSearch =
-      l.locker_code.toLowerCase().includes(q) ||
-      l.location?.name.toLowerCase().includes(q);
-
+      (l.locker_code ?? "").toLowerCase().includes(q) ||
+      (l.location?.name ?? "").toLowerCase().includes(q);
     const matchesLocation = filterLocation
       ? l.location_id === filterLocation
       : true;
-
-    // CHANGED: Tab Logic
-    const matchesStatus =
-      activeTab === "available"
-        ? l.is_available
-        : activeTab === "occupied"
-        ? !l.is_available
-        : true;
-
-    return matchesSearch && matchesLocation && matchesStatus;
+    return matchesSearch && matchesLocation && matchesStatus(l);
   });
 
   const paginatedLockers = filteredLockers.slice(
     (page - 1) * pageSize,
-    page * pageSize
+    page * pageSize,
   );
 
-  const activeAssignment = editingLocker
-    ? assignedLockers.find((a) => a.locker_id === editingLocker.id)
-    : null;
+  const activeAssignment = (() => {
+    const normalize = (v?: string | null) => (v ?? "").toLowerCase().trim();
+    if (!editingLocker) return null;
+    return (
+      assignedMap[normalize(editingLocker.id)] ??
+      assignedMap[normalize(editingLocker.location_locker_id ?? "")] ??
+      assignedMap[normalize(editingLocker.location_id ?? "")] ??
+      assignedMap[normalize(editingLocker.locker_code ?? "")] ??
+      null
+    );
+  })();
+
+  const getCapacityBadgeColor = (status: string | undefined) => {
+    if (status === "Full") return "red";
+    if (status === "Near Full") return "orange";
+    if (status === "Empty") return "gray";
+    return "blue";
+  };
+
+  const segmentedColor = React.useMemo(() => {
+    if (capacityStatus === "Full") return "red";
+    if (capacityStatus === "Near Full") return "orange";
+    if (capacityStatus === "Empty") return "gray";
+    return "blue";
+  }, [capacityStatus]);
 
   return (
     <Stack align="center">
-      {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
           variant="light"
@@ -487,13 +647,12 @@ export default function MailroomLockers() {
               placeholder="Filter by Location"
               data={locations.map((l) => ({ value: l.id, label: l.name }))}
               value={filterLocation}
-              onChange={setFilterLocation}
+              onChange={(val) => setFilterLocation(val ?? null)}
               clearable
               style={{ width: 200 }}
             />
-            {/* Removed Status Select */}
 
-            {hasFilters && (
+            {(search || filterLocation || activeTab !== "all") && (
               <Button
                 variant="subtle"
                 color="red"
@@ -512,8 +671,11 @@ export default function MailroomLockers() {
           </Button>
         </Group>
 
-        {/* NEW: Tabs for Status */}
-        <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+        <Tabs
+          value={activeTab}
+          onChange={(val: string | null) => setActiveTab(val ?? "all")}
+          mb="md"
+        >
           <Tabs.List>
             <Tabs.Tab value="all" leftSection={<IconLayoutGrid size={16} />}>
               All Lockers
@@ -544,13 +706,13 @@ export default function MailroomLockers() {
           page={page}
           onPageChange={(p) => setPage(p)}
           recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={setPageSize}
+          onRecordsPerPageChange={(n: number) => setPageSize(n)}
           columns={[
             { accessor: "locker_code", title: "Locker Code", width: 150 },
             {
               accessor: "location.name",
               title: "Location",
-              render: ({ location }: Locker) => location?.name || "Unknown",
+              render: ({ location }: Locker) => location?.name ?? "Unknown",
             },
             {
               accessor: "is_available",
@@ -577,30 +739,33 @@ export default function MailroomLockers() {
               title: "Capacity Status",
               width: 150,
               render: (locker: Locker) => {
-                const assignment = Array.isArray(assignedLockers)
-                  ? assignedLockers.find((a) => a.locker_id === locker.id)
-                  : null;
+                const normalize = (v?: string | null) =>
+                  (v ?? "").toLowerCase().trim();
 
-                if (!assignment)
+                const byId =
+                  assignedMap[normalize(locker.id)] ??
+                  assignedMap[normalize(locker.location_locker_id ?? "")] ??
+                  assignedMap[normalize(locker.location_id ?? "")] ??
+                  assignedMap[normalize(locker.locker_code ?? "")];
+                const assignment = byId ?? null;
+
+                if (!assignment) {
                   return (
                     <Text size="sm" c="dimmed">
                       —
                     </Text>
                   );
+                }
+
+                const color = getCapacityBadgeColor(assignment.status);
 
                 return (
                   <Badge
-                    color={
-                      assignment.status === "Full"
-                        ? "red"
-                        : assignment.status === "Near Full"
-                        ? "orange"
-                        : "blue"
-                    }
+                    color={color}
                     variant="outline"
                     leftSection={<IconBox size={12} />}
                   >
-                    {assignment.status || "Normal"}
+                    {assignment.status ?? "Normal"}
                   </Badge>
                 );
               },
@@ -638,7 +803,6 @@ export default function MailroomLockers() {
         />
       </Paper>
 
-      {/* Add/Edit Locker Modal */}
       <Modal
         opened={opened}
         onClose={close}
@@ -646,7 +810,6 @@ export default function MailroomLockers() {
         centered
       >
         <Stack>
-          {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
               variant="light"
@@ -675,11 +838,10 @@ export default function MailroomLockers() {
             data={locations.map((l) => ({ value: l.id, label: l.name }))}
             value={formData.location_id}
             onChange={(val) =>
-              setFormData({ ...formData, location_id: val || "" })
+              setFormData({ ...formData, location_id: val ?? "" })
             }
             required
-            // disable location change when editing an existing locker
-            disabled={!!editingLocker}
+            // allow changing location in both add and edit flows
           />
 
           {activeAssignment && (
@@ -704,21 +866,16 @@ export default function MailroomLockers() {
                 </Text>
                 <SegmentedControl
                   value={capacityStatus}
-                  onChange={setCapacityStatus}
+                  onChange={(val: string) => setCapacityStatus(val)}
                   fullWidth
                   size="xs"
                   data={[
+                    { label: "Empty", value: "Empty" },
                     { label: "Normal", value: "Normal" },
                     { label: "Near Full", value: "Near Full" },
                     { label: "Full", value: "Full" },
                   ]}
-                  color={
-                    capacityStatus === "Full"
-                      ? "red"
-                      : capacityStatus === "Near Full"
-                      ? "orange"
-                      : "blue"
-                  }
+                  color={segmentedColor}
                 />
               </Stack>
             </Paper>

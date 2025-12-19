@@ -102,3 +102,24 @@ FOR EACH ROW
 WHEN (OLD.email IS DISTINCT FROM NEW.email OR 
       OLD.raw_user_meta_data IS DISTINCT FROM NEW.raw_user_meta_data)
 EXECUTE FUNCTION public.handle_user_update();
+
+-- ============================================================================
+-- FUNCTION: Handle User Deletion from public.users_table
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.handle_user_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Delete corresponding user in auth.users
+  DELETE FROM auth.users
+  WHERE id = OLD.users_id;
+
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
+
+-- ============================================================================
+-- TRIGGER: On User Deleted in users_table
+-- ============================================================================
+CREATE TRIGGER on_user_deleted
+AFTER DELETE ON public.users_table
+FOR EACH ROW EXECUTE FUNCTION public.handle_user_delete();

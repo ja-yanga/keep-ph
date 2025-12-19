@@ -105,10 +105,14 @@ export async function POST(req: Request) {
 
     if (totalLockers > 0) {
       const lockers: Array<Record<string, unknown>> = [];
+
+      const cleanPrefix = prefix ? String(prefix).trim() : null;
+      const codePrefix = cleanPrefix ? `${cleanPrefix}-` : "L-";
+
       for (let i = 1; i <= totalLockers; i += 1) {
         lockers.push({
           mailroom_location_id: locationId,
-          location_locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
+          location_locker_code: `${codePrefix}${i}`,
           location_locker_is_available: true,
         });
       }
