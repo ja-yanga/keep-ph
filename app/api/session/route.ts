@@ -1,13 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/utils/supabase/serviceClient";
 
 // Admin client for fetching profile data (bypassing RLS if needed)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function GET(_request: Request) {
   // reference unused param to satisfy ESLint
@@ -45,7 +42,6 @@ export async function GET(_request: Request) {
 
     // 3. Fetch profile data (updated schema: users_table)
     let profile: Record<string, unknown> | null = null;
-    let needs_onboarding = true;
     let resolvedRole: string | null = null;
 
     try {
@@ -64,22 +60,6 @@ export async function GET(_request: Request) {
           ((profileData as Record<string, unknown>).users_role as string) ??
           ((profileData as Record<string, unknown>).user_role as string) ??
           null;
-
-        // determine onboarding: prefer explicit boolean flag; otherwise infer
-        if (
-          typeof (profileData as Record<string, unknown>).needs_onboarding ===
-          "boolean"
-        ) {
-          needs_onboarding = (profileData as Record<string, unknown>)
-            .needs_onboarding as boolean;
-        } else {
-          const first = (profileData as Record<string, unknown>).users_email as
-            | string
-            | undefined;
-          const verified = (profileData as Record<string, unknown>)
-            .users_is_verified;
-          needs_onboarding = !(first && verified);
-        }
       }
     } catch (e: unknown) {
       console.error("profile lookup error:", e);
@@ -107,7 +87,7 @@ export async function GET(_request: Request) {
       role: resolvedRole ?? null,
       kyc,
       isKycVerified: (kyc as Record<string, unknown>).status === "VERIFIED",
-      needs_onboarding,
+      needs_onboarding: false,
     });
   } catch (err: unknown) {
     console.error("session GET error:", err);
