@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/utils/supabase/serviceClient";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 // Admin client for fetching profile data (bypassing RLS if needed)
 const supabaseAdmin = createSupabaseServiceClient();
