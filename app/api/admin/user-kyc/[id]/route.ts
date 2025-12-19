@@ -9,12 +9,12 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabaseAdmin = createSupabaseClient(
   SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY
+  SUPABASE_SERVICE_ROLE_KEY,
 );
 
 export async function POST(
   req: Request,
-  context: { params: Promise<Record<string, string | undefined>> }
+  context: { params: Promise<Record<string, string | undefined>> },
 ) {
   try {
     const cookieStore = await cookies();
@@ -37,12 +37,12 @@ export async function POST(
 
     // verify requester is admin
     const { data: requester, error: requesterErr } = await supabaseAdmin
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
+      .from("users_table")
+      .select("users_role")
+      .eq("users_id", user.id)
       .maybeSingle();
     if (requesterErr) throw requesterErr;
-    if (!requester || requester.role !== "admin") {
+    if (!requester || requester.users_role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -67,20 +67,25 @@ export async function POST(
     if (action === "VERIFIED") {
       statusDb = "VERIFIED";
     } else if (action === "REJECTED") {
-      // map REJECTED to UNVERIFIED to stay compatible with current enum
-      statusDb = "UNVERIFIED";
+      statusDb = "REJECTED";
     } else {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const updatePayload: any = {
-      status: statusDb,
-      updated_at: now,
+    type UpdatePayload = {
+      user_kyc_status: string;
+      user_kyc_updated_at: string;
+      user_kyc_verified_at?: string;
     };
-    if (statusDb === "VERIFIED") updatePayload.verified_at = now;
+
+    const updatePayload: UpdatePayload = {
+      user_kyc_status: statusDb,
+      user_kyc_updated_at: now,
+    };
+    if (statusDb === "VERIFIED") updatePayload.user_kyc_verified_at = now;
 
     const { data, error } = await supabaseAdmin
-      .from("user_kyc")
+      .from("user_kyc_table")
       .update(updatePayload)
       .eq("user_id", userId)
       .select()
@@ -89,11 +94,9 @@ export async function POST(
     if (error) throw error;
 
     return NextResponse.json({ ok: true, data });
-  } catch (err: any) {
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("admin KYC action error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? String(err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -15,7 +15,6 @@ import {
   Loader,
   Center,
   Avatar,
-  Tooltip,
   Grid,
   Image,
 } from "@mantine/core";
@@ -30,12 +29,11 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { useDisclosure } from "@mantine/hooks";
 
-interface KycRow {
+type KycRow = {
   id: string;
   user_id: string;
   status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
   id_document_type?: string | null;
-  id_document_number?: string | null;
   id_front_url?: string | null;
   id_back_url?: string | null;
   first_name?: string | null;
@@ -53,7 +51,7 @@ interface KycRow {
   verified_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-}
+};
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -63,12 +61,6 @@ const fetcher = async (url: string) => {
   }
   return res.json();
 };
-
-function maskId(id?: string | null, visible = 4) {
-  if (!id) return "";
-  if (id.length <= visible) return "*".repeat(id.length);
-  return `${"*".repeat(id.length - visible)}${id.slice(-visible)}`;
-}
 
 // Helper component for consistent label-top, value-bottom styling
 const DetailStack = ({
@@ -128,16 +120,10 @@ export default function AdminUserKyc() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<KycRow | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [resolvedFront, setResolvedFront] = useState<string | null>(null);
-  const [resolvedBack, setResolvedBack] = useState<string | null>(null);
+  const [resolvedFront] = useState<string | null>(null);
+  const [resolvedBack] = useState<string | null>(null);
   const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
   const [zoomOpen, { open: openZoom, close: closeZoom }] = useDisclosure(false);
-
-  // track image load failures for fallback UI
-  const [failedImages, setFailedImages] = useState<{
-    front?: boolean;
-    back?: boolean;
-  }>({});
 
   // Normalize a stored or relative URL to an absolute URL for the browser
   const normalizeImageUrl = (url?: string | null) => {
@@ -151,30 +137,34 @@ export default function AdminUserKyc() {
   };
 
   useEffect(() => {
-    const arr = Array.isArray(data?.data)
-      ? data.data
-      : Array.isArray(data)
-      ? data
-      : [];
+    let arr: KycRow[];
+    if (Array.isArray(data?.data)) {
+      arr = data.data;
+    } else if (Array.isArray(data)) {
+      arr = data;
+    } else {
+      arr = [];
+    }
     setRows(arr);
   }, [data]);
 
-  const refresh = async () => {
-    try {
-      await swrMutate(key);
-      notifications.show({
-        title: "Refreshed",
-        message: "KYC list updated",
-        color: "green",
-      });
-    } catch {
-      notifications.show({
-        title: "Error",
-        message: "Failed to refresh",
-        color: "red",
-      });
-    }
-  };
+  // const refresh = async () => {
+  //   try {
+  //     await swrMutate(key);
+  //     notifications.show({
+  //       title: "Refreshed",
+  //       message: "KYC list updated",
+  //       color: "green",
+  //     });
+  //   } catch (err) {
+  //     console.error("Refresh error:", err);
+  //     notifications.show({
+  //       title: "Error",
+  //       message: "Failed to refresh",
+  //       color: "red",
+  //     });
+  //   }
+  // };
 
   const openDetails = (r: KycRow) => {
     setSelected(r);
@@ -215,11 +205,7 @@ export default function AdminUserKyc() {
     const name = (
       r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`
     ).toLowerCase();
-    return (
-      name.includes(q) ||
-      (r.id_document_number ?? "").toLowerCase().includes(q) ||
-      (r.user_id ?? "").toLowerCase().includes(q)
-    );
+    return name.includes(q) || (r.user_id ?? "").toLowerCase().includes(q);
   });
 
   // client-side pagination (copying MailroomRegistrations approach)
@@ -239,7 +225,7 @@ export default function AdminUserKyc() {
         <Group justify="space-between" mb="md">
           <Group>
             <TextInput
-              placeholder="Search by name, ID number or user id..."
+              placeholder="Search by name or user id..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => {
@@ -301,9 +287,6 @@ export default function AdminUserKyc() {
               render: (r: KycRow) => (
                 <div>
                   <Text size="sm">{r.id_document_type ?? "—"}</Text>
-                  <Text size="xs" c="dimmed">
-                    {maskId(String(r.id_document_number ?? ""))}
-                  </Text>
                 </div>
               ),
             },
@@ -312,14 +295,16 @@ export default function AdminUserKyc() {
               title: "Status",
               width: 130,
               render: (r: KycRow) => {
-                const color =
-                  r.status === "VERIFIED"
-                    ? "green"
-                    : r.status === "SUBMITTED"
-                    ? "yellow"
-                    : "gray";
+                let color: string;
+                if (r.status === "VERIFIED") {
+                  color = "green";
+                } else if (r.status === "SUBMITTED") {
+                  color = "yellow";
+                } else {
+                  color = "gray";
+                }
                 return (
-                  <Badge color={color as any} variant="light">
+                  <Badge color={color} variant="light">
                     {r.status}
                   </Badge>
                 );
@@ -329,22 +314,30 @@ export default function AdminUserKyc() {
               accessor: "dates",
               title: "Submitted / Verified",
               width: 220,
-              render: (r: KycRow) => (
-                <div>
-                  <Text size="xs" c="dimmed">
-                    Submitted:{" "}
-                    {r.submitted_at
-                      ? dayjs(r.submitted_at).format("MMM D, YYYY")
-                      : "—"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Verified:{" "}
-                    {r.verified_at
-                      ? dayjs(r.verified_at).format("MMM D, YYYY")
-                      : "—"}
-                  </Text>
-                </div>
-              ),
+              render: (r: KycRow) => {
+                let submitted: string;
+                if (r.submitted_at) {
+                  submitted = dayjs(r.submitted_at).format("MMM D, YYYY");
+                } else {
+                  submitted = "—";
+                }
+                let verified: string;
+                if (r.verified_at) {
+                  verified = dayjs(r.verified_at).format("MMM D, YYYY");
+                } else {
+                  verified = "—";
+                }
+                return (
+                  <div>
+                    <Text size="xs" c="dimmed">
+                      Submitted: {submitted}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Verified: {verified}
+                    </Text>
+                  </div>
+                );
+              },
             },
             {
               accessor: "actions",
@@ -393,9 +386,6 @@ export default function AdminUserKyc() {
                   <Text size="sm" fw={500}>
                     {selected.id_document_type ?? "—"}
                   </Text>
-                  <Text size="xs" c="dimmed">
-                    {selected.id_document_number ?? "—"}
-                  </Text>
                 </DetailStack>
               </Grid.Col>
 
@@ -408,21 +398,33 @@ export default function AdminUserKyc() {
                   <Text size="sm">
                     Submitted:{" "}
                     <Text span fw={500}>
-                      {selected.submitted_at
-                        ? dayjs(selected.submitted_at).format(
-                            "MMM D, YYYY hh:mm A"
-                          )
-                        : "—"}
+                      {(() => {
+                        let submitted: string;
+                        if (selected.submitted_at) {
+                          submitted = dayjs(selected.submitted_at).format(
+                            "MMM D, YYYY hh:mm A",
+                          );
+                        } else {
+                          submitted = "—";
+                        }
+                        return submitted;
+                      })()}
                     </Text>
                   </Text>
                   <Text size="sm">
                     Verified:{" "}
                     <Text span fw={500}>
-                      {selected.verified_at
-                        ? dayjs(selected.verified_at).format(
-                            "MMM D, YYYY hh:mm A"
-                          )
-                        : "—"}
+                      {(() => {
+                        let verified: string;
+                        if (selected.verified_at) {
+                          verified = dayjs(selected.verified_at).format(
+                            "MMM D, YYYY hh:mm A",
+                          );
+                        } else {
+                          verified = "—";
+                        }
+                        return verified;
+                      })()}
                     </Text>
                   </Text>
                 </DetailStack>
@@ -441,28 +443,31 @@ export default function AdminUserKyc() {
                         const src =
                           resolvedFront ??
                           normalizeImageUrl(selected.id_front_url);
-                        return src ? (
-                          <Image
-                            src={src}
-                            alt="ID front"
-                            width={240}
-                            height={160}
-                            fit="cover"
-                            radius="sm"
-                            style={{ cursor: "zoom-in" }}
-                            onClick={() => {
-                              setModalImageSrc(src);
-                              openZoom();
-                            }}
-                            onError={() =>
-                              setFailedImages((s) => ({ ...s, front: true }))
-                            }
-                          />
-                        ) : (
-                          <Text size="xs" c="dimmed">
-                            Image unavailable
-                          </Text>
-                        );
+                        let element: React.ReactNode;
+                        if (src) {
+                          element = (
+                            <Image
+                              src={src}
+                              alt="ID front"
+                              width={240}
+                              height={160}
+                              fit="cover"
+                              radius="sm"
+                              style={{ cursor: "zoom-in" }}
+                              onClick={() => {
+                                setModalImageSrc(src);
+                                openZoom();
+                              }}
+                            />
+                          );
+                        } else {
+                          element = (
+                            <Text size="xs" c="dimmed">
+                              Image unavailable
+                            </Text>
+                          );
+                        }
+                        return element;
                       })()}
                     </div>
                   )}
@@ -480,28 +485,31 @@ export default function AdminUserKyc() {
                         const src =
                           resolvedBack ??
                           normalizeImageUrl(selected.id_back_url);
-                        return src ? (
-                          <Image
-                            src={src}
-                            alt="ID back"
-                            width={240}
-                            height={160}
-                            fit="cover"
-                            radius="sm"
-                            style={{ cursor: "zoom-in" }}
-                            onClick={() => {
-                              setModalImageSrc(src);
-                              openZoom();
-                            }}
-                            onError={() =>
-                              setFailedImages((s) => ({ ...s, back: true }))
-                            }
-                          />
-                        ) : (
-                          <Text size="xs" c="dimmed">
-                            Image unavailable
-                          </Text>
-                        );
+                        let element: React.ReactNode;
+                        if (src) {
+                          element = (
+                            <Image
+                              src={src}
+                              alt="ID back"
+                              width={240}
+                              height={160}
+                              fit="cover"
+                              radius="sm"
+                              style={{ cursor: "zoom-in" }}
+                              onClick={() => {
+                                setModalImageSrc(src);
+                                openZoom();
+                              }}
+                            />
+                          );
+                        } else {
+                          element = (
+                            <Text size="xs" c="dimmed">
+                              Image unavailable
+                            </Text>
+                          );
+                        }
+                        return element;
                       })()}
                     </div>
                   )}
