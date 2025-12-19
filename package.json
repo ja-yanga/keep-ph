@@ -11,7 +11,7 @@
     "test:ci": "jest --ci",
     "test:integration": "jest __tests__/integration --runInBand",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
