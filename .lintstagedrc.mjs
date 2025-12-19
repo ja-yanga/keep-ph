@@ -1,10 +1,8 @@
 import path from "path";
 
 const buildEslintCommand = (filenames) =>
-  `next lint --fix ${filenames
-    .map(
-      (f) => `--file "${path.relative(process.cwd(), f).replace(/"/g, '\\"')}"`,
-    )
+  `eslint --fix ${filenames
+    .map((f) => `"${path.relative(process.cwd(), f).replace(/"/g, '\\"')}"`)
     .join(" ")}`;
 
 const config = {

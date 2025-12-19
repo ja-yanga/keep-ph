@@ -1,7 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
 export async function POST(request: Request) {
   try {
@@ -19,11 +18,11 @@ export async function POST(request: Request) {
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, options),
             );
           },
         },
-      }
+      },
     );
 
     const { email, password } = await request.json();
@@ -44,11 +43,11 @@ export async function POST(request: Request) {
       ok: true,
       userId: data.user?.id ?? null,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Signin error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
