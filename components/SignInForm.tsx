@@ -1,8 +1,7 @@
 "use client";
 
-import {useState, useEffect, Suspense} from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
-  Box,
   Container,
   Title,
   Text,
@@ -26,17 +25,17 @@ import {
   IconCheck,
   IconBrandGoogle,
 } from "@tabler/icons-react";
-import {useRouter, useSearchParams} from "next/navigation";
-import {supabase} from "@/lib/supabaseClient";
-import {createBrowserClient} from "@supabase/ssr";
-import {useSession} from "@/components/SessionProvider";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { createBrowserClient } from "@supabase/ssr";
+import { useSession } from "@/components/SessionProvider";
 
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
 
-  const {refresh} = useSession();
+  const { refresh } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -72,9 +71,9 @@ function SignInContent() {
     try {
       const res = await fetch("/api/auth/signin", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({email, password}),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
@@ -89,16 +88,16 @@ function SignInContent() {
       await refresh();
 
       // Client decides onboarding redirect by fetching profile (fast) after login
-      const profRes = await fetch("/api/user/profile", {
-        credentials: "include",
-      });
-      const profJson = await profRes.json().catch(() => null);
-      const needsOnboarding = profJson?.needsOnboarding ?? false;
+      // const profRes = await fetch("/api/user/profile", {
+      //   credentials: "include",
+      // });
+      // const profJson = await profRes.json().catch(() => null);
+      // const needsOnboarding = profJson?.needsOnboarding ?? false;
 
-      if (needsOnboarding) {
-        router.push("/onboarding");
-        return;
-      }
+      // if (needsOnboarding) {
+      //   router.push("/onboarding");
+      //   return;
+      // }
       if (next) {
         router.push(next);
         return;
@@ -119,11 +118,11 @@ function SignInContent() {
     // NEW: Create a temporary client to ensure PKCE flow is used
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
 
     try {
-      const {error} = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           // CHANGED: Point to the specific Google callback
@@ -134,15 +133,15 @@ function SignInContent() {
       });
       if (error) throw error;
       // Note: No need to setLoading(false) as the browser will redirect
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "An unexpected error occurred.");
+      setError("An unexpected error occurred.");
       setOauthLoading(false);
     }
   };
 
   return (
-    <Center style={{flex: 1, padding: "4rem 1rem"}}>
+    <Center style={{ flex: 1, padding: "4rem 1rem" }}>
       <Container size="xs" w="100%">
         <Stack gap="lg">
           <Stack gap={4} align="center">
@@ -166,7 +165,7 @@ function SignInContent() {
             shadow="xl"
             p={30}
             radius="md"
-            style={{backgroundColor: "#fff", borderColor: "#E9ECEF"}}
+            style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
           >
             <form onSubmit={handleSubmit}>
               <Stack gap="md">
@@ -280,7 +279,7 @@ function SignInContent() {
             </form>
 
             <Text ta="center" mt="xl" size="sm" c="dimmed">
-              Don't have an account?{" "}
+              Don`t have an account?{" "}
               <Anchor href="/signup" fw={600} c="#1A237E">
                 Sign Up
               </Anchor>
@@ -299,6 +298,3 @@ export default function SignInForm() {
     </Suspense>
   );
 }
-
-
-

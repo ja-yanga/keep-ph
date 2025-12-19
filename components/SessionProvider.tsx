@@ -76,10 +76,17 @@ export function SessionProvider({
     if (!raw || typeof raw !== "object") return null;
     const rec = raw as Record<string, unknown>;
     return {
-      id: (rec.id as string) ?? (rec.users_id as string) ?? undefined,
-      email: (rec.email as string) ?? (rec.users_email as string) ?? undefined,
-      users_id: rec.users_id as string | undefined,
-      users_email: rec.users_email as string | undefined,
+      id:
+        (typeof rec.id === "string" ? rec.id : null) ??
+        (typeof rec.users_id === "string" ? rec.users_id : null) ??
+        undefined,
+      email:
+        (typeof rec.email === "string" ? rec.email : null) ??
+        (typeof rec.users_email === "string" ? rec.users_email : null) ??
+        undefined,
+      users_id: typeof rec.users_id === "string" ? rec.users_id : undefined,
+      users_email:
+        typeof rec.users_email === "string" ? rec.users_email : undefined,
     };
   };
 
@@ -87,21 +94,37 @@ export function SessionProvider({
     if (!raw || typeof raw !== "object") return null;
     const rec = raw as Record<string, unknown>;
     return {
-      first_name: (rec.first_name as string) ?? null,
-      last_name: (rec.last_name as string) ?? null,
+      first_name: typeof rec.first_name === "string" ? rec.first_name : null,
+      last_name: typeof rec.last_name === "string" ? rec.last_name : null,
       user_role:
-        (rec.user_role as string) ?? (rec.users_role as string) ?? null,
-      users_role: (rec.users_role as string) ?? null,
-      avatar_url:
-        (rec.avatar_url as string) ?? (rec.users_avatar_url as string) ?? null,
-      referral_code:
-        (rec.referral_code as string) ??
-        (rec.users_referral_code as string) ??
+        (typeof rec.user_role === "string" ? rec.user_role : null) ??
+        (typeof rec.users_role === "string" ? rec.users_role : null) ??
         null,
-      needs_onboarding:
-        typeof rec.needs_onboarding === "boolean"
-          ? (rec.needs_onboarding as boolean)
-          : ((rec.needs_onboarding as string) ?? null),
+      users_role: typeof rec.users_role === "string" ? rec.users_role : null,
+      needs_onboarding: (() => {
+        const val = rec.needs_onboarding;
+        if (typeof val === "boolean") return val;
+        if (typeof val === "string") return val;
+        return null;
+      })(),
+      avatar_url:
+        (typeof rec.avatar_url === "string" ? rec.avatar_url : null) ??
+        (typeof rec.users_avatar_url === "string"
+          ? rec.users_avatar_url
+          : null) ??
+        null,
+      users_avatar_url:
+        typeof rec.users_avatar_url === "string" ? rec.users_avatar_url : null,
+      referral_code:
+        (typeof rec.referral_code === "string" ? rec.referral_code : null) ??
+        (typeof rec.users_referral_code === "string"
+          ? rec.users_referral_code
+          : null) ??
+        null,
+      users_referral_code:
+        typeof rec.users_referral_code === "string"
+          ? rec.users_referral_code
+          : null,
     };
   };
 
@@ -110,11 +133,13 @@ export function SessionProvider({
     const rec = raw as Record<string, unknown>;
     return {
       status:
-        (rec.status as string) ??
-        (rec.user_kyc_status as string) ??
-        (rec.user_kyc_status as string) ??
+        (typeof rec.status === "string" ? rec.status : null) ??
+        (typeof rec.user_kyc_status === "string"
+          ? rec.user_kyc_status
+          : null) ??
         null,
-      user_kyc_status: (rec.user_kyc_status as string) ?? null,
+      user_kyc_status:
+        typeof rec.user_kyc_status === "string" ? rec.user_kyc_status : null,
     };
   };
 
@@ -147,11 +172,15 @@ export function SessionProvider({
         user: normalizeUser(rawUser),
         profile: normalizeProfile(rawProfile),
         role:
-          (data?.role as string) ??
+          (typeof data?.role === "string" ? data.role : null) ??
           (rawProfile &&
-            ((rawProfile as Record<string, unknown>).user_role as string)) ??
+          typeof (rawProfile as Record<string, unknown>).user_role === "string"
+            ? (rawProfile as Record<string, unknown>).user_role
+            : null) ??
           (rawProfile &&
-            ((rawProfile as Record<string, unknown>).users_role as string)) ??
+          typeof (rawProfile as Record<string, unknown>).users_role === "string"
+            ? (rawProfile as Record<string, unknown>).users_role
+            : null) ??
           null,
         kyc: normalizeKyc(rawKyc),
         isKycVerified:

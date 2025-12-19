@@ -1,8 +1,7 @@
 "use client";
 
-import {useState, useEffect} from "react";
+import { useState, useEffect } from "react";
 import {
-  Box,
   Container,
   Title,
   Text,
@@ -26,7 +25,7 @@ import {
   IconCheck,
   IconBrandGoogle,
 } from "@tabler/icons-react";
-import {createBrowserClient} from "@supabase/ssr";
+import { createSupabaseBrowserClient } from "@/utils/supabase/browserClient";
 
 export default function SignUpForm() {
   const [email, setEmail] = useState("");
@@ -77,7 +76,7 @@ export default function SignUpForm() {
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
           password,
@@ -108,13 +107,10 @@ export default function SignUpForm() {
     setOauthLoading(true);
     setError(null);
     // Create a temporary client to ensure PKCE flow is used
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabase = createSupabaseBrowserClient();
 
     try {
-      const {error} = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           // Point to the Google callback for signup flow
@@ -123,9 +119,9 @@ export default function SignUpForm() {
       });
       if (error) throw error;
       // browser will redirect
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "An unexpected error occurred.");
+      setError("An unexpected error occurred.");
       setOauthLoading(false);
     }
   };
@@ -137,8 +133,8 @@ export default function SignUpForm() {
     try {
       const res = await fetch("/api/auth/resend", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({email}),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
 
       if (res.ok) {
@@ -160,7 +156,7 @@ export default function SignUpForm() {
   // ----------------------------------------------------------------
   if (isSubmitted) {
     return (
-      <Center style={{flex: 1, padding: "4rem 1rem"}}>
+      <Center style={{ flex: 1, padding: "4rem 1rem" }}>
         <Container size="sm">
           <Stack align="center" gap="xl">
             {/* Icon */}
@@ -169,7 +165,7 @@ export default function SignUpForm() {
               radius="50%"
               variant="light"
               color="indigo"
-              style={{backgroundColor: "#E8EAF6"}}
+              style={{ backgroundColor: "#E8EAF6" }}
             >
               <IconMail size={40} color="#1A237E" />
             </ThemeIcon>
@@ -225,10 +221,10 @@ export default function SignUpForm() {
                   size="sm"
                   c="dimmed"
                   ta="center"
-                  style={{lineHeight: 1.5}}
+                  style={{ lineHeight: 1.5 }}
                 >
-                  Didn&apos;t receive the email? Check your spam folder or
-                  click the button below to send it again.
+                  Didn&apos;t receive the email? Check your spam folder or click
+                  the button below to send it again.
                 </Text>
 
                 <Button
@@ -246,9 +242,7 @@ export default function SignUpForm() {
                   }}
                   onClick={handleResend}
                 >
-                  {timer > 0
-                    ? `Resend available in ${timer}s`
-                    : "Resend Email"}
+                  {timer > 0 ? `Resend available in ${timer}s` : "Resend Email"}
                 </Button>
 
                 <Anchor href="/signin" size="sm" c="dimmed" mt="xs">
@@ -266,7 +260,7 @@ export default function SignUpForm() {
   // VIEW: Sign Up Form (Default)
   // ----------------------------------------------------------------
   return (
-    <Center style={{flex: 1, padding: "4rem 1rem"}}>
+    <Center style={{ flex: 1, padding: "4rem 1rem" }}>
       <Container size="xs" w="100%">
         <Stack gap="lg">
           <Stack gap={4} align="center">
@@ -291,7 +285,7 @@ export default function SignUpForm() {
             shadow="xl"
             p={30}
             radius="md"
-            style={{backgroundColor: "#fff", borderColor: "#E9ECEF"}}
+            style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
           >
             <form onSubmit={handleSubmit}>
               <Stack gap="md">
@@ -387,6 +381,3 @@ export default function SignUpForm() {
     </Center>
   );
 }
-
-
-

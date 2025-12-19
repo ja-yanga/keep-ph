@@ -1,7 +1,7 @@
 "use client";
 
-import React, {useRef, useState, useEffect} from "react";
-import {useRouter} from "next/navigation";
+import React, { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Box,
   Container,
@@ -14,29 +14,22 @@ import {
   Grid,
   Stack,
 } from "@mantine/core";
-import {useSession} from "@/components/SessionProvider";
+import { useSession } from "@/components/SessionProvider";
 
 export default function OnboardingForm() {
   const router = useRouter();
-  const {refresh} = useSession();
+  // use global session provider instead of manual fetch
+  const { session: providerSession, refresh } = useSession();
   const [avatar, setAvatar] = useState<File | null>(null);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState(
+    providerSession?.profile?.first_name || "",
+  );
+  const [lastName, setLastName] = useState(
+    providerSession?.profile?.last_name || "",
+  );
+  const email = providerSession?.user?.email || "";
   const avatarUrl = avatar ? URL.createObjectURL(avatar) : null;
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // use global session provider instead of manual fetch
-  const {session: providerSession, loading} = useSession();
-
-  useEffect(() => {
-    if (!providerSession) return;
-    if (providerSession.user?.email) setEmail(providerSession.user.email);
-    if (providerSession.profile?.first_name)
-      setFirstName(providerSession.profile.first_name);
-    if (providerSession.profile?.last_name)
-      setLastName(providerSession.profile.last_name);
-  }, [providerSession]);
 
   // helper: convert File -> data URL
   const fileToDataUrl = (file: File) =>
@@ -52,15 +45,13 @@ export default function OnboardingForm() {
     const avatarDataUrl = avatar ? await fileToDataUrl(avatar) : null;
 
     const payload = {
-      first_name: firstName,
-      last_name: lastName,
       email,
       avatar: avatarDataUrl,
     };
 
     const res = await fetch("/api/onboarding", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify(payload),
     });
@@ -91,7 +82,7 @@ export default function OnboardingForm() {
       <Container size="sm" p="xl" my="lg">
         <Stack gap="xl" align="center">
           <Box>
-            <Title order={1} style={{fontWeight: 700, color: "#1A237E"}}>
+            <Title order={1} style={{ fontWeight: 700, color: "#1A237E" }}>
               Complete Your Profile
             </Title>
             <Text c="#6B7280" size="lg">
@@ -99,7 +90,7 @@ export default function OnboardingForm() {
             </Text>
           </Box>
 
-          <Paper radius="md" withBorder p="lg" style={{width: "100%"}}>
+          <Paper radius="md" withBorder p="lg" style={{ width: "100%" }}>
             <form onSubmit={handleSubmit}>
               <Stack gap="lg">
                 {/* Row 1: Avatar (centered) + Upload button that opens native file picker */}
@@ -110,7 +101,7 @@ export default function OnboardingForm() {
                       radius="xl"
                       size={70}
                       color="gray"
-                      styles={{placeholder: {backgroundColor: "#E8EAF6"}}}
+                      styles={{ placeholder: { backgroundColor: "#E8EAF6" } }}
                       mb="sm"
                     />
                     <Button
@@ -130,7 +121,7 @@ export default function OnboardingForm() {
                     ref={inputRef}
                     type="file"
                     accept="image/*"
-                    style={{display: "none"}}
+                    style={{ display: "none" }}
                     onChange={handleFileChange}
                   />
                 </Stack>
@@ -145,7 +136,7 @@ export default function OnboardingForm() {
 
                 {/* Row 3: two columns - First Name | Last Name */}
                 <Grid gutter="md">
-                  <Grid.Col span={{base: 12, sm: 6}}>
+                  <Grid.Col span={{ base: 12, sm: 6 }}>
                     <TextInput
                       label="First Name"
                       placeholder="Juan"
@@ -154,7 +145,7 @@ export default function OnboardingForm() {
                       required
                     />
                   </Grid.Col>
-                  <Grid.Col span={{base: 12, sm: 6}}>
+                  <Grid.Col span={{ base: 12, sm: 6 }}>
                     <TextInput
                       label="Last Name"
                       placeholder="Dela Cruz"
@@ -182,6 +173,3 @@ export default function OnboardingForm() {
     </Box>
   );
 }
-
-
-
