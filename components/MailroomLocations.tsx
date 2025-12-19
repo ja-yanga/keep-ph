@@ -19,7 +19,7 @@ import {
   ActionIcon,
   SimpleGrid,
   Select,
-  Alert, // <--- Added
+  Alert,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -28,8 +28,8 @@ import {
   IconEdit,
   IconSearch,
   IconPlus,
-  IconAlertCircle, // <--- Added
-  IconCheck, // <--- Added
+  IconAlertCircle,
+  IconCheck,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -50,20 +50,16 @@ export default function MailroomLocations() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // New Filter States
   const [filterRegion, setFilterRegion] = useState<string | null>(null);
   const [filterCity, setFilterCity] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string | null>(null);
 
-  // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // create modal state
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // view/edit modal state
   const [viewOpen, setViewOpen] = useState(false);
   const [viewLocation, setViewLocation] = useState<Location | null>(null);
 
@@ -71,7 +67,6 @@ export default function MailroomLocations() {
   const [editLocation, setEditLocation] = useState<Location | null>(null);
   const [editing, setEditing] = useState(false);
 
-  // NEW: Alert States
   const [formError, setFormError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
@@ -103,19 +98,16 @@ export default function MailroomLocations() {
     fetchData();
   }, []);
 
-  // Reset page when filters change
   useEffect(() => {
     setPage(1);
   }, [search, filterRegion, filterCity, sortBy]);
 
-  // Reset form error when modals open/close
   useEffect(() => {
     if (createOpen || editOpen) {
       setFormError(null);
     }
   }, [createOpen, editOpen]);
 
-  // Auto-dismiss global success alert after 5 seconds
   useEffect(() => {
     if (globalSuccess) {
       const timer = setTimeout(() => {
@@ -123,6 +115,7 @@ export default function MailroomLocations() {
       }, 5000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [globalSuccess]);
 
   const clearFilters = () => {
@@ -132,19 +125,22 @@ export default function MailroomLocations() {
     setSortBy(null);
   };
 
-  const hasFilters = search || filterRegion || filterCity || sortBy;
+  const hasFilters = Boolean(search || filterRegion || filterCity || sortBy);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/mailroom/locations");
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error("Failed to load locations");
+        throw new Error(
+          (json && (json.error as string)) ?? "Failed to load locations",
+        );
       }
-      const json = await res.json();
-      setLocations(json.data ?? []);
-    } catch (err) {
-      console.error("Load error", err);
+      setLocations((json.data as Location[]) ?? []);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Load error", message);
       notifications.show({
         title: "Error",
         message: "Failed to load locations",
@@ -156,10 +152,9 @@ export default function MailroomLocations() {
     }
   };
 
-  // create handler
   const handleCreate = form.onSubmit(async (values) => {
     setCreating(true);
-    setFormError(null); // Clear previous errors
+    setFormError(null);
     try {
       const payload = {
         name: values.name,
@@ -175,26 +170,28 @@ export default function MailroomLocations() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error || "Failed to create location");
+        throw new Error(
+          (json && (json.error as string)) ?? "Failed to create location",
+        );
       }
 
-      // Success: Close modal and show global success
-      setGlobalSuccess("Location created successfully!");
+      setGlobalSuccess(
+        (json && (json.message as string)) ?? "Location created successfully!",
+      );
       setCreateOpen(false);
       form.reset();
       fetchData();
-    } catch (err: any) {
-      console.error("create error", err);
-      // Error: Keep modal open and show error inside
-      setFormError(err?.message ?? "Failed to create location");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("create error", message);
+      setFormError(message ?? "Failed to create location");
     } finally {
       setCreating(false);
     }
   });
 
-  // Get unique regions and cities for filter dropdowns
   const regions = useMemo(() => {
     const unique = new Set(locations.map((l) => l.region).filter(Boolean));
     return Array.from(unique).sort() as string[];
@@ -205,13 +202,11 @@ export default function MailroomLocations() {
     return Array.from(unique).sort() as string[];
   }, [locations]);
 
-  // open view modal
   const openView = (loc: Location) => {
     setViewLocation(loc);
     setViewOpen(true);
   };
 
-  // open edit modal and populate form
   const openEdit = (loc: Location) => {
     setEditLocation(loc);
     editForm.setValues({
@@ -226,10 +221,8 @@ export default function MailroomLocations() {
     setEditOpen(true);
   };
 
-  // edit handler
   const handleEdit = editForm.onSubmit(async (values) => {
-    if (!editLocation) return;
-    if (!editLocation.id) {
+    if (!editLocation || !editLocation.id) {
       setFormError("Missing location id. Cannot save changes.");
       return;
     }
@@ -237,7 +230,7 @@ export default function MailroomLocations() {
     setEditing(true);
     setFormError(null);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: values.name,
         code: values.code || null,
         region: values.region || null,
@@ -251,22 +244,25 @@ export default function MailroomLocations() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-        }
+        },
       );
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error || "Failed to update location");
+        throw new Error(
+          (json && (json.error as string)) ?? "Failed to update location",
+        );
       }
 
-      // Success: Close modal and show global success
-      setGlobalSuccess("Location updated successfully!");
+      setGlobalSuccess(
+        (json && (json.message as string)) ?? "Location updated successfully!",
+      );
       setEditOpen(false);
       setEditLocation(null);
       fetchData();
-    } catch (err: any) {
-      console.error("edit error", err);
-      // Error: Keep modal open and show error inside
-      setFormError(err?.message ?? "Failed to update location");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("edit error", message);
+      setFormError(message ?? "Failed to update location");
     } finally {
       setEditing(false);
     }
@@ -315,12 +311,11 @@ export default function MailroomLocations() {
 
   const paginatedLocations = filteredLocations.slice(
     (page - 1) * pageSize,
-    page * pageSize
+    page * pageSize,
   );
 
   return (
     <Stack>
-      {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
           variant="light"
@@ -395,7 +390,7 @@ export default function MailroomLocations() {
               leftSection={<IconPlus size={16} />}
               onClick={() => {
                 setCreateOpen(true);
-                setGlobalSuccess(null); // Clear success when starting new action
+                setGlobalSuccess(null);
               }}
             >
               Create
@@ -481,7 +476,7 @@ export default function MailroomLocations() {
                       color="blue"
                       onClick={() => {
                         openEdit(loc);
-                        setGlobalSuccess(null); // Clear success when starting new action
+                        setGlobalSuccess(null);
                       }}
                     >
                       <IconEdit size={16} />
@@ -495,7 +490,6 @@ export default function MailroomLocations() {
         />
       </Paper>
 
-      {/* Create modal */}
       <Modal
         opened={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -504,7 +498,6 @@ export default function MailroomLocations() {
       >
         <form onSubmit={handleCreate}>
           <Stack>
-            {/* ERROR ALERT INSIDE MODAL */}
             {formError && (
               <Alert
                 variant="light"
@@ -573,7 +566,6 @@ export default function MailroomLocations() {
         </form>
       </Modal>
 
-      {/* View modal */}
       <Modal
         opened={viewOpen}
         onClose={() => setViewOpen(false)}
@@ -653,7 +645,6 @@ export default function MailroomLocations() {
         )}
       </Modal>
 
-      {/* Edit modal */}
       <Modal
         opened={editOpen}
         onClose={() => setEditOpen(false)}
@@ -662,7 +653,6 @@ export default function MailroomLocations() {
       >
         <form onSubmit={handleEdit}>
           <Stack>
-            {/* ERROR ALERT INSIDE MODAL */}
             {formError && (
               <Alert
                 variant="light"

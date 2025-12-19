@@ -6,25 +6,50 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+type LocationRow = {
+  mailroom_location_id: string;
+  mailroom_location_name: string;
+  mailroom_location_region?: string | null;
+  mailroom_location_city?: string | null;
+  mailroom_location_barangay?: string | null;
+  mailroom_location_zip?: string | null;
+  mailroom_location_total_lockers?: number | null;
+  mailroom_location_prefix?: string | null;
+};
+
 // GET all locations
 export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
-      .from("mailroom_locations")
+      .from("mailroom_location_table")
       .select("*")
-      .order("name", { ascending: true });
+      .order("mailroom_location_name", { ascending: true });
 
     if (error) {
-      console.error("Error fetching locations:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: (error as Error).message },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ data }, { status: 200 });
-  } catch (err) {
-    console.error("Unexpected error:", err);
+    const rows = Array.isArray(data) ? (data as LocationRow[]) : [];
+    const normalized = rows.map((r) => ({
+      id: r.mailroom_location_id,
+      name: r.mailroom_location_name,
+      code: r.mailroom_location_prefix ?? null,
+      region: r.mailroom_location_region ?? null,
+      city: r.mailroom_location_city ?? null,
+      barangay: r.mailroom_location_barangay ?? null,
+      zip: r.mailroom_location_zip ?? null,
+      total_lockers: r.mailroom_location_total_lockers ?? 0,
+    }));
+
+    return NextResponse.json({ data: normalized }, { status: 200 });
+  } catch (err: unknown) {
+    void err;
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -32,71 +57,92 @@ export async function GET() {
 // POST create new location
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { name, code, region, city, barangay, zip, total_lockers } = body;
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await req.json()) as Record<string, unknown>;
+    } catch (parseErr) {
+      void parseErr;
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const name = String(body.name ?? "").trim();
+    const code = body.code ? String(body.code) : null;
+    const region = body.region ? String(body.region) : null;
+    const city = body.city ? String(body.city) : null;
+    const barangay = body.barangay ? String(body.barangay) : null;
+    const zip = body.zip ? String(body.zip) : null;
+    const totalLockers = Number(body.total_lockers ?? 0) || 0;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    // Insert location
+    const insertPayload = {
+      mailroom_location_name: name,
+      mailroom_location_prefix: code,
+      mailroom_location_region: region,
+      mailroom_location_city: city,
+      mailroom_location_barangay: barangay,
+      mailroom_location_zip: zip,
+      mailroom_location_total_lockers: totalLockers,
+    };
+
     const { data, error } = await supabaseAdmin
-      .from("mailroom_locations")
-      .insert([
-        {
-          name,
-          code: code || null, // Save the code
-          region: region || null,
-          city: city || null,
-          barangay: barangay || null,
-          zip: zip || null,
-          total_lockers: total_lockers ?? 0,
-        },
-      ])
+      .from("mailroom_location_table")
+      .insert([insertPayload])
       .select();
 
-    if (error || !data || data.length === 0) {
-      console.error("Error creating location:", error);
+    if (error || !Array.isArray(data) || data.length === 0) {
       return NextResponse.json(
-        { error: error?.message || "Failed to create location" },
-        { status: 500 }
+        { error: (error as Error).message || "Failed to create location" },
+        { status: 500 },
       );
     }
 
-    const locationId = data[0].id;
-    const lockersToCreate = total_lockers ?? 0;
+    const created = data[0] as LocationRow;
+    const locationId = created.mailroom_location_id;
+    const prefix = created.mailroom_location_prefix ?? "L";
 
-    if (lockersToCreate > 0) {
-      // Determine prefix: "MKT-" or fallback to "L"
-      const prefix = code ? `${code}-` : "L";
-
-      const lockers = [];
-      for (let i = 1; i <= lockersToCreate; i++) {
+    if (totalLockers > 0) {
+      const lockers: Array<Record<string, unknown>> = [];
+      for (let i = 1; i <= totalLockers; i += 1) {
         lockers.push({
-          location_id: locationId,
-          locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
-          is_available: true,
+          mailroom_location_id: locationId,
+          location_locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
+          location_locker_is_available: true,
         });
       }
 
-      const { error: lockerError } = await supabaseAdmin
-        .from("location_lockers")
-        .insert(lockers);
-
-      if (lockerError) {
-        console.error("Error creating lockers:", lockerError);
+      try {
+        const { error: lockerError } = await supabaseAdmin
+          .from("location_locker_table")
+          .insert(lockers);
+        void lockerError;
+      } catch (lockerInsertErr: unknown) {
+        void lockerInsertErr;
       }
     }
 
+    const normalized = {
+      id: created.mailroom_location_id,
+      name: created.mailroom_location_name,
+      code: created.mailroom_location_prefix ?? null,
+      region: created.mailroom_location_region ?? null,
+      city: created.mailroom_location_city ?? null,
+      barangay: created.mailroom_location_barangay ?? null,
+      zip: created.mailroom_location_zip ?? null,
+      total_lockers: created.mailroom_location_total_lockers ?? 0,
+    };
+
     return NextResponse.json(
-      { message: "Location created with lockers", data },
-      { status: 201 }
+      { message: "Location created with lockers", data: normalized },
+      { status: 201 },
     );
-  } catch (err) {
-    console.error("Unexpected error:", err);
+  } catch (err: unknown) {
+    void err;
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
