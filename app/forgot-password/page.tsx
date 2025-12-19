@@ -1,4 +1,4 @@
-import {Box} from "@mantine/core";
+import { Box } from "@mantine/core";
 import Nav from "../../components/Nav";
 import SiteFooter from "../../components/Footer";
 import ForgotPasswordForm from "@/components/ForgotPasswordForm";
