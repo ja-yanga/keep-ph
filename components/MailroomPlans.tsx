@@ -208,10 +208,14 @@ export default function MailroomPlans() {
       setEditOpen(false);
       setEditPlan(null);
       fetchData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("edit error", err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : String(err ?? "Failed to update plan");
       // Error: Keep modal open and show error inside
-      setFormError(err?.message ?? "Failed to update plan");
+      setFormError(message);
     } finally {
       setEditing(false);
     }
@@ -291,7 +295,7 @@ export default function MailroomPlans() {
 
   const paginatedPlans = filteredPlans.slice(
     (page - 1) * pageSize,
-    page * pageSize
+    page * pageSize,
   );
 
   return (
