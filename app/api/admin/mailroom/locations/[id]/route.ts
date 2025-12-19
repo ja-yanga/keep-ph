@@ -8,118 +8,194 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const resolvedParams = await params;
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await req.json()) as Record<string, unknown>;
+    } catch (parseErr) {
+      void parseErr;
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
-    let id = resolvedParams?.id ?? body?.id;
+    const resolvedParams = await params;
+    let id = resolvedParams?.id ?? (body.id ? String(body.id) : undefined);
+
     if (!id) {
       try {
         const parsed = new URL(req.url);
         const parts = parsed.pathname.split("/").filter(Boolean);
         const idx = parts.lastIndexOf("locations");
-        if (idx >= 0 && parts.length > idx + 1) id = parts[idx + 1];
-        else id = parts[parts.length - 1];
-      } catch {}
+        if (idx >= 0 && parts.length > idx + 1) {
+          id = parts[idx + 1];
+        } else {
+          id = parts[parts.length - 1];
+        }
+      } catch (urlErr) {
+        void urlErr;
+      }
     }
 
     if (!id) {
       return NextResponse.json(
         { error: "Missing id parameter" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const { name, code, region, city, barangay, zip, total_lockers } = body;
+    const name = body.name !== undefined ? String(body.name) : undefined;
 
-    const updates: Record<string, any> = {};
-    if (name !== undefined) updates.name = name;
-    if (code !== undefined) updates.code = code || null; // Update code
-    if (region !== undefined) updates.region = region || null;
-    if (city !== undefined) updates.city = city || null;
-    if (barangay !== undefined) updates.barangay = barangay || null;
-    if (zip !== undefined) updates.zip = zip || null;
-    if (total_lockers !== undefined)
-      updates.total_lockers = Number(total_lockers) || 0;
+    // avoid nested ternaries — resolve each field explicitly
+    let code: string | null | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, "code")) {
+      code = body.code ? String(body.code) : null;
+    } else {
+      code = undefined;
+    }
+
+    let region: string | null | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, "region")) {
+      region = body.region ? String(body.region) : null;
+    } else {
+      region = undefined;
+    }
+
+    let city: string | null | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, "city")) {
+      city = body.city ? String(body.city) : null;
+    } else {
+      city = undefined;
+    }
+
+    let barangay: string | null | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, "barangay")) {
+      barangay = body.barangay ? String(body.barangay) : null;
+    } else {
+      barangay = undefined;
+    }
+
+    let zip: string | null | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, "zip")) {
+      zip = body.zip ? String(body.zip) : null;
+    } else {
+      zip = undefined;
+    }
+
+    let totalLockers: number | undefined;
+    if (Object.prototype.hasOwnProperty.call(body, "total_lockers")) {
+      const n = Number(body.total_lockers);
+      totalLockers = Number.isNaN(n) ? 0 : n;
+    } else {
+      totalLockers = undefined;
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) updates.mailroom_location_name = name;
+    if (code !== undefined) updates.mailroom_location_prefix = code;
+    if (region !== undefined) updates.mailroom_location_region = region;
+    if (city !== undefined) updates.mailroom_location_city = city;
+    if (barangay !== undefined) updates.mailroom_location_barangay = barangay;
+    if (zip !== undefined) updates.mailroom_location_zip = zip;
+    if (totalLockers !== undefined)
+      updates.mailroom_location_total_lockers = totalLockers;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "No fields provided to update" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Fetch current location first to compare total_lockers and get current code
+    // Fetch current location first to compare total_lockers and get current prefix
     const { data: current, error: fetchError } = await supabaseAdmin
-      .from("mailroom_locations")
-      .select("total_lockers, code")
-      .eq("id", id)
+      .from("mailroom_location_table")
+      .select("mailroom_location_total_lockers, mailroom_location_prefix")
+      .eq("mailroom_location_id", id)
       .single();
 
     if (fetchError || !current) {
       return NextResponse.json(
         { error: "Location not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
-    const oldTotal = current.total_lockers ?? 0;
-    const newTotal = updates.total_lockers ?? oldTotal;
+    const oldTotal =
+      ((current as Record<string, unknown>).mailroom_location_total_lockers as
+        | number
+        | undefined) ?? 0;
+    const newTotal =
+      (updates.mailroom_location_total_lockers as number | undefined) ??
+      oldTotal;
 
-    // Determine which code to use for new lockers (newly updated code OR existing code)
-    const activeCode = updates.code !== undefined ? updates.code : current.code;
+    const activePrefix =
+      updates.mailroom_location_prefix !== undefined
+        ? updates.mailroom_location_prefix
+        : (current as Record<string, unknown>).mailroom_location_prefix;
 
     // Update the location
     const { data, error } = await supabaseAdmin
-      .from("mailroom_locations")
+      .from("mailroom_location_table")
       .update(updates)
-      .eq("id", id)
+      .eq("mailroom_location_id", id)
       .select()
       .single();
 
     if (error) {
-      console.error("Error updating location:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: (error as Error).message },
+        { status: 500 },
+      );
     }
 
     // If total_lockers increased, generate new lockers
     if (newTotal > oldTotal) {
-      const prefix = activeCode ? `${activeCode}-` : "L";
+      const prefix = activePrefix ? `${String(activePrefix)}-` : "L";
 
-      const lockersToCreate = [];
-      for (let i = oldTotal + 1; i <= newTotal; i++) {
+      const lockersToCreate: Array<Record<string, unknown>> = [];
+      for (let i = oldTotal + 1; i <= newTotal; i += 1) {
         lockersToCreate.push({
-          location_id: id,
-          locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
-          is_available: true,
+          mailroom_location_id: id,
+          location_locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
+          location_locker_is_available: true,
         });
       }
 
       if (lockersToCreate.length > 0) {
-        const { error: lockerError } = await supabaseAdmin
-          .from("location_lockers")
-          .insert(lockersToCreate);
-
-        if (lockerError) {
-          console.error("Error creating new lockers:", lockerError);
+        try {
+          const { error: lockerError } = await supabaseAdmin
+            .from("location_locker_table")
+            .insert(lockersToCreate);
+          void lockerError;
+        } catch (lockerErr: unknown) {
+          void lockerErr;
         }
       }
     }
 
+    const normalized = data
+      ? {
+          id: data.mailroom_location_id,
+          name: data.mailroom_location_name,
+          code: data.mailroom_location_prefix ?? null,
+          region: data.mailroom_location_region ?? null,
+          city: data.mailroom_location_city ?? null,
+          barangay: data.mailroom_location_barangay ?? null,
+          zip: data.mailroom_location_zip ?? null,
+          total_lockers: data.mailroom_location_total_lockers ?? 0,
+        }
+      : null;
+
     return NextResponse.json(
-      { message: "Location updated", data },
-      { status: 200 }
+      { message: "Location updated", data: normalized },
+      { status: 200 },
     );
-  } catch (err) {
-    console.error(
-      "Unexpected error in PATCH /api/admin/mailroom/locations/[id]:",
-      err
-    );
+  } catch (err: unknown) {
+    void err;
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,4 +1,4 @@
-//fetching locker availability based on locations in mailroom service registration
+// filepath: c:\Users\Raitoningu\code\keep-ph\app\api\mailroom\locations\availability\route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,37 +11,42 @@ const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   : supabase;
 
-export async function GET(req: Request) {
+type LockerRow = {
+  mailroom_location_id: string | null;
+};
+
+export async function GET(_req: Request) {
+  void _req;
   try {
     const client = supabaseAdmin;
 
-    // Fetch all available lockers (only location_id needed)
     const { data, error } = await client
-      .from("location_lockers")
-      .select("location_id")
-      .eq("is_available", true);
+      .from("location_locker_table")
+      .select("mailroom_location_id")
+      .eq("location_locker_is_available", true);
 
     if (error) {
-      console.error("Error fetching locker availability:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to fetch locker availability" },
+        { status: 500 },
+      );
     }
 
-    // Group and count by location_id
     const counts: Record<string, number> = {};
+    const rows = Array.isArray(data) ? (data as LockerRow[]) : [];
 
-    if (data) {
-      data.forEach((locker: any) => {
-        const locId = locker.location_id;
-        counts[locId] = (counts[locId] || 0) + 1;
-      });
+    for (const row of rows) {
+      const locId = row.mailroom_location_id;
+      if (!locId) continue;
+      counts[locId] = (counts[locId] || 0) + 1;
     }
 
-    return NextResponse.json(counts, { status: 200 });
-  } catch (err: any) {
-    console.error("Unexpected error in availability route:", err);
+    return NextResponse.json({ data: counts }, { status: 200 });
+  } catch (err: unknown) {
+    void err;
     return NextResponse.json(
-      { error: err.message || "Internal Server Error" },
-      { status: 500 }
+      { error: "Internal Server Error" },
+      { status: 500 },
     );
   }
 }
