@@ -1,51 +1,95 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+const supabase = SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  : createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // CHANGED: Renamed from PUT to PATCH to match frontend request
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const id = (await params).id;
-  const body = await request.json();
+  try {
+    const id = (await params).id;
+    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  // Validate status - Removed "Empty" to match schema and frontend
-  const validStatuses = ["Normal", "Near Full", "Full"];
-  if (!validStatuses.includes(body.status)) {
-    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    const body = await request
+      .json()
+      .catch(() => ({}) as Record<string, unknown>);
+    const status = String(body.status ?? "").trim();
+
+    const validStatuses = ["Empty", "Normal", "Near Full", "Full"];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from("mailroom_assigned_locker_table")
+      .update({ mailroom_assigned_locker_status: status })
+      .eq("mailroom_assigned_locker_id", id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (err: unknown) {
+    void err;
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
-
-  const { error } = await supabase
-    .from("mailroom_assigned_lockers")
-    .update({ status: body.status })
-    .eq("id", id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const id = (await params).id;
+  try {
+    const id = (await params).id;
+    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const { error } = await supabase
-    .from("mailroom_assigned_lockers")
-    .delete()
-    .eq("id", id);
+    // fetch assignment to get locker id
+    const { data: assignRow, error: fetchErr } = await supabase
+      .from("mailroom_assigned_locker_table")
+      .select("mailroom_assigned_locker_id, location_locker_id")
+      .eq("mailroom_assigned_locker_id", id)
+      .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (fetchErr) {
+      return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    }
+
+    const lockerId = assignRow?.location_locker_id as string | undefined;
+
+    const { error: delErr } = await supabase
+      .from("mailroom_assigned_locker_table")
+      .delete()
+      .eq("mailroom_assigned_locker_id", id);
+
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+
+    if (lockerId) {
+      await supabase
+        .from("location_locker_table")
+        .update({ location_locker_is_available: true })
+        .eq("location_locker_id", lockerId);
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (err: unknown) {
+    void err;
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
-
-  return NextResponse.json({ success: true });
 }
