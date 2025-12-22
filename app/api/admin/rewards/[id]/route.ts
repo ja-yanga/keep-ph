@@ -2,20 +2,121 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications";
 import type { NotificationType } from "@/lib/notifications";
+import {
+  AdminUpdateClaimResponse,
+  RewardDbRow,
+  RpcAdminClaim,
+} from "@/utils/types/types";
+import { getRewardProofUrl } from "@/app/actions/get";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
-type RewardDbRow = {
-  rewards_claim_id: string;
-  user_id: string;
-  rewards_claim_payment_method?: string | null;
-  rewards_claim_account_details?: string | null;
-  rewards_claim_amount?: number | null;
-  rewards_claim_status?: string | null;
-  rewards_claim_referral_count?: number | null;
-  rewards_claim_created_at?: string | null;
-  rewards_claim_processed_at?: string | null;
-  rewards_claim_proof_path?: string | null;
+const uploadProof = async (
+  proof_base64: string,
+  claimId: string,
+  userId: string,
+): Promise<string | undefined> => {
+  try {
+    // Log the start of the upload process
+    console.log("uploadProof:start", {
+      claimId,
+      userId,
+      base64Length: proof_base64 ? proof_base64.length : 0,
+    });
+
+    const raw = String(proof_base64);
+    const matches = raw.match(/^data:(.+);base64,(.+)$/);
+    let mime = "application/octet-stream";
+    let b64 = raw;
+
+    if (matches) {
+      mime = matches[1];
+      b64 = matches[2];
+    } else if (raw.includes(",")) {
+      b64 = raw.split(",")[1];
+    }
+
+    const ext = mime.split("/")[1] || "bin";
+    const path = `${userId}/${claimId}.${ext}`;
+
+    // Log the processed file info
+    console.log("uploadProof:fileInfo", {
+      mime,
+      ext,
+      path,
+      b64Length: b64.length,
+    });
+
+    // Check if the bucket exists
+    const { data: buckets, error: bucketsError } =
+      await supabaseAdmin.storage.listBuckets();
+
+    if (bucketsError) {
+      console.error("uploadProof:listBuckets:error", bucketsError);
+      throw new Error(
+        `Failed to list storage buckets: ${bucketsError.message}`,
+      );
+    }
+
+    const bucketExists = buckets.some(
+      (bucket) => bucket.name === "REWARD-PROOFS",
+    );
+
+    if (!bucketExists) {
+      console.error("uploadProof:bucketNotFound", {
+        buckets: buckets.map((b) => b.name),
+      });
+      throw new Error("Storage bucket 'REWARD-PROOFS' does not exist");
+    }
+
+    // Create buffer from base64
+    const buffer = Buffer.from(b64, "base64");
+
+    // Upload the file
+    const { data: uploadData, error: upErr } = await supabaseAdmin.storage
+      .from("REWARD-PROOFS")
+      .upload(path, buffer, {
+        contentType: mime,
+        upsert: true,
+      });
+
+    if (upErr) {
+      const serr = upErr as unknown as {
+        status?: number | string;
+        statusCode?: number | string;
+        message?: string;
+        error?: string;
+      };
+
+      const statusCode = serr.status ?? serr.statusCode ?? 500;
+      const msg = serr.message ?? serr.error ?? String(upErr);
+
+      console.error("uploadProof:uploadError", {
+        statusCode,
+        message: msg,
+        error: upErr,
+        errorJson: JSON.stringify(upErr, Object.getOwnPropertyNames(upErr)),
+      });
+
+      if (String(statusCode) === "403") {
+        throw new Error(
+          `Storage upload forbidden: ${msg}. Ensure SUPABASE_SERVICE_ROLE_KEY has access to "REWARD-PROOFS".`,
+        );
+      }
+
+      throw new Error(`Failed to upload proof: ${msg}`);
+    }
+
+    console.log("uploadProof:success", { path, uploadData });
+    return path;
+  } catch (error) {
+    console.error("uploadProof:unexpectedError", {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 };
 
 export async function PUT(
@@ -34,7 +135,6 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
-    // fetch existing claim using updated schema names
     const { data: oldClaimRaw, error: oldErr } = await supabaseAdmin
       .from("rewards_claim_table")
       .select(
@@ -49,154 +149,93 @@ export async function PUT(
 
     const oldClaim = oldClaimRaw as RewardDbRow;
 
-    // prepare updates with typed shape
-    const updates: Record<string, unknown> = {
-      rewards_claim_status: status,
-    };
-    if (status === "PAID") {
-      updates.rewards_claim_processed_at = new Date().toISOString();
-    }
-
-    // handle proof upload if provided
+    let proofPath: string | undefined;
     if (proof_base64) {
-      // expected formats: data:<mime>;base64,<data>  OR raw base64
-      const raw = String(proof_base64);
-      const matches = raw.match(/^data:(.+);base64,(.+)$/);
-      let mime = "application/octet-stream";
-      let b64 = raw;
-      if (matches) {
-        mime = matches[1];
-        b64 = matches[2];
-      } else if (raw.includes(",")) {
-        b64 = raw.split(",")[1];
-      }
-      const ext = mime.split("/")[1] || "bin";
-      const userId = oldClaim.user_id;
-      const path = `${userId}/${id}.${ext}`;
-
-      const buffer = Buffer.from(b64, "base64");
-      const { error: upErr } = await supabaseAdmin.storage
-        .from("REWARD-PROOFS")
-        .upload(path, buffer, {
-          contentType: mime,
-          upsert: true,
-        });
-
-      if (upErr) {
-        console.error("storage upload error", upErr);
-        const serr = upErr as unknown as {
-          status?: number | string;
-          statusCode?: number | string;
-          message?: string;
-        };
-        const statusCode = serr.status ?? serr.statusCode ?? 500;
-        const msg = serr.message ?? String(upErr);
-        if (String(statusCode) === "403") {
-          return NextResponse.json(
-            {
-              error: `Storage upload forbidden: ${msg}. Ensure SUPABASE_SERVICE_ROLE_KEY is set and has storage permissions for bucket "REWARD-PROOFS".`,
-            },
-            { status: 403 },
-          );
-        }
-        return NextResponse.json(
-          { error: `Failed to upload proof: ${msg}` },
-          { status: 500 },
-        );
-      }
-
-      // store proof path in updated column name
-      updates.rewards_claim_proof_path = path;
+      proofPath = await uploadProof(proof_base64, id, oldClaim.user_id);
     }
 
-    const { data: updatedRaw, error } = await supabaseAdmin
-      .from("rewards_claim_table")
-      .update(updates)
-      .eq("rewards_claim_id", id)
-      .select()
-      .single();
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
+      "admin_update_reward_claim",
+      {
+        input_claim_id: id,
+        input_status: status,
+        input_proof_path: proofPath ?? null,
+      },
+    );
 
-    if (error) throw error;
+    if (rpcError) {
+      throw rpcError;
+    }
 
-    const updated = (updatedRaw as RewardDbRow) ?? null;
-
-    // optionally create signed URL for the uploaded proof
-    let signedUrl: string | null = null;
-    if (
-      updates.rewards_claim_proof_path &&
-      typeof updates.rewards_claim_proof_path === "string"
-    ) {
+    let parsed: AdminUpdateClaimResponse | null = null;
+    if (typeof rpcData === "string") {
       try {
-        const { data: urlData, error: urlErr } = await supabaseAdmin.storage
-          .from("REWARD-PROOFS")
-          .createSignedUrl(updates.rewards_claim_proof_path, 60 * 60);
-        if (!urlErr && urlData?.signedUrl) signedUrl = urlData.signedUrl;
-      } catch (e: unknown) {
-        console.debug("createSignedUrl error:", e);
+        parsed = JSON.parse(rpcData) as AdminUpdateClaimResponse;
+      } catch {
+        parsed = null;
       }
+    } else {
+      parsed = rpcData as AdminUpdateClaimResponse | null;
     }
 
-    // send notification if status changed
+    if (!parsed?.ok || !parsed.claim) {
+      const rpcMessage = parsed?.error ?? "Failed to update claim";
+      throw new Error(rpcMessage);
+    }
+
+    const updated = parsed.claim as RpcAdminClaim;
+
+    const proof_url = updated.proof_path
+      ? await getRewardProofUrl(updated.proof_path)
+      : null;
+
     try {
       if (
-        oldClaim.rewards_claim_status !== updated?.rewards_claim_status &&
+        oldClaim.rewards_claim_status !== updated.status &&
         oldClaim.user_id
       ) {
         const userId = oldClaim.user_id;
         let title = "Reward Update";
-        let message = `Your reward request (${String(id).slice(0, 8)}) status is now: ${updated?.rewards_claim_status}`;
-        let typeStr = "SYSTEM";
+        let message = `Your reward request (${String(id).slice(0, 8)}) status is now: ${updated.status}`;
+        let typeStr: NotificationType = "SYSTEM";
 
-        if (updated?.rewards_claim_status === "PROCESSING") {
+        if (updated.status === "PROCESSING") {
           title = "Reward Processing";
           message = `Your reward request (${String(id).slice(0, 8)}) is now being processed.`;
           typeStr = "REWARD_PROCESSING";
-        } else if (updated?.rewards_claim_status === "PAID") {
-          const amount =
-            updated?.rewards_claim_amount ??
-            oldClaim.rewards_claim_amount ??
-            "—";
+        } else if (updated.status === "PAID") {
+          const amount = updated.amount ?? oldClaim.rewards_claim_amount ?? "—";
           title = "Reward Paid";
           message = `Your reward request (${String(id).slice(0, 8)}) has been paid. Amount: PHP ${amount}.`;
           typeStr = "REWARD_PAID";
         }
 
-        const allowed = ["SYSTEM", "REWARD_PROCESSING", "REWARD_PAID"];
-        const notifType = (
-          allowed.includes(typeStr) ? typeStr : "SYSTEM"
-        ) as NotificationType;
-
-        await sendNotification(userId, title, message, notifType, "/referrals");
+        await sendNotification(userId, title, message, typeStr, "/referrals");
       }
     } catch (notifyErr: unknown) {
       console.error("Failed to send notification:", notifyErr);
-      // do not fail main request for notification errors
     }
-
-    // normalize return payload
-    const responseClaim = updated
-      ? {
-          id: updated.rewards_claim_id,
-          user_id: updated.user_id,
-          payment_method: updated.rewards_claim_payment_method ?? null,
-          account_details: updated.rewards_claim_account_details ?? null,
-          amount: updated.rewards_claim_amount ?? null,
-          status: updated.rewards_claim_status ?? null,
-          referral_count: updated.rewards_claim_referral_count ?? null,
-          created_at: updated.rewards_claim_created_at ?? null,
-          processed_at: updated.rewards_claim_processed_at ?? null,
-          proof_path: updated.rewards_claim_proof_path ?? null,
-        }
-      : null;
 
     return NextResponse.json({
       ok: true,
-      claim: responseClaim,
-      proof_url: signedUrl ?? null,
+      claim: updated,
+      proof_url,
     });
   } catch (err: unknown) {
+    // Properly handle and log the error object
     const message = err instanceof Error ? err.message : String(err);
-    console.error("admin.rewards.update:", message);
+
+    // Log detailed error information
+    console.error("admin.rewards.update:error", {
+      message,
+      error: err instanceof Error ? err.stack : String(err),
+      errorType: typeof err,
+      errorObject: JSON.stringify(
+        err,
+        Object.getOwnPropertyNames(err instanceof Object ? err : {}),
+      ),
+    });
+
     return NextResponse.json(
       { error: message || "Server error" },
       { status: 500 },

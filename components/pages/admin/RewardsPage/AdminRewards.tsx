@@ -32,40 +32,14 @@ import {
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
 import Image from "next/image";
+import {
+  AdminClaimApprove,
+  ClaimStatusTab,
+  ConfirmTarget,
+} from "@/utils/types/types";
+import { getStatusFormat, maskAccount } from "@/utils/helper";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
-// Helper function to mask account details
-const maskAccount = (v?: string | null) => {
-  if (!v) return "—";
-  const s = String(v);
-  if (s.length <= 6) return s.replace(/.(?=.{2})/g, "*");
-  return s.slice(0, 3) + s.slice(3, -3).replace(/./g, "*") + s.slice(-3);
-};
-
-type AdminUser = {
-  email?: string | null;
-  users_email?: string | null;
-  // first_name?: string | null;
-  // last_name?: string | null;
-};
-
-type AdminClaim = {
-  id: string;
-  user_id?: string | null;
-  user?: AdminUser | null;
-  referral_count?: number | null;
-  amount?: number | null;
-  payment_method?: string | null;
-  account_details?: string | null;
-  status?: "PENDING" | "PROCESSING" | "PAID" | string;
-  created_at?: string | null;
-  proof_url?: string | null;
-  proof_path?: string | null;
-};
-
-type ConfirmTarget = { id: string; status: "PROCESSING" | "PAID" } | null;
-type ClaimStatusTab = "PENDING" | "PAID";
 
 export default function AdminRewards() {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
@@ -88,15 +62,18 @@ export default function AdminRewards() {
   const [activeTab, setActiveTab] = useState<ClaimStatusTab>("PENDING");
 
   const [proofOpen, setProofOpen] = useState(false);
-  const [proofTargetRow, setProofTargetRow] = useState<AdminClaim | null>(null);
+  const [proofTargetRow, setProofTargetRow] =
+    useState<AdminClaimApprove | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const [viewProofOpen, setViewProofOpen] = useState(false);
-  const [viewProofRow, setViewProofRow] = useState<AdminClaim | null>(null);
+  const [viewProofRow, setViewProofRow] = useState<AdminClaimApprove | null>(
+    null,
+  );
 
-  const claims: AdminClaim[] = Array.isArray(data)
-    ? (data as AdminClaim[])
+  const claims: AdminClaimApprove[] = Array.isArray(data)
+    ? (data as AdminClaimApprove[])
     : [];
 
   useEffect(() => {
@@ -150,22 +127,56 @@ export default function AdminRewards() {
     if (!proofTargetRow) return;
     setUploading(true);
     try {
-      let proof_base64: string | null = null;
-      if (proofFile) {
-        proof_base64 = await new Promise<string | null>((resolve) => {
-          const fr = new FileReader();
-          fr.onload = () => resolve(String(fr.result));
-          fr.onerror = () => resolve(null);
-          fr.readAsDataURL(proofFile);
-        });
+      // Validate file exists
+      if (!proofFile) {
+        throw new Error("Please select a file to upload");
+      }
+
+      // Check file size (limit to 5MB)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      if (proofFile.size > MAX_FILE_SIZE) {
+        throw new Error(
+          `File size exceeds 5MB limit (${(proofFile.size / (1024 * 1024)).toFixed(2)}MB)`,
+        );
+      }
+
+      // Check file type
+      const validTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "application/pdf",
+      ];
+      if (!validTypes.includes(proofFile.type)) {
+        throw new Error(
+          `Invalid file type: ${proofFile.type}. Please upload an image or PDF.`,
+        );
+      }
+
+      // Convert file to base64
+      const proof_base64 = await new Promise<string | null>((resolve) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = (error) => {
+          console.error("File read error:", error);
+          resolve(null);
+        };
+        fr.readAsDataURL(proofFile);
+      });
+
+      if (!proof_base64) {
+        throw new Error("Failed to read file");
       }
 
       console.debug("admin:upload:prepare", {
         claimId: proofTargetRow?.id,
-        fileName: proofFile?.name ?? null,
-        base64Length: proof_base64 ? proof_base64.length : 0,
+        fileName: proofFile.name,
+        fileType: proofFile.type,
+        fileSize: proofFile.size,
+        base64Length: proof_base64.length,
       });
 
+      // Make the API request
       const res = await fetch(`/api/admin/rewards/${proofTargetRow.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -175,23 +186,43 @@ export default function AdminRewards() {
         }),
       });
 
-      const text = await res.text().catch(() => "");
+      // Clone the response before reading its body to avoid consuming it
+      const responseClone = res.clone();
+
+      // Try to parse as JSON first
       let json: Record<string, unknown> | null = null;
+      let responseText = "";
+
       try {
-        json = text ? JSON.parse(text) : null;
-      } catch {
-        json = null;
-      }
-      if (!res.ok) {
-        console.error("admin:upload:response", {
+        json = await res.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, get the text content
+        responseText = await responseClone.text().catch(() => "");
+        console.error("admin:upload:json_parse_error", {
+          error: String(jsonError),
+          responseText,
           status: res.status,
-          bodyText: text,
-          json,
+          statusText: res.statusText,
         });
-        throw new Error(
-          (json && (json.error as string)) ?? text ?? "Failed to upload proof",
-        );
       }
+
+      if (!res.ok) {
+        console.error("admin:upload:response_error", {
+          status: res.status,
+          statusText: res.statusText,
+          json,
+          responseText,
+        });
+
+        // Extract error message with better fallbacks
+        const errorMessage = json?.error
+          ? String(json.error)
+          : responseText ||
+            `Failed to upload proof (${res.status}: ${res.statusText})`;
+
+        throw new Error(errorMessage);
+      }
+
       console.debug("admin:upload:success", {
         claimId: proofTargetRow.id,
         body: json,
@@ -210,7 +241,7 @@ export default function AdminRewards() {
       setProofFile(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(message);
+      console.error("admin:upload:error", message);
       notifications.show({
         title: "Error",
         message,
@@ -257,12 +288,6 @@ export default function AdminRewards() {
         <Loader />
       </Center>
     );
-
-  const getStatusColor = (status?: string | null) => {
-    if (status === "PAID") return "green";
-    if (status === "PROCESSING") return "orange";
-    return "gray";
-  };
 
   // avoid nested ternary expressions for proof preview
   let viewProofContent: React.ReactNode = (
@@ -403,14 +428,14 @@ export default function AdminRewards() {
               accessor: "id",
               title: "Claim",
               width: 120,
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Text fw={700}>{String(row.id).slice(0, 8)}</Text>
               ),
             },
             {
               accessor: "user",
               title: "User",
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Stack gap={2}>
                   <Text size="sm" fw={500}>
                     {row.user?.users_email ?? row.user?.email ?? row.user_id}
@@ -427,7 +452,7 @@ export default function AdminRewards() {
               accessor: "referral_count",
               title: "Referrals",
               width: 100,
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Text>{row.referral_count ?? "—"}</Text>
               ),
             },
@@ -435,14 +460,14 @@ export default function AdminRewards() {
               accessor: "amount",
               title: "Amount",
               width: 120,
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Text fw={700}>PHP {row.amount ?? "—"}</Text>
               ),
             },
             {
               accessor: "method_account",
               title: "Method / Account",
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Stack gap={2}>
                   <Text size="sm" fw={500}>
                     {row.payment_method ?? "—"}
@@ -478,7 +503,7 @@ export default function AdminRewards() {
               accessor: "created_at",
               title: "Requested",
               width: 180,
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Text size="sm">
                   {row.created_at
                     ? new Date(row.created_at).toLocaleString()
@@ -491,9 +516,9 @@ export default function AdminRewards() {
               title: "Status",
               width: 100,
               textAlign: "center",
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Center>
-                  <Badge color={getStatusColor(row.status)} size="md">
+                  <Badge color={getStatusFormat(row.status)} size="md">
                     {row.status ?? "—"}
                   </Badge>
                 </Center>
@@ -504,7 +529,7 @@ export default function AdminRewards() {
               title: "Actions",
               width: 180,
               textAlign: "right",
-              render: (row: AdminClaim) => (
+              render: (row: AdminClaimApprove) => (
                 <Group justify="flex-end" gap="xs">
                   {row.status === "PENDING" && (
                     <Button

@@ -143,3 +143,103 @@ BEGIN
   );
 END;
 $$;
+
+-- RPC: list reward claims for admins
+CREATE OR REPLACE FUNCTION admin_list_reward_claims()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  result JSON := '[]'::JSON;
+BEGIN
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'id', r.rewards_claim_id,
+        'user_id', r.user_id,
+        'payment_method', r.rewards_claim_payment_method,
+        'account_details', r.rewards_claim_account_details,
+        'amount', r.rewards_claim_amount,
+        'status', r.rewards_claim_status,
+        'referral_count', r.rewards_claim_referral_count,
+        'created_at', r.rewards_claim_created_at,
+        'processed_at', r.rewards_claim_processed_at,
+        'proof_path', r.rewards_claim_proof_path,
+        'user', CASE
+          WHEN u.users_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'id', u.users_id,
+            'email', u.users_email,
+            'referral_code', u.users_referral_code
+          )
+          ELSE NULL
+        END
+      )
+      ORDER BY r.rewards_claim_created_at DESC
+    ),
+    '[]'::JSON
+  )
+  INTO result
+  FROM public.rewards_claim_table r
+  LEFT JOIN public.users_table u ON u.users_id = r.user_id;
+
+  RETURN result;
+END;
+$$;
+
+-- RPC: update reward claim status for admins
+CREATE OR REPLACE FUNCTION admin_update_reward_claim(
+  input_claim_id UUID,
+  input_status TEXT,
+  input_proof_path TEXT DEFAULT NULL
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  allowed_status CONSTANT TEXT[] := ARRAY['PROCESSING', 'PAID'];
+  updated_row public.rewards_claim_table%ROWTYPE;
+BEGIN
+  IF input_claim_id IS NULL OR input_status IS NULL THEN
+    RAISE EXCEPTION 'claim id and status are required';
+  END IF;
+
+  IF NOT input_status = ANY(allowed_status) THEN
+    RAISE EXCEPTION 'Invalid status %', input_status;
+  END IF;
+
+  UPDATE public.rewards_claim_table
+  SET
+    rewards_claim_status = input_status::public.rewards_claim_status,
+    rewards_claim_processed_at = CASE
+      WHEN input_status = 'PAID' THEN NOW()
+      ELSE rewards_claim_processed_at
+    END,
+    rewards_claim_proof_path = COALESCE(input_proof_path, rewards_claim_proof_path)
+  WHERE rewards_claim_id = input_claim_id
+  RETURNING * INTO updated_row;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Claim not found';
+  END IF;
+
+  RETURN JSON_BUILD_OBJECT(
+    'ok', TRUE,
+    'claim', JSON_BUILD_OBJECT(
+      'id', updated_row.rewards_claim_id,
+      'user_id', updated_row.user_id,
+      'payment_method', updated_row.rewards_claim_payment_method,
+      'account_details', updated_row.rewards_claim_account_details,
+      'amount', updated_row.rewards_claim_amount,
+      'status', updated_row.rewards_claim_status,
+      'referral_count', updated_row.rewards_claim_referral_count,
+      'created_at', updated_row.rewards_claim_created_at,
+      'processed_at', updated_row.rewards_claim_processed_at,
+      'proof_path', updated_row.rewards_claim_proof_path
+    )
+  );
+END;
+$$;
