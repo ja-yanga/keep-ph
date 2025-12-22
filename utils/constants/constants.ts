@@ -77,3 +77,92 @@ export const LANDING_PAGE = {
     descriptionFallback: "A flexible plan built for modern mail handling.",
   },
 };
+
+export const REFERRALS_UI = {
+  threshold: 10,
+  rewardAmount: 500,
+  hero: {
+    title: "Refer & Earn Rewards",
+    description:
+      "Share your unique code below. Refer {threshold} friends to unlock a cash reward!",
+  },
+  summaryCard: {
+    title: "Reward Claim",
+    description: "You already requested a reward. See the claim details below.",
+    labels: {
+      amount: "Amount:",
+      method: "Method:",
+      account: "Account:",
+      requested: "Requested:",
+    },
+    buttons: {
+      viewPaid: "View Payout — Paid",
+      viewProcessing: "View Claim — Processing",
+      viewClaim: "View Claim",
+    },
+  },
+  progressCard: {
+    unlockedTitle: "Reward Unlocked! 🏆",
+    progressTitle: "Referral Progress",
+    unlockedDescription: "Click below to claim your cash reward now!",
+    progressDescription:
+      "You need {remaining} more referrals to claim your reward.",
+    buttons: {
+      claim: "Claim Reward",
+      keepReferring: "Keep Referring",
+    },
+  },
+  codeCard: {
+    heading: "Your Unique Referral Code",
+    copyDefault: "Copy Code",
+    copySuccess: "Copied to Clipboard",
+  },
+  table: {
+    heading: "Referral History",
+    headingColor: "#1A237E",
+  },
+  datatable: {
+    columns: {
+      service: "Service Type",
+      email: "Referred",
+      dateJoined: "Date Joined",
+      status: "Status",
+    },
+    statusComplete: "Completed",
+    defaultService: "General Referral",
+    userPrefix: "User: ",
+    fallbackEmail: "N/A",
+    fallbackDate: "—",
+    empty: "No referrals yet",
+  },
+  modal: {
+    title: "Submit Reward Payout Request",
+    description:
+      "Congratulations! Provide your payout details below. Requests are typically processed within 24–48 hours.",
+    rewardLabel: "Reward: PHP {amount}.00",
+    fieldLabelTemplate: "Your {method} Mobile Number / Account",
+    placeholder: "e.g., 0917XXXXXXX",
+    submitButton: "Submit Payout Request",
+    terms: "By submitting, you agree to the payout terms.",
+    alertTitle: "Invalid number",
+  },
+  notifications: {
+    requiredTitle: "Required",
+    requiredMessage: "Please enter your {method} account.",
+    invalidNumber:
+      "Mobile number must start with 09 and be 11 digits (e.g. 09121231234).",
+    notSignedInTitle: "Not signed in",
+    notSignedInMessage: "You must be signed in to claim rewards.",
+    claimFailedTitle: "Claim Failed",
+    claimFailedDefault: "Failed to submit claim",
+    claimSubmittedTitle: "Claim Submitted",
+    claimSubmittedMessage:
+      "Your reward request is submitted and will be processed.",
+    errorTitle: "Error",
+    errorMessage: "Network error. Please try again later.",
+  },
+  paymentMethods: {
+    gcash: "GCash",
+    maya: "Maya",
+  },
+};

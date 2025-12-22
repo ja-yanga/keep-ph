@@ -31,6 +31,7 @@ import RewardClaimModal from "@/components/pages/ReferralsPage/RewardClaimModal"
 import ClaimStatusModal from "@/components/ClaimStatusModal";
 import { ClaimRow, ReferralRow } from "@/utils/types/types";
 import { maskAccount, pickNumber, pickString } from "@/utils/helper";
+import { REFERRALS_UI } from "@/utils/constants/constants";
 import { ReferralsTable } from "./ReferralsRow";
 
 export default function ReferralsContent() {
@@ -41,9 +42,18 @@ export default function ReferralsContent() {
   const [loading, setLoading] = useState(true);
 
   // State for reward logic
-  const REWARD_THRESHOLD = 10;
+  const REWARD_THRESHOLD = REFERRALS_UI.threshold;
   const referralCount = referrals.length;
   const isRewardReady = referralCount >= REWARD_THRESHOLD;
+  const progressDescription =
+    REFERRALS_UI.progressCard.progressDescription.replace(
+      "{remaining}",
+      Math.max(REWARD_THRESHOLD - referralCount, 0).toString(),
+    );
+  const heroDescription = REFERRALS_UI.hero.description.replace(
+    "{threshold}",
+    REWARD_THRESHOLD.toString(),
+  );
 
   // New state for Modal
   const [opened, { open, close }] = useDisclosure(false);
@@ -213,15 +223,15 @@ export default function ReferralsContent() {
     buttonColor = "green";
   }
 
-  let buttonLabel = "Keep Referring";
+  let buttonLabel = REFERRALS_UI.progressCard.buttons.keepReferring;
   if (hasPending) {
-    buttonLabel = "View Claim — Processing";
+    buttonLabel = REFERRALS_UI.summaryCard.buttons.viewProcessing;
   } else if (latestClaim?.status === "PAID") {
-    buttonLabel = "View Payout — Paid";
+    buttonLabel = REFERRALS_UI.summaryCard.buttons.viewPaid;
   } else if (hasAnyClaim) {
-    buttonLabel = "View Claim";
+    buttonLabel = REFERRALS_UI.summaryCard.buttons.viewClaim;
   } else if (isRewardReady) {
-    buttonLabel = "Claim Reward";
+    buttonLabel = REFERRALS_UI.progressCard.buttons.claim;
   }
 
   return (
@@ -246,11 +256,10 @@ export default function ReferralsContent() {
             <IconGift size={32} />
           </ThemeIcon>
           <Title order={1} style={{ fontWeight: 800, color: "#1A237E" }}>
-            Refer & Earn Rewards
+            {REFERRALS_UI.hero.title}
           </Title>
           <Text c="dimmed" size="lg" ta="center" maw={600}>
-            Share your unique code below. Refer{" "}
-            <strong>{REWARD_THRESHOLD} friends</strong> to unlock a cash reward!
+            {heroDescription}
           </Text>
         </Stack>
 
@@ -273,7 +282,7 @@ export default function ReferralsContent() {
                   <Stack gap="xs">
                     <Group gap="sm" align="center">
                       <Title order={4} c="dark.7" style={{ margin: 0 }}>
-                        Reward Claim
+                        {REFERRALS_UI.summaryCard.title}
                       </Title>
                       <Badge
                         color={
@@ -285,25 +294,32 @@ export default function ReferralsContent() {
                     </Group>
 
                     <Text size="sm" c="dimmed">
-                      You already requested a reward. See the claim details
-                      below.
+                      {REFERRALS_UI.summaryCard.description}
                     </Text>
 
                     <Stack gap={4}>
                       <Text size="sm">
-                        <strong>Amount:</strong> PHP{" "}
-                        {latestClaim?.amount ?? "—"}
+                        <strong>
+                          {REFERRALS_UI.summaryCard.labels.amount}
+                        </strong>{" "}
+                        PHP {latestClaim?.amount ?? "—"}
                       </Text>
                       <Text size="sm">
-                        <strong>Method:</strong>{" "}
+                        <strong>
+                          {REFERRALS_UI.summaryCard.labels.method}
+                        </strong>{" "}
                         {(latestClaim?.payment_method ?? "—").toUpperCase()}
                       </Text>
                       <Text size="sm">
-                        <strong>Account:</strong>{" "}
+                        <strong>
+                          {REFERRALS_UI.summaryCard.labels.account}
+                        </strong>{" "}
                         {maskAccount(latestClaim?.account_details)}
                       </Text>
                       <Text size="sm">
-                        <strong>Requested:</strong>{" "}
+                        <strong>
+                          {REFERRALS_UI.summaryCard.labels.requested}
+                        </strong>{" "}
                         {latestClaim?.created_at
                           ? new Date(latestClaim.created_at).toLocaleString()
                           : "—"}
@@ -322,8 +338,8 @@ export default function ReferralsContent() {
                       radius="xl"
                     >
                       {latestClaim?.status === "PAID"
-                        ? "View Payout — Paid"
-                        : "View Claim — Processing"}
+                        ? REFERRALS_UI.summaryCard.buttons.viewPaid
+                        : REFERRALS_UI.summaryCard.buttons.viewProcessing}
                     </Button>
                   </Stack>
                 </Group>
@@ -345,13 +361,13 @@ export default function ReferralsContent() {
                   <Stack gap={4}>
                     <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
                       {isRewardReady
-                        ? "Reward Unlocked! 🏆"
-                        : `Referral Progress (${referralCount}/${REWARD_THRESHOLD})`}
+                        ? REFERRALS_UI.progressCard.unlockedTitle
+                        : `${REFERRALS_UI.progressCard.progressTitle} (${referralCount}/${REWARD_THRESHOLD})`}
                     </Title>
                     <Text c="dimmed" size="sm">
                       {isRewardReady
-                        ? "Click below to claim your cash reward now!"
-                        : `You need ${REWARD_THRESHOLD - referralCount} more referrals to claim your reward.`}
+                        ? REFERRALS_UI.progressCard.unlockedDescription
+                        : progressDescription}
                     </Text>
                   </Stack>
 
@@ -403,7 +419,7 @@ export default function ReferralsContent() {
                     tt="uppercase"
                     style={{ letterSpacing: 1 }}
                   >
-                    Your Unique Referral Code
+                    {REFERRALS_UI.codeCard.heading}
                   </Text>
                 </Group>
 
@@ -441,7 +457,9 @@ export default function ReferralsContent() {
                         )
                       }
                     >
-                      {copied ? "Copied to Clipboard" : "Copy Code"}
+                      {copied
+                        ? REFERRALS_UI.codeCard.copySuccess
+                        : REFERRALS_UI.codeCard.copyDefault}
                     </Button>
                   )}
                 </CopyButton>
@@ -451,9 +469,12 @@ export default function ReferralsContent() {
             {/* Table Section */}
             <Box>
               <Group mb="md" align="center">
-                <IconUsers size={20} color="#1A237E" />
-                <Title order={3} style={{ color: "#1A237E" }}>
-                  Referral History
+                <IconUsers size={20} color={REFERRALS_UI.table.headingColor} />
+                <Title
+                  order={3}
+                  style={{ color: REFERRALS_UI.table.headingColor }}
+                >
+                  {REFERRALS_UI.table.heading}
                 </Title>
                 <Badge variant="light" color="gray" size="lg" circle>
                   {referralCount}

@@ -12,11 +12,14 @@ import type {
   ReferralsTableProps,
 } from "@/utils/types/types";
 import { pickStringValue } from "@/utils/helper";
+import { REFERRALS_UI } from "@/utils/constants/constants";
+
+const tableCopy = REFERRALS_UI.datatable;
 
 const columns: DataTableColumn<NormalizedReferral>[] = [
   {
     accessor: "service",
-    title: "Service Type",
+    title: tableCopy.columns.service,
     render: ({ service }) => (
       <Group gap="sm">
         <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
@@ -30,7 +33,7 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
   },
   {
     accessor: "email",
-    title: "Referred",
+    title: tableCopy.columns.email,
     render: ({ email }) => (
       <Text size="sm" c="dimmed">
         {email}
@@ -39,7 +42,7 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
   },
   {
     accessor: "dateText",
-    title: "Date Joined",
+    title: tableCopy.columns.dateJoined,
     render: ({ dateText }) => (
       <Text size="sm" c="dimmed">
         {dateText}
@@ -48,7 +51,7 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
   },
   {
     accessor: "status",
-    title: "Status",
+    title: tableCopy.columns.status,
     textAlign: "right",
     render: ({ status }) => (
       <Badge color="green" variant="light" size="sm">
@@ -69,7 +72,7 @@ const normalizeReferrals = (records: ReferralRow[]): NormalizedReferral[] =>
         "referral_service_type",
         "referrals_service_type",
         "service_type",
-      ]) ?? "General Referral";
+      ]) ?? tableCopy.defaultService;
 
     const email =
       pickStringValue(item, [
@@ -79,8 +82,8 @@ const normalizeReferrals = (records: ReferralRow[]): NormalizedReferral[] =>
         "referred_email",
       ]) ??
       (item.referral_referred_user_id
-        ? `User: ${item.referral_referred_user_id}`
-        : "N/A");
+        ? `${tableCopy.userPrefix}${item.referral_referred_user_id}`
+        : tableCopy.fallbackEmail);
 
     const dateValue =
       pickStringValue(item, [
@@ -90,14 +93,16 @@ const normalizeReferrals = (records: ReferralRow[]): NormalizedReferral[] =>
         "created_at",
       ]) ?? null;
 
-    const dateText = dateValue ? new Date(dateValue).toLocaleDateString() : "—";
+    const dateText = dateValue
+      ? new Date(dateValue).toLocaleDateString()
+      : tableCopy.fallbackDate;
 
     return {
       id,
       service,
       email,
       dateText,
-      status: "Completed",
+      status: tableCopy.statusComplete,
     };
   });
 
@@ -143,7 +148,7 @@ export const ReferralsTable = ({
         setPageSize(value);
         setPage(1);
       }}
-      noRecordsText="No referrals yet"
+      noRecordsText={tableCopy.empty}
     />
   );
 };
