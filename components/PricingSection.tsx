@@ -1,6 +1,6 @@
 "use client";
 
-import {useState} from "react";
+import { useState } from "react";
 import {
   Container,
   Stack,
@@ -17,14 +17,14 @@ import {
   rem,
   Badge,
 } from "@mantine/core";
-import {IconCheck, IconX} from "@tabler/icons-react";
+import { IconCheck, IconX } from "@tabler/icons-react";
 import Link from "next/link";
 
 const PRICING = {
-  free: {monthly: 0, annual: 0},
-  digital: {monthly: 299, annual: 239},
-  personal: {monthly: 499, annual: 399},
-  business: {monthly: 2999, annual: 2399},
+  free: { monthly: 0, annual: 0 },
+  digital: { monthly: 299, annual: 239 },
+  personal: { monthly: 499, annual: 399 },
+  business: { monthly: 2999, annual: 2399 },
 };
 
 export default function PricingSection() {
@@ -46,8 +46,8 @@ export default function PricingSection() {
               value={billing}
               onChange={(value) => setBilling(value as "monthly" | "annual")}
               data={[
-                {label: "Monthly Billing", value: "monthly"},
-                {label: "Annual Billing (-20%)", value: "annual"},
+                { label: "Monthly Billing", value: "monthly" },
+                { label: "Annual Billing (-20%)", value: "annual" },
               ]}
               size="md"
               radius="xl"
@@ -57,7 +57,7 @@ export default function PricingSection() {
           </Group>
         </Stack>
 
-        <SimpleGrid cols={{base: 1, sm: 2, lg: 4}} spacing="lg">
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
           {/* FREE PLAN */}
           <Card radius="lg" withBorder padding="xl">
             <Stack justify="space-between" h="100%">
@@ -104,7 +104,7 @@ export default function PricingSection() {
                 radius="md"
                 mt="xl"
               >
-                I'm Interested
+                I&apos;m Interested
               </Button>
             </Stack>
           </Card>
@@ -170,7 +170,7 @@ export default function PricingSection() {
                 radius="md"
                 mt="xl"
               >
-                I'm Interested
+                I&apos;m Interested
               </Button>
             </Stack>
           </Card>
@@ -204,8 +204,8 @@ export default function PricingSection() {
                 </Group>
                 {billing === "annual" && (
                   <Text size="xs" c="green" fw={500}>
-                    Billed ₱
-                    {(PRICING.personal.annual * 12).toLocaleString()} yearly
+                    Billed ₱{(PRICING.personal.annual * 12).toLocaleString()}{" "}
+                    yearly
                   </Text>
                 )}
                 <Text size="sm" c="dimmed" mt="xs">
@@ -260,7 +260,7 @@ export default function PricingSection() {
                 color="#1A237E"
                 mt="xl"
               >
-                I'm Interested
+                I&apos;m Interested
               </Button>
             </Stack>
           </Card>
@@ -280,8 +280,8 @@ export default function PricingSection() {
                 </Group>
                 {billing === "annual" && (
                   <Text size="xs" c="green" fw={500}>
-                    Billed ₱
-                    {(PRICING.business.annual * 12).toLocaleString()} yearly
+                    Billed ₱{(PRICING.business.annual * 12).toLocaleString()}{" "}
+                    yearly
                   </Text>
                 )}
                 <Text size="sm" c="dimmed" mt="xs">
@@ -326,7 +326,7 @@ export default function PricingSection() {
                 radius="md"
                 mt="xl"
               >
-                I'm Interested
+                I&apos;m Interested
               </Button>
             </Stack>
           </Card>
@@ -335,6 +335,3 @@ export default function PricingSection() {
     </Box>
   );
 }
-
-
-

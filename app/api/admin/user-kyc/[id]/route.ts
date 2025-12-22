@@ -1,33 +1,17 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { createServerClient } from "@supabase/ssr";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createSupabaseClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(
   req: Request,
-  context: { params: Promise<Record<string, string | undefined>> }
+  context: { params: Promise<Record<string, string | undefined>> },
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          /* noop */
-        },
-      },
-    });
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -73,7 +57,7 @@ export async function POST(
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const updatePayload: any = {
+    const updatePayload: Record<string, unknown> = {
       status: statusDb,
       updated_at: now,
     };
@@ -89,11 +73,9 @@ export async function POST(
     if (error) throw error;
 
     return NextResponse.json({ ok: true, data });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("admin KYC action error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? String(err) },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -1,17 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications"; // Import the helper
 
 // Initialize client directly with env vars since RLS is disabled
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createSupabaseServiceClient();
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function GET(req?: Request) {
   try {
@@ -29,7 +22,7 @@ export async function GET(req?: Request) {
           compact
             ? "id, package_name, status, package_type, received_at, registration:mailroom_registrations(id, full_name, email, mobile), locker:location_lockers(id, locker_code)"
             : "*, registration:mailroom_registrations(id, full_name, email, mobile, mailroom_code), locker:location_lockers(id, locker_code), package_photo, notes",
-          { count: "exact" }
+          { count: "exact" },
         )
         .order("received_at", { ascending: false })
         .range(offset, offset + limit - 1),
@@ -37,7 +30,7 @@ export async function GET(req?: Request) {
         .from("mailroom_registrations")
         // include the plan details under the same field name the frontend expects
         .select(
-          "id, full_name, email, mobile, mailroom_code, mailroom_plans:mailroom_plans(name, can_receive_mail, can_receive_parcels)"
+          "id, full_name, email, mobile, mailroom_code, mailroom_plans:mailroom_plans(name, can_receive_mail, can_receive_parcels)",
         ),
       supabaseAdmin
         .from("location_lockers")
@@ -69,14 +62,12 @@ export async function GET(req?: Request) {
           "Cache-Control":
             "private, max-age=0, s-maxage=30, stale-while-revalidate=60",
         },
-      }
+      },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("packages GET error:", err);
-    return NextResponse.json(
-      { error: err.message || "Failed" },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : "Failed";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -89,7 +80,7 @@ export async function POST(request: Request) {
     if (!packageName) {
       return NextResponse.json(
         { error: "package_name is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -143,12 +134,14 @@ export async function POST(request: Request) {
           registration.mailroom_code || "Unknown"
         }.`,
         "PACKAGE_ARRIVED",
-        `/mailroom/${body.registration_id}` // CHANGED: Link to specific mailroom
+        `/mailroom/${body.registration_id}`, // CHANGED: Link to specific mailroom
       );
     }
 
     return NextResponse.json(data);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

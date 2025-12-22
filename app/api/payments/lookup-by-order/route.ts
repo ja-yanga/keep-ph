@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function GET(req: Request) {
   try {
@@ -8,20 +8,11 @@ export async function GET(req: Request) {
     if (!order) {
       return NextResponse.json(
         { error: "order query param required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json(
-        { error: "Supabase not configured" },
-        { status: 500 }
-      );
-    }
-    const sb = createClient(supabaseUrl, supabaseKey);
+    const sb = createSupabaseServiceClient();
 
     // 1) Try DB first (recommended)
     // prefer payment record if it exists (final status)
@@ -59,7 +50,7 @@ export async function GET(req: Request) {
     if (!secret)
       return NextResponse.json(
         { error: "PAYMONGO_SECRET_KEY not set" },
-        { status: 500 }
+        { status: 500 },
       );
     const auth = `Basic ${Buffer.from(`${secret}:`).toString("base64")}`;
 
@@ -71,16 +62,21 @@ export async function GET(req: Request) {
     };
 
     const intents = await fetchList(
-      "https://api.paymongo.com/v1/payment_intents?limit=100"
+      "https://api.paymongo.com/v1/payment_intents?limit=100",
     );
     if (Array.isArray(intents)) {
-      const found = intents.find((item: any) => {
-        const md =
-          item?.attributes?.metadata ??
-          item?.data?.attributes?.metadata ??
-          null;
-        return md && String(md.order_id) === order;
-      });
+      const found = intents.find(
+        (item: {
+          attributes?: { metadata?: { order_id?: unknown } };
+          data?: { attributes?: { metadata?: { order_id?: unknown } } };
+        }) => {
+          const md =
+            item?.attributes?.metadata ??
+            item?.data?.attributes?.metadata ??
+            null;
+          return md && String(md.order_id) === order;
+        },
+      );
       if (found)
         return NextResponse.json({
           source: "paymongo",
@@ -90,16 +86,21 @@ export async function GET(req: Request) {
     }
 
     const sources = await fetchList(
-      "https://api.paymongo.com/v1/sources?limit=100"
+      "https://api.paymongo.com/v1/sources?limit=100",
     );
     if (Array.isArray(sources)) {
-      const found = sources.find((item: any) => {
-        const md =
-          item?.attributes?.metadata ??
-          item?.data?.attributes?.metadata ??
-          null;
-        return md && String(md.order_id) === order;
-      });
+      const found = sources.find(
+        (item: {
+          attributes?: { metadata?: { order_id?: unknown } };
+          data?: { attributes?: { metadata?: { order_id?: unknown } } };
+        }) => {
+          const md =
+            item?.attributes?.metadata ??
+            item?.data?.attributes?.metadata ??
+            null;
+          return md && String(md.order_id) === order;
+        },
+      );
       if (found)
         return NextResponse.json({
           source: "paymongo",
@@ -110,13 +111,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       { error: "No PayMongo resource found for order" },
-      { status: 404 }
+      { status: 404 },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("lookup-by-order error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? "server error" },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : "server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

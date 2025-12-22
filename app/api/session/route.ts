@@ -1,7 +1,8 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 // Admin client for fetching profile data (bypassing RLS if needed)
 const supabaseAdmin = createSupabaseServiceClient();
@@ -10,25 +11,9 @@ export async function GET(_request: Request) {
   // reference unused param to satisfy ESLint
   void _request;
   try {
-    const cookieStore = await cookies();
-
     // 1. Create the Supabase client using the cookies from the request
     // This automatically handles reading the correct 'sb-*-auth-token' cookies
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          // accept cookies to set (no-op) and reference param to satisfy ESLint
-          setAll(_cookiesToSet) {
-            void _cookiesToSet;
-          },
-        },
-      },
-    );
+    const supabase = await createClient();
 
     // 2. Get the user from the session
     const {

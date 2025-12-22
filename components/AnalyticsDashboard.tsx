@@ -17,7 +17,6 @@ import {
 import {
   IconUsers,
   IconEye,
-  IconClock,
   IconDeviceDesktop,
   IconDeviceMobile,
   IconChartBar,
@@ -45,9 +44,9 @@ export default function AnalyticsDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const [data, setData] = useState<{
-    visitorData: any[];
-    deviceData: any[];
-    topPages: any[];
+    visitorData: Array<{ date: string; visitors: number; pageviews: number }>;
+    deviceData: Array<{ name: string; value: number; color: string }>;
+    topPages: Array<{ name: string; views: number }>;
     stats: {
       activeNow: number;
       totalVisitors: number;
@@ -68,7 +67,7 @@ export default function AnalyticsDashboard() {
 
         const json = await res.json();
         setData(json);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err);
         setError("Could not load live data. Please check API credentials.");
       } finally {
@@ -92,7 +91,7 @@ export default function AnalyticsDashboard() {
   const deviceData = data?.deviceData || [];
 
   // CHANGED: Filter out pages with UUIDs (e.g., /mailroom/123-abc...)
-  const topPages = (data?.topPages || []).filter((page: any) => {
+  const topPages = (data?.topPages || []).filter((page: { name: string }) => {
     // Regex to detect UUIDs (8-4-4-4-12 hex characters)
     const uuidRegex =
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;

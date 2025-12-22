@@ -1,30 +1,14 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { createServerClient } from "@supabase/ssr";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createSupabaseClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function GET(req: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          /* noop */
-        },
-      },
-    });
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -67,7 +51,7 @@ export async function GET(req: Request) {
           "verified_at",
           "created_at",
           "updated_at",
-        ].join(",")
+        ].join(","),
       )
       .order("submitted_at", { ascending: false })
       .limit(limit);
@@ -75,7 +59,7 @@ export async function GET(req: Request) {
     if (q) {
       // simple ilike search against name and id number
       builder.or(
-        `full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,id_document_number.ilike.%${q}%`
+        `full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,id_document_number.ilike.%${q}%`,
       );
     }
 
@@ -83,11 +67,9 @@ export async function GET(req: Request) {
     if (error) throw error;
 
     return NextResponse.json({ data });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("admin KYC list error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? String(err) },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -5,7 +5,6 @@ import "mantine-datatable/styles.layer.css";
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
-  ActionIcon,
   Badge,
   Button,
   Group,
@@ -24,12 +23,10 @@ import {
 } from "@mantine/core";
 import {
   IconSearch,
-  IconLock,
   IconKey,
   IconMail,
   IconMapPin,
   IconCalendar,
-  IconTrash,
   IconInfoCircle,
   IconPhone,
   IconRefresh,
@@ -42,7 +39,7 @@ import { DataTable } from "mantine-datatable";
 import dayjs from "dayjs";
 import { useDisclosure } from "@mantine/hooks";
 
-interface Registration {
+type Registration = {
   id: string;
   mailroom_code: string | null;
   full_name: string;
@@ -56,33 +53,35 @@ interface Registration {
   mailroom_status: boolean;
   location_name?: string;
   plan_name?: string;
-}
+};
 
 // Add Plan Interface
-interface Plan {
+type Plan = {
   id: string;
   name: string;
   months: number;
-}
+};
 
-interface Locker {
+type Locker = {
   id: string;
   locker_code: string;
   is_available: boolean;
   location_id?: string;
-}
+};
 
-interface AssignedLocker {
+type AssignedLocker = {
   id: string;
   registration_id: string;
   locker_id: string;
   status?: "Empty" | "Normal" | "Near Full" | "Full";
-}
+};
 
 export default function MailroomRegistrations() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
-  const [locations, setLocations] = useState<any[]>([]); // ADDED: store locations
+  const [locations, setLocations] = useState<
+    Array<{ id: string; name: string; city?: string }>
+  >([]); // ADDED: store locations
   const [plans, setPlans] = useState<Plan[]>([]);
   const [assignments, setAssignments] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,11 +113,9 @@ export default function MailroomRegistrations() {
     return res.json().catch(() => ({}));
   };
 
-  const {
-    data: combinedData,
-    error: combinedError,
-    isValidating,
-  } = useSWR(combinedKey, fetcher, { revalidateOnFocus: true });
+  const { data: combinedData, isValidating } = useSWR(combinedKey, fetcher, {
+    revalidateOnFocus: true,
+  });
 
   // Sync SWR combined response into local state
   useEffect(() => {
@@ -129,24 +126,30 @@ export default function MailroomRegistrations() {
     const rawRegs = Array.isArray(payload.registrations)
       ? payload.registrations
       : [];
-    const normalizedRegs = rawRegs.map((r: any) => ({
-      ...r,
-      phone_number: r.mobile ?? r.phone ?? r.phone_number ?? null,
-      // keep backward-compatible plan/location fields if the server returned nested relations
-      plan_id: r.plan_id ?? r.plan?.id ?? null,
-      plan_name: r.plan_name ?? r.plan?.name ?? null,
-      location_id: r.location_id ?? r.location?.id ?? null,
-      location_name: r.location_name ?? r.location?.name ?? null,
-    }));
+    const normalizedRegs = rawRegs.map(
+      (r: {
+        mobile?: string;
+        phone?: string;
+        phone_number?: string;
+        [key: string]: unknown;
+      }) => ({
+        ...r,
+        phone_number: r.mobile ?? r.phone ?? r.phone_number ?? null,
+        // keep backward-compatible plan/location fields if the server returned nested relations
+        plan_id: r.plan_id ?? r.plan?.id ?? null,
+        plan_name: r.plan_name ?? r.plan?.name ?? null,
+        location_id: r.location_id ?? r.location?.id ?? null,
+        location_name: r.location_name ?? r.location?.name ?? null,
+      }),
+    );
     setRegistrations(normalizedRegs);
 
     setLockers(Array.isArray(payload.lockers) ? payload.lockers : []);
     setAssignments(
-      Array.isArray(payload.assignedLockers) ? payload.assignedLockers : []
+      Array.isArray(payload.assignedLockers) ? payload.assignedLockers : [],
     );
     setPlans(Array.isArray(payload.plans) ? payload.plans : []);
     setLocations(Array.isArray(payload.locations) ? payload.locations : []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combinedData, isValidating]);
 
   // Initial cron run and seed by revalidating SWR
@@ -164,7 +167,6 @@ export default function MailroomRegistrations() {
       }
     };
     void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // convenience refresh function used after mutations (only refresh combined key)
@@ -185,12 +187,13 @@ export default function MailroomRegistrations() {
   const handleOpenLockerModal = (user: Registration) => {
     setSelectedUser(user);
     const currentAssignment = assignments.find(
-      (a) => a.registration_id === user.id
+      (a) => a.registration_id === user.id,
     );
     setSelectedLockerId(currentAssignment ? currentAssignment.locker_id : null);
     openLockerModal();
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const handleSaveAssignment = async () => {
     if (!selectedUser) return;
     setSubmitting(true);
@@ -199,7 +202,7 @@ export default function MailroomRegistrations() {
       if (!selectedLockerId) {
         // Unassign
         const current = assignments.find(
-          (a) => a.registration_id === selectedUser.id
+          (a) => a.registration_id === selectedUser.id,
         );
         if (current) {
           await fetch(`/api/admin/mailroom/assigned-lockers/${current.id}`, {
@@ -293,13 +296,13 @@ export default function MailroomRegistrations() {
 
   const paginatedRegistrations = filteredRegistrations.slice(
     (page - 1) * pageSize,
-    page * pageSize
+    page * pageSize,
   );
 
   // Helper to get ALL assigned locker codes for a user
   const getAssignedLockers = (regId: string) => {
     const userAssignments = assignments.filter(
-      (a) => a.registration_id === regId
+      (a) => a.registration_id === regId,
     );
 
     return userAssignments.map((a) => {
@@ -574,7 +577,7 @@ export default function MailroomRegistrations() {
 
                     {(() => {
                       const foundLoc = locations.find(
-                        (l) => l.id === selectedUser.location_id
+                        (l) => l.id === selectedUser.location_id,
                       );
                       return (
                         <div>
@@ -634,15 +637,12 @@ export default function MailroomRegistrations() {
                         <Table.Td>
                           <Badge
                             variant="light"
-                            color={
-                              l.status === "Full"
-                                ? "red"
-                                : l.status === "Near Full"
-                                ? "orange"
-                                : l.status === "Empty"
-                                ? "gray"
-                                : "blue"
-                            }
+                            color={(() => {
+                              if (l.status === "Full") return "red";
+                              if (l.status === "Near Full") return "orange";
+                              if (l.status === "Empty") return "gray";
+                              return "blue";
+                            })()}
                           >
                             {l.status}
                           </Badge>
@@ -693,7 +693,7 @@ export default function MailroomRegistrations() {
                           registration_id: selectedUser.id,
                           locker_id: selectedLockerId,
                         }),
-                      }
+                      },
                     );
                     if (!res.ok) throw new Error("Failed");
 
@@ -704,7 +704,7 @@ export default function MailroomRegistrations() {
                     });
                     setSelectedLockerId(null);
                     await refreshAll();
-                  } catch (e) {
+                  } catch {
                     notifications.show({
                       title: "Error",
                       message: "Failed to assign",

@@ -1,8 +1,8 @@
 "use client";
 
-import {useState, useEffect} from "react";
-import {useRouter} from "next/navigation";
-import {createBrowserClient} from "@supabase/ssr";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   Button,
   PasswordInput,
@@ -13,9 +13,8 @@ import {
   Text,
   Loader,
   Center,
-  Box,
 } from "@mantine/core";
-import {notifications} from "@mantine/notifications";
+import { notifications } from "@mantine/notifications";
 
 export default function UpdatePasswordForm() {
   const [password, setPassword] = useState("");
@@ -23,16 +22,13 @@ export default function UpdatePasswordForm() {
   const [verifying, setVerifying] = useState(true);
   const router = useRouter();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
 
   useEffect(() => {
     const initSession = async () => {
       // Check if a session already exists
       const {
-        data: {session},
+        data: { session },
       } = await supabase.auth.getSession();
 
       if (session) {
@@ -48,7 +44,7 @@ export default function UpdatePasswordForm() {
         const refresh_token = params.get("refresh_token")!;
 
         // Set session manually
-        const {error} = await supabase.auth.setSession({
+        const { error } = await supabase.auth.setSession({
           access_token,
           refresh_token,
         });
@@ -67,7 +63,7 @@ export default function UpdatePasswordForm() {
         window.history.replaceState(
           {},
           document.title,
-          window.location.pathname
+          window.location.pathname,
         );
         setVerifying(false);
         return;
@@ -89,7 +85,7 @@ export default function UpdatePasswordForm() {
     if (!password) return;
     setLoading(true);
 
-    const {error} = await supabase.auth.updateUser({password});
+    const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
       notifications.show({
@@ -113,19 +109,19 @@ export default function UpdatePasswordForm() {
 
   if (verifying) {
     return (
-      <Center style={{flex: 1}}>
+      <Center style={{ flex: 1 }}>
         <Loader size="lg" />
       </Center>
     );
   }
 
   return (
-    <Center style={{flex: 1, padding: "40px 0"}}>
+    <Center style={{ flex: 1, padding: "40px 0" }}>
       <Container size={420} w="100%">
         <Title
           ta="center"
           order={2}
-          style={{fontFamily: "Greycliff CF, sans-serif"}}
+          style={{ fontFamily: "Greycliff CF, sans-serif" }}
         >
           Set New Password
         </Title>
@@ -146,7 +142,7 @@ export default function UpdatePasswordForm() {
               fullWidth
               onClick={handleUpdate}
               loading={loading}
-              style={{backgroundColor: "#1A237E"}}
+              style={{ backgroundColor: "#1A237E" }}
             >
               Update Password
             </Button>
@@ -156,6 +152,3 @@ export default function UpdatePasswordForm() {
     </Center>
   );
 }
-
-
-

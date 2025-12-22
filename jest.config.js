@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- Jest config requires CommonJS
 const nextJest = require("next/jest");
 
 const createJestConfig = nextJest({

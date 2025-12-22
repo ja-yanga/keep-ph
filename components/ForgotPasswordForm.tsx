@@ -1,8 +1,7 @@
 "use client";
 
-import {useState} from "react";
+import { useState } from "react";
 import {
-  Box,
   Container,
   Title,
   Text,
@@ -38,8 +37,8 @@ export default function ForgotPasswordForm() {
     try {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({email}),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
 
       const data = await res.json();
@@ -58,7 +57,7 @@ export default function ForgotPasswordForm() {
   };
 
   return (
-    <Center style={{flex: 1, padding: "4rem 1rem"}}>
+    <Center style={{ flex: 1, padding: "4rem 1rem" }}>
       <Container size="xs" w="100%">
         <Stack gap="lg">
           <Stack gap={4} align="center">
@@ -82,16 +81,11 @@ export default function ForgotPasswordForm() {
             shadow="xl"
             p={30}
             radius="md"
-            style={{backgroundColor: "#fff", borderColor: "#E9ECEF"}}
+            style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
           >
             {success ? (
               <Stack align="center" gap="md">
-                <ThemeIcon
-                  size={60}
-                  radius="50%"
-                  color="teal"
-                  variant="light"
-                >
+                <ThemeIcon size={60} radius="50%" color="teal" variant="light">
                   <IconMail size={30} />
                 </ThemeIcon>
                 <Text ta="center" fw={500}>
@@ -157,7 +151,7 @@ export default function ForgotPasswordForm() {
                 size="sm"
                 c="dimmed"
                 display="flex"
-                style={{alignItems: "center", gap: 5}}
+                style={{ alignItems: "center", gap: 5 }}
               >
                 <IconArrowLeft size={14} /> Back to Login
               </Anchor>
@@ -168,6 +162,3 @@ export default function ForgotPasswordForm() {
     </Center>
   );
 }
-
-
-

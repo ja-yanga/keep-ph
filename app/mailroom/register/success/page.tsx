@@ -8,7 +8,7 @@ export default function MailroomRegisterSuccessPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
-  const [debug, setDebug] = useState<any>(null);
+  const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -24,7 +24,7 @@ export default function MailroomRegisterSuccessPage() {
       try {
         // check server-side registration finalization (preferred)
         const res = await fetch(
-          `/api/mailroom/lookup-by-order?order=${encodeURIComponent(orderStr)}`
+          `/api/mailroom/lookup-by-order?order=${encodeURIComponent(orderStr)}`,
         );
         const json = await res.json().catch(() => null);
         setDebug(json);
@@ -80,7 +80,8 @@ export default function MailroomRegisterSuccessPage() {
   return (
     <>
       <Alert title="Awaiting registration" color="yellow">
-        We're waiting for confirmation. This page will update automatically.
+        We&apos;re waiting for confirmation. This page will update
+        automatically.
       </Alert>
       <div
         style={{

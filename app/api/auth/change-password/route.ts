@@ -1,27 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-
     // 1. Authenticate User via Cookie (using @supabase/ssr)
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            // We are only reading here
-          },
-        },
-      }
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -39,16 +23,13 @@ export async function POST(req: NextRequest) {
     if (!currentPassword || !newPassword) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // 3. Verify Current Password
     // We create a temporary client to check credentials without affecting the current session
-    const tempClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const tempClient = createBrowserClient();
 
     const { error: signInError } = await tempClient.auth.signInWithPassword({
       email: user.email,
@@ -58,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (signInError) {
       return NextResponse.json(
         { error: "Incorrect current password" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -71,8 +52,10 @@ export async function POST(req: NextRequest) {
     if (updateError) throw updateError;
 
     return NextResponse.json({ message: "Password updated successfully" });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Change password error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const errorMessage =
+      err instanceof Error ? err.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

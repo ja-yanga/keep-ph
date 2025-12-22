@@ -7,9 +7,8 @@ import {
   SimpleGrid,
   ThemeIcon,
   Paper,
-  rem,
 } from "@mantine/core";
-import {IconMail, IconTruck, IconBuilding} from "@tabler/icons-react";
+import { IconMail, IconTruck, IconBuilding } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import HeroSection from "@/components/HeroSection";
@@ -28,7 +27,7 @@ export default function Home() {
     >
       <Nav />
 
-      <main style={{flex: 1}}>
+      <main style={{ flex: 1 }}>
         <HeroSection />
 
         {/* SERVICES SECTION */}
@@ -38,12 +37,12 @@ export default function Home() {
               Everything You Need to Go Virtual
             </Title>
             <Text c="dimmed" ta="center" size="lg" maw={700}>
-              From a simple mail dropbox to a complete virtual office, we've got
-              a solution for you.
+              From a simple mail dropbox to a complete virtual office,
+              we&apos;ve got a solution for you.
             </Text>
           </Stack>
 
-          <SimpleGrid cols={{base: 1, md: 3}} spacing={30}>
+          <SimpleGrid cols={{ base: 1, md: 3 }} spacing={30}>
             {[
               {
                 icon: IconMail,
@@ -54,7 +53,7 @@ export default function Home() {
               {
                 icon: IconTruck,
                 title: "Mail Transfer & Forwarding",
-                desc: "Need the physical copy? We'll forward your mail and packages to any address in the world, quickly and reliably.",
+                desc: "Need the physical copy? We&apos;ll forward your mail and packages to any address in the world, quickly and reliably.",
                 color: "orange",
               },
               {
@@ -86,7 +85,7 @@ export default function Home() {
                   <Title order={3} size={22}>
                     {feature.title}
                   </Title>
-                  <Text c="dimmed" style={{lineHeight: 1.6}}>
+                  <Text c="dimmed" style={{ lineHeight: 1.6 }}>
                     {feature.desc}
                   </Text>
                 </Stack>

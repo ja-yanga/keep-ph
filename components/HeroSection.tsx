@@ -13,7 +13,7 @@ import {
   Badge,
   rem,
 } from "@mantine/core";
-import {IconArrowRight} from "@tabler/icons-react";
+import { IconArrowRight } from "@tabler/icons-react";
 import Link from "next/link";
 
 export default function HeroSection() {
@@ -28,14 +28,14 @@ export default function HeroSection() {
     >
       <Container size="xl">
         <Grid gutter={50} align="center">
-          <Grid.Col span={{base: 12, md: 6}}>
+          <Grid.Col span={{ base: 12, md: 6 }}>
             <Stack gap="lg">
               <Badge
                 variant="light"
                 color="blue"
                 size="lg"
                 radius="sm"
-                style={{width: "fit-content"}}
+                style={{ width: "fit-content" }}
               >
                 🚀 Now serving Metro Manila
               </Badge>
@@ -53,13 +53,13 @@ export default function HeroSection() {
                   span
                   inherit
                   variant="gradient"
-                  gradient={{from: "#1A237E", to: "#3949AB", deg: 45}}
+                  gradient={{ from: "#1A237E", to: "#3949AB", deg: 45 }}
                 >
                   Philippines
                 </Text>
                 , Simplified.
               </Title>
-              <Text c="dimmed" size="xl" style={{maxWidth: 500}}>
+              <Text c="dimmed" size="xl" style={{ maxWidth: 500 }}>
                 Get a prestigious virtual address, digital mail scanning, and
                 mail forwarding services. Manage your mail from anywhere in the
                 world.
@@ -88,8 +88,8 @@ export default function HeroSection() {
             </Stack>
           </Grid.Col>
 
-          <Grid.Col span={{base: 12, md: 6}}>
-            <Box style={{position: "relative"}}>
+          <Grid.Col span={{ base: 12, md: 6 }}>
+            <Box style={{ position: "relative" }}>
               <Box
                 style={{
                   position: "absolute",
@@ -107,7 +107,7 @@ export default function HeroSection() {
                 src="https://images.unsplash.com/photo-1497215728101-856f4ea42174?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
                 alt="Modern Office"
                 radius="lg"
-                style={{position: "relative", zIndex: 1}}
+                style={{ position: "relative", zIndex: 1 }}
               />
             </Box>
           </Grid.Col>
@@ -116,6 +116,3 @@ export default function HeroSection() {
     </Box>
   );
 }
-
-
-

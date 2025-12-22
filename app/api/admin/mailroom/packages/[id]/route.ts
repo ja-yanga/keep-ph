@@ -1,15 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { sendNotification } from "@/lib/notifications";
+import { sendNotification, type NotificationType } from "@/lib/notifications";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function PUT(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const body = await req.json();
@@ -24,7 +21,7 @@ export async function PUT(
     if (fetchError) {
       console.warn(
         "Failed to fetch existing package:",
-        fetchError.message || fetchError
+        fetchError.message || fetchError,
       );
     }
 
@@ -32,7 +29,7 @@ export async function PUT(
     const { locker_status, ...packageData } = body;
 
     // Build update payload explicitly to control package_photo updates
-    const updatePayload: any = { ...packageData };
+    const updatePayload: Record<string, unknown> = { ...packageData };
     if (Object.prototype.hasOwnProperty.call(body, "package_photo")) {
       // allow clearing by sending null, or set URL when provided
       updatePayload.package_photo = body.package_photo;
@@ -45,7 +42,7 @@ export async function PUT(
       .update(updatePayload)
       .eq("id", id)
       .select(
-        "*, registration:mailroom_registrations(id, full_name, email, mobile, mailroom_code, mailroom_plans:mailroom_plans(name, can_receive_mail, can_receive_parcels)), locker:location_lockers(id, locker_code)"
+        "*, registration:mailroom_registrations(id, full_name, email, mobile, mailroom_code, mailroom_plans:mailroom_plans(name, can_receive_mail, can_receive_parcels)), locker:location_lockers(id, locker_code)",
       )
       .single();
 
@@ -83,7 +80,7 @@ export async function PUT(
         let title = "Package Update";
         // CHANGED: Added Mailroom Code to messages
         let message = `Your package (${updatedPkg.package_name}) at Mailroom ${code} status is now: ${packageData.status}`;
-        let type: any = "SYSTEM";
+        let type: NotificationType = "SYSTEM";
 
         // Customize message based on status
         if (packageData.status === "RELEASED") {
@@ -101,21 +98,23 @@ export async function PUT(
           title,
           message,
           type,
-          `/mailroom/${oldPkg.registration_id}` // CHANGED: Link to specific mailroom
+          `/mailroom/${oldPkg.registration_id}`, // CHANGED: Link to specific mailroom
         );
       }
     }
 
     return NextResponse.json(updatedPkg);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PUT Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const id = (await params).id;
   const { error } = await supabaseAdmin

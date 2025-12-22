@@ -28,7 +28,7 @@ import {
   IconCheck,
 } from "@tabler/icons-react";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 
@@ -51,9 +51,13 @@ export default function DashboardNav() {
   // keep popover state local (UI unchanged)
   const [notifOpen, setNotifOpen] = useState(false);
 
+  const supabase = createClient();
   const { session } = useSession();
-  // normalize role: some session shapes have role on root, others under user
-  const roleRaw = session?.role ?? session?.user?.role;
+  // normalize role: role is on session root or in profile
+  const roleRaw =
+    session?.role ??
+    session?.profile?.user_role ??
+    session?.profile?.users_role;
   const role = typeof roleRaw === "string" ? roleRaw.toLowerCase() : roleRaw;
   const showLinks = !pathname.startsWith("/onboarding");
   const isAdmin = role === "admin";
@@ -62,10 +66,10 @@ export default function DashboardNav() {
   const userId = session?.user?.id;
 
   // helper to validate UUID (prevents passing invalid value to Postgres)
-  const isValidUUID = (id?: any) =>
+  const isValidUUID = (id?: string | unknown) =>
     typeof id === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      id
+      id,
     );
 
   // treat as "user" when session exists and role is not admin (handles missing/undefined role)
@@ -75,7 +79,7 @@ export default function DashboardNav() {
     isValidUUID(userId) && isUser ? ["notifications", userId] : null;
 
   // fetcher that reads latest 10 notifications for user
-  const fetchNotifications = async (key: any) => {
+  const fetchNotifications = async (key: string | [string, string]) => {
     // SWR can call fetcher with the key array (['notifications', userId]) or a string.
     const uid = Array.isArray(key) ? key[1] : key;
     if (!isValidUUID(uid)) return [];
@@ -93,7 +97,7 @@ export default function DashboardNav() {
 
   // useSWR provides initial fetch and revalidation.
   // Set revalidateOnMount:false and a short dedupingInterval to avoid repeated fetches on mount.
-  const { data, error } = useSWR<Notification[] | undefined>(
+  const { data } = useSWR<Notification[] | undefined>(
     swrKey,
     fetchNotifications,
     {
@@ -101,7 +105,7 @@ export default function DashboardNav() {
       revalidateOnMount: false,
       revalidateIfStale: false,
       dedupingInterval: 2000,
-    }
+    },
   );
 
   const notifications: Notification[] = Array.isArray(data) ? data : [];
@@ -138,16 +142,15 @@ export default function DashboardNav() {
               const next = [payload.new as Notification, ...current];
               return next.slice(0, 10);
             },
-            false
+            false,
           );
-        }
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role]);
 
   // mark all as read (optimistic update + persist)
@@ -161,7 +164,7 @@ export default function DashboardNav() {
       key,
       (current: Notification[] = []) =>
         current.map((n) => ({ ...n, is_read: true })),
-      false
+      false,
     );
 
     // persist to DB

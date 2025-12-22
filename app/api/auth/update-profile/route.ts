@@ -1,33 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 
 // Admin client for database/storage operations (bypassing RLS)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-
     // 1. Authenticate User via Cookie (using @supabase/ssr)
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            // We are only reading here
-          },
-        },
-      }
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -51,12 +34,12 @@ export async function POST(req: NextRequest) {
       if (!matches) {
         return NextResponse.json(
           { error: "Invalid avatar data" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       const mimeType = matches[1];
-      const buffer = Buffer.from(matches[2], "base64");
+      const buffer = Buffer.from(matches[2] as string, "base64");
       const fileExt = mimeType.split("/")[1] || "png";
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
@@ -72,7 +55,7 @@ export async function POST(req: NextRequest) {
         console.error("Upload error:", uploadError);
         return NextResponse.json(
           { error: "Failed to upload avatar" },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -85,7 +68,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Update Profile using Admin client
-    const updatePayload: any = {
+    const updatePayload: Record<string, unknown> = {
       first_name,
       last_name,
     };
@@ -103,8 +86,10 @@ export async function POST(req: NextRequest) {
     if (updateError) throw updateError;
 
     return NextResponse.json({ message: "Profile updated successfully" });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Update profile error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const errorMessage =
+      err instanceof Error ? err.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

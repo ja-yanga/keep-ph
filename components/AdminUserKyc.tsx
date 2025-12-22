@@ -15,7 +15,6 @@ import {
   Loader,
   Center,
   Avatar,
-  Tooltip,
   Grid,
   Image,
 } from "@mantine/core";
@@ -30,7 +29,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { useDisclosure } from "@mantine/hooks";
 
-interface KycRow {
+type KycRow = {
   id: string;
   user_id: string;
   status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
@@ -53,7 +52,7 @@ interface KycRow {
   verified_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-}
+};
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -128,16 +127,10 @@ export default function AdminUserKyc() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<KycRow | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [resolvedFront, setResolvedFront] = useState<string | null>(null);
-  const [resolvedBack, setResolvedBack] = useState<string | null>(null);
+  const [resolvedFront] = useState<string | null>(null);
+  const [resolvedBack] = useState<string | null>(null);
   const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
   const [zoomOpen, { open: openZoom, close: closeZoom }] = useDisclosure(false);
-
-  // track image load failures for fallback UI
-  const [failedImages, setFailedImages] = useState<{
-    front?: boolean;
-    back?: boolean;
-  }>({});
 
   // Normalize a stored or relative URL to an absolute URL for the browser
   const normalizeImageUrl = (url?: string | null) => {
@@ -151,14 +144,18 @@ export default function AdminUserKyc() {
   };
 
   useEffect(() => {
-    const arr = Array.isArray(data?.data)
-      ? data.data
-      : Array.isArray(data)
-      ? data
-      : [];
+    let arr: KycRow[];
+    if (Array.isArray(data?.data)) {
+      arr = data.data;
+    } else if (Array.isArray(data)) {
+      arr = data;
+    } else {
+      arr = [];
+    }
     setRows(arr);
   }, [data]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const refresh = async () => {
     try {
       await swrMutate(key);
@@ -312,14 +309,19 @@ export default function AdminUserKyc() {
               title: "Status",
               width: 130,
               render: (r: KycRow) => {
-                const color =
-                  r.status === "VERIFIED"
-                    ? "green"
-                    : r.status === "SUBMITTED"
-                    ? "yellow"
-                    : "gray";
+                let color: string;
+                if (r.status === "VERIFIED") {
+                  color = "green";
+                } else if (r.status === "SUBMITTED") {
+                  color = "yellow";
+                } else {
+                  color = "gray";
+                }
                 return (
-                  <Badge color={color as any} variant="light">
+                  <Badge
+                    color={color as "green" | "yellow" | "gray"}
+                    variant="light"
+                  >
                     {r.status}
                   </Badge>
                 );
@@ -410,7 +412,7 @@ export default function AdminUserKyc() {
                     <Text span fw={500}>
                       {selected.submitted_at
                         ? dayjs(selected.submitted_at).format(
-                            "MMM D, YYYY hh:mm A"
+                            "MMM D, YYYY hh:mm A",
                           )
                         : "—"}
                     </Text>
@@ -420,7 +422,7 @@ export default function AdminUserKyc() {
                     <Text span fw={500}>
                       {selected.verified_at
                         ? dayjs(selected.verified_at).format(
-                            "MMM D, YYYY hh:mm A"
+                            "MMM D, YYYY hh:mm A",
                           )
                         : "—"}
                     </Text>
@@ -454,9 +456,6 @@ export default function AdminUserKyc() {
                               setModalImageSrc(src);
                               openZoom();
                             }}
-                            onError={() =>
-                              setFailedImages((s) => ({ ...s, front: true }))
-                            }
                           />
                         ) : (
                           <Text size="xs" c="dimmed">
@@ -493,9 +492,6 @@ export default function AdminUserKyc() {
                               setModalImageSrc(src);
                               openZoom();
                             }}
-                            onError={() =>
-                              setFailedImages((s) => ({ ...s, back: true }))
-                            }
                           />
                         ) : (
                           <Text size="xs" c="dimmed">

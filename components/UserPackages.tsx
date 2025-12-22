@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Badge,
   Button,
@@ -9,10 +9,7 @@ import {
   Stack,
   Text,
   Title,
-  ActionIcon,
-  Tooltip,
   Modal,
-  Textarea,
   Tabs,
   ThemeIcon,
   SimpleGrid,
@@ -35,14 +32,22 @@ import {
   IconInbox,
   IconFileText,
   IconSearch,
-  IconEdit,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useSession } from "@/components/SessionProvider";
 
-interface UserPackagesProps {
-  packages: any[];
-  lockers: any[];
+type UserPackagesProps = {
+  packages: Array<{
+    id: string;
+    registration_id?: string;
+    package?: { registration_id?: string };
+    locker_id?: string;
+    locker?: { locker_code?: string };
+    status?: string;
+    package_photo?: string;
+    [key: string]: unknown;
+  }>;
+  lockers: Array<{ id: string; locker_code?: string; [key: string]: unknown }>;
   planCapabilities: {
     can_receive_mail: boolean;
     can_receive_parcels: boolean;
@@ -52,8 +57,12 @@ interface UserPackagesProps {
   onRefresh?: () => void | Promise<void>;
   // injected from parent to avoid duplicate fetches
   scanMap?: Record<string, string>;
-  scans?: any[];
-}
+  scans?: Array<{
+    package_id?: string;
+    file_url?: string;
+    [key: string]: unknown;
+  }>;
+};
 
 export default function UserPackages({
   packages,
@@ -65,17 +74,18 @@ export default function UserPackages({
   scans: providedScans,
 }: UserPackagesProps) {
   const theme = useMantineTheme();
-  const [localPackages, setLocalPackages] = useState<any[]>(packages);
+  const [localPackages, setLocalPackages] = useState<typeof packages>(packages);
   const [search, setSearch] = useState("");
 
   // map of tracking_number|package_id -> file_url
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
 
   // derive registrationId deterministically (primitive) to use in deps
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const registrationId = useMemo(() => {
     const regPkg =
-      packages.find((p: any) => p.registration_id) ||
-      packages.find((p: any) => p.package?.registration_id);
+      packages.find((p) => p.registration_id) ||
+      packages.find((p) => p.package?.registration_id);
     return (
       (regPkg && (regPkg.registration_id || regPkg.package?.registration_id)) ||
       null
@@ -90,8 +100,8 @@ export default function UserPackages({
     }
     if (providedScans) {
       const map: Record<string, string> = {};
-      providedScans.forEach((s: any) => {
-        if (s.package_id) map[s.package_id] = s.file_url;
+      providedScans.forEach((s) => {
+        if (s.package_id && s.file_url) map[s.package_id] = s.file_url;
       });
       setScanMap(map);
       return;
@@ -110,8 +120,8 @@ export default function UserPackages({
 
   // Split packages into Active (Inbox) and History
   const { activePackages, historyPackages } = useMemo(() => {
-    const active: any[] = [];
-    const history: any[] = [];
+    const active: typeof localPackages = [];
+    const history: typeof localPackages = [];
 
     localPackages.forEach((pkg) => {
       // Treat only retrieved/disposed as history. RELEASED stays in inbox (active).
@@ -124,11 +134,11 @@ export default function UserPackages({
 
     active.sort(
       (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
     history.sort(
       (a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
     );
 
     return { activePackages: active, historyPackages: history };
@@ -141,7 +151,7 @@ export default function UserPackages({
     return activePackages.filter(
       (pkg) =>
         (pkg.package_name?.toLowerCase().includes(q) ?? false) ||
-        (pkg.package_type?.toLowerCase().includes(q) ?? false)
+        (pkg.package_type?.toLowerCase().includes(q) ?? false),
     );
   }, [activePackages, search]);
 
@@ -151,13 +161,19 @@ export default function UserPackages({
     return historyPackages.filter(
       (pkg) =>
         (pkg.package_name?.toLowerCase().includes(q) ?? false) ||
-        (pkg.package_type?.toLowerCase().includes(q) ?? false)
+        (pkg.package_type?.toLowerCase().includes(q) ?? false),
     );
   }, [historyPackages, search]);
 
   // Action State
   const [actionModalOpen, setActionModalOpen] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<{
+    id?: string;
+    registration_id?: string;
+    package_photo?: string;
+    release_address_id?: string;
+    [key: string]: unknown;
+  } | null>(null);
   const [actionType, setActionType] = useState<
     "RELEASE" | "DISPOSE" | "SCAN" | "CONFIRM_RECEIVED" | null
   >(null);
@@ -176,9 +192,20 @@ export default function UserPackages({
   const perPage = 3;
 
   // addresses / release fields
-  const [addresses, setAddresses] = useState<any[]>([]);
+  const [addresses, setAddresses] = useState<
+    Array<{
+      id: string;
+      label?: string;
+      contact_name?: string;
+      line1?: string;
+      city?: string;
+      region?: string;
+      postal?: string;
+      is_default?: boolean;
+    }>
+  >([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
-    null
+    null,
   );
   const [releaseToName, setReleaseToName] = useState<string>("");
   // recipient is not editable in modal — derived from selected address.contact_name or package user
@@ -196,8 +223,8 @@ export default function UserPackages({
   const isBehalfMobileValid = /^09\d{9}$/.test(behalfMobile);
 
   const handleActionClick = (
-    pkg: any,
-    type: "RELEASE" | "DISPOSE" | "SCAN" | "CONFIRM_RECEIVED"
+    pkg: { id: string; status?: string; [key: string]: unknown },
+    type: "RELEASE" | "DISPOSE" | "SCAN" | "CONFIRM_RECEIVED",
   ) => {
     setSelectedPackage(pkg);
     setActionType(type);
@@ -237,11 +264,11 @@ export default function UserPackages({
       const pkgDefaultId = pkg?.release_address_id ?? null;
       const userDefaultId =
         !pkgDefaultId && Array.isArray(addresses)
-          ? addresses.find((a) => a.is_default)?.id ?? null
+          ? (addresses.find((a) => a.is_default)?.id ?? null)
           : null;
       // if pickup on behalf was previously selected, prefer clearing address to indicate pickup
       setSelectedAddressId(
-        pkgDefaultId ?? (pickupOnBehalf ? null : userDefaultId)
+        pkgDefaultId ?? (pickupOnBehalf ? null : userDefaultId),
       );
       // if we selected a default address, prefill releaseToName from it when possible
       if (!pkgDefaultId && userDefaultId) {
@@ -299,7 +326,13 @@ export default function UserPackages({
 
       if (!newStatus) return;
 
-      const body: any = { status: newStatus };
+      const body: {
+        status: string;
+        notes?: string;
+        release_address_id?: string;
+        release_address?: string;
+        release_to_name?: string;
+      } = { status: newStatus };
       if (actionType === "RELEASE") {
         body.selected_address_id = selectedAddressId || null;
         body.release_to_name = finalReleaseToName || releaseToName || null;
@@ -337,7 +370,7 @@ export default function UserPackages({
         applyUpdatedPackage(updatedFromServer);
         // ensure selectedPackage reference is updated if modal remains open
         if (selectedPackage?.id === updatedFromServer.id) {
-          setSelectedPackage((prev: any) => ({
+          setSelectedPackage((prev) => ({
             ...(prev ?? {}),
             ...updatedFromServer,
           }));
@@ -350,7 +383,8 @@ export default function UserPackages({
               ? {
                   ...p,
                   status: newStatus,
-                  notes: actionType === "RELEASE" ? body.notes ?? "" : p.notes,
+                  notes:
+                    actionType === "RELEASE" ? (body.notes ?? "") : p.notes,
                   release_to_name:
                     actionType === "RELEASE"
                       ? releaseToName
@@ -358,8 +392,8 @@ export default function UserPackages({
                   release_address: releaseAddressString,
                   updated_at: new Date().toISOString(),
                 }
-              : p
-          )
+              : p,
+          ),
         );
       }
 
@@ -367,7 +401,7 @@ export default function UserPackages({
       let releaseAddressString = selectedPackage.release_address || null;
       if (actionType === "RELEASE" && selectedAddressId) {
         const selectedAddress = addresses.find(
-          (a) => a.id === selectedAddressId
+          (a) => a.id === selectedAddressId,
         );
         if (selectedAddress) {
           // Construct a readable snapshot of the address for local state
@@ -391,13 +425,13 @@ export default function UserPackages({
                 ...p,
                 status: newStatus,
                 // persist changes locally: release clears old notes and stores release info
-                notes: actionType === "RELEASE" ? body.notes ?? "" : p.notes,
+                notes: actionType === "RELEASE" ? (body.notes ?? "") : p.notes,
                 release_to_name:
                   actionType === "RELEASE" ? releaseToName : p.release_to_name,
                 release_address: releaseAddressString, // Use the structured string
               }
-            : p
-        )
+            : p,
+        ),
       );
 
       // ensure pagination stays on a valid page after the update
@@ -416,20 +450,18 @@ export default function UserPackages({
       if (onRefresh) {
         try {
           const maybePromise = onRefresh();
-          if (
-            maybePromise &&
-            typeof (maybePromise as any).then === "function"
-          ) {
+          if (maybePromise instanceof Promise) {
             await maybePromise;
           }
         } catch (e) {
           console.error("onRefresh failed:", e);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Action failed";
       notifications.show({
         title: "Error",
-        message: err.message,
+        message: errorMessage,
         color: "red",
       });
     } finally {
@@ -438,6 +470,7 @@ export default function UserPackages({
   };
 
   // Download currently previewed scan (works with data URLs, same-origin, or fetches blob)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const downloadScan = async (): Promise<void> => {
     if (!previewImage) return;
     const fallbackName = (
@@ -477,7 +510,7 @@ export default function UserPackages({
       a.click();
       a.remove();
       URL.revokeObjectURL(blobUrl);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("download failed", err);
       notifications.show({
         title: "Download failed",
@@ -502,8 +535,8 @@ export default function UserPackages({
 
       setLocalPackages((current) =>
         current.map((p) =>
-          p.id === selectedPackage.id ? { ...p, status: "REQUEST_TO_SCAN" } : p
-        )
+          p.id === selectedPackage.id ? { ...p, status: "REQUEST_TO_SCAN" } : p,
+        ),
       );
 
       notifications.show({
@@ -512,10 +545,12 @@ export default function UserPackages({
         color: "green",
       });
       setImageModalOpen(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to request rescan";
       notifications.show({
         title: "Error",
-        message: err?.message || "Failed to request rescan",
+        message: errorMessage,
         color: "red",
       });
     } finally {
@@ -524,14 +559,25 @@ export default function UserPackages({
   };
 
   // --- Render Component for a Single Package Card ---
-  const PackageCard = ({ pkg }: { pkg: any }) => {
+  const PackageCard = ({
+    pkg,
+  }: {
+    pkg: {
+      id: string;
+      package_photo?: string;
+      locker_id?: string;
+      locker?: { locker_code?: string };
+      status?: string;
+      [key: string]: unknown;
+    };
+  }) => {
     // debug: ensure each package has its own photo/url
     console.debug(
       "PackageCard",
       pkg.id,
       pkg.package_photo,
       pkg.image_url,
-      pkg.release_proof_url
+      pkg.release_proof_url,
     );
 
     const packageName = pkg.package_name || "—";
@@ -544,10 +590,10 @@ export default function UserPackages({
     let lockerCode = pkg.locker?.locker_code;
     if (!lockerCode && pkg.locker_id && Array.isArray(lockers)) {
       const assigned = lockers.find(
-        (l: any) =>
+        (l) =>
           l.id === pkg.locker_id ||
           l.locker_id === pkg.locker_id ||
-          l.locker?.id === pkg.locker_id
+          l.locker?.id === pkg.locker_id,
       );
       if (assigned)
         lockerCode = assigned.locker_code || assigned.locker?.locker_code;
@@ -602,6 +648,7 @@ export default function UserPackages({
         {/* Package photo thumbnail (click to preview) */}
         {pkg.package_photo && (
           <Box mb="sm">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization */}
             <img
               key={`${pkg.id}-${pkg.package_photo}`}
               src={pkg.package_photo}
@@ -783,15 +830,15 @@ export default function UserPackages({
           try {
             const r = await fetch(
               `/api/registrations?id=${encodeURIComponent(
-                selectedPackage.registration_id
+                selectedPackage.registration_id,
               )}`,
-              { credentials: "include" }
+              { credentials: "include" },
             );
             if (r.ok) {
               const j = await r.json().catch(() => ({}));
               userId = j?.data?.user_id ?? j?.user_id ?? userId;
             }
-          } catch (e) {
+          } catch {
             // ignore - fallback remains null
           }
         }
@@ -806,7 +853,7 @@ export default function UserPackages({
 
         const res = await fetch(
           `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
-          { credentials: "include" }
+          { credentials: "include" },
         );
         if (!res.ok) {
           if (mounted) setAddresses([]);
@@ -824,7 +871,7 @@ export default function UserPackages({
         if (pkgDefaultId) {
           setSelectedAddressId(pkgDefaultId);
         } else {
-          const def = arr.find((a: any) => a.is_default);
+          const def = arr.find((a) => a.is_default);
           setSelectedAddressId(def?.id ?? null);
         }
       } catch (e) {
@@ -840,9 +887,12 @@ export default function UserPackages({
   }, [selectedPackage?.id, session?.user?.id]);
 
   // use this helper after receiving updatedPkg from server
-  function applyUpdatedPackage(updatedPkg: any) {
+  function applyUpdatedPackage(updatedPkg: {
+    id: string;
+    [key: string]: unknown;
+  }) {
     setLocalPackages((prev) =>
-      prev.map((p) => (p.id === updatedPkg.id ? { ...p, ...updatedPkg } : p))
+      prev.map((p) => (p.id === updatedPkg.id ? { ...p, ...updatedPkg } : p)),
     );
   }
 
@@ -889,7 +939,7 @@ export default function UserPackages({
                   const start = (inboxPage - 1) * perPage;
                   const pageItems = filteredActivePackages.slice(
                     start,
-                    start + perPage
+                    start + perPage,
                   );
                   return (
                     <>
@@ -957,7 +1007,7 @@ export default function UserPackages({
                   const start = (historyPage - 1) * perPage;
                   const pageItems = filteredHistoryPackages.slice(
                     start,
-                    start + perPage
+                    start + perPage,
                   );
                   return (
                     <>
@@ -1111,10 +1161,10 @@ export default function UserPackages({
 
               {/* Combined selected-address preview (includes Recipient) */}
               <Box mt="md">
-                {selectedAddressId ? (
-                  (() => {
+                {(() => {
+                  if (selectedAddressId) {
                     const sel = addresses.find(
-                      (a) => a.id === selectedAddressId
+                      (a) => a.id === selectedAddressId,
                     );
                     if (!sel) return <Text c="dimmed">Loading address...</Text>;
                     const fallbackUserName = `${
@@ -1160,24 +1210,26 @@ export default function UserPackages({
                         )}
                       </Paper>
                     );
-                  })()
-                ) : selectedPackage?.release_address ? (
-                  <Paper withBorder p="sm" radius="md" bg="gray.0">
-                    <Text fw={600} size="sm">
-                      Saved release snapshot
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                      {selectedPackage.release_address}
-                    </Text>
-                    {selectedPackage.release_to_name && (
-                      <Text size="xs" c="dimmed" mt="4px">
-                        Recipient: {selectedPackage.release_to_name}
-                      </Text>
-                    )}
-                  </Paper>
-                ) : (
-                  <Text c="dimmed">No shipping address selected.</Text>
-                )}
+                  }
+                  if (selectedPackage?.release_address) {
+                    return (
+                      <Paper withBorder p="sm" radius="md" bg="gray.0">
+                        <Text fw={600} size="sm">
+                          Saved release snapshot
+                        </Text>
+                        <Text size="sm" c="dimmed">
+                          {selectedPackage.release_address}
+                        </Text>
+                        {selectedPackage.release_to_name && (
+                          <Text size="xs" c="dimmed" mt="4px">
+                            Recipient: {selectedPackage.release_to_name}
+                          </Text>
+                        )}
+                      </Paper>
+                    );
+                  }
+                  return <Text c="dimmed">No shipping address selected.</Text>;
+                })()}
               </Box>
 
               {/* Pickup on behalf option */}
@@ -1230,8 +1282,10 @@ export default function UserPackages({
                       { value: "whatsapp", label: "WhatsApp" },
                     ]}
                     value={behalfContactMode}
-                    onChange={(v: any) =>
-                      setBehalfContactMode(v as "sms" | "viber" | "whatsapp")
+                    onChange={(v: string | null) =>
+                      setBehalfContactMode(
+                        (v || "sms") as "sms" | "viber" | "whatsapp",
+                      )
                     }
                   />
                 </Stack>
@@ -1286,6 +1340,7 @@ export default function UserPackages({
                 style={{ width: "100%", height: "70vh", border: "none" }}
               />
             ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization
               <img
                 src={previewImage}
                 alt={previewTitle ?? "Preview"}

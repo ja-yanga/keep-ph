@@ -1,7 +1,7 @@
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
 import { NextResponse } from "next/server";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const propertyId = process.env.GA_PROPERTY_ID;
     const email = process.env.GOOGLE_CLIENT_EMAIL;
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
     if (!propertyId || !email || !privateKey) {
       return NextResponse.json(
         { error: "Missing Google Analytics credentials" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     });
 
     const activeNow = Number(
-      realtimeResponse.rows?.[0]?.metricValues?.[0]?.value || 0
+      realtimeResponse.rows?.[0]?.metricValues?.[0]?.value || 0,
     );
 
     // 1. Fetch Trend Data (Visitors & Pageviews) - Last 7 Days
@@ -137,11 +137,11 @@ export async function GET(req: Request) {
     // Calculate Totals from the trend data
     const totalVisitors = visitorData.reduce(
       (acc, curr) => acc + curr.visitors,
-      0
+      0,
     );
     const totalPageViews = visitorData.reduce(
       (acc, curr) => acc + curr.pageviews,
-      0
+      0,
     );
 
     return NextResponse.json({
@@ -154,11 +154,10 @@ export async function GET(req: Request) {
         totalPageViews,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Analytics API Error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch analytics" },
-      { status: 500 }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to fetch analytics";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

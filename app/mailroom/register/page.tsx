@@ -1,7 +1,9 @@
 import { Box, Container, Title } from "@mantine/core";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import RegisterForm from "@/components/RegisterForm";
@@ -20,10 +22,7 @@ export default async function RegisterMailroomPage() {
 
   // Check KYC status - this is business logic, not middleware
   try {
-    const supabaseAdmin = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    );
+    const supabaseAdmin = createSupabaseServiceClient();
     const { data: kyc, error: kycErr } = await supabaseAdmin
       .from("user_kyc_table")
       .select("user_kyc_status")

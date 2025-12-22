@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
@@ -17,7 +14,7 @@ export async function PATCH(
     if (!id) {
       return NextResponse.json(
         { error: "Missing id parameter" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -31,7 +28,7 @@ export async function PATCH(
       can_digitize,
     } = body;
 
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (price !== undefined) updates.price = Number(price);
     if (description !== undefined) updates.description = description || null;
@@ -54,7 +51,7 @@ export async function PATCH(
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "No fields provided to update" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -73,16 +70,16 @@ export async function PATCH(
 
     return NextResponse.json(
       { message: "Plan updated", data },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (err) {
     console.error(
       "Unexpected error in PATCH /api/admin/mailroom/plans/[id]:",
-      err
+      err,
     );
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

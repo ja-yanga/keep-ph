@@ -18,11 +18,9 @@ import {
   Stack,
   TextInput,
   Tooltip,
-  Textarea,
   Text,
   FileInput,
   Tabs,
-  rem,
   SegmentedControl,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -40,14 +38,13 @@ import {
   IconScan,
   IconUpload,
   IconTruckDelivery,
-  IconList,
   IconCheck,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
 import dayjs from "dayjs";
 
-interface Registration {
+type Registration = {
   id: string;
   full_name: string;
   email: string;
@@ -59,24 +56,24 @@ interface Registration {
     can_receive_mail: boolean;
     can_receive_parcels: boolean;
   };
-}
+};
 
-interface Locker {
+type Locker = {
   id: string;
   locker_code: string;
   is_available: boolean;
-}
+};
 
 // We need to know which locker is assigned to which user
-interface AssignedLocker {
+type AssignedLocker = {
   id: string;
   registration_id: string;
   locker_id: string;
   status?: "Empty" | "Normal" | "Near Full" | "Full";
   locker?: Locker;
-}
+};
 
-interface Package {
+type Package = {
   id: string;
   package_name: string;
   registration_id: string;
@@ -93,7 +90,7 @@ interface Package {
   release_address_id?: string | null;
   release_address?: string | null;
   release_to_name?: string | null;
-}
+};
 
 const PACKAGE_TYPES = ["Document", "Parcel"];
 const STATUSES = [
@@ -148,9 +145,11 @@ export default function MailroomPackages() {
     }
     if (editingPackage) {
       setPreviewSrc(
-        (editingPackage as any).package_photo ||
-          (editingPackage as any).image_url ||
-          null
+        (editingPackage as { package_photo?: string; image_url?: string })
+          .package_photo ||
+          (editingPackage as { package_photo?: string; image_url?: string })
+            .image_url ||
+          null,
       );
     } else {
       setPreviewSrc(null);
@@ -160,24 +159,40 @@ export default function MailroomPackages() {
   // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanFile, setScanFile] = useState<File | null>(null);
-  const [packageToScan, setPackageToScan] = useState<any | null>(null);
+  const [packageToScan, setPackageToScan] = useState<{
+    id: string;
+    package_name?: string;
+  } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [releaseFile, setReleaseFile] = useState<File | null>(null);
   const [packageToRelease, setPackageToRelease] = useState<Package | null>(
-    null
+    null,
   );
   const [isReleasing, setIsReleasing] = useState(false);
   const [releaseNote, setReleaseNote] = useState<string>("");
-  const [addresses, setAddresses] = useState<any[]>([]);
+  const [addresses, setAddresses] = useState<
+    Array<{
+      id: string;
+      label?: string;
+      contact_name?: string;
+      contact_phone?: string;
+      line1?: string;
+      line2?: string;
+      city?: string;
+      region?: string;
+      postal?: string;
+      is_default?: boolean;
+    }>
+  >([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
-    null
+    null,
   );
 
   const [disposeModalOpen, setDisposeModalOpen] = useState(false);
   const [packageToDispose, setPackageToDispose] = useState<Package | null>(
-    null
+    null,
   );
   const [isDisposing, setIsDisposing] = useState(false);
 
@@ -213,21 +228,22 @@ export default function MailroomPackages() {
     return res.json().catch(() => ({}));
   };
 
-  const {
-    data: combinedData,
-    error: combinedError,
-    isValidating,
-  } = useSWR(packagesKey, fetcher, { revalidateOnFocus: true });
+  const { data: combinedData, isValidating } = useSWR(packagesKey, fetcher, {
+    revalidateOnFocus: true,
+  });
 
   // sync SWR combined response into local state
   useEffect(() => {
     setLoading(!!isValidating);
     const payload = combinedData ?? {};
-    const pkgs = Array.isArray(payload.packages)
-      ? payload.packages
-      : Array.isArray(payload.data)
-      ? payload.data
-      : [];
+    let pkgs: Package[];
+    if (Array.isArray(payload.packages)) {
+      pkgs = payload.packages;
+    } else if (Array.isArray(payload.data)) {
+      pkgs = payload.data;
+    } else {
+      pkgs = [];
+    }
     const regs = Array.isArray(payload.registrations)
       ? payload.registrations
       : [];
@@ -240,7 +256,6 @@ export default function MailroomPackages() {
     setRegistrations(regs);
     setLockers(lks);
     setAssignedLockers(assigned);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combinedData, isValidating]);
 
   // helper to refresh combined data (used after mutations)
@@ -291,7 +306,7 @@ export default function MailroomPackages() {
 
       // 2. Pre-fill locker capacity from existing assignment if available
       const assignment = assignedLockers.find(
-        (a) => a.registration_id === pkg.registration_id
+        (a) => a.registration_id === pkg.registration_id,
       );
       if (assignment && assignment.status) {
         setLockerCapacity(assignment.status);
@@ -337,10 +352,11 @@ export default function MailroomPackages() {
     const assignment = assignedLockers.find((a) => a.registration_id === regId);
 
     // Find the registration to check plan capabilities
-    const reg = registrations.find((r) => r.id === regId);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
+    const _reg = registrations.find((r) => r.id === regId);
 
     // Determine default package type based on plan
-    let defaultType = "Document";
+    const defaultType = "Document";
 
     setFormData({
       ...formData,
@@ -415,7 +431,7 @@ export default function MailroomPackages() {
 
       const method = editingPackage ? "PUT" : "POST";
 
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         ...formData,
       };
 
@@ -445,7 +461,7 @@ export default function MailroomPackages() {
         try {
           if (editingPackage) {
             return cur.map((p) =>
-              p.id === saved.id ? { ...p, ...(saved as Partial<Package>) } : p
+              p.id === saved.id ? { ...p, ...(saved as Partial<Package>) } : p,
             );
           } else {
             // prepend new package (server should return joined shape)
@@ -457,14 +473,16 @@ export default function MailroomPackages() {
       });
 
       setGlobalSuccess(
-        `Package ${editingPackage ? "updated" : "created"} successfully`
+        `Package ${editingPackage ? "updated" : "created"} successfully`,
       );
 
       close();
       await refreshAll();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      setFormError(error.message || "Failed to save package");
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to save package";
+      setFormError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -523,7 +541,7 @@ export default function MailroomPackages() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-        }
+        },
       );
 
       if (!res.ok) throw new Error("Failed to update status");
@@ -531,16 +549,18 @@ export default function MailroomPackages() {
       setGlobalSuccess("Package marked as DISPOSED and locker status updated");
       setDisposeModalOpen(false);
       await refreshAll();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      setFormError(error.message || "Failed to dispose package");
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to dispose package";
+      setFormError(errorMessage);
     } finally {
       setIsDisposing(false);
     }
   };
 
   // --- SCAN HANDLERS ---
-  const handleOpenScan = (pkg: any) => {
+  const handleOpenScan = (pkg: { id: string; package_name?: string }) => {
     setPackageToScan(pkg);
     setScanFile(null);
     setScanModalOpen(true);
@@ -569,8 +589,10 @@ export default function MailroomPackages() {
       setGlobalSuccess("Document scanned and uploaded successfully");
       setScanModalOpen(false);
       await refreshAll();
-    } catch (error: any) {
-      setFormError(error.message || "Upload failed");
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Upload failed";
+      setFormError(errorMessage);
     } finally {
       setIsUploading(false);
     }
@@ -591,7 +613,7 @@ export default function MailroomPackages() {
       const userId = pkg?.registration_id; // adapt if registration maps to user_id differently
       if (!userId) return;
       const res = await fetch(
-        `/api/user/addresses?userId=${encodeURIComponent(userId)}`
+        `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
       );
       if (!res.ok) return;
       const json = await res.json().catch(() => ({}));
@@ -601,7 +623,7 @@ export default function MailroomPackages() {
       if (pkg.release_address_id) {
         setSelectedAddressId(pkg.release_address_id);
       } else {
-        const def = arr.find((a: any) => a.is_default);
+        const def = arr.find((a: { is_default?: boolean }) => a.is_default);
         setSelectedAddressId(def?.id ?? null);
       }
     } catch (e) {
@@ -661,8 +683,10 @@ export default function MailroomPackages() {
       setGlobalSuccess("Package released and locker status updated");
       setReleaseModalOpen(false);
       await refreshAll();
-    } catch (error: any) {
-      setFormError(error.message || "Release failed");
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Release failed";
+      setFormError(errorMessage);
     } finally {
       setIsReleasing(false);
     }
@@ -708,7 +732,7 @@ export default function MailroomPackages() {
 
   const paginatedPackages = filteredPackages.slice(
     (page - 1) * pageSize,
-    page * pageSize
+    page * pageSize,
   );
 
   const getStatusColor = (status: string) => {
@@ -727,7 +751,7 @@ export default function MailroomPackages() {
 
   // Count requests for badge
   const requestCount = packages.filter((p) =>
-    p.status.includes("REQUEST")
+    p.status.includes("REQUEST"),
   ).length;
 
   // helper to extract phone for release snapshot
@@ -738,7 +762,8 @@ export default function MailroomPackages() {
     if (regPhone) return regPhone;
     // 2) explicit release snapshot field (if any)
     // use bracket access in case field not declared in interface
-    const releasePhone = (pkg as any).release_contact_phone ?? null;
+    const releasePhone =
+      (pkg as { release_contact_phone?: string }).release_contact_phone ?? null;
     if (releasePhone) return releasePhone;
     // 3) parse notes JSON for pickup_on_behalf.mobile
     try {
@@ -759,6 +784,7 @@ export default function MailroomPackages() {
   };
 
   // helper to extract pickup-on-behalf object from notes JSON
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const getPickupOnBehalf = (pkg: Package | null) => {
     if (!pkg) return null;
     try {
@@ -840,7 +866,7 @@ export default function MailroomPackages() {
                   (s) => ({
                     value: s,
                     label: s.replace(/_/g, " "),
-                  })
+                  }),
                 )}
                 value={filterStatus}
                 onChange={setFilterStatus}
@@ -1119,10 +1145,10 @@ export default function MailroomPackages() {
             // Limit displayed options to first 10 for performance/virtualization safety
             data={registrations.slice(0, 10).map((r) => {
               const planName = Array.isArray(
-                r.mailroom_plans
+                r.mailroom_plans,
               ) /* API may return array */
                 ? r.mailroom_plans[0]?.name
-                : (r.mailroom_plans as any)?.name;
+                : (r.mailroom_plans as { name?: string })?.name;
               return {
                 value: r.id,
                 label: `${r.mailroom_code || "No Code"} - ${r.email} (${
@@ -1135,9 +1161,9 @@ export default function MailroomPackages() {
             // Custom filter allows searching by any part of the label string
             filter={({ options, search }) => {
               const q = search.toLowerCase().trim();
-              return (options as any).filter((option: any) =>
-                option.label.toLowerCase().includes(q)
-              );
+              return (
+                options as Array<{ label: string; value: string }>
+              ).filter((option) => option.label.toLowerCase().includes(q));
             }}
           />
           <Select
@@ -1158,7 +1184,7 @@ export default function MailroomPackages() {
                 const assignment = assignedLockers.find(
                   (a) =>
                     a.locker_id === l.id &&
-                    a.registration_id === formData.registration_id
+                    a.registration_id === formData.registration_id,
                 );
 
                 // Must be assigned to this user
@@ -1168,7 +1194,7 @@ export default function MailroomPackages() {
                 const assignment = assignedLockers.find(
                   (a) =>
                     a.locker_id === l.id &&
-                    a.registration_id === formData.registration_id
+                    a.registration_id === formData.registration_id,
                 );
 
                 const isFull = assignment?.status === "Full";
@@ -1220,7 +1246,7 @@ export default function MailroomPackages() {
                 value={lockerCapacity}
                 onChange={(val) =>
                   setLockerCapacity(
-                    val as "Empty" | "Normal" | "Near Full" | "Full"
+                    val as "Empty" | "Normal" | "Near Full" | "Full",
                   )
                 }
                 fullWidth
@@ -1230,15 +1256,12 @@ export default function MailroomPackages() {
                   { label: "Near Full", value: "Near Full" },
                   { label: "Full", value: "Full" },
                 ]}
-                color={
-                  lockerCapacity === "Full"
-                    ? "red"
-                    : lockerCapacity === "Near Full"
-                    ? "orange"
-                    : lockerCapacity === "Empty"
-                    ? "gray"
-                    : "blue"
-                }
+                color={(() => {
+                  if (lockerCapacity === "Full") return "red";
+                  if (lockerCapacity === "Near Full") return "orange";
+                  if (lockerCapacity === "Empty") return "gray";
+                  return "blue";
+                })()}
               />
               <Text size="xs" c="dimmed">
                 This will update the status of the assigned locker for this
@@ -1261,6 +1284,7 @@ export default function MailroomPackages() {
           {/* Preview */}
           {previewSrc && (
             <Group justify="center" mt="sm">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization */}
               <img
                 src={previewSrc}
                 alt="Package preview"
@@ -1560,7 +1584,7 @@ export default function MailroomPackages() {
               value={lockerCapacity}
               onChange={(val) =>
                 setLockerCapacity(
-                  val as "Empty" | "Normal" | "Near Full" | "Full"
+                  val as "Empty" | "Normal" | "Near Full" | "Full",
                 )
               }
               fullWidth
@@ -1570,19 +1594,16 @@ export default function MailroomPackages() {
                 { label: "Near Full", value: "Near Full" },
                 { label: "Full", value: "Full" },
               ]}
-              color={
-                lockerCapacity === "Full"
-                  ? "red"
-                  : lockerCapacity === "Near Full"
-                  ? "orange"
-                  : lockerCapacity === "Empty"
-                  ? "gray"
-                  : "blue"
-              }
+              color={(() => {
+                if (lockerCapacity === "Full") return "red";
+                if (lockerCapacity === "Near Full") return "orange";
+                if (lockerCapacity === "Empty") return "gray";
+                return "blue";
+              })()}
             />
             <Text size="xs" c="dimmed">
               Since items are being removed, you might want to set this to
-              "Normal" or "Empty".
+              &quot;Normal&quot; or &quot;Empty&quot;.
             </Text>
           </Stack>
 
@@ -1642,7 +1663,7 @@ export default function MailroomPackages() {
               value={lockerCapacity}
               onChange={(val) =>
                 setLockerCapacity(
-                  val as "Empty" | "Normal" | "Near Full" | "Full"
+                  val as "Empty" | "Normal" | "Near Full" | "Full",
                 )
               }
               fullWidth
@@ -1652,19 +1673,16 @@ export default function MailroomPackages() {
                 { label: "Near Full", value: "Near Full" },
                 { label: "Full", value: "Full" },
               ]}
-              color={
-                lockerCapacity === "Full"
-                  ? "red"
-                  : lockerCapacity === "Near Full"
-                  ? "orange"
-                  : lockerCapacity === "Empty"
-                  ? "gray"
-                  : "blue"
-              }
+              color={(() => {
+                if (lockerCapacity === "Full") return "red";
+                if (lockerCapacity === "Near Full") return "orange";
+                if (lockerCapacity === "Empty") return "gray";
+                return "blue";
+              })()}
             />
             <Text size="xs" c="dimmed">
               Since items are being disposed, you might want to set this to
-              "Normal" or "Empty".
+              &quot;Normal&quot; or &quot;Empty&quot;.
             </Text>
           </Stack>
 

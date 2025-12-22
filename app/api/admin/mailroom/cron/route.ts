@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import dayjs from "dayjs";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST() {
   try {
@@ -111,8 +108,10 @@ export async function POST() {
       lockers_freed: lockersFreed,
       message: `Processed: ${expiredRegistrationIds.length} expired, ${renewedRegistrationIds.length} renewed subscriptions. Freed ${lockersFreed} lockers.`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Cron job error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

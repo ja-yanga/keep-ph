@@ -1,14 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
 // Initialize Admin Client (Service Role)
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function GET(request: Request) {
   try {
@@ -18,27 +15,12 @@ export async function GET(request: Request) {
     if (!registrationId) {
       return NextResponse.json(
         { error: "Registration ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const cookieStore = await cookies();
-
     // 1. Authenticate User via Cookie (using @supabase/ssr)
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            // We are only reading here
-          },
-        },
-      }
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -59,7 +41,7 @@ export async function GET(request: Request) {
         `
         user_id,
         plan:mailroom_plans(storage_limit)
-      `
+      `,
       )
       .eq("id", registrationId)
       .single();
@@ -67,14 +49,14 @@ export async function GET(request: Request) {
     if (!registration) {
       return NextResponse.json(
         { error: "Registration not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     if (registration.user_id !== userId) {
       return NextResponse.json(
         { error: "You do not have permission to view these files" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -88,7 +70,7 @@ export async function GET(request: Request) {
           package_name,
           registration_id
         )
-      `
+      `,
       )
       .eq("package.registration_id", registrationId)
       .order("uploaded_at", { ascending: false });
@@ -99,13 +81,15 @@ export async function GET(request: Request) {
 
     // 5. Calculate Usage
     // Safe access to plan data
-    const reg: any = registration;
+    const reg = registration as {
+      plan?: { storage_limit?: number } | Array<{ storage_limit?: number }>;
+    };
     const planData = Array.isArray(reg.plan) ? reg.plan[0] : reg.plan;
     const limitMb = planData?.storage_limit || 100; // Default to 100MB
 
     const totalUsedMb = scans.reduce(
       (acc, scan) => acc + (scan.file_size_mb || 0),
-      0
+      0,
     );
 
     return NextResponse.json({
@@ -117,11 +101,11 @@ export async function GET(request: Request) {
           limitMb > 0 ? Math.min((totalUsedMb / limitMb) * 100, 100) : 0,
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Fetch scans error:", err);
     return NextResponse.json(
       { error: "Unexpected server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

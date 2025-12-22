@@ -1,38 +1,21 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const id = (await params).id;
     const body = await request.json();
-    const cookieStore = await cookies();
 
     // 1. Authenticate User via Cookie (using @supabase/ssr)
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            // We are only reading here
-          },
-        },
-      }
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -68,12 +51,12 @@ export async function PATCH(
     if (regError || !registration) {
       return NextResponse.json(
         { error: "Registration not found or unauthorized" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // Build updates object
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (body.status !== undefined) updates.status = body.status;
     // keep notes support for other actions (but UI will stop using it for release)
     if (body.notes !== undefined) updates.notes = body.notes;
@@ -86,7 +69,7 @@ export async function PATCH(
       const { data: addr, error: addrErr } = await supabaseAdmin
         .from("user_addresses")
         .select(
-          "id, user_id, label, contact_name, line1, line2, city, region, postal"
+          "id, user_id, label, contact_name, line1, line2, city, region, postal",
         )
         .eq("id", selectedAddressId)
         .single();
@@ -94,7 +77,7 @@ export async function PATCH(
       if (addrErr || !addr) {
         return NextResponse.json(
           { error: "Selected address not found" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -102,7 +85,7 @@ export async function PATCH(
       if (String(addr.user_id) !== String(userId)) {
         return NextResponse.json(
           { error: "Address does not belong to this user" },
-          { status: 403 }
+          { status: 403 },
         );
       }
 
@@ -147,7 +130,7 @@ export async function PATCH(
     console.error("Update package error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

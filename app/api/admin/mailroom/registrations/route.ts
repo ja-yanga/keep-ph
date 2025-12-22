@@ -1,12 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-export async function GET(req: Request) {
-  const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+const supabaseAdmin = createSupabaseServiceClient();
 
+export async function GET() {
   try {
     // Run independent queries in parallel
     const [regsRes, lockersRes, assignedRes, plansRes, locationsRes] =
@@ -32,7 +29,7 @@ export async function GET(req: Request) {
               barangay,
               zip
             )
-          `
+          `,
           )
           .order("created_at", { ascending: false }),
         supabaseAdmin.from("location_lockers").select("*"),
@@ -61,13 +58,12 @@ export async function GET(req: Request) {
           "Cache-Control":
             "private, max-age=0, s-maxage=30, stale-while-revalidate=60",
         },
-      }
+      },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("registrations GET error:", error);
-    return NextResponse.json(
-      { error: error.message || "Internal Server Error" },
-      { status: 500 }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

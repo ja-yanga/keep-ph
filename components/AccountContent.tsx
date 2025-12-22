@@ -1,6 +1,6 @@
 "use client";
 
-import React, {useState, useEffect} from "react";
+import React, { useState, useEffect } from "react";
 import {
   ActionIcon,
   Box,
@@ -21,42 +21,40 @@ import {
   Tabs,
   Progress,
   Popover,
-  Divider,
   rem,
 } from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
-import {createClient} from "@supabase/supabase-js";
-import {useSession} from "@/components/SessionProvider";
+import { useDisclosure } from "@mantine/hooks";
+import { useSession } from "@/components/SessionProvider";
 import {
   IconAlertCircle,
   IconCheck,
   IconUser,
   IconLock,
-  IconTrash,
   IconCamera,
   IconX,
   IconMapPin,
 } from "@tabler/icons-react";
 import AccountAddresses from "@/components/AccountAddresses";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 // Password Strength Helper
-function PasswordRequirement({meets, label}: {meets: boolean; label: string}) {
+function PasswordRequirement({
+  meets,
+  label,
+}: {
+  meets: boolean;
+  label: string;
+}) {
   return (
     <Text
       c={meets ? "teal" : "red"}
-      style={{display: "flex", alignItems: "center"}}
+      style={{ display: "flex", alignItems: "center" }}
       mt={7}
       size="sm"
     >
       {meets ? (
-        <IconCheck style={{width: rem(14), height: rem(14)}} />
+        <IconCheck style={{ width: rem(14), height: rem(14) }} />
       ) : (
-        <IconX style={{width: rem(14), height: rem(14)}} />
+        <IconX style={{ width: rem(14), height: rem(14) }} />
       )}
       <Box ml={10}>{label}</Box>
     </Text>
@@ -64,12 +62,14 @@ function PasswordRequirement({meets, label}: {meets: boolean; label: string}) {
 }
 
 export default function AccountContent() {
-  const {session, refresh} = useSession();
+  const { session, refresh } = useSession();
 
   // Modal states
-  const [opened, {open, close}] = useDisclosure(false);
-  const [passwordOpened, {open: openPasswordModal, close: closePasswordModal}] =
-    useDisclosure(false);
+  const [opened, { open, close }] = useDisclosure(false);
+  const [
+    passwordOpened,
+    { open: openPasswordModal, close: closePasswordModal },
+  ] = useDisclosure(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -95,16 +95,23 @@ export default function AccountContent() {
 
   // Password Strength Logic
   const checks = [
-    {label: "Includes at least 6 characters", meets: newPassword.length > 5},
-    {label: "Includes number", meets: /[0-9]/.test(newPassword)},
-    {label: "Includes lowercase letter", meets: /[a-z]/.test(newPassword)},
-    {label: "Includes uppercase letter", meets: /[A-Z]/.test(newPassword)},
+    { label: "Includes at least 6 characters", meets: newPassword.length > 5 },
+    { label: "Includes number", meets: /[0-9]/.test(newPassword) },
+    { label: "Includes lowercase letter", meets: /[a-z]/.test(newPassword) },
+    { label: "Includes uppercase letter", meets: /[A-Z]/.test(newPassword) },
   ];
   const strength = checks.reduce(
     (acc, requirement) => (!requirement.meets ? acc : acc + 1),
-    0
+    0,
   );
-  const color = strength === 4 ? "teal" : strength > 2 ? "yellow" : "red";
+  let color: string;
+  if (strength === 4) {
+    color = "teal";
+  } else if (strength > 2) {
+    color = "yellow";
+  } else {
+    color = "red";
+  }
 
   // Fetch data
   useEffect(() => {
@@ -149,7 +156,7 @@ export default function AccountContent() {
 
       const res = await fetch("/api/auth/update-profile", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           first_name: firstName,
           last_name: lastName,
@@ -165,9 +172,11 @@ export default function AccountContent() {
       await refresh();
       close();
       setProfileSuccess("Profile updated successfully!");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setProfileError(err.message || "Failed to update profile.");
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to update profile.";
+      setProfileError(errorMessage);
       close();
     } finally {
       setSaving(false);
@@ -202,8 +211,8 @@ export default function AccountContent() {
     try {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({currentPassword, newPassword}),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
       });
 
       const data = await res.json();
@@ -214,9 +223,11 @@ export default function AccountContent() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setPasswordError(err.message || "Failed to update password");
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to change password.";
+      setPasswordError(errorMessage);
       closePasswordModal();
     } finally {
       setPasswordLoading(false);
@@ -234,11 +245,7 @@ export default function AccountContent() {
           <Button variant="default" onClick={close} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            onClick={handleConfirmSave}
-            loading={saving}
-            color="blue"
-          >
+          <Button onClick={handleConfirmSave} loading={saving} color="blue">
             Confirm Save
           </Button>
         </Group>
@@ -271,7 +278,7 @@ export default function AccountContent() {
         </Group>
       </Modal>
 
-      <Box component="main" style={{flex: 1}} py="xl">
+      <Box component="main" style={{ flex: 1 }} py="xl">
         <Container size="md">
           <Title order={2} mb="lg" c="dark.8">
             Account Settings
@@ -325,9 +332,9 @@ export default function AccountContent() {
 
                 <form onSubmit={handleFormSubmit}>
                   <Grid gutter="xl">
-                    <Grid.Col span={{base: 12, md: 4}}>
+                    <Grid.Col span={{ base: 12, md: 4 }}>
                       <Stack align="center">
-                        <Box pos="relative" style={{cursor: "pointer"}}>
+                        <Box pos="relative" style={{ cursor: "pointer" }}>
                           <FileButton
                             onChange={handleAvatarChange}
                             accept="image/png,image/jpeg"
@@ -371,7 +378,7 @@ export default function AccountContent() {
                       </Stack>
                     </Grid.Col>
 
-                    <Grid.Col span={{base: 12, md: 8}}>
+                    <Grid.Col span={{ base: 12, md: 8 }}>
                       <Stack gap="md">
                         <Group grow>
                           <TextInput
@@ -463,7 +470,7 @@ export default function AccountContent() {
                       opened={popoverOpened}
                       position="bottom"
                       width="target"
-                      transitionProps={{transition: "pop"}}
+                      transitionProps={{ transition: "pop" }}
                     >
                       <Popover.Target>
                         <div
@@ -529,6 +536,3 @@ export default function AccountContent() {
     </>
   );
 }
-
-
-

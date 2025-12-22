@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -7,16 +7,7 @@ export async function GET(req: Request) {
   if (!order)
     return NextResponse.json({ error: "missing_order" }, { status: 400 });
 
-  const sbUrl =
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  if (!sbUrl || !sbKey)
-    return NextResponse.json(
-      { error: "supabase env missing" },
-      { status: 500 }
-    );
-
-  const sb = createClient(sbUrl, sbKey);
+  const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("mailroom_registrations")
     .select("*")
