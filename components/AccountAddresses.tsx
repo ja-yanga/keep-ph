@@ -17,20 +17,13 @@ import {
   Checkbox,
   Divider, // Added Divider for visual separation in the card
 } from "@mantine/core";
-import {
-  IconPlus,
-  IconTrash,
-  IconEdit,
-  IconMapPin,
-  IconUser, // Added for Contact Name context
-} from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconEdit, IconMapPin } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 
 // Helper type for address data consistency - UPDATED to include contact_name
 type Address = {
   id: string;
   label: string;
-  contact_name: string; // NEW FIELD
   line1: string;
   line2: string;
   city: string;
@@ -43,7 +36,6 @@ type Address = {
 const initialFormState: Address = {
   id: "",
   label: "",
-  contact_name: "", // NEW FIELD
   line1: "",
   line2: "",
   city: "",
@@ -69,19 +61,30 @@ export default function AccountAddresses({ userId }: { userId: string }) {
         `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
       );
       const json = await res.json();
-      // Ensure we always have an array
-      let data: Address[] = [];
+      // Normalize API shape to internal Address shape (avoid nested ternary)
+      let rows: Record<string, unknown>[] = [];
       if (Array.isArray(json?.data)) {
-        data = json.data;
+        rows = json.data as Record<string, unknown>[];
       } else if (Array.isArray(json)) {
-        data = json;
+        rows = json as Record<string, unknown>[];
+      } else {
+        rows = [];
       }
+      const mapped = rows.map((row: Record<string, unknown>) => ({
+        id: String(row.user_address_id ?? row.id ?? ""),
+        label: String(row.user_address_label ?? row.label ?? ""),
+        line1: String(row.user_address_line1 ?? row.line1 ?? ""),
+        line2: String(row.user_address_line2 ?? row.line2 ?? ""),
+        city: String(row.user_address_city ?? row.city ?? ""),
+        region: String(row.user_address_region ?? row.region ?? ""),
+        postal: String(row.user_address_postal ?? row.postal ?? ""),
+        is_default: Boolean(
+          row.user_address_is_default ?? row.is_default ?? false,
+        ),
+        user_id: String(row.user_id ?? ""),
+      })) as Address[];
 
-      // avoid blocking render by scheduling large state updates as non-urgent
-      // React.startTransition prevents blocking the loader animation
-      React.startTransition(() => {
-        setAddresses(data);
-      });
+      React.startTransition(() => setAddresses(mapped));
 
       const t1 = performance.now();
       console.log("addresses.fetch.ms", Math.round(t1 - t0));
@@ -117,17 +120,10 @@ export default function AccountAddresses({ userId }: { userId: string }) {
 
   const save = async () => {
     // UPDATED VALIDATION
-    if (
-      !form.label ||
-      !form.contact_name ||
-      !form.line1 ||
-      !form.city ||
-      !form.region
-    ) {
+    if (!form.label || !form.line1 || !form.city || !form.region) {
       notifications.show({
         title: "Required fields missing",
-        message:
-          "Label, Contact Name, Address line 1, City, and Region are required.",
+        message: "Label, Address line 1, City, and Region are required.",
         color: "red",
       });
       return;
@@ -137,12 +133,15 @@ export default function AccountAddresses({ userId }: { userId: string }) {
 
     try {
       const payload: Record<string, unknown> = {
-        ...form,
-        // Ensure label is saved
+        id: form.id,
         label: form.label.trim(),
-        user_id: userId,
-        // Ensure is_default is always a boolean
+        line1: form.line1,
+        line2: form.line2,
+        city: form.city,
+        region: form.region,
+        postal: form.postal,
         is_default: !!form.is_default,
+        user_id: userId,
       };
 
       let res: Response;
@@ -259,9 +258,9 @@ export default function AccountAddresses({ userId }: { userId: string }) {
               </Text>
             </Paper>
           ) : (
-            addresses.map((a) => (
+            addresses.map((a, idx) => (
               <Card
-                key={a.id}
+                key={a.id || `address-${idx}`}
                 p="md"
                 withBorder
                 shadow="sm"
@@ -286,28 +285,12 @@ export default function AccountAddresses({ userId }: { userId: string }) {
                       )}
                     </Group>
 
-                    {/* ADDED Contact Name for clarity */}
-                    {a.contact_name && (
-                      <Group gap={4}>
-                        <IconUser
-                          size={14}
-                          style={{ color: "var(--mantine-color-gray-6)" }}
-                        />
-                        <Text size="sm" c="dimmed" style={{ lineHeight: 1.4 }}>
-                          Recipient:{" "}
-                          <Text span fw={500} inherit>
-                            {a.contact_name}
-                          </Text>
-                        </Text>
-                      </Group>
-                    )}
-
                     <Divider mt={5} mb={5} />
 
                     {/* Address Lines */}
                     <Text size="sm" style={{ lineHeight: 1.4 }}>
                       {a.line1}
-                      {a.line2 && <>, {a.line2}</>}
+                      {a.line2 ? `, ${a.line2}` : ""}
                     </Text>
 
                     {/* City, Region, Postal */}
@@ -364,16 +347,6 @@ export default function AccountAddresses({ userId }: { userId: string }) {
             value={form.label}
             onChange={(e) => setForm({ ...form, label: e.currentTarget.value })}
             description="A label helps you quickly identify this address later."
-            required
-          />
-          {/* Contact Name (Recipient) */}
-          <TextInput
-            label="Contact Name (Recipient)"
-            placeholder="Name of the person receiving the delivery"
-            value={form.contact_name}
-            onChange={(e) =>
-              setForm({ ...form, contact_name: e.currentTarget.value })
-            }
             required
           />
           <Divider my="xs" />
@@ -452,7 +425,6 @@ export default function AccountAddresses({ userId }: { userId: string }) {
               disabled={
                 loading ||
                 !form.label ||
-                !form.contact_name ||
                 !form.line1 ||
                 !form.city ||
                 !form.region

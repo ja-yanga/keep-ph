@@ -56,7 +56,9 @@ function PasswordRequirement({
       ) : (
         <IconX style={{ width: rem(14), height: rem(14) }} />
       )}
-      <Box ml={10}>{label}</Box>
+      <Box component="span" ml={10}>
+        {label}
+      </Box>
     </Text>
   );
 }
@@ -117,9 +119,63 @@ export default function AccountContent() {
   useEffect(() => {
     if (session) {
       if (session.user?.email) setEmail(session.user.email);
-      if (session.profile?.first_name) setFirstName(session.profile.first_name);
-      if (session.profile?.last_name) setLastName(session.profile.last_name);
       if (session.profile?.avatar_url) setAvatarUrl(session.profile.avatar_url);
+
+      // load names from KYC instead of editable profile
+      (async () => {
+        try {
+          const userId = session.user?.id;
+          if (!userId) return;
+          const res = await fetch(
+            `/api/user/kyc?userId=${encodeURIComponent(userId)}`,
+          );
+          if (!res.ok) return;
+          const json = await res.json();
+
+          // normalize possible response shapes and pick the KYC object
+          const payload = json?.data ?? json;
+          let kycObj: Record<string, unknown> | null = null;
+
+          if (!payload) {
+            kycObj = null;
+          } else if (Array.isArray(payload) && payload.length > 0) {
+            kycObj = payload[0];
+          } else if (payload.kyc && typeof payload.kyc === "object") {
+            kycObj = payload.kyc as Record<string, unknown>;
+          } else if (payload.data && typeof payload.data === "object") {
+            // handle { data: { kyc: { ... } } } or { data: { ... } }
+            const pdata = payload.data as Record<string, unknown>;
+            if (pdata.kyc && typeof pdata.kyc === "object") {
+              kycObj = pdata.kyc as Record<string, unknown>;
+            } else {
+              kycObj = pdata;
+            }
+          } else if (typeof payload === "object") {
+            kycObj = payload as Record<string, unknown>;
+          } else {
+            kycObj = null;
+          }
+
+          if (kycObj) {
+            const first =
+              kycObj.user_kyc_first_name ??
+              kycObj.user_kyc_firstName ??
+              kycObj.first_name ??
+              kycObj.firstName ??
+              "";
+            const last =
+              kycObj.user_kyc_last_name ??
+              kycObj.user_kyc_lastName ??
+              kycObj.last_name ??
+              kycObj.lastName ??
+              "";
+            setFirstName(String(first));
+            setLastName(String(last));
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
     }
   }, [session]);
 
@@ -158,8 +214,6 @@ export default function AccountContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName,
           avatar_data_url: avatarDataUrl,
         }),
       });
@@ -384,16 +438,12 @@ export default function AccountContent() {
                           <TextInput
                             label="First Name"
                             value={firstName}
-                            onChange={(e) =>
-                              setFirstName(e.currentTarget.value)
-                            }
-                            required
+                            readOnly
                           />
                           <TextInput
                             label="Last Name"
                             value={lastName}
-                            onChange={(e) => setLastName(e.currentTarget.value)}
-                            required
+                            readOnly
                           />
                         </Group>
                         <TextInput
@@ -401,7 +451,6 @@ export default function AccountContent() {
                           value={email}
                           readOnly
                           description="Contact support to change email"
-                          disabled
                         />
 
                         <Group justify="flex-end" mt="md">
