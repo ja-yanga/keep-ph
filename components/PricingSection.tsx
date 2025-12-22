@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Container,
   Stack,
@@ -19,36 +19,239 @@ import {
 } from "@mantine/core";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import Link from "next/link";
+import { LANDING_PAGE } from "@/utils/constants";
+import type { MailroomPlan } from "@/utils/types/types";
 
-const PRICING = {
-  free: { monthly: 0, annual: 0 },
-  digital: { monthly: 299, annual: 239 },
-  personal: { monthly: 499, annual: 399 },
-  business: { monthly: 2999, annual: 2399 },
-};
+const PRICING_COPY = LANDING_PAGE.pricing;
+const BILLING_OPTIONS = PRICING_COPY.segmentedControl.options;
+const BILLING_DEFAULT = PRICING_COPY.segmentedControl.defaultValue;
+const DISCOUNT_RATE = PRICING_COPY.segmentedControl.annualDiscountRate;
+
+type BillingCadence = (typeof BILLING_OPTIONS)[number]["value"];
 
 export default function PricingSection() {
-  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+  const [billing, setBilling] = useState<BillingCadence>(
+    BILLING_DEFAULT as BillingCadence,
+  );
+  const [plans, setPlans] = useState<MailroomPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchPlans = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch("/api/plans", {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch plans");
+        }
+
+        const data = (await response.json()) as MailroomPlan[];
+        setPlans(data);
+      } catch (fetchError) {
+        if ((fetchError as Error).name === "AbortError") {
+          return;
+        }
+        setError(PRICING_COPY.fallback.error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPlans();
+
+    return () => controller.abort();
+  }, []);
+
+  const formatPrice = (price: number) =>
+    `₱${price.toLocaleString(undefined, {
+      maximumFractionDigits: 0,
+    })}`;
+
+  const getDisplayPrice = (price: number) =>
+    billing === "monthly" ? price : Math.round(price * (1 - DISCOUNT_RATE));
+
+  const getAnnualTotal = (price: number) =>
+    Math.round(price * 12 * (1 - DISCOUNT_RATE)).toLocaleString();
+
+  const getFeatureIconColor = (available: boolean, featured: boolean) => {
+    if (!available) {
+      return "red";
+    }
+
+    return featured ? "blue" : "teal";
+  };
+
+  const renderPlanCard = (plan: MailroomPlan) => {
+    const isFeatured = plan.name === PRICING_COPY.featuredPlanName;
+    const featuredStyles = isFeatured
+      ? {
+          border: "2px solid #1A237E",
+          transform: "scale(1.02)",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
+          zIndex: 1,
+        }
+      : {};
+
+    const description = plan.description ?? PRICING_COPY.descriptionFallback;
+    const storageLabel = plan.storageLimit
+      ? `${plan.storageLimit} ${PRICING_COPY.features.storageUnitSuffix}`
+      : PRICING_COPY.features.unlimitedStorageLabel;
+
+    const featureItems = [
+      {
+        label: `${PRICING_COPY.features.storageLimit}: ${storageLabel}`,
+        available: true,
+      },
+      {
+        label: PRICING_COPY.features.canReceiveMail,
+        available: plan.canReceiveMail,
+      },
+      {
+        label: PRICING_COPY.features.canReceiveParcels,
+        available: plan.canReceiveParcels,
+      },
+      {
+        label: PRICING_COPY.features.canDigitize,
+        available: plan.canDigitize,
+      },
+    ];
+
+    return (
+      <Card
+        key={plan.id}
+        radius="lg"
+        withBorder={!isFeatured}
+        padding="xl"
+        style={featuredStyles}
+      >
+        <Stack justify="space-between" h="100%">
+          <Box>
+            <Group justify="space-between" mb="xs">
+              <Title order={4} c={isFeatured ? "#1A237E" : undefined}>
+                {plan.name}
+              </Title>
+              {isFeatured && (
+                <Badge color="blue" variant="filled">
+                  {PRICING_COPY.featuredPlanName}
+                </Badge>
+              )}
+            </Group>
+            <Group align="baseline" gap={4}>
+              <Text
+                size={rem(32)}
+                fw={800}
+                c={isFeatured ? "#1A237E" : undefined}
+              >
+                {formatPrice(getDisplayPrice(plan.price))}
+              </Text>
+              <Text c="dimmed">{PRICING_COPY.priceSuffix}</Text>
+            </Group>
+
+            {billing === "annual" && (
+              <Text size="xs" c="green" fw={500}>
+                {PRICING_COPY.annualBilling.prefix} ₱
+                {getAnnualTotal(plan.price)} {PRICING_COPY.annualBilling.suffix}
+              </Text>
+            )}
+
+            <Text size="sm" c="dimmed" mt="xs">
+              {description}
+            </Text>
+
+            <List spacing="sm" mt="xl" size="sm" center>
+              {featureItems.map((item) => (
+                <List.Item
+                  key={item.label}
+                  icon={
+                    <ThemeIcon
+                      color={getFeatureIconColor(item.available, isFeatured)}
+                      size={20}
+                      radius="xl"
+                    >
+                      {item.available ? (
+                        <IconCheck size={12} />
+                      ) : (
+                        <IconX size={12} />
+                      )}
+                    </ThemeIcon>
+                  }
+                >
+                  {item.label}
+                </List.Item>
+              ))}
+            </List>
+          </Box>
+          <Button
+            component={Link}
+            href={PRICING_COPY.button.href}
+            variant={isFeatured ? "filled" : "outline"}
+            color={isFeatured ? "#1A237E" : undefined}
+            fullWidth
+            radius="md"
+            mt="xl"
+          >
+            {PRICING_COPY.button.label}
+          </Button>
+        </Stack>
+      </Card>
+    );
+  };
+
+  let pricingContent: ReactNode;
+
+  if (loading) {
+    pricingContent = (
+      <Text ta="center" c="dimmed">
+        {PRICING_COPY.fallback.loading}
+      </Text>
+    );
+  } else if (error) {
+    pricingContent = (
+      <Text ta="center" c="red">
+        {error}
+      </Text>
+    );
+  } else if (!plans.length) {
+    pricingContent = (
+      <Stack align="center" gap="xs">
+        <Title order={4}>{PRICING_COPY.fallback.emptyTitle}</Title>
+        <Text c="dimmed" ta="center">
+          {PRICING_COPY.fallback.emptyDescription}
+        </Text>
+      </Stack>
+    );
+  } else {
+    pricingContent = (
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
+        {plans.map(renderPlanCard)}
+      </SimpleGrid>
+    );
+  }
 
   return (
-    <Box bg="#F1F3F5" py={80} id="pricing">
+    <Box bg={PRICING_COPY.background} py={80} id={PRICING_COPY.sectionId}>
       <Container size="xl">
         <Stack align="center" gap="sm" mb={50}>
           <Title order={2} size={36} c="#1A237E">
-            Simple, Transparent Pricing
+            {PRICING_COPY.heading}
           </Title>
           <Text c="dimmed" ta="center" size="lg" maw={600}>
-            Choose the plan that best fits your needs.
+            {PRICING_COPY.subheading}
           </Text>
 
           <Group mt="md">
             <SegmentedControl
               value={billing}
-              onChange={(value) => setBilling(value as "monthly" | "annual")}
-              data={[
-                { label: "Monthly Billing", value: "monthly" },
-                { label: "Annual Billing (-20%)", value: "annual" },
-              ]}
+              onChange={(value) => setBilling(value as BillingCadence)}
+              data={BILLING_OPTIONS}
               size="md"
               radius="xl"
               color="blue"
@@ -56,281 +259,7 @@ export default function PricingSection() {
             />
           </Group>
         </Stack>
-
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
-          {/* FREE PLAN */}
-          <Card radius="lg" withBorder padding="xl">
-            <Stack justify="space-between" h="100%">
-              <Box>
-                <Title order={4} mb="xs">
-                  Free
-                </Title>
-                <Group align="baseline" gap={4}>
-                  <Text size={rem(32)} fw={800}>
-                    ₱0
-                  </Text>
-                  <Text c="dimmed">/mo</Text>
-                </Group>
-                <Text size="sm" c="dimmed" mt="xs">
-                  Only affiliate features
-                </Text>
-
-                <List spacing="sm" mt="xl" size="sm" center>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="red" size={20} radius="xl">
-                        <IconX size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    No Mail Services
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="red" size={20} radius="xl">
-                        <IconX size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    No Digital Storage
-                  </List.Item>
-                </List>
-              </Box>
-              <Button
-                component={Link}
-                href="/signup"
-                variant="default"
-                fullWidth
-                radius="md"
-                mt="xl"
-              >
-                I&apos;m Interested
-              </Button>
-            </Stack>
-          </Card>
-
-          {/* DIGITAL PLAN */}
-          <Card radius="lg" withBorder padding="xl">
-            <Stack justify="space-between" h="100%">
-              <Box>
-                <Title order={4} mb="xs">
-                  Digital
-                </Title>
-                <Group align="baseline" gap={4}>
-                  <Text size={rem(32)} fw={800}>
-                    ₱{PRICING.digital[billing]}
-                  </Text>
-                  <Text c="dimmed">/mo</Text>
-                </Group>
-                {billing === "annual" && (
-                  <Text size="xs" c="green" fw={500}>
-                    Billed ₱{(PRICING.digital.annual * 12).toLocaleString()}{" "}
-                    yearly
-                  </Text>
-                )}
-                <Text size="sm" c="dimmed" mt="xs">
-                  Personal use, no parcels
-                </Text>
-
-                <List spacing="sm" mt="xl" size="sm" center>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="teal" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    Mail scanning
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="teal" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    5GB Storage
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="teal" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    7 days Retention
-                  </List.Item>
-                </List>
-              </Box>
-              <Button
-                component={Link}
-                href="/signup"
-                variant="outline"
-                fullWidth
-                radius="md"
-                mt="xl"
-              >
-                I&apos;m Interested
-              </Button>
-            </Stack>
-          </Card>
-
-          {/* PERSONAL PLAN (POPULAR) */}
-          <Card
-            radius="lg"
-            padding="xl"
-            style={{
-              border: "2px solid #1A237E",
-              transform: "scale(1.02)",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
-              zIndex: 1,
-            }}
-          >
-            <Stack justify="space-between" h="100%">
-              <Box>
-                <Group justify="space-between" mb="xs">
-                  <Title order={4} c="#1A237E">
-                    Personal
-                  </Title>
-                  <Badge color="blue" variant="filled">
-                    Popular
-                  </Badge>
-                </Group>
-                <Group align="baseline" gap={4}>
-                  <Text size={rem(32)} fw={800} c="#1A237E">
-                    ₱{PRICING.personal[billing]}
-                  </Text>
-                  <Text c="dimmed">/mo</Text>
-                </Group>
-                {billing === "annual" && (
-                  <Text size="xs" c="green" fw={500}>
-                    Billed ₱{(PRICING.personal.annual * 12).toLocaleString()}{" "}
-                    yearly
-                  </Text>
-                )}
-                <Text size="sm" c="dimmed" mt="xs">
-                  Personal use + Parcels
-                </Text>
-
-                <List spacing="sm" mt="xl" size="sm" center>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="blue" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    Full mail management
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="blue" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    20GB Storage
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="blue" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    90 days Retention
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="blue" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    Parcel Handling
-                  </List.Item>
-                </List>
-              </Box>
-              <Button
-                component={Link}
-                href="/signup"
-                fullWidth
-                radius="md"
-                size="md"
-                color="#1A237E"
-                mt="xl"
-              >
-                I&apos;m Interested
-              </Button>
-            </Stack>
-          </Card>
-
-          {/* BUSINESS PLAN */}
-          <Card radius="lg" withBorder padding="xl">
-            <Stack justify="space-between" h="100%">
-              <Box>
-                <Title order={4} mb="xs">
-                  Business
-                </Title>
-                <Group align="baseline" gap={4}>
-                  <Text size={rem(32)} fw={800}>
-                    ₱{PRICING.business[billing].toLocaleString()}
-                  </Text>
-                  <Text c="dimmed">/mo</Text>
-                </Group>
-                {billing === "annual" && (
-                  <Text size="xs" c="green" fw={500}>
-                    Billed ₱{(PRICING.business.annual * 12).toLocaleString()}{" "}
-                    yearly
-                  </Text>
-                )}
-                <Text size="sm" c="dimmed" mt="xs">
-                  Business use + Greenhills
-                </Text>
-
-                <List spacing="sm" mt="xl" size="sm" center>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="teal" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    Virtual Office
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="teal" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    200GB Storage
-                  </List.Item>
-                  <List.Item
-                    icon={
-                      <ThemeIcon color="teal" size={20} radius="xl">
-                        <IconCheck size={12} />
-                      </ThemeIcon>
-                    }
-                  >
-                    365 days Retention
-                  </List.Item>
-                </List>
-              </Box>
-              <Button
-                component={Link}
-                href="/signup"
-                variant="outline"
-                fullWidth
-                radius="md"
-                mt="xl"
-              >
-                I&apos;m Interested
-              </Button>
-            </Stack>
-          </Card>
-        </SimpleGrid>
+        {pricingContent}
       </Container>
     </Box>
   );

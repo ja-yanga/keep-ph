@@ -34,7 +34,6 @@ type KycRow = {
   user_id: string;
   status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
   id_document_type?: string | null;
-  id_document_number?: string | null;
   id_front_url?: string | null;
   id_back_url?: string | null;
   first_name?: string | null;
@@ -62,12 +61,6 @@ const fetcher = async (url: string) => {
   }
   return res.json();
 };
-
-function maskId(id?: string | null, visible = 4) {
-  if (!id) return "";
-  if (id.length <= visible) return "*".repeat(id.length);
-  return `${"*".repeat(id.length - visible)}${id.slice(-visible)}`;
-}
 
 // Helper component for consistent label-top, value-bottom styling
 const DetailStack = ({
@@ -155,23 +148,23 @@ export default function AdminUserKyc() {
     setRows(arr);
   }, [data]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const refresh = async () => {
-    try {
-      await swrMutate(key);
-      notifications.show({
-        title: "Refreshed",
-        message: "KYC list updated",
-        color: "green",
-      });
-    } catch {
-      notifications.show({
-        title: "Error",
-        message: "Failed to refresh",
-        color: "red",
-      });
-    }
-  };
+  // const refresh = async () => {
+  //   try {
+  //     await swrMutate(key);
+  //     notifications.show({
+  //       title: "Refreshed",
+  //       message: "KYC list updated",
+  //       color: "green",
+  //     });
+  //   } catch (err) {
+  //     console.error("Refresh error:", err);
+  //     notifications.show({
+  //       title: "Error",
+  //       message: "Failed to refresh",
+  //       color: "red",
+  //     });
+  //   }
+  // };
 
   const openDetails = (r: KycRow) => {
     setSelected(r);
@@ -212,11 +205,7 @@ export default function AdminUserKyc() {
     const name = (
       r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`
     ).toLowerCase();
-    return (
-      name.includes(q) ||
-      (r.id_document_number ?? "").toLowerCase().includes(q) ||
-      (r.user_id ?? "").toLowerCase().includes(q)
-    );
+    return name.includes(q) || (r.user_id ?? "").toLowerCase().includes(q);
   });
 
   // client-side pagination (copying MailroomRegistrations approach)
@@ -236,7 +225,7 @@ export default function AdminUserKyc() {
         <Group justify="space-between" mb="md">
           <Group>
             <TextInput
-              placeholder="Search by name, ID number or user id..."
+              placeholder="Search by name or user id..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => {
@@ -298,9 +287,6 @@ export default function AdminUserKyc() {
               render: (r: KycRow) => (
                 <div>
                   <Text size="sm">{r.id_document_type ?? "—"}</Text>
-                  <Text size="xs" c="dimmed">
-                    {maskId(String(r.id_document_number ?? ""))}
-                  </Text>
                 </div>
               ),
             },
@@ -331,22 +317,30 @@ export default function AdminUserKyc() {
               accessor: "dates",
               title: "Submitted / Verified",
               width: 220,
-              render: (r: KycRow) => (
-                <div>
-                  <Text size="xs" c="dimmed">
-                    Submitted:{" "}
-                    {r.submitted_at
-                      ? dayjs(r.submitted_at).format("MMM D, YYYY")
-                      : "—"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Verified:{" "}
-                    {r.verified_at
-                      ? dayjs(r.verified_at).format("MMM D, YYYY")
-                      : "—"}
-                  </Text>
-                </div>
-              ),
+              render: (r: KycRow) => {
+                let submitted: string;
+                if (r.submitted_at) {
+                  submitted = dayjs(r.submitted_at).format("MMM D, YYYY");
+                } else {
+                  submitted = "—";
+                }
+                let verified: string;
+                if (r.verified_at) {
+                  verified = dayjs(r.verified_at).format("MMM D, YYYY");
+                } else {
+                  verified = "—";
+                }
+                return (
+                  <div>
+                    <Text size="xs" c="dimmed">
+                      Submitted: {submitted}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Verified: {verified}
+                    </Text>
+                  </div>
+                );
+              },
             },
             {
               accessor: "actions",
@@ -394,9 +388,6 @@ export default function AdminUserKyc() {
                 <DetailStack label="Document">
                   <Text size="sm" fw={500}>
                     {selected.id_document_type ?? "—"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {selected.id_document_number ?? "—"}
                   </Text>
                 </DetailStack>
               </Grid.Col>

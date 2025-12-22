@@ -6,112 +6,125 @@ const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST() {
   try {
-    // 1. Fetch all active registrations
-    const { data: registrations, error: fetchError } = await supabaseAdmin
-      .from("mailroom_registrations")
-      .select("id, created_at, months, mailroom_status, auto_renew")
-      .eq("mailroom_status", true);
+    const nowIso = new Date().toISOString();
 
-    if (fetchError) throw fetchError;
+    const { data: subsExpiring, error: fetchErr } = await supabaseAdmin
+      .from("subscription_table")
+      .select(
+        "subscription_id, mailroom_registration_id, subscription_expires_at, subscription_auto_renew, subscription_billing_cycle",
+      )
+      .lte("subscription_expires_at", nowIso);
 
-    if (!registrations || registrations.length === 0) {
-      return NextResponse.json({
-        message: "No active subscriptions to check.",
-      });
+    if (fetchErr) throw fetchErr;
+
+    if (!Array.isArray(subsExpiring) || subsExpiring.length === 0) {
+      return NextResponse.json({ message: "No subscriptions to process." });
     }
 
-    const expiredRegistrationIds: string[] = [];
-    const renewedRegistrationIds: string[] = [];
+    const toExpire: string[] = [];
+    const toRenew: { subscription_id: string; billing_cycle: string }[] = [];
 
-    // 2. Filter for expired vs renewing
-    registrations.forEach((reg) => {
-      const expiresAt = dayjs(reg.created_at).add(reg.months, "month");
+    for (const s of subsExpiring) {
+      const rec = s as Record<string, unknown>;
+      const subId = String(rec.subscription_id ?? "");
+      const regId = String(rec.mailroom_registration_id ?? "");
+      const autoRenew = Boolean(rec.subscription_auto_renew ?? false);
+      const billing = String(rec.subscription_billing_cycle ?? "MONTHLY");
 
-      // Check if the period has ended
-      if (dayjs().isAfter(expiresAt)) {
-        if (reg.auto_renew !== false) {
-          // Auto-renew is ON -> Add to renew list
-          renewedRegistrationIds.push(reg.id);
-        } else {
-          // Auto-renew is OFF -> Add to expire list
-          expiredRegistrationIds.push(reg.id);
+      if (!regId || !subId) continue;
+
+      if (autoRenew) {
+        toRenew.push({ subscription_id: subId, billing_cycle: billing });
+      } else {
+        toExpire.push(regId);
+      }
+    }
+
+    let lockersFreed = 0;
+    if (toExpire.length > 0) {
+      const { data: assignments, error: assignErr } = await supabaseAdmin
+        .from("mailroom_assigned_locker_table")
+        .select(
+          "mailroom_assigned_locker_id, location_locker_id, mailroom_registration_id",
+        )
+        .in("mailroom_registration_id", toExpire);
+
+      if (assignErr) throw assignErr;
+
+      const lockerIds: string[] = [];
+      if (Array.isArray(assignments) && assignments.length > 0) {
+        for (const a of assignments) {
+          const rec = a as Record<string, unknown>;
+          const lid = String(rec.location_locker_id ?? "");
+          if (lid) lockerIds.push(lid);
         }
       }
-    });
 
-    if (
-      expiredRegistrationIds.length === 0 &&
-      renewedRegistrationIds.length === 0
-    ) {
-      return NextResponse.json({ message: "No subscriptions needed updates." });
-    }
+      if (toExpire.length > 0) {
+        const { error: updRegErr } = await supabaseAdmin
+          .from("mailroom_registration_table")
+          .update({ mailroom_registration_status: false })
+          .in("mailroom_registration_id", toExpire);
+        if (updRegErr) throw updRegErr;
+      }
 
-    // --- HANDLE EXPIRATIONS (Existing Logic) ---
-    let lockersFreed = 0;
+      if (Array.isArray(assignments) && assignments.length > 0) {
+        const { error: delAssignErr } = await supabaseAdmin
+          .from("mailroom_assigned_locker_table")
+          .delete()
+          .in("mailroom_registration_id", toExpire);
+        if (delAssignErr) throw delAssignErr;
+      }
 
-    if (expiredRegistrationIds.length > 0) {
-      // 3. Find assigned lockers for these expired users
-      const { data: assignments, error: assignError } = await supabaseAdmin
-        .from("mailroom_assigned_lockers")
-        .select("locker_id")
-        .in("registration_id", expiredRegistrationIds);
-
-      if (assignError) throw assignError;
-
-      const lockerIdsToFree = assignments
-        ? assignments.map((a) => a.locker_id)
-        : [];
-      lockersFreed = lockerIdsToFree.length;
-
-      // A. Mark registrations as inactive
-      const { error: updateRegError } = await supabaseAdmin
-        .from("mailroom_registrations")
-        .update({ mailroom_status: false })
-        .in("id", expiredRegistrationIds);
-
-      if (updateRegError) throw updateRegError;
-
-      // B. Delete the assignments
-      const { error: deleteAssignError } = await supabaseAdmin
-        .from("mailroom_assigned_lockers")
-        .delete()
-        .in("registration_id", expiredRegistrationIds);
-
-      if (deleteAssignError) throw deleteAssignError;
-
-      // C. Mark lockers available
-      if (lockerIdsToFree.length > 0) {
-        const { error: updateLockerError } = await supabaseAdmin
-          .from("location_lockers")
-          .update({ is_available: true })
-          .in("id", lockerIdsToFree);
-
-        if (updateLockerError) throw updateLockerError;
+      if (lockerIds.length > 0) {
+        const uniqueLockerIds = Array.from(new Set(lockerIds));
+        const { error: updLockerErr } = await supabaseAdmin
+          .from("location_locker_table")
+          .update({ location_locker_is_available: true })
+          .in("location_locker_id", uniqueLockerIds);
+        if (updLockerErr) throw updLockerErr;
+        lockersFreed = uniqueLockerIds.length;
       }
     }
 
-    // --- HANDLE RENEWALS (New Logic) ---
-    if (renewedRegistrationIds.length > 0) {
-      // Update created_at to NOW() to start a new cycle
-      const { error: renewError } = await supabaseAdmin
-        .from("mailroom_registrations")
-        .update({ created_at: new Date().toISOString() })
-        .in("id", renewedRegistrationIds);
+    let renewedCount = 0;
+    if (toRenew.length > 0) {
+      const updates = toRenew.map((r) => {
+        const bc = String(r.billing_cycle ?? "MONTHLY").toUpperCase();
+        let months = 1;
+        if (bc === "QUARTERLY") months = 3;
+        else if (bc === "ANNUAL") months = 12;
+        const started = new Date().toISOString();
+        const expires = dayjs().add(months, "month").toISOString();
+        return supabaseAdmin
+          .from("subscription_table")
+          .update({
+            subscription_started_at: started,
+            subscription_expires_at: expires,
+            subscription_updated_at: new Date().toISOString(),
+          })
+          .eq("subscription_id", r.subscription_id);
+      });
 
-      if (renewError) throw renewError;
+      const results = await Promise.all(updates);
+      for (const res of results) {
+        if (res.error) throw res.error;
+      }
+      renewedCount = toRenew.length;
     }
 
     return NextResponse.json({
       success: true,
-      expired_count: expiredRegistrationIds.length,
-      renewed_count: renewedRegistrationIds.length,
+      expired_count: toExpire.length,
+      renewed_count: renewedCount,
       lockers_freed: lockersFreed,
-      message: `Processed: ${expiredRegistrationIds.length} expired, ${renewedRegistrationIds.length} renewed subscriptions. Freed ${lockersFreed} lockers.`,
+      message: `Processed: expired=${toExpire.length}, renewed=${renewedCount}, lockers_freed=${lockersFreed}`,
     });
-  } catch (error: unknown) {
-    console.error("Cron job error:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  } catch (err: unknown) {
+    console.error(err);
+    return NextResponse.json(
+      { error: "Cron processing failed" },
+      { status: 500 },
+    );
   }
 }

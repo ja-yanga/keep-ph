@@ -44,44 +44,51 @@ type Registration = {
   mailroom_code: string | null;
   full_name: string;
   email: string;
-  phone_number?: string;
+  phone_number?: string | null;
   created_at: string;
   months: number;
   locker_qty: number;
-  location_id: string;
-  plan_id: string;
+  location_id: string | null;
+  plan_id: string | null;
   mailroom_status: boolean;
-  location_name?: string;
-  plan_name?: string;
+  location_name?: string | null;
+  plan_name?: string | null;
 };
 
-// Add Plan Interface
 type Plan = {
   id: string;
   name: string;
-  months: number;
+  price?: number;
 };
 
 type Locker = {
   id: string;
   locker_code: string;
   is_available: boolean;
-  location_id?: string;
+  location_id?: string | null;
 };
 
 type AssignedLocker = {
   id: string;
   registration_id: string;
   locker_id: string;
-  status?: "Empty" | "Normal" | "Near Full" | "Full";
+  status?: "Empty" | "Normal" | "Near Full" | "Full" | string;
+};
+
+type Location = {
+  id: string;
+  name: string;
+  region?: string | null;
+  city?: string | null;
+  barangay?: string | null;
+  zip?: string | null;
+  total_lockers?: number;
 };
 
 export default function MailroomRegistrations() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
-  const [locations, setLocations] = useState<
-    Array<{ id: string; name: string; city?: string }>
-  >([]); // ADDED: store locations
+  const [locations, setLocations] = useState<Location[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [assignments, setAssignments] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,59 +117,206 @@ export default function MailroomRegistrations() {
       const txt = await res.text().catch(() => "");
       throw new Error(txt || `Failed to fetch ${url}`);
     }
-    return res.json().catch(() => ({}));
+    return res.json().catch(() => ({}) as Record<string, unknown>);
   };
 
-  const { data: combinedData, isValidating } = useSWR(combinedKey, fetcher, {
-    revalidateOnFocus: true,
-  });
+  const { data: combinedData, isValidating } = useSWR<
+    Record<string, unknown> | undefined
+  >(combinedKey, fetcher, { revalidateOnFocus: true, dedupingInterval: 2000 });
+
+  // small helpers
+  const toStr = (v: unknown): string => (v == null ? "" : String(v));
+  const toNullableStr = (v: unknown): string | null =>
+    v == null ? null : String(v);
+  const toBool = (v: unknown): boolean => Boolean(v);
+  const toNum = (v: unknown): number =>
+    v == null ? 0 : Number(v as number | string);
 
   // Sync SWR combined response into local state
   useEffect(() => {
     setLoading(!!isValidating);
-    const payload = combinedData ?? {};
+    const payload = combinedData ?? ({} as Record<string, unknown>);
 
-    // normalize registrations: map `mobile` from API to `phone_number` used by UI
-    const rawRegs = Array.isArray(payload.registrations)
-      ? payload.registrations
-      : [];
-    const normalizedRegs = rawRegs.map(
-      (r: {
-        mobile?: string;
-        phone?: string;
-        phone_number?: string;
-        [key: string]: unknown;
-      }) => ({
-        ...r,
-        phone_number: r.mobile ?? r.phone ?? r.phone_number ?? null,
-        // keep backward-compatible plan/location fields if the server returned nested relations
-        plan_id: r.plan_id ?? r.plan?.id ?? null,
-        plan_name: r.plan_name ?? r.plan?.name ?? null,
-        location_id: r.location_id ?? r.location?.id ?? null,
-        location_name: r.location_name ?? r.location?.name ?? null,
-      }),
-    );
+    let rawRegs: unknown[] = [];
+    if (Array.isArray(payload.registrations)) {
+      rawRegs = payload.registrations as unknown[];
+    }
+
+    const normalizedRegs: Registration[] = (
+      rawRegs as Record<string, unknown>[]
+    ).map((r) => {
+      const row = r ?? ({} as Record<string, unknown>);
+      const mobile =
+        row.mobile ?? row.phone ?? row.phone_number ?? (null as string | null);
+
+      let planId: unknown = null;
+      if (row.plan_id != null) planId = row.plan_id;
+      else if ((row.plan as Record<string, unknown>)?.id != null)
+        planId = (row.plan as Record<string, unknown>).id;
+
+      let planName: unknown = null;
+      if (row.plan_name != null) planName = row.plan_name;
+      else if ((row.plan as Record<string, unknown>)?.name != null)
+        planName = (row.plan as Record<string, unknown>).name;
+
+      let locationId: unknown = null;
+      if (row.location_id != null) locationId = row.location_id;
+      else if ((row.location as Record<string, unknown>)?.id != null)
+        locationId = (row.location as Record<string, unknown>).id;
+
+      const createdAt = toStr(
+        row.created_at ?? row.mailroom_registration_created_at,
+      );
+
+      const out: Registration = {
+        id: String(row.id ?? row.mailroom_registration_id ?? ""),
+        mailroom_code: toNullableStr(
+          row.mailroom_code ?? row.mailroom_registration_code,
+        ),
+        full_name: toStr(
+          row.full_name ??
+            ((row.kyc as Record<string, unknown>)?.user_kyc_first_name
+              ? `${String((row.kyc as Record<string, unknown>).user_kyc_first_name ?? "")} ${String((row.kyc as Record<string, unknown>).user_kyc_last_name ?? "")}`
+              : (row.email ??
+                (row.user as Record<string, unknown>)?.users_email ??
+                "")),
+        ),
+        email: toStr(
+          (row.user as Record<string, unknown>)?.users_email ?? row.email ?? "",
+        ),
+        phone_number: mobile == null ? null : String(mobile),
+        created_at: createdAt,
+        months: toNum((row.months ?? 0) as unknown),
+        locker_qty: Number(row.locker_qty ?? row.mailbox_count ?? 0),
+        location_id: locationId == null ? null : String(locationId),
+        plan_id: planId == null ? null : String(planId),
+        mailroom_status: toBool(
+          row.mailroom_status ?? row.mailroom_registration_status ?? true,
+        ),
+        location_name: toNullableStr(
+          row.location_name ?? (row.location as Record<string, unknown>)?.name,
+        ),
+        plan_name: planName == null ? undefined : String(planName),
+      };
+
+      return out;
+    });
+
     setRegistrations(normalizedRegs);
 
-    setLockers(Array.isArray(payload.lockers) ? payload.lockers : []);
-    setAssignments(
-      Array.isArray(payload.assignedLockers) ? payload.assignedLockers : [],
+    // lockes mapping
+    const rawLockers = Array.isArray(payload.lockers) ? payload.lockers : [];
+    const normalizedLockers: Locker[] = (
+      rawLockers as Record<string, unknown>[]
+    ).map((l) => {
+      const row = l ?? ({} as Record<string, unknown>);
+      let locationId: string | undefined = undefined;
+      if (row.location_id != null) locationId = String(row.location_id);
+      else if (row.mailroom_location_id != null)
+        locationId = String(row.mailroom_location_id);
+
+      return {
+        id: String(row.id ?? row.location_locker_id ?? ""),
+        locker_code: String(row.locker_code ?? row.location_locker_code ?? ""),
+        is_available: Boolean(
+          row.is_available ?? row.location_locker_is_available ?? true,
+        ),
+        location_id: locationId,
+      };
+    });
+    setLockers(normalizedLockers);
+
+    // assignments mapping
+    const rawAssign = Array.isArray(payload.assignedLockers)
+      ? payload.assignedLockers
+      : [];
+    const normalizedAssign: AssignedLocker[] = (
+      rawAssign as Record<string, unknown>[]
+    ).map((a) => {
+      const row = a ?? ({} as Record<string, unknown>);
+      return {
+        id: String(row.id ?? row.mailroom_assigned_locker_id ?? ""),
+        registration_id: String(
+          row.registration_id ?? row.mailroom_registration_id ?? "",
+        ),
+        locker_id: String(row.locker_id ?? row.location_locker_id ?? ""),
+        status: (row.status ?? row.mailroom_assigned_locker_status) as
+          | AssignedLocker["status"]
+          | string,
+      };
+    });
+    setAssignments(normalizedAssign);
+
+    // plans mapping
+    const rawPlans = Array.isArray(payload.plans) ? payload.plans : [];
+    const normalizedPlans: Plan[] = (rawPlans as Record<string, unknown>[]).map(
+      (p) => {
+        const row = p ?? ({} as Record<string, unknown>);
+        let price: number | undefined = undefined;
+        if (row.price != null) {
+          price = Number(row.price ?? row.mailroom_plan_price ?? 0);
+        }
+        return {
+          id: String(row.id ?? row.mailroom_plan_id ?? ""),
+          name: String(row.name ?? row.mailroom_plan_name ?? ""),
+          price,
+        };
+      },
     );
-    setPlans(Array.isArray(payload.plans) ? payload.plans : []);
-    setLocations(Array.isArray(payload.locations) ? payload.locations : []);
+    setPlans(normalizedPlans);
+
+    // locations mapping
+    const rawLocations = Array.isArray(payload.locations)
+      ? payload.locations
+      : [];
+    const normalizedLocations: Location[] = (
+      rawLocations as Record<string, unknown>[]
+    ).map((loc) => {
+      const row = loc ?? ({} as Record<string, unknown>);
+      const region =
+        row.region != null
+          ? (row.region as string)
+          : ((row.mailroom_location_region as string | null) ?? null);
+      const city =
+        row.city != null
+          ? (row.city as string)
+          : ((row.mailroom_location_city as string | null) ?? null);
+      const barangay =
+        row.barangay != null
+          ? (row.barangay as string)
+          : ((row.mailroom_location_barangay as string | null) ?? null);
+      const zip =
+        row.zip != null
+          ? (row.zip as string)
+          : ((row.mailroom_location_zip as string | null) ?? null);
+      const totalLockers = Number(
+        row.total_lockers ?? row.mailroom_location_total_lockers ?? 0,
+      );
+
+      return {
+        id: String(row.id ?? row.mailroom_location_id ?? ""),
+        name: String(row.name ?? row.mailroom_location_name ?? ""),
+        region,
+        city,
+        barangay,
+        zip,
+        total_lockers: totalLockers,
+      };
+    });
+    setLocations(normalizedLocations);
   }, [combinedData, isValidating]);
 
   // Initial cron run and seed by revalidating SWR
   useEffect(() => {
+    const initRan = { current: false } as { current: boolean };
+    if (initRan.current) return;
+    initRan.current = true;
     const init = async () => {
       setLoading(true);
       try {
-        await fetch("/api/admin/mailroom/cron", { method: "POST" });
-      } catch (e) {
-        console.error("Auto-sync failed", e);
+        // cron disabled
       } finally {
-        // revalidate all keys
-        await Promise.all([swrMutate(combinedKey)]);
+        // avoid forced mutate to prevent extra fetchs; rely on SWR's initial fetch/deduping
         setLoading(false);
       }
     };
@@ -189,11 +343,15 @@ export default function MailroomRegistrations() {
     const currentAssignment = assignments.find(
       (a) => a.registration_id === user.id,
     );
-    setSelectedLockerId(currentAssignment ? currentAssignment.locker_id : null);
+    if (currentAssignment) {
+      setSelectedLockerId(currentAssignment.locker_id);
+    } else {
+      setSelectedLockerId(null);
+    }
     openLockerModal();
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
+   
   const handleSaveAssignment = async () => {
     if (!selectedUser) return;
     setSubmitting(true);
@@ -205,9 +363,18 @@ export default function MailroomRegistrations() {
           (a) => a.registration_id === selectedUser.id,
         );
         if (current) {
-          await fetch(`/api/admin/mailroom/assigned-lockers/${current.id}`, {
-            method: "DELETE",
-          });
+          const res = await fetch(
+            `/api/admin/mailroom/assigned-lockers/${current.id}`,
+            { method: "DELETE" },
+          );
+          if (!res.ok) throw new Error("Failed to unassign locker");
+          // optimistic local update
+          setAssignments((prev) => prev.filter((a) => a.id !== current.id));
+          setLockers((prev) =>
+            prev.map((l) =>
+              l.id === current.locker_id ? { ...l, is_available: true } : l,
+            ),
+          );
         }
       } else {
         // Assign
@@ -220,6 +387,35 @@ export default function MailroomRegistrations() {
           }),
         });
         if (!res.ok) throw new Error("Failed to assign locker");
+
+        const payload = await res
+          .json()
+          .catch(() => ({}) as Record<string, unknown>);
+        const created = (payload.data ?? payload) as Record<string, unknown>;
+
+        const newAssignment: AssignedLocker = {
+          id: String(
+            created.id ??
+              created.mailroom_assigned_locker_id ??
+              Math.random().toString(36).slice(2),
+          ),
+          registration_id: selectedUser.id,
+          locker_id: selectedLockerId,
+          status: String(
+            created.status ??
+              created.mailroom_assigned_locker_status ??
+              "Empty",
+          ),
+        };
+
+        // optimistic local update
+        setAssignments((prev) => [...prev, newAssignment]);
+        setLockers((prev) =>
+          prev.map((l) =>
+            l.id === selectedLockerId ? { ...l, is_available: false } : l,
+          ),
+        );
+        setSelectedLockerId(null);
       }
 
       notifications.show({
@@ -227,6 +423,8 @@ export default function MailroomRegistrations() {
         message: "Locker assignment updated",
         color: "green",
       });
+
+      // close and revalidate (keeps UI consistent if server returned other fields)
       closeLockerModal();
       await refreshAll();
     } catch (error) {
@@ -246,21 +444,21 @@ export default function MailroomRegistrations() {
     setRefreshingStatus(true);
     try {
       const res = await fetch("/api/admin/mailroom/cron", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to update statuses");
-
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Failed to run cron");
+      }
+      await refreshAll();
       notifications.show({
         title: "Success",
-        message: "Subscription statuses updated successfully",
+        message: "Subscription statuses updated",
         color: "green",
       });
-      await refreshAll(); // Reload the table data via SWR
     } catch (error) {
       console.error(error);
-      notifications.show({
-        title: "Error",
-        message: "Failed to update statuses",
-        color: "red",
-      });
+      const msg =
+        error instanceof Error ? error.message : "Failed to update statuses";
+      notifications.show({ title: "Error", message: msg, color: "red" });
     } finally {
       setRefreshingStatus(false);
     }
@@ -281,7 +479,7 @@ export default function MailroomRegistrations() {
     const matchesSearch =
       r.full_name.toLowerCase().includes(q) ||
       r.email.toLowerCase().includes(q) ||
-      (r.mailroom_code && r.mailroom_code.toLowerCase().includes(q)); // <--- Add Search by Code
+      (r.mailroom_code && r.mailroom_code.toLowerCase().includes(q));
 
     const isActive = isRegistrationActive(r);
 
@@ -289,7 +487,6 @@ export default function MailroomRegistrations() {
     let matchesTab = true;
     if (activeTab === "active") matchesTab = isActive;
     if (activeTab === "inactive") matchesTab = !isActive;
-    // if activeTab === "all", matchesTab remains true
 
     return matchesSearch && matchesTab;
   });
@@ -306,15 +503,12 @@ export default function MailroomRegistrations() {
     );
 
     return userAssignments.map((a) => {
-      // Fix: Look up the locker from the 'lockers' state array using the ID reference
       const foundLocker = lockers.find((l) => l.id === a.locker_id);
-      const code = foundLocker ? foundLocker.locker_code : "Unknown";
-
-      return {
-        code,
-        assignmentId: a.id,
-        status: a.status || "Unknown",
-      };
+      let code = "Unknown";
+      if (foundLocker) code = foundLocker.locker_code;
+      let status = "Empty";
+      if (a.status) status = a.status;
+      return { code, assignmentId: a.id, status };
     });
   };
 
@@ -385,12 +579,11 @@ export default function MailroomRegistrations() {
           recordsPerPageOptions={[10, 20, 50]}
           onRecordsPerPageChange={setPageSize}
           columns={[
-            // NEW COLUMN: Mailroom Code
             {
               accessor: "mailroom_code",
               title: "Mailroom Code",
               width: 140,
-              render: (r) =>
+              render: (r: Registration) =>
                 r.mailroom_code ? (
                   <Badge
                     size="md"
@@ -411,13 +604,12 @@ export default function MailroomRegistrations() {
               accessor: "full_name",
               title: "User Details",
               width: 250,
-              render: (r) => (
+              render: (r: Registration) => (
                 <Group gap="sm">
                   <Avatar color="blue" radius="xl">
                     {r.full_name.charAt(0)}
                   </Avatar>
                   <Stack gap={0}>
-                    {/* Removed Badge from here */}
                     <Text size="sm" fw={500}>
                       {r.full_name}
                     </Text>
@@ -435,7 +627,7 @@ export default function MailroomRegistrations() {
               accessor: "status",
               title: "Status",
               width: 120,
-              render: (r) => {
+              render: (r: Registration) => {
                 const isActive = isRegistrationActive(r);
                 return (
                   <Badge color={isActive ? "green" : "red"} variant="light">
@@ -448,7 +640,7 @@ export default function MailroomRegistrations() {
               accessor: "subscription",
               title: "Subscription",
               width: 200,
-              render: (r) => {
+              render: (r: Registration) => {
                 const expiresAt = dayjs(r.created_at).add(r.months, "month");
                 const isExpired = dayjs().isAfter(expiresAt);
 
@@ -473,7 +665,7 @@ export default function MailroomRegistrations() {
             {
               accessor: "location",
               title: "Location",
-              render: (r) => {
+              render: (r: Registration) => {
                 const found = locations.find((l) => l.id === r.location_id);
                 const name = r.location_name || found?.name || "Main Branch";
                 return (
@@ -489,7 +681,7 @@ export default function MailroomRegistrations() {
               title: "Actions",
               width: 160,
               textAlign: "right",
-              render: (r) => (
+              render: (r: Registration) => (
                 <Group gap="xs" justify="flex-end">
                   <Button
                     size="compact-xs"
@@ -523,7 +715,6 @@ export default function MailroomRegistrations() {
       >
         {selectedUser && (
           <Stack gap="md">
-            {/* User Info Section */}
             <Paper
               withBorder
               p="md"
@@ -609,7 +800,6 @@ export default function MailroomRegistrations() {
 
             <Divider label="Locker Management" labelPosition="center" />
 
-            {/* Locker List */}
             <Stack gap="xs">
               <Text size="sm" fw={500}>
                 Assigned Lockers:
@@ -660,7 +850,6 @@ export default function MailroomRegistrations() {
               )}
             </Stack>
 
-            {/* Add Locker Section */}
             <Group align="flex-end" grow>
               <Select
                 label="Assign New Locker"
@@ -669,10 +858,7 @@ export default function MailroomRegistrations() {
                 clearable
                 data={lockers
                   .filter((l) => l.is_available)
-                  .map((l) => ({
-                    value: l.id,
-                    label: l.locker_code,
-                  }))}
+                  .map((l) => ({ value: l.id, label: l.locker_code }))}
                 value={selectedLockerId}
                 onChange={setSelectedLockerId}
               />
@@ -680,40 +866,7 @@ export default function MailroomRegistrations() {
                 color="violet"
                 disabled={!selectedLockerId}
                 loading={submitting}
-                onClick={async () => {
-                  if (!selectedLockerId) return;
-                  setSubmitting(true);
-                  try {
-                    const res = await fetch(
-                      "/api/admin/mailroom/assigned-lockers",
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          registration_id: selectedUser.id,
-                          locker_id: selectedLockerId,
-                        }),
-                      },
-                    );
-                    if (!res.ok) throw new Error("Failed");
-
-                    notifications.show({
-                      title: "Success",
-                      message: "Locker assigned",
-                      color: "green",
-                    });
-                    setSelectedLockerId(null);
-                    await refreshAll();
-                  } catch {
-                    notifications.show({
-                      title: "Error",
-                      message: "Failed to assign",
-                      color: "red",
-                    });
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
+                onClick={handleSaveAssignment}
                 style={{ maxWidth: 120 }}
               >
                 Add

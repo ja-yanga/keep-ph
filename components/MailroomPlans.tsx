@@ -210,8 +210,12 @@ export default function MailroomPlans() {
       fetchData();
     } catch (err: unknown) {
       console.error("edit error", err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : String(err ?? "Failed to update plan");
       // Error: Keep modal open and show error inside
-      setFormError(err?.message ?? "Failed to update plan");
+      setFormError(message);
     } finally {
       setEditing(false);
     }
