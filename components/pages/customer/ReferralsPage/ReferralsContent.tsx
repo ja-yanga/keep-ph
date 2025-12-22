@@ -27,11 +27,11 @@ import {
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useSession } from "@/components/SessionProvider";
-import RewardClaimModal from "@/components/pages/ReferralsPage/RewardClaimModal";
 import ClaimStatusModal from "@/components/ClaimStatusModal";
 import { ClaimRow, ReferralRow } from "@/utils/types/types";
 import { maskAccount, pickNumber, pickString } from "@/utils/helper";
 import { REFERRALS_UI } from "@/utils/constants";
+import RewardClaimModal from "./RewardClaimModal";
 import { ReferralsTable } from "./ReferralsRow";
 
 export default function ReferralsContent() {
