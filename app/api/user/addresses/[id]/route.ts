@@ -10,37 +10,15 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
-    const {
-      label,
-      contact_name,
-      line1,
-      line2,
-      city,
-      region,
-      postal,
-      is_default,
-    } = body;
-
-    // DEBUG: log incoming request for diagnosis
-    console.log("[user.addresses.PUT] id:", id);
-    console.log("[user.addresses.PUT] body keys:", Object.keys(body));
-
-    // Quick env check (does not print secrets)
-    console.log(
-      "[user.addresses.PUT] SUPABASE_SERVICE_ROLE_KEY set:",
-      !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    );
+    const { label, line1, line2, city, region, postal, is_default } = body;
 
     const { data: existing, error: exErr } = await supabaseAdmin
-      .from("user_addresses")
+      .from("user_address_table")
       .select("user_id")
-      .eq("id", id)
-      .single();
-
-    console.log("[user.addresses.PUT] select result:", { existing, exErr });
+      .eq("user_address_id", id)
+      .maybeSingle();
 
     if (exErr || !existing) {
-      // return more detail while debugging (remove details in production)
       return NextResponse.json(
         {
           error: "Not found",
@@ -53,31 +31,29 @@ export async function PUT(
 
     if (is_default) {
       await supabaseAdmin
-        .from("user_addresses")
-        .update({ is_default: false })
+        .from("user_address_table")
+        .update({ user_address_is_default: false })
         .eq("user_id", existing.user_id);
     }
 
     const { data, error } = await supabaseAdmin
-      .from("user_addresses")
+      .from("user_address_table")
       .update({
-        label: label ?? null,
-        contact_name: contact_name ?? null,
-        line1,
-        line2: line2 ?? null,
-        city,
-        region,
-        postal,
-        is_default: !!is_default,
+        user_address_label: label ?? null,
+        user_address_line1: line1,
+        user_address_line2: line2 ?? null,
+        user_address_city: city ?? null,
+        user_address_region: region ?? null,
+        user_address_postal: postal ?? null,
+        user_address_is_default: !!is_default,
       })
-      .eq("id", id)
+      .eq("user_address_id", id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     return NextResponse.json({ ok: true, address: data });
   } catch (err: unknown) {
-    console.error("user.addresses.PUT:", err);
     const errorMessage = err instanceof Error ? err.message : "Server error";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
@@ -85,18 +61,17 @@ export async function PUT(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }, // <- unwrap here as well
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
     const { error } = await supabaseAdmin
-      .from("user_addresses")
+      .from("user_address_table")
       .delete()
-      .eq("id", id);
+      .eq("user_address_id", id);
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    console.error("user.addresses.DELETE:", err);
     const errorMessage = err instanceof Error ? err.message : "Server error";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

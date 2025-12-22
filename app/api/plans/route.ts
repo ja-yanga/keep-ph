@@ -1,7 +1,11 @@
 //TODO: convert to server component
 
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
+
+// server-side supabase client
+const supabase = createSupabaseServiceClient();
+
 import type { MailroomPlan } from "@/utils/types/types";
 
 type MailroomPlanTableRow = {
