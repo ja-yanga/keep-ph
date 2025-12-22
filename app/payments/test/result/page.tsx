@@ -3,12 +3,28 @@ import { useEffect, useState } from "react";
 
 export default function PaymongoResultPage() {
   const [loading, setLoading] = useState(false);
-  const [resJson, setResJson] = useState<any>(null);
+  const [resJson, setResJson] = useState<{
+    resource?: unknown;
+    status?: number;
+    ok?: boolean;
+    type?: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Interpret status from either PayMongo API shape or DB-upserted row
   const interpretedStatus = (() => {
-    const r = resJson?.resource;
+    const r = resJson?.resource as
+      | {
+          data?: { attributes?: { status?: string; payment_status?: string } };
+          attributes?: { status?: string; payment_status?: string };
+          raw?: {
+            data?: {
+              attributes?: { status?: string; payment_status?: string };
+            };
+          };
+          status?: string;
+        }
+      | undefined;
     if (!r) return "unknown";
     // PayMongo API shape: r.data.attributes.status
     // DB upsert shape: r.status (and r.raw contains the API payload)
@@ -60,11 +76,12 @@ export default function PaymongoResultPage() {
           });
         } else {
           setError(
-            "No PayMongo resource found for order. Try again later or check webhooks."
+            "No PayMongo resource found for order. Try again later or check webhooks.",
           );
         }
-      } catch (e: any) {
-        setError(e?.message || "Verify failed");
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : "Verify failed";
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }

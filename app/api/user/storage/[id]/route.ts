@@ -1,19 +1,19 @@
 import { NextResponse, NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } | Promise<{ id: string }> }
+  context: { params: { id: string } | Promise<{ id: string }> },
 ) {
   try {
     // allow context.params to be a Promise (per Next types)
     let params = context.params as { id: string } | Promise<{ id: string }>;
-    if (typeof (params as any).then === "function") {
+    if (params instanceof Promise) {
       params = await params;
     }
     const paramId = (params as { id: string })?.id;
@@ -23,24 +23,10 @@ export async function DELETE(
       "[DELETE] /api/user/storage params:",
       paramId,
       "url:",
-      request.url
+      request.url,
     );
 
-    // cookie helper (match other routes)
-    const cookieStore = await cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll() {},
-        },
-      }
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -57,8 +43,8 @@ export async function DELETE(
         const parts = new URL(request.url).pathname.split("/").filter(Boolean);
         // expect ... /api/user/storage/<id>
         scanId = parts[parts.length - 1];
-      } catch (e) {
-        /* ignore */
+      } catch {
+        // ignore
       }
     }
 
@@ -68,7 +54,7 @@ export async function DELETE(
     }
 
     // use admin client for cross-table checks & storage deletion
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const admin = supabaseAdmin;
 
     // fetch scan row with package -> registration
     const { data: scanRow, error: scanErr } = await admin
@@ -82,7 +68,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
 
-    const pkg = (scanRow as any).package;
+    const pkg = (
+      scanRow as {
+        package?:
+          | { registration_id?: string }
+          | Array<{ registration_id?: string }>;
+      }
+    ).package;
     const regId = Array.isArray(pkg)
       ? pkg[0]?.registration_id
       : pkg?.registration_id;
@@ -102,7 +94,7 @@ export async function DELETE(
       console.error("[DELETE] registration not found", regErr);
       return NextResponse.json(
         { error: "Registration not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -110,10 +102,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const fileUrl: string = (scanRow as any).file_url || "";
+    const fileUrl: string = (scanRow as { file_url?: string }).file_url || "";
     try {
       const match = fileUrl.match(
-        /\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/
+        /\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/,
       );
       if (match) {
         const bucket = match[1];
@@ -122,13 +114,13 @@ export async function DELETE(
       } else {
         console.debug(
           "[DELETE] could not derive storage path from file_url, skipping storage delete",
-          fileUrl
+          fileUrl,
         );
       }
     } catch (e) {
       console.error(
         "[DELETE] storage delete failed, continuing to delete DB row:",
-        e
+        e,
       );
     }
 
@@ -142,11 +134,9 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("delete scan error:", err);
-    return NextResponse.json(
-      { error: err?.message || "Internal error" },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : "Internal error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

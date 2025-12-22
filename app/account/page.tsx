@@ -1,4 +1,4 @@
-import {Box} from "@mantine/core";
+import { Box } from "@mantine/core";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import AccountContent from "@/components/AccountContent";

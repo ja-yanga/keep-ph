@@ -55,8 +55,10 @@ export default function PaymongoCheckoutButton({
 
       // redirect user to PayMongo hosted checkout
       window.location.href = checkoutUrl;
-    } catch (err: any) {
-      setError(err?.message || "Payment creation failed");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Payment creation failed";
+      setError(errorMessage);
       setLoading(false);
     }
   };

@@ -1,11 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 // Use Service Role Key to bypass RLS policies for inserts
 // This ensures the system can always send a notification regardless of who is logged in
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export type NotificationType =
   | "PACKAGE_ARRIVED"

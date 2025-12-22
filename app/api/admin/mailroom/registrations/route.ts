@@ -1,12 +1,11 @@
-// filepath: c:\Users\Raitoningu\code\keep-ph\app\api\admin\mailroom\registrations\route.ts
 import { NextResponse } from "next/server";
 import dayjs from "dayjs";
-import { createSupabaseServerClient } from "@/utils/supabase/serverClient";
-import { createSupabaseBrowserClient } from "@/utils/supabase/browserClient";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { createBrowserClient } from "@/lib/supabase/client";
 
 export async function GET() {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServiceClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -14,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabaseAdmin = createSupabaseBrowserClient();
+    const supabaseAdmin = createBrowserClient();
 
     const [
       regsRes,

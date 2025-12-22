@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   Badge,
@@ -17,11 +17,8 @@ import {
   ThemeIcon,
   SimpleGrid,
   Card,
-  Progress,
   Divider,
   ActionIcon,
-  Tooltip,
-  Container,
   Modal,
 } from "@mantine/core";
 import {
@@ -29,9 +26,7 @@ import {
   IconTruckDelivery,
   IconAlertCircle,
   IconMapPin,
-  IconCalendar,
   IconChevronRight,
-  IconCreditCard,
   IconPackage,
   IconSortAscending,
   IconSortDescending,
@@ -43,7 +38,24 @@ import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 import { notifications } from "@mantine/notifications"; // ADDED
 
-type RawRow = any;
+type RawRow = {
+  id?: string;
+  mailroom_code?: string;
+  full_name?: string;
+  email?: string;
+  mailroom_plans?:
+    | { name?: string; months?: number }
+    | Array<{ name?: string; months?: number }>;
+  plan_name?: string;
+  months?: number;
+  mailroom_locations?: { name?: string } | Array<{ name?: string }>;
+  location_name?: string;
+  created_at?: string;
+  mailroom_status?: string;
+  auto_renew?: boolean;
+  packages?: unknown[];
+  [key: string]: unknown;
+};
 type Row = {
   id: string;
   mailroom_code: string | null;
@@ -73,7 +85,7 @@ const addMonths = (iso?: string | null, months = 0) => {
 
 // 1. Update the mapping function to calculate stats per row
 const mapDataToRows = (data: RawRow[]): Row[] => {
-  return data.map((r: any) => {
+  return data.map((r: RawRow) => {
     const planName = r.mailroom_plans?.name ?? r.plan_name ?? null;
     const planMonths = r.mailroom_plans?.months ?? r.months ?? null;
     const userName = r.full_name ?? null;
@@ -126,28 +138,30 @@ const mapDataToRows = (data: RawRow[]): Row[] => {
 
     if (Array.isArray(r.packages)) {
       const uniqueIds = new Set();
-      r.packages.forEach((p: any) => {
-        if (uniqueIds.has(p.id)) return;
-        uniqueIds.add(p.id);
+      r.packages.forEach(
+        (p: { id?: string; status?: string; [key: string]: unknown }) => {
+          if (uniqueIds.has(p.id)) return;
+          uniqueIds.add(p.id);
 
-        const s = (p.status ?? "").toUpperCase();
+          const s = (p.status ?? "").toUpperCase();
 
-        // Count as released if fully released/retrieved
-        if (s === "RELEASED") {
-          released++;
-        }
+          // Count as released if fully released/retrieved
+          if (s === "RELEASED") {
+            released++;
+          }
 
-        // Count pending requests separately for any REQUEST_* statuses
-        if (s.includes("REQUEST")) {
-          pending++;
-        }
+          // Count pending requests separately for any REQUEST_* statuses
+          if (s.includes("REQUEST")) {
+            pending++;
+          }
 
-        // Items are considered "in storage" unless final statuses (released/retrieved/disposed).
-        // This ensures REQUEST_TO_* still count as items in storage.
-        if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) {
-          stored++;
-        }
-      });
+          // Items are considered "in storage" unless final statuses (released/retrieved/disposed).
+          // This ensures REQUEST_TO_* still count as items in storage.
+          if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) {
+            stored++;
+          }
+        },
+      );
     }
 
     const name =
@@ -178,7 +192,7 @@ const mapDataToRows = (data: RawRow[]): Row[] => {
 export default function UserDashboard({
   initialData,
 }: {
-  initialData?: any[] | null;
+  initialData?: RawRow[] | null;
 }) {
   const { session } = useSession();
   // pagination for registrations
@@ -195,23 +209,26 @@ export default function UserDashboard({
 
   // UI state
   const [search, setSearch] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const [filters, setFilters] = useState({
     plan: null as string | null,
     location: null as string | null,
     mailroomStatus: null as string | null,
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const filterOptions = useMemo(() => {
     if (!rows) return { plans: [], locations: [] };
     const plans = Array.from(
-      new Set(rows.map((r) => r.plan).filter(Boolean))
+      new Set(rows.map((r) => r.plan).filter(Boolean)),
     ) as string[];
     const locations = Array.from(
-      new Set(rows.map((r) => r.location).filter(Boolean))
+      new Set(rows.map((r) => r.location).filter(Boolean)),
     ) as string[];
     return { plans, locations };
   }, [rows]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
     {
       mailroom_code: true,
@@ -225,7 +242,7 @@ export default function UserDashboard({
       expiry_at: true,
       mailroom_status: true,
       view: true,
-    }
+    },
   );
 
   // sorting
@@ -242,21 +259,21 @@ export default function UserDashboard({
     }
     const json = await res.json();
     const data: RawRow[] = Array.isArray(json?.data ?? json)
-      ? json.data ?? json
+      ? (json.data ?? json)
       : [];
     return data;
   };
 
   // SWR key depends on session readiness
   const swrKey = session?.user?.id ? "/api/mailroom/registrations" : null;
-  const {
-    data: apiData,
-    error: swrError,
-    isValidating,
-  } = useSWR<RawRow[] | undefined>(swrKey, fetcher, {
-    revalidateOnFocus: true,
-    fallbackData: initialData ?? undefined, // hydrate from server
-  });
+  const { data: apiData, error: swrError } = useSWR<RawRow[] | undefined>(
+    swrKey,
+    fetcher,
+    {
+      revalidateOnFocus: true,
+      fallbackData: initialData ?? undefined, // hydrate from server
+    },
+  );
 
   // map API data into rows and keep as local state for UI / optimistic updates
   useEffect(() => {
@@ -267,7 +284,6 @@ export default function UserDashboard({
       setRows(mapped);
     }
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiData, swrError]);
 
   const filtered = useMemo(() => {
@@ -303,8 +319,8 @@ export default function UserDashboard({
       })
       .sort((a, b) => {
         if (!sortBy) return 0;
-        const va = (a as any)[sortBy];
-        const vb = (b as any)[sortBy];
+        const va = (a as Record<string, unknown>)[sortBy];
+        const vb = (b as Record<string, unknown>)[sortBy];
         if (va == null && vb == null) return 0;
         if (va == null) return sortDir === "asc" ? -1 : 1;
         if (vb == null) return sortDir === "asc" ? 1 : -1;
@@ -343,7 +359,7 @@ export default function UserDashboard({
         `/api/mailroom/registrations/${selectedSubId}/cancel`,
         {
           method: "PATCH",
-        }
+        },
       );
 
       if (!res.ok) throw new Error("Failed to cancel subscription");
@@ -358,15 +374,17 @@ export default function UserDashboard({
       setRows((prev) =>
         prev
           ? prev.map((r) =>
-              r.id === selectedSubId ? { ...r, auto_renew: false } : r
+              r.id === selectedSubId ? { ...r, auto_renew: false } : r,
             )
-          : null
+          : null,
       );
       setCancelModalOpen(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Unknown error occurred";
       notifications.show({
         title: "Error",
-        message: err.message,
+        message: errorMessage,
         color: "red",
       });
     } finally {
@@ -375,7 +393,30 @@ export default function UserDashboard({
   };
 
   // build a best-effort full shipping address from the API row.raw
-  const getFullAddressFromRaw = (raw: any): string | null => {
+  const getFullAddressFromRaw = (
+    raw:
+      | {
+          mailroom_locations?: {
+            formatted_address?: string;
+            name?: string;
+            line1?: string;
+            city?: string;
+            region?: string;
+            postal?: string;
+          };
+          location?: {
+            formatted_address?: string;
+            name?: string;
+            line1?: string;
+            city?: string;
+            region?: string;
+            postal?: string;
+          };
+          [key: string]: unknown;
+        }
+      | null
+      | undefined,
+  ): string | null => {
     if (!raw) return null;
     const loc = raw.mailroom_locations ?? raw.location ?? {};
     // prefer a preformatted address if available
@@ -424,7 +465,7 @@ export default function UserDashboard({
         message: "Full shipping address copied to clipboard",
         color: "teal",
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("copy failed", e);
       notifications.show({
         title: "Copy failed",
@@ -443,6 +484,7 @@ export default function UserDashboard({
     );
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const ThSortable = ({ col, label }: { col: string; label: string }) => (
     <Table.Th
       style={{
@@ -505,7 +547,7 @@ export default function UserDashboard({
           <Title order={2} c="dark.8">
             Hello, {session?.user?.name || "User"}
           </Title>
-          <Text c="dimmed">Here is what's happening with your mail.</Text>
+          <Text c="dimmed">Here is what&apos;s happening with your mail.</Text>
         </Box>
         <Group gap="sm" align="center">
           <TextInput
@@ -619,13 +661,12 @@ export default function UserDashboard({
                       </Group>
                       <Badge
                         // CHANGED: Update colors to handle INACTIVE/EXPIRING
-                        color={
-                          row.mailroom_status === "ACTIVE"
-                            ? "green"
-                            : row.mailroom_status === "EXPIRING"
-                            ? "yellow"
-                            : "red"
-                        }
+                        color={(() => {
+                          if (row.mailroom_status === "ACTIVE") return "green";
+                          if (row.mailroom_status === "EXPIRING")
+                            return "yellow";
+                          return "red";
+                        })()}
                         variant="dot"
                       >
                         {row.mailroom_status}

@@ -18,9 +18,9 @@ export default async function ServerUserDashboard() {
       cache: "no-store",
     });
     const json = await res.json().catch(() => ({}));
-    const rows = Array.isArray(json?.data ?? json) ? json.data ?? json : [];
+    const rows = Array.isArray(json?.data ?? json) ? (json.data ?? json) : [];
     return <UserDashboard initialData={rows} />;
-  } catch (err) {
+  } catch {
     // fallback to empty data so client still renders
     return <UserDashboard initialData={[]} />;
   }

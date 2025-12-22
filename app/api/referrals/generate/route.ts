@@ -1,36 +1,17 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import { randomBytes } from "crypto";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(_req: Request) {
   // mark _req as used to satisfy linters (no-op)
   void _req;
   try {
-    const cookieStore = await cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          // keep signature; mark param as used to avoid "defined but never used"
-          setAll(_cookiesToSet: unknown): void {
-            void _cookiesToSet;
-            /* no-op: server handler only needs to read cookies */
-          },
-        },
-      },
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },

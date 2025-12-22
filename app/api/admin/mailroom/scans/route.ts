@@ -1,12 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications"; // Import the helper
 
 // Initialize Admin Client (Service Role needed for Storage uploads if RLS is strict)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use Service Role for Admin actions
-);
+const supabase = createSupabaseServiceClient();
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +14,7 @@ export async function POST(request: Request) {
     if (!file || !packageId) {
       return NextResponse.json(
         { error: "File and Package ID are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -87,7 +84,7 @@ export async function POST(request: Request) {
           "Document Scanned",
           `Your document (${label}) has been scanned and is ready to view.`,
           "SCAN_READY",
-          `/mailroom/${pkgData.registration_id}`
+          `/mailroom/${pkgData.registration_id}`,
         );
       } catch (notifyErr) {
         console.error("sendNotification failed:", notifyErr);
@@ -95,11 +92,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, url: publicUrl });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Scan upload error:", error);
-    return NextResponse.json(
-      { error: error.message || "Internal Server Error" },
-      { status: 500 }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

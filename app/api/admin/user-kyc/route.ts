@@ -1,14 +1,14 @@
-//TODO: CONVERT TO SERVER ACTION (RPC)
-
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/utils/supabase/serverClient";
-import { createSupabaseBrowserClient } from "@/utils/supabase/browserClient";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 
-const supabaseAdmin = createSupabaseBrowserClient();
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function GET(req: Request) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createClient();
 
     const {
       data: { user },

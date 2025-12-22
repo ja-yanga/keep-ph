@@ -27,7 +27,7 @@ import {
 import { notifications } from "@mantine/notifications";
 
 // Helper type for address data consistency - UPDATED to include contact_name
-interface Address {
+type Address = {
   id: string;
   label: string;
   contact_name: string; // NEW FIELD
@@ -38,7 +38,7 @@ interface Address {
   postal: string;
   is_default: boolean;
   user_id?: string;
-}
+};
 
 const initialFormState: Address = {
   id: "",
@@ -66,10 +66,16 @@ export default function AccountAddresses({ userId }: { userId: string }) {
     const t0 = performance.now();
     try {
       const res = await fetch(
-        `/api/user/addresses?userId=${encodeURIComponent(userId)}`
+        `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
       );
       const json = await res.json();
-      const data = Array.isArray(json?.data) ? json.data : json || [];
+      // Ensure we always have an array
+      let data: Address[] = [];
+      if (Array.isArray(json?.data)) {
+        data = json.data;
+      } else if (Array.isArray(json)) {
+        data = json;
+      }
 
       // avoid blocking render by scheduling large state updates as non-urgent
       // React.startTransition prevents blocking the loader animation
@@ -130,7 +136,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
     setLoading(true);
 
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         ...form,
         // Ensure label is saved
         label: form.label.trim(),
@@ -149,6 +155,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
         method = "PUT";
 
         // Remove extraneous fields for PUT request body
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- id, created_at, user_id are intentionally destructured but not used
         const { id, created_at, user_id, ...toSend } = payload;
         res = await fetch(url, {
           method,
@@ -161,6 +168,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
         method = "POST";
 
         // Remove id/created_at for POST request body
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- id, created_at are intentionally destructured but not used
         const { id, created_at, ...toSend } = payload;
         res = await fetch(url, {
           method,
@@ -182,11 +190,13 @@ export default function AccountAddresses({ userId }: { userId: string }) {
 
       setModalOpen(false);
       load();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to save address";
       notifications.show({
         title: "Error",
-        message: err.message || "Failed to save address",
+        message: errorMessage,
         color: "red",
       });
     } finally {
@@ -208,11 +218,13 @@ export default function AccountAddresses({ userId }: { userId: string }) {
         color: "green",
       });
       load();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to delete address";
       notifications.show({
         title: "Error",
-        message: err.message || "Failed to delete address",
+        message: errorMessage,
         color: "red",
       });
     }
@@ -238,12 +250,12 @@ export default function AccountAddresses({ userId }: { userId: string }) {
       {/* Addresses List or Empty State */}
       {!loading && (
         <Stack mt="sm">
-          {addresses.length === 0 ? (
+          {!Array.isArray(addresses) || addresses.length === 0 ? (
             <Paper p="md" withBorder style={{ textAlign: "center" }}>
               <IconMapPin size={24} color="gray" />
               <Text c="dimmed" mt="xs">
-                You haven't saved any addresses yet. Click "Add New Address" to
-                get started.
+                You haven&apos;t saved any addresses yet. Click &quot;Add New
+                Address&quot; to get started.
               </Text>
             </Paper>
           ) : (

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requestRewardClaim } from "@/app/actions/post";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { userId, paymentMethod, accountDetails } = await request.json();
+    const { userId, paymentMethod, accountDetails } = await req.json();
     if (!userId || !paymentMethod || !accountDetails) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }

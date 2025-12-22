@@ -1,5 +1,5 @@
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { normalizeClaim, toBoolean, toNumber } from "@/utils/helper";
-import { createSupabaseBrowserClient } from "@/utils/supabase/browserClient";
 import {
   ClaimWithUrl,
   RewardsStatusResult,
@@ -8,7 +8,7 @@ import {
 
 const BUCKET = "REWARD-PROOFS";
 
-const supabaseAdmin = createSupabaseBrowserClient();
+const supabaseAdmin = createSupabaseServiceClient();
 
 const resolveProofUrl = async (path: string): Promise<string | null> => {
   try {

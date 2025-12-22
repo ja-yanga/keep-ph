@@ -12,7 +12,7 @@ import type {
   ReferralsTableProps,
 } from "@/utils/types/types";
 import { pickStringValue } from "@/utils/helper";
-import { REFERRALS_UI } from "@/utils/constants/constants";
+import { REFERRALS_UI } from "@/utils/constants";
 
 const tableCopy = REFERRALS_UI.datatable;
 

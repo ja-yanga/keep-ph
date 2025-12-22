@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { createClient } from "@/lib/supabase/client";
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +11,7 @@ export async function POST(req: Request) {
     }
 
     // Standard client is fine here as we don't need to read user cookies
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = createClient();
     const origin = new URL(req.url).origin;
 
     // Send password reset email
@@ -28,11 +25,11 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ message: "Password reset email sent" });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Forgot password error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

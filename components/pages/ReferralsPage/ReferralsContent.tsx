@@ -31,7 +31,7 @@ import RewardClaimModal from "@/components/pages/ReferralsPage/RewardClaimModal"
 import ClaimStatusModal from "@/components/ClaimStatusModal";
 import { ClaimRow, ReferralRow } from "@/utils/types/types";
 import { maskAccount, pickNumber, pickString } from "@/utils/helper";
-import { REFERRALS_UI } from "@/utils/constants/constants";
+import { REFERRALS_UI } from "@/utils/constants";
 import { ReferralsTable } from "./ReferralsRow";
 
 export default function ReferralsContent() {

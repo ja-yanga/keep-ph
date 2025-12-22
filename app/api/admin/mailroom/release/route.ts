@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { sendNotification } from "@/lib/notifications";
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(request: Request) {
   try {
@@ -21,7 +17,7 @@ export async function POST(request: Request) {
     if (!file || !packageId) {
       return NextResponse.json(
         { error: "Missing file or package ID" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -48,7 +44,7 @@ export async function POST(request: Request) {
       console.warn(
         "[release] registration not found for package",
         pkgRow.id,
-        pkgRow.registration_id
+        pkgRow.registration_id,
       );
     }
 
@@ -62,7 +58,7 @@ export async function POST(request: Request) {
       const { data: addr, error: addrErr } = await supabaseAdmin
         .from("user_addresses")
         .select(
-          "id, user_id, label, contact_name, line1, line2, city, region, postal, is_default"
+          "id, user_id, label, contact_name, line1, line2, city, region, postal, is_default",
         )
         .eq("id", selectedAddressId)
         .single();
@@ -72,7 +68,7 @@ export async function POST(request: Request) {
       if (addrErr || !addr) {
         return NextResponse.json(
           { error: "Selected address not found" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -81,7 +77,7 @@ export async function POST(request: Request) {
       if (ownerUserId && String(addr.user_id) !== String(ownerUserId)) {
         return NextResponse.json(
           { error: "Address does not belong to this registration's user" },
-          { status: 403 }
+          { status: 403 },
         );
       }
 
@@ -129,7 +125,7 @@ export async function POST(request: Request) {
     } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(fileName);
 
     // 2. Update Package Status and snapshot release address/name if provided
-    const updatePayload: any = {
+    const updatePayload: Record<string, unknown> = {
       status: "RELEASED",
       image_url: publicUrl,
       mailroom_full: false,
@@ -174,7 +170,7 @@ export async function POST(request: Request) {
         if (regErr) {
           console.error(
             "Failed to fetch registration for notification:",
-            regErr
+            regErr,
           );
         } else if (registration?.user_id) {
           try {
@@ -185,7 +181,7 @@ export async function POST(request: Request) {
                 pkg.package_name || "Unknown"
               }) has been released and is ready for pickup.`,
               "PACKAGE_RELEASED",
-              `/mailroom/${pkg.registration_id}`
+              `/mailroom/${pkg.registration_id}`,
             );
           } catch (notifyErr) {
             console.error("sendNotification failed for release:", notifyErr);
@@ -197,8 +193,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Release error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -1,10 +1,10 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
-import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import prettierConfig from "eslint-config-prettier";
 import eslintComments from "eslint-plugin-eslint-comments";
+import react from "eslint-plugin-react";
 
 export default defineConfig([
   // Next recommended flat configs
@@ -17,7 +17,7 @@ export default defineConfig([
   // shared rules/plugins that don't require parserOptions.project
   {
     plugins: {
-      "@typescript-eslint": tsPlugin,
+      react,
       "eslint-comments": eslintComments,
     },
     rules: {
@@ -29,6 +29,13 @@ export default defineConfig([
       "no-empty": ["error", { allowEmptyCatch: false }],
       "comma-spacing": ["error", { before: false, after: true }],
       "react-hooks/exhaustive-deps": "off",
+      // Allow unescaped entities - quotes and braces are safe in JSX expressions
+      "react/no-unescaped-entities": [
+        "warn",
+        {
+          forbid: [{ char: ">", alternatives: ["&gt;"] }],
+        },
+      ],
 
       // core rule
       "no-nested-ternary": "error",
