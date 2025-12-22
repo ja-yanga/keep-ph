@@ -35,3 +35,45 @@ export const IDENTITY_VERIFICATION_KYC = {
     },
   },
 };
+
+export const LANDING_PAGE = {
+  pricing: {
+    sectionId: "pricing",
+    background: "#F1F3F5",
+    heading: "Simple, Transparent Pricing",
+    subheading: "Choose the plan that best fits your needs.",
+    segmentedControl: {
+      defaultValue: "monthly",
+      options: [
+        { label: "Monthly Billing", value: "monthly" },
+        { label: "Annual Billing (-20%)", value: "annual" },
+      ],
+      annualDiscountRate: 0.2,
+    },
+    featuredPlanName: "Personal",
+    button: {
+      label: "I'm Interested",
+      href: "/signup",
+    },
+    fallback: {
+      loading: "Loading plans...",
+      error: "Unable to load plans. Please try again later.",
+      emptyTitle: "Plans unavailable",
+      emptyDescription: "We're updating our pricing. Please check back soon.",
+    },
+    features: {
+      storageLimit: "Storage limit",
+      storageUnitSuffix: "GB Storage",
+      unlimitedStorageLabel: "Unlimited storage",
+      canReceiveMail: "Mail receiving",
+      canReceiveParcels: "Parcel handling",
+      canDigitize: "Digital scans",
+    },
+    priceSuffix: "/mo",
+    annualBilling: {
+      prefix: "Billed",
+      suffix: "yearly",
+    },
+    descriptionFallback: "A flexible plan built for modern mail handling.",
+  },
+};

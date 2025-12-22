@@ -46,7 +46,7 @@ export async function GET() {
         id: rec.mailroom_assigned_locker_id,
         registration_id: rec.mailroom_registration_id,
         locker_id: rec.location_locker_id,
-        status: rec.mailroom_assigned_locker_status,
+        status: rec.mailroom_assigned_locker_status ?? "Empty",
         assigned_at: rec.mailroom_assigned_locker_assigned_at,
         registration: registration
           ? {
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
       mailroom_registration_id: registrationId,
       location_locker_id: lockerId,
       mailroom_assigned_locker_assigned_at: new Date().toISOString(),
-      mailroom_assigned_locker_status: "Normal",
+      mailroom_assigned_locker_status: "Empty",
     };
 
     const { data: insertData, error: insertErr } = await supabaseAdmin
