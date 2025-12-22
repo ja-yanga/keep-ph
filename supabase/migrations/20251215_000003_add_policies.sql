@@ -1,31 +1,31 @@
 -- Enable row-level security
-alter table public.users enable row level security;
+alter table public.users_table enable row level security;
 
 -- Policy: Users can select only their own data
 create policy "Users can select their own data"
-on public.users
+on public.users_table
 for select
-using (auth.uid() = id);
+using (auth.uid() = users_id);
 
 -- Policy: Users can update only their own data
 create policy "Users can update their own data"
-on public.users
+on public.users_table
 for update
-using (auth.uid() = id);
+using (auth.uid() = users_id);
 
 -- Policy: Admins can select and update all data
 create policy "Admins can manage all users"
-on public.users
+on public.users_table
 for all
 using (exists (
   select 1 
-  from public.users as u
-  where u.id = auth.uid() and u.role = 'admin'
+  from public.users_table as u
+  where u.users_id = auth.uid() and u.users_role = 'admin'
 ));
 
 -- Policy: Allow insert for everyone (sign up)
 create policy "Allow insert for everyone"
-on public.users
+on public.users_table
 for insert
 with check (true);
 
@@ -50,7 +50,15 @@ ON storage.objects
 FOR ALL
 USING (bucket_id = 'avatars' AND owner = auth.uid());
 
+-- Policy for USER-KYC-DOCUMENTS storage bucket: allow users to upload/access files in their own folder
+-- Files are stored as: {user_id}/front-{timestamp}-{filename}
 CREATE POLICY user_kyc_policy
 ON storage.objects
 FOR ALL
-USING (bucket_id = 'user-kyc' AND owner = auth.uid());
+USING (
+  bucket_id = 'USER-KYC-DOCUMENTS' 
+  AND (
+    owner = auth.uid() 
+    OR split_part(name, '/', 1) = auth.uid()::text
+  )
+);
