@@ -1,12 +1,12 @@
-"use server";
-
-// TODO: CONVERT TO RPC
+import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types/types";
 import {
   createClient,
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
 
 const supabaseAdmin = createSupabaseServiceClient();
+
+const supabase = createSupabaseServiceClient();
 
 export async function submitKYC(formData: FormData) {
   const supabase = await createClient();
@@ -168,3 +168,18 @@ export async function createAddress({
   if (error) throw error;
   return { ok: true, address: data };
 }
+
+export const requestRewardClaim = async ({
+  userId,
+  paymentMethod,
+  accountDetails,
+}: RequestRewardClaimArgs): Promise<RpcClaimResponse | null> => {
+  const { data, error } = await supabase.rpc("request_reward_claim", {
+    input_user_id: userId,
+    input_payment_method: paymentMethod,
+    input_account_details: accountDetails,
+  });
+
+  if (error) throw error;
+  return data as RpcClaimResponse | null;
+};

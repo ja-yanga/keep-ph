@@ -1,7 +1,7 @@
-import {Box} from "@mantine/core";
+import { Box } from "@mantine/core";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
-import ReferralsContent from "@/components/ReferralsContent";
+import ReferralsContent from "@/components/pages/ReferralsPage/ReferralsContent";
 
 export default function ReferralPage() {
   return (

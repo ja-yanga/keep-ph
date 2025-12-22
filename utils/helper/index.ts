@@ -1,0 +1,117 @@
+import { ClaimWithUrl, ReferralRow, RpcClaim } from "../types/types";
+
+export const getStatusFormat = (status: string = ""): string => {
+  const colorGroups = {
+    green: ["VERIFIED"],
+    blue: [],
+    yellow: ["SUBMITTED"],
+    red: ["REJECTED"],
+    orange: [],
+  };
+
+  const statusToColor = Object.entries(colorGroups).reduce(
+    (acc, [color, statuses]) => {
+      statuses.forEach((s) => (acc[s] = color));
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+
+  return statusToColor[status.toUpperCase()] || "gray";
+};
+
+export const pickString = (rec: Record<string, unknown>, ...keys: string[]) => {
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === "string") return v;
+  }
+  return null;
+};
+
+export const pickNumber = (rec: Record<string, unknown>, ...keys: string[]) => {
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === "number") return v;
+  }
+  return undefined;
+};
+
+export const maskAccount = (value?: string | null) => {
+  if (!value) return "—";
+  const v = String(value);
+  if (v.length <= 6) return v.replace(/.(?=.{2})/g, "*");
+  return v.slice(0, 3) + v.slice(3, -3).replace(/./g, "*") + v.slice(-3);
+};
+
+export const pickStringValue = (
+  record: ReferralRow,
+  fields: (keyof ReferralRow)[],
+): string | null => {
+  for (const key of fields) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return null;
+};
+
+export const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
+};
+
+export const toBoolean = (value: unknown): boolean =>
+  value === true || value === "true";
+
+export const toStringOrNull = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
+const toNumberOrNull = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+export const normalizeClaim = (
+  raw: RpcClaim | unknown,
+): ClaimWithUrl | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const id = toStringOrNull(record.id);
+  const userId = toStringOrNull(record.user_id);
+
+  if (!id || !userId) {
+    return null;
+  }
+
+  return {
+    id,
+    user_id: userId,
+    payment_method: toStringOrNull(record.payment_method),
+    account_details: toStringOrNull(record.account_details),
+    amount: toNumberOrNull(record.amount),
+    status: toStringOrNull(record.status),
+    referral_count: toNumberOrNull(record.referral_count),
+    created_at: toStringOrNull(record.created_at),
+    processed_at: toStringOrNull(record.processed_at),
+    proof_path: toStringOrNull(record.proof_path),
+    proof_url: toStringOrNull(record.proof_url),
+  };
+};

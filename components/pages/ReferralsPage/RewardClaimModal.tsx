@@ -16,14 +16,8 @@ import {
 } from "@mantine/core";
 import { IconAward, IconWallet } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-
-type RewardClaimModalProps = {
-  opened: boolean;
-  onCloseAction: () => void;
-  userId?: string | null;
-  onSuccessAction?: () => void;
-  isLoading?: boolean;
-};
+import { RewardClaimModalProps, RpcClaimResponse } from "@/utils/types/types";
+import { REFERRALS_UI } from "@/utils/constants";
 
 export default function RewardClaimModal({
   opened,
@@ -37,13 +31,25 @@ export default function RewardClaimModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const theme = useMantineTheme();
+  const {
+    modal,
+    notifications: noticeCopy,
+    paymentMethods,
+    rewardAmount,
+  } = REFERRALS_UI;
+  const methodLabel = paymentMethods[paymentMethod];
+  const rewardLabel = modal.rewardLabel.replace(
+    "{amount}",
+    rewardAmount.toString(),
+  );
+  const fieldLabel = modal.fieldLabelTemplate.replace("{method}", methodLabel);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accountDetails.trim()) {
       notifications.show({
-        title: "Required",
-        message: `Please enter your ${paymentMethod} account.`,
+        title: noticeCopy.requiredTitle,
+        message: noticeCopy.requiredMessage.replace("{method}", methodLabel),
         color: "red",
       });
       return;
@@ -54,73 +60,80 @@ export default function RewardClaimModal({
     const mobileRegex = /^09\d{9}$/;
     if (!mobileRegex.test(mobile)) {
       // show mantine Alert in the modal instead of only a toast
-      setValidationError(
-        "Mobile number must start with 09 and be 11 digits (e.g. 09121231234).",
-      );
+      setValidationError(noticeCopy.invalidNumber);
       return;
     }
 
     if (!userId) {
       notifications.show({
-        title: "Not signed in",
-        message: "You must be signed in to claim rewards.",
+        title: noticeCopy.notSignedInTitle,
+        message: noticeCopy.notSignedInMessage,
         color: "red",
       });
       return;
     }
 
     setIsSubmitting(true);
+    const mobileToSend = accountDetails.trim();
+    const methodToSend = paymentMethod.toUpperCase();
+
     try {
-      const mobileToSend = accountDetails.trim();
-      const methodToSend = paymentMethod.toUpperCase();
+      const res = await fetch("/api/rewards/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          paymentMethod: methodToSend,
+          accountDetails: mobileToSend,
+        }),
+      });
 
-      try {
-        const res = await fetch("/api/rewards/claim", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId,
-            paymentMethod: methodToSend,
-            accountDetails: mobileToSend,
-          }),
-        });
+      const payload = (await res.json().catch(() => ({}))) as
+        | RpcClaimResponse
+        | { error?: string };
 
-        const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload || !(payload as RpcClaimResponse).ok) {
+        const responseStatus = res.status;
+        const payloadError = (payload as RpcClaimResponse | { error?: string })
+          ?.error;
+        let message = payloadError ?? noticeCopy.claimFailedDefault;
 
-        if (res.ok) {
-          notifications.show({
-            title: "Claim Submitted",
-            message: "Your reward request is submitted and will be processed.",
-            color: "green",
-          });
-          if (onSuccessAction) await onSuccessAction();
-          onCloseAction();
-        } else {
-          // DEBUG: log server response so you can see why it failed in console + network
-          console.error("rewards.claim failed:", res.status, payload);
-          notifications.show({
-            title: "Claim Failed",
-            message: payload?.error || "Failed to submit claim",
-            color: "red",
-          });
+        if (!payloadError) {
+          if (responseStatus === 409) {
+            message = "You already have a pending reward claim.";
+          } else if (responseStatus === 403) {
+            message = "You need more referrals before you can claim.";
+          }
         }
-      } catch (err) {
-        console.error("reward claim error", err);
         notifications.show({
-          title: "Error",
-          message: "Network error. Please try again later.",
+          title: noticeCopy.claimFailedTitle,
+          message,
           color: "red",
         });
-      } finally {
-        setIsSubmitting(false);
+
+        if (responseStatus === 409 && onSuccessAction) {
+          // refresh referral state so the button switches to status modal next time
+          await onSuccessAction();
+          onCloseAction();
+        }
+        return;
       }
-    } catch (error) {
-      console.error("Unexpected error:", error);
+
       notifications.show({
-        title: "Error",
-        message: "An unexpected error occurred. Please try again.",
+        title: noticeCopy.claimSubmittedTitle,
+        message: noticeCopy.claimSubmittedMessage,
+        color: "green",
+      });
+      if (onSuccessAction) await onSuccessAction();
+      onCloseAction();
+    } catch (error) {
+      console.error("reward claim request error:", error);
+      notifications.show({
+        title: noticeCopy.errorTitle,
+        message: noticeCopy.errorMessage,
         color: "red",
       });
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -134,22 +147,19 @@ export default function RewardClaimModal({
           <ThemeIcon size="lg" radius="xl" color="green">
             <IconAward size={20} />
           </ThemeIcon>
-          <Title order={3}>Submit Reward Payout Request</Title>
+          <Title order={3}>{modal.title}</Title>
         </Group>
       }
       centered
       overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
     >
       <Stack gap="lg">
-        <Text>
-          Congratulations! Provide your payout details below. Requests are
-          typically processed within 24–48 hours.
-        </Text>
+        <Text>{modal.description}</Text>
 
         {/* show validation error as a Mantine Alert */}
         {validationError && (
           <Alert
-            title="Invalid number"
+            title={modal.alertTitle}
             color="red"
             variant="outline"
             onClose={() => setValidationError(null)}
@@ -161,7 +171,7 @@ export default function RewardClaimModal({
 
         <Paper withBorder p="md" radius="md" bg={theme.colors.gray[0]}>
           <Title order={5} mb="xs">
-            Reward: PHP 500.00
+            {rewardLabel}
           </Title>
           <Group grow>
             <Button
@@ -188,10 +198,8 @@ export default function RewardClaimModal({
         <form onSubmit={handleSubmit}>
           <Stack>
             <TextInput
-              label={`Your ${
-                paymentMethod === "gcash" ? "GCash" : "Maya"
-              } Mobile Number / Account`}
-              placeholder="e.g., 0917XXXXXXX"
+              label={fieldLabel}
+              placeholder={modal.placeholder}
               value={accountDetails}
               onChange={(event) => {
                 // clear validation alert on change
@@ -211,11 +219,11 @@ export default function RewardClaimModal({
               loading={isSubmitting || isLoading}
               disabled={!accountDetails.trim() || isSubmitting || isLoading}
             >
-              Submit Payout Request
+              {modal.submitButton}
             </Button>
 
             <Text size="xs" ta="center" c="dimmed">
-              By submitting, you agree to the payout terms.
+              {modal.terms}
             </Text>
           </Stack>
         </form>
