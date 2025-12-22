@@ -1,9 +1,9 @@
-"use server";
-
 // TODO: CONVERT TO RPC
 import { cookies } from "next/headers";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
+import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types/types";
+import { createSupabaseServiceClient } from "@/utils/supabase/serviceClient";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -13,6 +13,8 @@ const supabaseAdmin = createSupabaseClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
 );
+
+const supabase = createSupabaseServiceClient();
 
 export async function submitKYC(formData: FormData) {
   const cookieStore = await cookies();
@@ -185,3 +187,18 @@ export async function createAddress({
   if (error) throw error;
   return { ok: true, address: data };
 }
+
+export const requestRewardClaim = async ({
+  userId,
+  paymentMethod,
+  accountDetails,
+}: RequestRewardClaimArgs): Promise<RpcClaimResponse | null> => {
+  const { data, error } = await supabase.rpc("request_reward_claim", {
+    input_user_id: userId,
+    input_payment_method: paymentMethod,
+    input_account_details: accountDetails,
+  });
+
+  if (error) throw error;
+  return data as RpcClaimResponse | null;
+};

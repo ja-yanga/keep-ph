@@ -16,14 +16,7 @@ import {
 } from "@mantine/core";
 import { IconAward, IconWallet } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-
-type RewardClaimModalProps = {
-  opened: boolean;
-  onCloseAction: () => void;
-  userId?: string | null;
-  onSuccessAction?: () => void;
-  isLoading?: boolean;
-};
+import { RewardClaimModalProps, RpcClaimResponse } from "@/utils/types/types";
 
 export default function RewardClaimModal({
   opened,
@@ -70,57 +63,66 @@ export default function RewardClaimModal({
     }
 
     setIsSubmitting(true);
+    const mobileToSend = accountDetails.trim();
+    const methodToSend = paymentMethod.toUpperCase();
+
     try {
-      const mobileToSend = accountDetails.trim();
-      const methodToSend = paymentMethod.toUpperCase();
+      const res = await fetch("/api/rewards/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          paymentMethod: methodToSend,
+          accountDetails: mobileToSend,
+        }),
+      });
 
-      try {
-        const res = await fetch("/api/rewards/claim", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId,
-            paymentMethod: methodToSend,
-            accountDetails: mobileToSend,
-          }),
-        });
+      const payload = (await res.json().catch(() => ({}))) as
+        | RpcClaimResponse
+        | { error?: string };
 
-        const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload || !(payload as RpcClaimResponse).ok) {
+        const responseStatus = res.status;
+        const payloadError = (payload as RpcClaimResponse | { error?: string })
+          ?.error;
+        let message = payloadError ?? "Failed to submit claim";
 
-        if (res.ok) {
-          notifications.show({
-            title: "Claim Submitted",
-            message: "Your reward request is submitted and will be processed.",
-            color: "green",
-          });
-          if (onSuccessAction) await onSuccessAction();
-          onCloseAction();
-        } else {
-          // DEBUG: log server response so you can see why it failed in console + network
-          console.error("rewards.claim failed:", res.status, payload);
-          notifications.show({
-            title: "Claim Failed",
-            message: payload?.error || "Failed to submit claim",
-            color: "red",
-          });
+        if (!payloadError) {
+          if (responseStatus === 409) {
+            message = "You already have a pending reward claim.";
+          } else if (responseStatus === 403) {
+            message = "You need more referrals before you can claim.";
+          }
         }
-      } catch (err) {
-        console.error("reward claim error", err);
         notifications.show({
-          title: "Error",
-          message: "Network error. Please try again later.",
+          title: "Claim Failed",
+          message,
           color: "red",
         });
-      } finally {
-        setIsSubmitting(false);
+
+        if (responseStatus === 409 && onSuccessAction) {
+          // refresh referral state so the button switches to status modal next time
+          await onSuccessAction();
+          onCloseAction();
+        }
+        return;
       }
+
+      notifications.show({
+        title: "Claim Submitted",
+        message: "Your reward request is submitted and will be processed.",
+        color: "green",
+      });
+      if (onSuccessAction) await onSuccessAction();
+      onCloseAction();
     } catch (error) {
-      console.error("Unexpected error:", error);
+      console.error("reward claim request error:", error);
       notifications.show({
         title: "Error",
-        message: "An unexpected error occurred. Please try again.",
+        message: "Network error. Please try again later.",
         color: "red",
       });
+    } finally {
       setIsSubmitting(false);
     }
   };

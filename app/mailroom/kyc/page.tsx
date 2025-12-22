@@ -43,11 +43,11 @@ import {
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
 import Navbar from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
-import { getStatusFormat } from "@/utils/functions";
 import {
   FORM_NAME,
   IDENTITY_VERIFICATION_KYC,
 } from "@/utils/constants/constants";
+import { getStatusFormat } from "@/utils/helper";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";

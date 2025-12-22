@@ -18,7 +18,7 @@ BEGIN
 
   SELECT COUNT(*)
   INTO referral_cnt
-  FROM referral_table
+  FROM public.referral_table
   WHERE referral_referrer_user_id = input_user_id;
 
   SELECT COALESCE(
@@ -40,12 +40,12 @@ BEGIN
     '[]'::JSON
   )
   INTO claims
-  FROM rewards_claim_table
+  FROM public.rewards_claim_table
   WHERE user_id = input_user_id;
 
   SELECT EXISTS (
     SELECT 1
-    FROM rewards_claim_table
+    FROM public.rewards_claim_table
     WHERE user_id = input_user_id
       AND rewards_claim_status IN ('PROCESSING', 'PAID')
   )
