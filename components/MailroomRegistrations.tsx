@@ -351,6 +351,7 @@ export default function MailroomRegistrations() {
     openLockerModal();
   };
 
+   
   const handleSaveAssignment = async () => {
     if (!selectedUser) return;
     setSubmitting(true);

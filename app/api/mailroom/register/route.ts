@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 // Use Service Role Key to bypass RLS policies for the insert
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(req: Request) {
   try {
@@ -27,7 +24,7 @@ export async function POST(req: Request) {
     if (!userId || !locationId || !planId || !lockerQty || !months) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -41,7 +38,7 @@ export async function POST(req: Request) {
     if (planError || !plan) {
       return NextResponse.json(
         { error: "Invalid plan selected" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -57,7 +54,7 @@ export async function POST(req: Request) {
     if (lockerCheckError) {
       return NextResponse.json(
         { error: "Failed to check locker availability" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -68,7 +65,7 @@ export async function POST(req: Request) {
             availableLockers?.length || 0
           }`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -118,7 +115,7 @@ export async function POST(req: Request) {
     if (!isUnique) {
       return NextResponse.json(
         { error: "Failed to generate unique mailroom code" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -183,11 +180,10 @@ export async function POST(req: Request) {
       data: registration,
       amountDue,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("mailroom register unexpected error:", err);
-    return NextResponse.json(
-      { error: err.message || "Internal Server Error" },
-      { status: 500 }
-    );
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

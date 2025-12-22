@@ -25,7 +25,7 @@ import {
   IconCheck,
   IconBrandGoogle,
 } from "@tabler/icons-react";
-import { createSupabaseBrowserClient } from "@/utils/supabase/browserClient";
+import { createClient } from "@/lib/supabase/client";
 
 export default function SignUpForm() {
   const [email, setEmail] = useState("");
@@ -107,7 +107,7 @@ export default function SignUpForm() {
     setOauthLoading(true);
     setError(null);
     // Create a temporary client to ensure PKCE flow is used
-    const supabase = createSupabaseBrowserClient();
+    const supabase = createClient();
 
     try {
       const { error } = await supabase.auth.signInWithOAuth({

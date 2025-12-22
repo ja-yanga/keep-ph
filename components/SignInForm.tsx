@@ -26,8 +26,7 @@ import {
   IconBrandGoogle,
 } from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@/components/SessionProvider";
 
 function SignInContent() {
@@ -84,6 +83,7 @@ function SignInContent() {
         return;
       }
 
+      const supabase = createClient();
       await supabase.auth.getSession();
       await refresh();
 
@@ -116,10 +116,7 @@ function SignInContent() {
     setError(null);
 
     // NEW: Create a temporary client to ensure PKCE flow is used
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = createClient();
 
     try {
       const { error } = await supabase.auth.signInWithOAuth({

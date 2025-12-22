@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function PUT(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
@@ -31,7 +28,7 @@ export async function PUT(
     // Quick env check (does not print secrets)
     console.log(
       "[user.addresses.PUT] SUPABASE_SERVICE_ROLE_KEY set:",
-      !!process.env.SUPABASE_SERVICE_ROLE_KEY
+      !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     );
 
     const { data: existing, error: exErr } = await supabaseAdmin
@@ -50,7 +47,7 @@ export async function PUT(
           id,
           details: exErr?.message ?? "no row returned",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -79,18 +76,16 @@ export async function PUT(
 
     if (error) throw error;
     return NextResponse.json({ ok: true, address: data });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("user.addresses.PUT:", err);
-    return NextResponse.json(
-      { error: err.message || "Server error" },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> } // <- unwrap here as well
+  { params }: { params: Promise<{ id: string }> }, // <- unwrap here as well
 ) {
   try {
     const { id } = await params;
@@ -100,11 +95,9 @@ export async function DELETE(
       .eq("id", id);
     if (error) throw error;
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("user.addresses.DELETE:", err);
-    return NextResponse.json(
-      { error: err.message || "Server error" },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

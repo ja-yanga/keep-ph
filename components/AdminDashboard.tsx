@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import { useRouter } from "next/navigation";
 import {
@@ -16,7 +16,6 @@ import {
   Center,
   SimpleGrid,
   Stack,
-  ActionIcon,
   Button,
 } from "@mantine/core";
 import {
@@ -29,9 +28,8 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import AnalyticsDashboard from "./AnalyticsDashboard";
 
-interface DashboardStats {
+type DashboardStats = {
   pendingRequests: number;
   storedPackages: number;
   totalSubscribers: number;
@@ -39,8 +37,15 @@ interface DashboardStats {
     total: number;
     assigned: number;
   };
-  recentPackages: any[];
-}
+  recentPackages: Array<{
+    id: string;
+    package_name?: string;
+    package_type?: string;
+    status?: string;
+    received_at?: string;
+    registration?: { full_name?: string };
+  }>;
+};
 
 // Reusable Card Component for better UI consistency
 function StatCard({
@@ -55,7 +60,7 @@ function StatCard({
   title: string;
   value?: number | string;
   description?: string;
-  icon: any;
+  icon: React.ComponentType<{ size?: number; color?: string }>;
   color: string;
   onClick: () => void;
   customContent?: React.ReactNode;
@@ -106,7 +111,7 @@ function StatCard({
           radius="md"
           style={{ opacity: 0.8 }}
         >
-          <Icon size={28} stroke={1.5} />
+          <Icon size={28} />
         </ThemeIcon>
       </Group>
     </Paper>
@@ -133,7 +138,7 @@ export default function AdminDashboard() {
   } = useSWR<DashboardStats | undefined>(
     "/api/admin/dashboard/stats",
     fetcher,
-    { revalidateOnFocus: true }
+    { revalidateOnFocus: true },
   );
 
   const loading = !data && !error;
@@ -182,7 +187,7 @@ export default function AdminDashboard() {
             Dashboard Overview
           </Title>
           <Text c="dimmed" size="sm">
-            Welcome back. Here is what's happening today,{" "}
+            Welcome back. Here is what&apos;s happening today,{" "}
             {dayjs().format("MMMM D, YYYY")}.
           </Text>
         </div>
@@ -298,15 +303,13 @@ export default function AdminDashboard() {
                     <Badge
                       size="sm"
                       variant="dot"
-                      color={
-                        pkg.status === "STORED"
-                          ? "blue"
-                          : pkg.status.includes("REQUEST")
-                          ? "orange"
-                          : "gray"
-                      }
+                      color={(() => {
+                        if (pkg.status === "STORED") return "blue";
+                        if (pkg.status?.includes("REQUEST")) return "orange";
+                        return "gray";
+                      })()}
                     >
-                      {pkg.status.replace(/_/g, " ")}
+                      {pkg.status?.replace(/_/g, " ") ?? "—"}
                     </Badge>
                   </Table.Td>
                   <Table.Td c="dimmed" style={{ textAlign: "right" }}>

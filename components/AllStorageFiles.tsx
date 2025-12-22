@@ -1,12 +1,6 @@
 "use client";
 
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  ElementType,
-} from "react"; // Added ElementType
+import React, { useState, useEffect, useMemo, ElementType } from "react"; // Added ElementType
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   Badge,
@@ -48,7 +42,7 @@ import type { IconProps } from "@tabler/icons-react"; // Import IconProps for co
 import { useSession } from "@/components/SessionProvider";
 
 // --- Interfaces (No Change) ---
-interface Scan {
+type Scan = {
   id: string;
   file_name: string;
   file_url: string;
@@ -60,16 +54,16 @@ interface Scan {
   };
   package_id?: string;
   mime_type?: string; // ADDED: allow optional mime_type
-}
+};
 
 // --- Custom Sort Control Component ---
-interface SortControlProps {
+type SortControlProps = {
   label: string;
   sortKey: "uploaded_at" | "file_name" | "file_size_mb";
   currentSort: "uploaded_at" | "file_name" | "file_size_mb";
   currentDir: "asc" | "desc";
-  onClick: (key: any) => void;
-}
+  onClick: (key: "uploaded_at" | "file_name" | "file_size_mb") => void;
+};
 
 const SortControl: React.FC<SortControlProps> = ({
   label,
@@ -180,7 +174,7 @@ export default function AllUserScans() {
   };
 
   const handleSortClick = (
-    key: "uploaded_at" | "file_name" | "file_size_mb"
+    key: "uploaded_at" | "file_name" | "file_size_mb",
   ) => {
     if (key === sortBy) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -213,14 +207,14 @@ export default function AllUserScans() {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        let body: any = {};
+        let body: { error?: string; message?: string; raw?: string } = {};
         try {
           body = text ? JSON.parse(text) : {};
         } catch {
           body = { raw: text };
         }
         throw new Error(
-          body?.error || body?.message || `Delete failed (${res.status})`
+          body?.error || body?.message || `Delete failed (${res.status})`,
         );
       }
 
@@ -230,10 +224,10 @@ export default function AllUserScans() {
         swrMutate(
           swrKey,
           (current: Scan[] = []) => current.filter((s) => s.id !== scanId),
-          false
+          false,
         );
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("delete failed", e);
       // keep UI simple and non-blocking
     } finally {
@@ -504,29 +498,34 @@ export default function AllUserScans() {
       >
         {selected ? (
           // Images: show inline
-          selected.mime_type?.startsWith("image") ||
-          (selected.file_url &&
-            /\.(jpe?g|png|gif|webp)$/i.test(selected.file_url)) ? (
-            <img
-              src={selected.file_url}
-              alt={selected.file_name}
-              style={{
-                width: "100%",
-                maxHeight: "70vh",
-                objectFit: "contain",
-                borderRadius: "var(--mantine-radius-md)",
-              }}
-            />
-          ) : (
-            // PDFs and other documents: iframe preview
-            <div style={{ width: "100%" }}>
-              <iframe
+          (() => {
+            const isImage =
+              selected.mime_type?.startsWith("image") ||
+              (selected.file_url &&
+                /\.(jpe?g|png|gif|webp)$/i.test(selected.file_url));
+            return isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization
+              <img
                 src={selected.file_url}
-                title={selected.file_name}
-                style={{ width: "100%", height: "70vh", border: "none" }}
+                alt={selected.file_name}
+                style={{
+                  width: "100%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  borderRadius: "var(--mantine-radius-md)",
+                }}
               />
-            </div>
-          )
+            ) : (
+              // PDFs and other documents: iframe preview
+              <div style={{ width: "100%" }}>
+                <iframe
+                  src={selected.file_url}
+                  title={selected.file_name}
+                  style={{ width: "100%", height: "70vh", border: "none" }}
+                />
+              </div>
+            );
+          })()
         ) : (
           <Center style={{ height: 220 }}>
             <Text c="dimmed">No file selected</Text>

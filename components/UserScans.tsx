@@ -18,7 +18,6 @@ import {
   Progress,
   Box,
   TextInput,
-  Button,
 } from "@mantine/core";
 import {
   IconFileText,
@@ -26,12 +25,11 @@ import {
   IconEye,
   IconDatabase,
   IconCalendar,
-  IconRefresh,
   IconTrash,
   IconSearch,
 } from "@tabler/icons-react";
 
-interface Scan {
+type Scan = {
   id: string;
   file_name: string;
   file_url: string;
@@ -40,19 +38,19 @@ interface Scan {
   package?: {
     package_name: string;
   };
-}
+};
 
-interface StorageUsage {
+type StorageUsage = {
   used_mb: number;
   limit_mb: number;
   percentage: number;
-}
+};
 
-interface UserScansProps {
+type UserScansProps = {
   registrationId: string;
   scans?: Scan[];
   usage?: StorageUsage | null;
-}
+};
 
 export default function UserScans({
   registrationId,
@@ -83,7 +81,7 @@ export default function UserScans({
       setLoading(true);
       const res = await fetch(
         `/api/user/scans?registrationId=${encodeURIComponent(registrationId)}`,
-        { credentials: "include" }
+        { credentials: "include" },
       );
       if (res.ok) {
         const data = await res.json();
@@ -143,9 +141,11 @@ export default function UserScans({
 
       // optimistic update
       setScans((prev) => prev.filter((s) => s.id !== scanId));
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to delete scan:", e);
-      alert(e.message || "Failed to delete file");
+      const errorMessage =
+        e instanceof Error ? e.message : "Failed to delete file";
+      alert(errorMessage);
     } finally {
       setDeletingId(null);
     }
@@ -197,13 +197,11 @@ export default function UserScans({
             value={usage.percentage}
             size="md"
             radius="xl"
-            color={
-              usage.percentage > 90
-                ? "red"
-                : usage.percentage > 70
-                ? "orange"
-                : "blue"
-            }
+            color={(() => {
+              if (usage.percentage > 90) return "red";
+              if (usage.percentage > 70) return "orange";
+              return "blue";
+            })()}
           />
         </Box>
 
@@ -342,21 +340,27 @@ export default function UserScans({
         size="xl"
         centered
       >
-        {selectedScan && /\.pdf(\?.*)?$/i.test(selectedScan.file_url) ? (
-          <iframe
-            src={selectedScan.file_url}
-            style={{ width: "100%", height: "70vh", border: "none" }}
-            title="PDF Preview"
-          />
-        ) : selectedScan ? (
-          <img
-            src={selectedScan.file_url}
-            alt={selectedScan.file_name}
-            style={{ width: "100%", maxHeight: "70vh", objectFit: "contain" }}
-          />
-        ) : (
-          <Text c="dimmed">No preview available</Text>
-        )}
+        {(() => {
+          if (!selectedScan)
+            return <Text c="dimmed">No preview available</Text>;
+          if (/\.pdf(\?.*)?$/i.test(selectedScan.file_url)) {
+            return (
+              <iframe
+                src={selectedScan.file_url}
+                style={{ width: "100%", height: "70vh", border: "none" }}
+                title="PDF Preview"
+              />
+            );
+          }
+          return (
+            // eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization
+            <img
+              src={selectedScan.file_url}
+              alt={selectedScan.file_name}
+              style={{ width: "100%", maxHeight: "70vh", objectFit: "contain" }}
+            />
+          );
+        })()}
       </Modal>
     </>
   );

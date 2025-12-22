@@ -1,14 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createSupabaseServiceClient();
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   // Await params to ensure we get the ID correctly in Next.js 15+
   const { id } = await params;
@@ -24,7 +21,7 @@ export async function GET(
         mailroom_locations (*),
         users (*),
         packages:mailroom_packages (*)
-      `
+      `,
       )
       .eq("id", id)
       .single();
@@ -33,7 +30,7 @@ export async function GET(
       console.error("Registration fetch error:", error);
       return NextResponse.json(
         { error: "Registration not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -44,7 +41,7 @@ export async function GET(
         `
         *,
         locker:location_lockers (*)
-      `
+      `,
       )
       .eq("registration_id", id);
 
@@ -52,10 +49,10 @@ export async function GET(
     // Update: Merge the assignment status into the locker object
     const lockers =
       assignedLockers
-        ?.map((a: any) => {
+        ?.map((a: { locker?: unknown; status?: string }) => {
           if (!a.locker) return null;
           return {
-            ...a.locker,
+            ...(a.locker as Record<string, unknown>),
             status: a.status, // <--- Pass the status from the assignment to the locker object
           };
         })
@@ -67,8 +64,10 @@ export async function GET(
     };
 
     return NextResponse.json(responseData);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("API Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const errorMessage =
+      err instanceof Error ? err.message : "Unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

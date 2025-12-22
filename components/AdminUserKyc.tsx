@@ -304,7 +304,10 @@ export default function AdminUserKyc() {
                   color = "gray";
                 }
                 return (
-                  <Badge color={color} variant="light">
+                  <Badge
+                    color={color as "green" | "yellow" | "gray"}
+                    variant="light"
+                  >
                     {r.status}
                   </Badge>
                 );
@@ -398,33 +401,21 @@ export default function AdminUserKyc() {
                   <Text size="sm">
                     Submitted:{" "}
                     <Text span fw={500}>
-                      {(() => {
-                        let submitted: string;
-                        if (selected.submitted_at) {
-                          submitted = dayjs(selected.submitted_at).format(
+                      {selected.submitted_at
+                        ? dayjs(selected.submitted_at).format(
                             "MMM D, YYYY hh:mm A",
-                          );
-                        } else {
-                          submitted = "—";
-                        }
-                        return submitted;
-                      })()}
+                          )
+                        : "—"}
                     </Text>
                   </Text>
                   <Text size="sm">
                     Verified:{" "}
                     <Text span fw={500}>
-                      {(() => {
-                        let verified: string;
-                        if (selected.verified_at) {
-                          verified = dayjs(selected.verified_at).format(
+                      {selected.verified_at
+                        ? dayjs(selected.verified_at).format(
                             "MMM D, YYYY hh:mm A",
-                          );
-                        } else {
-                          verified = "—";
-                        }
-                        return verified;
-                      })()}
+                          )
+                        : "—"}
                     </Text>
                   </Text>
                 </DetailStack>
@@ -443,31 +434,25 @@ export default function AdminUserKyc() {
                         const src =
                           resolvedFront ??
                           normalizeImageUrl(selected.id_front_url);
-                        let element: React.ReactNode;
-                        if (src) {
-                          element = (
-                            <Image
-                              src={src}
-                              alt="ID front"
-                              width={240}
-                              height={160}
-                              fit="cover"
-                              radius="sm"
-                              style={{ cursor: "zoom-in" }}
-                              onClick={() => {
-                                setModalImageSrc(src);
-                                openZoom();
-                              }}
-                            />
-                          );
-                        } else {
-                          element = (
-                            <Text size="xs" c="dimmed">
-                              Image unavailable
-                            </Text>
-                          );
-                        }
-                        return element;
+                        return src ? (
+                          <Image
+                            src={src}
+                            alt="ID front"
+                            width={240}
+                            height={160}
+                            fit="cover"
+                            radius="sm"
+                            style={{ cursor: "zoom-in" }}
+                            onClick={() => {
+                              setModalImageSrc(src);
+                              openZoom();
+                            }}
+                          />
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            Image unavailable
+                          </Text>
+                        );
                       })()}
                     </div>
                   )}
@@ -485,31 +470,25 @@ export default function AdminUserKyc() {
                         const src =
                           resolvedBack ??
                           normalizeImageUrl(selected.id_back_url);
-                        let element: React.ReactNode;
-                        if (src) {
-                          element = (
-                            <Image
-                              src={src}
-                              alt="ID back"
-                              width={240}
-                              height={160}
-                              fit="cover"
-                              radius="sm"
-                              style={{ cursor: "zoom-in" }}
-                              onClick={() => {
-                                setModalImageSrc(src);
-                                openZoom();
-                              }}
-                            />
-                          );
-                        } else {
-                          element = (
-                            <Text size="xs" c="dimmed">
-                              Image unavailable
-                            </Text>
-                          );
-                        }
-                        return element;
+                        return src ? (
+                          <Image
+                            src={src}
+                            alt="ID back"
+                            width={240}
+                            height={160}
+                            fit="cover"
+                            radius="sm"
+                            style={{ cursor: "zoom-in" }}
+                            onClick={() => {
+                              setModalImageSrc(src);
+                              openZoom();
+                            }}
+                          />
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            Image unavailable
+                          </Text>
+                        );
                       })()}
                     </div>
                   )}

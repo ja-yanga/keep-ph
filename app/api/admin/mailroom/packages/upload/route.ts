@@ -1,10 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(req: Request) {
   try {
@@ -22,7 +19,7 @@ export async function POST(req: Request) {
         : null;
 
     const bucket = "packages-photo"; // your new bucket
-    const fileName = `${Date.now()}-${(file as any).name ?? "photo"}`;
+    const fileName = `${Date.now()}-${file.name ?? "photo"}`;
     const path = userId ? `${userId}/${fileName}` : fileName;
 
     // Node runtime: upload buffer
@@ -36,11 +33,9 @@ export async function POST(req: Request) {
     // Return public URL (or createSignedUrl if bucket is private)
     const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
     return NextResponse.json({ url: data.publicUrl, path });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("upload error", err);
-    return NextResponse.json(
-      { error: err?.message ?? String(err) },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

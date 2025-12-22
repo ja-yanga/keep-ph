@@ -1,5 +1,7 @@
+"use client";
+
 import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 import {
   Box,
   Paper,
@@ -39,16 +41,10 @@ import {
   IconCreditCard,
   IconChevronRight,
   IconChevronLeft,
-  IconCalendar,
   IconMail,
   IconPackage,
   IconScan,
 } from "@tabler/icons-react";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -63,8 +59,21 @@ export default function RegisterForm() {
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
 
-  const [locations, setLocations] = useState<any[]>([]);
-  const [plans, setPlans] = useState<any[]>([]);
+  const [locations, setLocations] = useState<
+    Array<{ id: string; name: string; city?: string; region?: string }>
+  >([]);
+  const [plans, setPlans] = useState<
+    Array<{
+      id: string;
+      name: string;
+      price: number;
+      can_receive_mail?: boolean;
+      can_receive_parcels?: boolean;
+      storage_limit?: number;
+      can_digitize?: boolean;
+      description?: string;
+    }>
+  >([]);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [lockerQty, setLockerQty] = useState<number | string>(1);
@@ -76,7 +85,7 @@ export default function RegisterForm() {
 
   // NEW: Billing Cycle State
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(
-    "monthly"
+    "monthly",
   );
   const [months, setMonths] = useState<number>(1); // Default to 1 month
 
@@ -92,6 +101,7 @@ export default function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const [success, setSuccess] = useState<string | null>(null);
 
   // initial load state for fetching locations/plans/availability
@@ -110,6 +120,7 @@ export default function RegisterForm() {
     let mounted = true;
     async function load() {
       try {
+        const supabase = createClient();
         // 1. Fetch Locations
         const { data: locs } = await supabase
           .from("mailroom_locations")
@@ -120,7 +131,7 @@ export default function RegisterForm() {
         const { data: plns } = await supabase
           .from("mailroom_plans")
           .select(
-            "id,name,price,description,can_receive_mail,can_receive_parcels,can_digitize,storage_limit"
+            "id,name,price,description,can_receive_mail,can_receive_parcels,can_digitize,storage_limit",
           )
           .order("price", { ascending: true });
 
@@ -141,10 +152,21 @@ export default function RegisterForm() {
 
         if (locs) setLocations(locs);
         if (plns) {
-          const normalized = plns.map((p: any) => ({
-            ...p,
-            price: Number(p.price),
-          }));
+          const normalized = plns.map(
+            (p: {
+              id: string;
+              name: string;
+              price: number;
+              can_receive_mail?: boolean;
+              can_receive_parcels?: boolean;
+              storage_limit?: number;
+              can_digitize?: boolean;
+              description?: string;
+            }) => ({
+              ...p,
+              price: Number(p.price),
+            }),
+          );
           setPlans(normalized);
         }
 
@@ -198,6 +220,7 @@ export default function RegisterForm() {
   const totalCost = subTotal - referralDiscountAmount;
 
   // Helper to calculate original price for comparison
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const originalAnnualPrice = basePrice * 12;
 
   const format = (n: number) =>
@@ -228,7 +251,7 @@ export default function RegisterForm() {
       const data = await res.json();
       setReferralValid(data.valid);
       setReferralMessage(data.message);
-    } catch (err) {
+    } catch {
       setReferralMessage("Error validating code");
     } finally {
       setValidatingCode(false);
@@ -257,7 +280,7 @@ export default function RegisterForm() {
       // NEW: Validation for max availability
       if (qtyNum > availableCount) {
         setError(
-          `Only ${availableCount} locker(s) available at this location.`
+          `Only ${availableCount} locker(s) available at this location.`,
         );
         return;
       }
@@ -271,7 +294,7 @@ export default function RegisterForm() {
       // NEW: Mobile Validation (PH format: 09xxxxxxxxx)
       if (!/^09\d{9}$/.test(mobile)) {
         setError(
-          "Invalid mobile number. Must be 11 digits starting with 09 (e.g., 09123456789)."
+          "Invalid mobile number. Must be 11 digits starting with 09 (e.g., 09123456789).",
         );
         return;
       }
@@ -289,7 +312,15 @@ export default function RegisterForm() {
       return;
     }
 
-    const profile = session?.profile as any;
+    const profile = session?.profile as
+      | {
+          first_name?: string;
+          last_name?: string;
+          email?: string;
+          mobile?: string;
+          referral_code?: string;
+        }
+      | undefined;
     if (
       referralCode.trim() &&
       profile?.referral_code &&
@@ -356,7 +387,7 @@ export default function RegisterForm() {
         setError(
           payJson?.errors?.[0]?.detail ||
             payJson?.error ||
-            "Failed to create payment session"
+            "Failed to create payment session",
         );
         close();
         return;
@@ -508,12 +539,12 @@ export default function RegisterForm() {
                     const features = [];
 
                     // 1. Storage
-                    if (p.storage_limit > 0) {
+                    if (p.storage_limit && p.storage_limit > 0) {
                       // Convert MB to GB if >= 1024, otherwise show MB
                       const storageLabel =
                         p.storage_limit >= 1024
                           ? `${(p.storage_limit / 1024).toFixed(
-                              0
+                              0,
                             )}GB Digital Storage`
                           : `${p.storage_limit}MB Digital Storage`;
 
@@ -726,12 +757,12 @@ export default function RegisterForm() {
                               index !== locations.length - 1
                                 ? "1px solid var(--mantine-color-gray-2)"
                                 : "none",
-                            backgroundColor:
-                              selectedLocation === loc.id
-                                ? "var(--mantine-color-blue-0)"
-                                : isFull
-                                ? "var(--mantine-color-gray-0)"
-                                : "transparent",
+                            backgroundColor: (() => {
+                              if (selectedLocation === loc.id)
+                                return "var(--mantine-color-blue-0)";
+                              if (isFull) return "var(--mantine-color-gray-0)";
+                              return "transparent";
+                            })(),
                             opacity: isFull ? 0.6 : 1,
                           }}
                         >
@@ -752,9 +783,11 @@ export default function RegisterForm() {
                               </div>
                             </Group>
                             <Badge
-                              color={
-                                isFull ? "red" : count < 5 ? "orange" : "green"
-                              }
+                              color={(() => {
+                                if (isFull) return "red";
+                                if (count < 5) return "orange";
+                                return "green";
+                              })()}
                               variant="light"
                             >
                               {isFull ? "FULL" : `${count} Available Lockers`}
@@ -826,7 +859,7 @@ export default function RegisterForm() {
                             color="#26316D"
                             onClick={() =>
                               setLockerQty(
-                                Math.min(availableCount, Number(lockerQty) + 1)
+                                Math.min(availableCount, Number(lockerQty) + 1),
                               )
                             }
                             disabled={Number(lockerQty) >= availableCount}
@@ -859,7 +892,7 @@ export default function RegisterForm() {
                           // allow letters, spaces, hyphens and apostrophes only
                           const val = e.currentTarget.value.replace(
                             /[^A-Za-z\s'-]/g,
-                            ""
+                            "",
                           );
                           setFirstName(val);
                         }}
@@ -873,7 +906,7 @@ export default function RegisterForm() {
                         onChange={(e) => {
                           const val = e.currentTarget.value.replace(
                             /[^A-Za-z\s'-]/g,
-                            ""
+                            "",
                           );
                           setLastName(val);
                         }}
@@ -1011,8 +1044,9 @@ export default function RegisterForm() {
                   color="blue"
                   variant="light"
                 >
-                  By clicking "Proceed to Payment", you will be redirected to
-                  our secure payment gateway to complete your transaction.
+                  By clicking &quot;Proceed to Payment&quot;, you will be
+                  redirected to our secure payment gateway to complete your
+                  transaction.
                 </Alert>
               </Stack>
             </Stepper.Step>

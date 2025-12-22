@@ -1,5 +1,3 @@
-//TODO: Change to server component
-
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -21,7 +19,7 @@ import {
 } from "@mantine/core";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import Link from "next/link";
-import { LANDING_PAGE } from "@/utils/constants/constants";
+import { LANDING_PAGE } from "@/utils/constants";
 import type { MailroomPlan } from "@/utils/types/types";
 
 const PRICING_COPY = LANDING_PAGE.pricing;

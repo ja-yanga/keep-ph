@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 type RawClaimRow = {
   rewards_claim_id: string;
@@ -28,10 +28,7 @@ type ClaimWithUrl = {
   proof_url?: string | null;
 };
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+const supabase = createSupabaseServiceClient();
 
 export async function GET(req: Request) {
   try {

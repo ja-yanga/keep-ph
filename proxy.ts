@@ -1,47 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
 export async function proxy(request: NextRequest) {
-  // 1. Create an initial response
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  // Get session data from updateSession
+  const { supabaseResponse, user } = await updateSession(request);
 
-  // 2. Initialize Supabase Client to read the cookies
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          // This allows the middleware to refresh the token if needed
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  // 3. Check Session
-  // This will read the 'sb-<project>-auth-token' cookie correctly
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // 4. Define Protected and Auth Paths
+  // Define Protected and Auth Paths
   const url = request.nextUrl.clone();
   const isAuthPage = ["/signin", "/signup", "/forgot-password"].includes(
     url.pathname,
@@ -56,53 +20,33 @@ export async function proxy(request: NextRequest) {
     "/update-password",
   ].includes(url.pathname);
 
-  // 5. Redirect Logic
+  // Redirect Logic
   if (isAuthPage) {
     if (user) {
       // If logged in, don't let them see signin page
       url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      const redirectResponse = NextResponse.redirect(url);
+      // Copy cookies from supabaseResponse to preserve session
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value);
+      });
+      return redirectResponse;
     }
-    return response;
+    return supabaseResponse;
   }
 
   if (!user && !isPublicPage) {
     // If not logged in and trying to access protected page (like /dashboard)
     url.pathname = "/signin";
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    // Copy cookies from supabaseResponse to preserve session
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value);
+    });
+    return redirectResponse;
   }
 
-  // 6. Prevent unverified users from accessing mailroom registration
-  // Only run this check when user exists and target path is /mailroom/register
-  if (user && url.pathname === "/mailroom/register") {
-    try {
-      // use service role client to bypass RLS for this server-side check
-      const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
-      const { data: kyc, error: kycErr } = await supabaseAdmin
-        .from("user_kyc_table")
-        .select("user_kyc_status")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (kycErr) {
-        console.error("middleware KYC lookup error:", kycErr);
-        url.pathname = "/mailroom/kyc";
-        return NextResponse.redirect(url);
-      }
-      if (!kyc || kyc.user_kyc_status !== "VERIFIED") {
-        url.pathname = "/mailroom/kyc";
-        return NextResponse.redirect(url);
-      }
-    } catch {
-      // on error, fall back to blocking access to be safe
-      url.pathname = "/mailroom/kyc";
-      return NextResponse.redirect(url);
-    }
-  }
-
-  return response;
+  return supabaseResponse;
 }
 
 export const config = {

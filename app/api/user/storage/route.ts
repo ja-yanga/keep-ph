@@ -1,7 +1,8 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/utils/supabase/serviceClient";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -37,21 +38,8 @@ type Scan = {
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-
     // authenticate user
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll() {},
-        },
-      },
-    );
+    const supabase = await createClient();
 
     const {
       data: { user },

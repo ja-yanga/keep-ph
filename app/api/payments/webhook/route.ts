@@ -1,40 +1,34 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   const payload = await req.json().catch(() => null);
   console.debug(
     "[webhook] payload:",
-    JSON.stringify(payload?.data ?? payload, null, 2)
+    JSON.stringify(payload?.data ?? payload, null, 2),
   );
 
-  const sbUrl =
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const sbKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
-  if (!sbUrl || !sbKey) {
-    console.error("[webhook] missing supabase envs", {
-      sbUrl: !!sbUrl,
-      sbKey: !!sbKey,
-    });
-    return NextResponse.json(
-      { error: "supabase env missing" },
-      { status: 500 }
-    );
-  }
-
-  const sb = createClient(sbUrl, sbKey);
+  const sb = createSupabaseServiceClient();
   const data = payload?.data;
   if (!data) return NextResponse.json({ ok: false }, { status: 400 });
 
   // helper that upserts a payment resource (shape: { id, type: 'payment', attributes: { ... } })
-  async function upsertPaymentResource(payRes: any) {
+  async function upsertPaymentResource(payRes: {
+    id?: string;
+    attributes?: {
+      source?: { id?: string };
+      status?: string;
+      amount?: number;
+      currency?: string;
+      metadata?: { order_id?: string };
+    };
+  }) {
     const payId = payRes?.id;
     const attrs = payRes?.attributes ?? {};
     const metadata = attrs?.metadata ?? {};
     const orderId = metadata?.order_id ?? null;
 
-    const upsertRes = (await sb.from("paymongo_payments").upsert(
+    const upsertRes = await sb.from("paymongo_payments").upsert(
       {
         id: payId,
         source_id: attrs?.source?.id ?? null,
@@ -45,14 +39,14 @@ export async function POST(req: Request) {
         raw: payRes,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "id" }
-    )) as any;
+      { onConflict: "id" },
+    );
 
     console.debug("[webhook] upsertPaymentResource result:", {
       id: payId,
       data: Array.isArray(upsertRes?.data)
-        ? upsertRes.data.slice(0, 5)
-        : upsertRes?.data ?? null,
+        ? (upsertRes.data as unknown[]).slice(0, 5)
+        : (upsertRes?.data ?? null),
       error: upsertRes?.error,
     });
 
@@ -66,7 +60,7 @@ export async function POST(req: Request) {
     } catch (finalErr) {
       console.error(
         "[webhook] finalizeRegistrationFromPayment error:",
-        finalErr
+        finalErr,
       );
       // don't throw here — we already upserted payment; finalize is best-effort and idempotent
     }
@@ -74,7 +68,23 @@ export async function POST(req: Request) {
     return { id: payId, orderId };
   }
 
-  async function finalizeRegistrationFromPayment(payRes: any) {
+  async function finalizeRegistrationFromPayment(payRes: {
+    id?: string;
+    attributes?: {
+      metadata?: {
+        order_id?: string;
+        user_id?: string;
+        full_name?: string;
+        email?: string;
+        mobile?: string;
+        location_id?: string;
+        plan_id?: string;
+        locker_qty?: number;
+        months?: number;
+        notes?: string;
+      };
+    };
+  }) {
     const attrs = payRes?.attributes ?? {};
     const meta = attrs?.metadata ?? {};
     const orderId = meta?.order_id ?? null;
@@ -188,19 +198,19 @@ export async function POST(req: Request) {
         if (!created) {
           console.error(
             "[webhook] failed to generate unique mailroom_code for registration",
-            registration.id
+            registration.id,
           );
         }
       }
 
       // 5) Assign lockers: mark them unavailable and insert assignment rows
-      const lockerIds = availableLockers.map((l: any) => l.id);
+      const lockerIds = availableLockers.map((l: { id: string }) => l.id);
       await sb
         .from("location_lockers")
         .update({ is_available: false })
         .in("id", lockerIds);
 
-      const assignments = lockerIds.map((lockerId: any) => ({
+      const assignments = lockerIds.map((lockerId: string) => ({
         registration_id: registration.id,
         locker_id: lockerId,
         status: "Normal",
@@ -236,7 +246,7 @@ export async function POST(req: Request) {
               console.error("[webhook] upsert nested payment failed:", err);
               return NextResponse.json(
                 { error: "upsert_nested_failed", details: String(err) },
-                { status: 500 }
+                { status: 500 },
               );
             }
           }
@@ -249,7 +259,7 @@ export async function POST(req: Request) {
           "[webhook] unhandled event nested type:",
           nested?.type,
           "eventType:",
-          eventType
+          eventType,
         );
       }
     } else {

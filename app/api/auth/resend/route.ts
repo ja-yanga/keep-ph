@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { createClient } from "@/lib/supabase/client";
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = createClient();
 
     // Resend the signup confirmation email
     const { error } = await supabase.auth.resend({
@@ -26,11 +23,11 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ message: "Verification email resent" });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Resend error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -6,7 +6,11 @@ export default function PaymongoTestPage() {
   const [orderId, setOrderId] = useState<string>("TEST-ORDER-1");
   // no local payment-type selection — checkout will show all enabled methods
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<{
+    status?: number;
+    body?: unknown;
+    redirectUrl?: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -52,23 +56,35 @@ export default function PaymongoTestPage() {
         null;
 
       if (checkoutUrl) {
-        setResult((r: any) => ({ ...r, redirectUrl: checkoutUrl }));
+        setResult((r) => ({ ...(r || {}), redirectUrl: checkoutUrl }));
         // auto-redirect to hosted checkout (or use window.open to open new tab)
         window.location.href = checkoutUrl;
         return;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err?.message || "Request failed");
+      const errorMessage =
+        err instanceof Error ? err.message : "Request failed";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   // derive clientKey if server returned a checkout session with an embedded payment_intent
+  const body = result?.body as
+    | {
+        data?: {
+          attributes?: {
+            client_key?: string;
+            payment_intent?: { attributes?: { client_key?: string } };
+          };
+        };
+      }
+    | undefined;
   const clientKey =
-    result?.body?.data?.attributes?.client_key ??
-    result?.body?.data?.attributes?.payment_intent?.attributes?.client_key ??
+    body?.data?.attributes?.client_key ??
+    body?.data?.attributes?.payment_intent?.attributes?.client_key ??
     null;
 
   return (
@@ -141,18 +157,12 @@ export default function PaymongoTestPage() {
       )}
 
       {/* Render CardForm only if server returned a payment_intent client_key and you want client-side card flow */}
-      {clientKey && <CardForm clientKey={clientKey} orderId={orderId} />}
+      {clientKey && <CardForm clientKey={clientKey} />}
     </main>
   );
 }
 
-function CardForm({
-  clientKey,
-  orderId,
-}: {
-  clientKey: string;
-  orderId: string;
-}) {
+function CardForm({ clientKey }: { clientKey: string }) {
   const [status, setStatus] = useState<string | null>(null);
   const [cardNumber, setCardNumber] = useState("4242424242424242"); // default test card
   const [exp, setExp] = useState("12/28"); // default
@@ -168,7 +178,7 @@ function CardForm({
       const exp_month = parseInt(mmStr, 10);
       const exp_year = parseInt(
         yyStr.length === 2 ? yyStr : yyStr.slice(-2),
-        10
+        10,
       );
 
       const pmId = await createPaymentMethodWithPubKey({
@@ -190,11 +200,12 @@ function CardForm({
       const json = await res.json();
       setStatus(
         `Server response: ${JSON.stringify(
-          json
-        )}\nFinal status via webhook (payment.paid / payment.failed).`
+          json,
+        )}\nFinal status via webhook (payment.paid / payment.failed).`,
       );
-    } catch (err: any) {
-      setStatus("Error: " + (err?.message || String(err)));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setStatus("Error: " + errorMessage);
     }
   };
 

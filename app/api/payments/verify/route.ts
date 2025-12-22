@@ -12,14 +12,14 @@ export async function GET(req: Request) {
     if (!secret)
       return NextResponse.json(
         { error: "missing PAYMONGO_SECRET_KEY" },
-        { status: 500 }
+        { status: 500 },
       );
 
     const auth = `Basic ${Buffer.from(`${secret}:`).toString("base64")}`;
 
     // map requested type to the correct PayMongo endpoint
     let endpoint = `https://api.paymongo.com/v1/sources/${encodeURIComponent(
-      id
+      id,
     )}`;
     if (
       rawType === "payment_intent" ||
@@ -27,11 +27,11 @@ export async function GET(req: Request) {
       rawType === "pi"
     ) {
       endpoint = `https://api.paymongo.com/v1/payment_intents/${encodeURIComponent(
-        id
+        id,
       )}`;
     } else if (rawType === "payment" || rawType === "pay") {
       endpoint = `https://api.paymongo.com/v1/payments/${encodeURIComponent(
-        id
+        id,
       )}`;
     }
 
@@ -40,13 +40,11 @@ export async function GET(req: Request) {
     // forward PayMongo's HTTP status so caller can see 404/401/200 etc.
     return NextResponse.json(
       { status: res.status, ok: res.ok, resource: json },
-      { status: res.status }
+      { status: res.status },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("verify-paymongo:", err);
-    return NextResponse.json(
-      { error: err?.message || "server error" },
-      { status: 500 }
-    );
+    const errorMessage = err instanceof Error ? err.message : "server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
