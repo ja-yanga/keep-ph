@@ -4,6 +4,7 @@ import {
   ReferralRow,
   RpcAdminClaim,
   RpcClaim,
+  UserAddressRow,
 } from "../types/types";
 
 export const getStatusFormat = (status: string = ""): string => {
@@ -145,4 +146,21 @@ export const normalizeImageUrl = (url?: string | null) => {
     return `${window.location.origin}${prefix}${url}`;
   }
   return url;
+};
+
+export const parseAddressRow = (input: unknown): UserAddressRow => {
+  if (!input) {
+    throw new Error("Address payload missing");
+  }
+
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input) as UserAddressRow;
+      return parsed;
+    } catch {
+      throw new Error("Invalid address payload");
+    }
+  }
+
+  return input as UserAddressRow;
 };
