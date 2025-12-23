@@ -1,27 +1,32 @@
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-
-const supabase = createSupabaseServiceClient();
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function PATCH(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
+    const supabase = createSupabaseServiceClient();
 
-    // We only toggle auto_renew to false. We don't delete the row.
+    // set subscription_auto_renew = false on subscription_table for the registration
     const { error } = await supabase
-      .from("mailroom_registrations")
-      .update({ auto_renew: false })
-      .eq("id", id);
+      .from("subscription_table")
+      .update({ subscription_auto_renew: false })
+      .eq("mailroom_registration_id", id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("cancel subscription error:", error);
+      return NextResponse.json(
+        { error: error.message ?? "Failed to cancel" },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown";
+    console.error("cancel route unexpected error:", err);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -10,7 +10,6 @@ import {
   Loader,
   Paper,
   Stack,
-  Table,
   Text,
   TextInput,
   Title,
@@ -28,34 +27,15 @@ import {
   IconMapPin,
   IconChevronRight,
   IconPackage,
-  IconSortAscending,
-  IconSortDescending,
-  IconCreditCardOff, // ADDED
+  IconCreditCardOff,
   IconSearch,
-  IconCopy, // added
+  IconCopy,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
-import { notifications } from "@mantine/notifications"; // ADDED
+import { notifications } from "@mantine/notifications";
+import type { RawRow, LocationObj } from "@/utils/types/types";
 
-type RawRow = {
-  id?: string;
-  mailroom_code?: string;
-  full_name?: string;
-  email?: string;
-  mailroom_plans?:
-    | { name?: string; months?: number }
-    | Array<{ name?: string; months?: number }>;
-  plan_name?: string;
-  months?: number;
-  mailroom_locations?: { name?: string } | Array<{ name?: string }>;
-  location_name?: string;
-  created_at?: string;
-  mailroom_status?: string;
-  auto_renew?: boolean;
-  packages?: unknown[];
-  [key: string]: unknown;
-};
 type Row = {
   id: string;
   mailroom_code: string | null;
@@ -66,8 +46,7 @@ type Row = {
   created_at?: string | null;
   expiry_at?: string | null;
   mailroom_status?: string | null;
-  auto_renew: boolean; // ADDED
-  // NEW: Add stats to the Row type
+  auto_renew: boolean;
   stats: {
     stored: number;
     pending: number;
@@ -76,118 +55,107 @@ type Row = {
   raw?: RawRow;
 };
 
-const addMonths = (iso?: string | null, months = 0) => {
+const addMonths = (iso?: string | null, months = 0): string | null => {
   if (!iso) return null;
   const d = new Date(iso);
   d.setMonth(d.getMonth() + months);
   return d.toISOString();
 };
 
-// 1. Update the mapping function to calculate stats per row
-const mapDataToRows = (data: RawRow[]): Row[] => {
-  return data.map((r: RawRow) => {
-    const planName = r.mailroom_plans?.name ?? r.plan_name ?? null;
-    const planMonths = r.mailroom_plans?.months ?? r.months ?? null;
-    const userName = r.full_name ?? null;
-    const locationName = r.mailroom_locations?.name ?? r.location_name ?? null;
-    const created = r.created_at ?? null;
+const mapDataToRows = (data: RawRow[]): Row[] =>
+  data.map((r) => {
+    const planObj = r.mailroom_plan_table ?? null;
+    const planName = planObj?.mailroom_plan_name ?? null;
+    const planMonths =
+      typeof planObj?.mailroom_plan_price === "number"
+        ? Number(planObj.mailroom_plan_price)
+        : null;
 
-    // 1. Extract auto_renew first so we can use it in logic
-    // Default to true if null/undefined
-    const autoRenew = r.auto_renew !== false;
+    const locObj = r.mailroom_location_table ?? null;
+    const locationName = locObj?.mailroom_location_name ?? null;
+    const created = r.mailroom_registration_created_at ?? null;
 
-    const expiry = planMonths ? addMonths(created, Number(planMonths)) : null;
+    // subscription overrides expiry/auto_renew when available
+    const subscription = r.subscription_table ?? null;
+    const expiryFromSub = subscription?.subscription_expires_at ?? null;
+    const autoRenew =
+      typeof subscription?.subscription_auto_renew === "boolean"
+        ? subscription!.subscription_auto_renew
+        : true;
 
-    const now = new Date();
+    const expiry =
+      expiryFromSub ??
+      (planMonths ? addMonths(created, Number(planMonths)) : null);
+
     let computedStatus: string | null = null;
-
     if (expiry) {
       const ed = new Date(expiry);
-      const diff = ed.getTime() - now.getTime();
-
+      const diff = ed.getTime() - Date.now();
       if (diff <= 0) {
-        // Date has passed
-        if (autoRenew) {
-          // If auto-renew is ON, we keep it ACTIVE (grace period / pending renewal)
-          computedStatus = "ACTIVE";
-        } else {
-          // Only show INACTIVE if they explicitly canceled
-          computedStatus = "INACTIVE";
-        }
+        computedStatus = autoRenew ? "ACTIVE" : "INACTIVE";
       } else if (diff <= 7 * 24 * 60 * 60 * 1000) {
-        // Less than 7 days left
-        if (autoRenew) {
-          // If auto-renew is ON, it's not really "expiring", it's just renewing.
-          computedStatus = "ACTIVE";
-        } else {
-          // Warn them only if it will actually expire
-          computedStatus = "EXPIRING";
-        }
+        computedStatus = autoRenew ? "ACTIVE" : "EXPIRING";
       } else {
         computedStatus = "ACTIVE";
       }
     } else {
-      computedStatus = r.status ?? r.mailroom_status ?? "ACTIVE";
+      computedStatus = r.mailroom_registration_status ? "ACTIVE" : "INACTIVE";
     }
-    const mailroom_status = computedStatus;
 
-    // NEW: Calculate stats for this specific registration
     let stored = 0;
     let pending = 0;
     let released = 0;
 
-    if (Array.isArray(r.packages)) {
-      const uniqueIds = new Set();
-      r.packages.forEach(
-        (p: { id?: string; status?: string; [key: string]: unknown }) => {
-          if (uniqueIds.has(p.id)) return;
-          uniqueIds.add(p.id);
+    const items = Array.isArray(r.mailbox_item_table)
+      ? r.mailbox_item_table
+      : [];
+    const seen = new Set<string | undefined>();
+    items.forEach((p) => {
+      const id = p.mailbox_item_id;
+      if (id && seen.has(id)) return;
+      if (id) seen.add(id);
 
-          const s = (p.status ?? "").toUpperCase();
+      const s = String(p.mailbox_item_status ?? "").toUpperCase();
 
-          // Count as released if fully released/retrieved
-          if (s === "RELEASED") {
-            released++;
-          }
+      if (s === "RELEASED") {
+        released += 1;
+      }
 
-          // Count pending requests separately for any REQUEST_* statuses
-          if (s.includes("REQUEST")) {
-            pending++;
-          }
+      if (s.includes("REQUEST")) {
+        pending += 1;
+      }
 
-          // Items are considered "in storage" unless final statuses (released/retrieved/disposed).
-          // This ensures REQUEST_TO_* still count as items in storage.
-          if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) {
-            stored++;
-          }
-        },
-      );
-    }
+      if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) {
+        stored += 1;
+      }
+    });
 
+    // subscriber name from users_table.user_kyc_table if present (readonly KYC)
+    const userObj = r.users_table ?? null;
+    const kyc = userObj?.user_kyc_table ?? null;
+    const first = kyc?.user_kyc_first_name ?? null;
+    const last = kyc?.user_kyc_last_name ?? null;
     const name =
-      userName ??
-      planName ??
-      r.package_name ??
-      r.title ??
-      `${locationName ?? "Mailroom Service"} #${r.id?.slice(0, 8)}`;
+      first || last
+        ? `${first ? String(first) : ""}${first && last ? " " : ""}${last ? String(last) : ""}`
+        : (locationName ??
+          `Mailroom #${String(r.mailroom_registration_id ?? "").slice(0, 8)}`);
 
     return {
-      id: r.id,
-      mailroom_code: r.mailroom_code ?? null,
+      id: String(r.mailroom_registration_id ?? ""),
+      mailroom_code: r.mailroom_registration_code ?? null,
       name,
-      email: r.email ?? null,
+      email: userObj?.users_email ?? null,
       plan: planName,
       location: locationName,
       created_at: created,
       expiry_at: expiry,
-      mailroom_status,
-      auto_renew: autoRenew, // Use the variable we created
-      // NEW: Attach stats
+      mailroom_status: computedStatus,
+      auto_renew: autoRenew ?? true,
       stats: { stored, pending, released },
       raw: r,
     };
   });
-};
 
 export default function UserDashboard({
   initialData,
@@ -195,93 +163,69 @@ export default function UserDashboard({
   initialData?: RawRow[] | null;
 }) {
   const { session } = useSession();
-  // pagination for registrations
   const [page, setPage] = useState<number>(1);
   const perPage = 2;
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ADDED: Cancel Modal State
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   const [canceling, setCanceling] = useState(false);
 
-  // UI state
   const [search, setSearch] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const [filters, setFilters] = useState({
+  const [filters] = useState({
     plan: null as string | null,
     location: null as string | null,
     mailroomStatus: null as string | null,
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const filterOptions = useMemo(() => {
-    if (!rows) return { plans: [], locations: [] };
-    const plans = Array.from(
-      new Set(rows.map((r) => r.plan).filter(Boolean)),
-    ) as string[];
-    const locations = Array.from(
-      new Set(rows.map((r) => r.location).filter(Boolean)),
-    ) as string[];
-    return { plans, locations };
-  }, [rows]);
+  const [firstName, setFirstName] = useState<string | null>(null);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
-    {
-      mailroom_code: true,
-      name: true,
-      // NEW: Add activity column, enabled by default
-      activity: true,
-      email: true,
-      plan: true,
-      location: true,
-      created_at: true,
-      expiry_at: true,
-      mailroom_status: true,
-      view: true,
-    },
-  );
-
-  // sorting
-  const [sortBy, setSortBy] = useState<string | null>("created_at");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  // 2. SWR fetcher for registrations (keeps same endpoint and credentials)
-  const fetcher = async (url: string) => {
+  const fetcher = async (url: string): Promise<RawRow[]> => {
     const res = await fetch(url, { method: "GET", credentials: "include" });
     if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      const err = json?.error || "Failed to load registrations";
-      throw new Error(err);
+      const json = await res
+        .json()
+        .catch(() => ({}) as Record<string, unknown>);
+      const err =
+        (json as Record<string, unknown>)?.error ??
+        "Failed to load registrations";
+      throw new Error(String(err));
     }
-    const json = await res.json();
-    const data: RawRow[] = Array.isArray(json?.data ?? json)
-      ? (json.data ?? json)
-      : [];
-    return data;
+    const json = (await res.json()) as Record<string, unknown>;
+    const payload = (json.data as unknown) ?? json;
+    let rowsArr: RawRow[] = [];
+    if (Array.isArray(payload)) {
+      rowsArr = payload as RawRow[];
+    } else if (
+      payload &&
+      typeof payload === "object" &&
+      Array.isArray((payload as Record<string, unknown>).data)
+    ) {
+      rowsArr = (payload as Record<string, unknown>)
+        .data as unknown as RawRow[];
+    } else {
+      rowsArr = [];
+    }
+    return rowsArr;
   };
 
-  // SWR key depends on session readiness
   const swrKey = session?.user?.id ? "/api/mailroom/registrations" : null;
   const { data: apiData, error: swrError } = useSWR<RawRow[] | undefined>(
     swrKey,
     fetcher,
     {
       revalidateOnFocus: true,
-      fallbackData: initialData ?? undefined, // hydrate from server
+      fallbackData: initialData ?? undefined,
     },
   );
 
-  // map API data into rows and keep as local state for UI / optimistic updates
   useEffect(() => {
     setLoading(Boolean(!rows && !swrError && !apiData));
     setError(swrError ? (swrError as Error).message : null);
     if (Array.isArray(apiData)) {
-      const mapped = mapDataToRows(apiData);
-      setRows(mapped);
+      setRows(mapDataToRows(apiData));
     }
     setLoading(false);
   }, [apiData, swrError]);
@@ -293,7 +237,9 @@ export default function UserDashboard({
         if (search) {
           const q = search.toLowerCase();
           const found =
-            String(r.name).toLowerCase().includes(q) ||
+            String(r.name ?? "")
+              .toLowerCase()
+              .includes(q) ||
             String(r.email ?? "")
               .toLowerCase()
               .includes(q) ||
@@ -318,59 +264,52 @@ export default function UserDashboard({
         return true;
       })
       .sort((a, b) => {
-        if (!sortBy) return 0;
-        const va = (a as Record<string, unknown>)[sortBy];
-        const vb = (b as Record<string, unknown>)[sortBy];
+        const sortBy = "created_at" as const;
+        const dir: "asc" | "desc" = "desc";
+        const va = (a as Record<string, unknown>)[sortBy] as
+          | string
+          | number
+          | undefined;
+        const vb = (b as Record<string, unknown>)[sortBy] as
+          | string
+          | number
+          | undefined;
+
+        // compute numeric multiplier up-front to avoid direct string comparisons in-place
+        const mults: Record<"asc" | "desc", number> = { asc: 1, desc: -1 };
+        const multiplier = mults[dir];
+
         if (va == null && vb == null) return 0;
-        if (va == null) return sortDir === "asc" ? -1 : 1;
-        if (vb == null) return sortDir === "asc" ? 1 : -1;
-        if (sortBy === "created_at" || sortBy === "expiry_at") {
-          const da = new Date(va).getTime();
-          const db = new Date(vb).getTime();
-          return sortDir === "asc" ? da - db : db - da;
-        }
-        const sa = String(va).toLowerCase();
-        const sb = String(vb).toLowerCase();
-        return sortDir === "asc" ? sa.localeCompare(sb) : sb.localeCompare(sa);
+        if (va == null) return multiplier === 1 ? -1 : 1;
+        if (vb == null) return multiplier === 1 ? 1 : -1;
+
+        const da = new Date(String(va)).getTime();
+        const db = new Date(String(vb)).getTime();
+        const diff = da - db;
+        return diff * multiplier;
       });
-  }, [rows, search, filters, sortBy, sortDir]);
+  }, [rows, search, filters]);
 
-  const toggleSort = (col: string) => {
-    if (sortBy === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(col);
-      setSortDir("asc");
-    }
-  };
-
-  const refresh = () => {
+  const refresh = (): void => {
     setRows(null);
     setError(null);
     if (swrKey) swrMutate(swrKey);
   };
 
-  // ADDED: Handle Cancel Subscription
-  const handleCancelSubscription = async () => {
+  const handleCancelSubscription = async (): Promise<void> => {
     if (!selectedSubId) return;
     setCanceling(true);
     try {
       const res = await fetch(
         `/api/mailroom/registrations/${selectedSubId}/cancel`,
-        {
-          method: "PATCH",
-        },
+        { method: "PATCH" },
       );
-
       if (!res.ok) throw new Error("Failed to cancel subscription");
-
       notifications.show({
         title: "Subscription Canceled",
         message: "Your plan will not renew after the current period.",
         color: "orange",
       });
-
-      // Update local state
       setRows((prev) =>
         prev
           ? prev.map((r) =>
@@ -392,61 +331,37 @@ export default function UserDashboard({
     }
   };
 
-  // build a best-effort full shipping address from the API row.raw
   const getFullAddressFromRaw = (
-    raw:
-      | {
-          mailroom_locations?: {
-            formatted_address?: string;
-            name?: string;
-            line1?: string;
-            city?: string;
-            region?: string;
-            postal?: string;
-          };
-          location?: {
-            formatted_address?: string;
-            name?: string;
-            line1?: string;
-            city?: string;
-            region?: string;
-            postal?: string;
-          };
-          [key: string]: unknown;
-        }
-      | null
-      | undefined,
+    raw: RawRow | null | undefined,
   ): string | null => {
     if (!raw) return null;
-    const loc = raw.mailroom_locations ?? raw.location ?? {};
-    // prefer a preformatted address if available
-    if (loc?.formatted_address) return String(loc.formatted_address);
-
+    const loc = (raw.mailroom_location_table as LocationObj | undefined) ?? {};
+    if (typeof loc.formatted_address === "string")
+      return String(loc.formatted_address);
     const parts: string[] = [];
-    const name = loc?.name ?? raw.location_name ?? null;
+    const name =
+      (loc.mailroom_location_name as string | undefined) ??
+      ((raw as Record<string, unknown>)["location_name"] as
+        | string
+        | undefined) ??
+      null;
     if (name) parts.push(String(name));
-
     const street =
-      loc?.address_line ||
-      loc?.street ||
-      loc?.line1 ||
-      loc?.line ||
-      loc?.address;
+      (loc.address_line as string | undefined) ??
+      (loc.line1 as string | undefined) ??
+      null;
     if (street) parts.push(String(street));
-
-    const city = loc?.city || loc?.town || null;
-    const province = loc?.province || loc?.state || null;
-    const postal = loc?.postal_code || loc?.postal || loc?.zip || null;
-    const country = loc?.country || null;
-    const tail = [city, province, postal, country].filter(Boolean).join(", ");
+    const city = (loc.mailroom_location_city as string | undefined) ?? null;
+    const province =
+      (loc.mailroom_location_region as string | undefined) ?? null;
+    const postal = (loc.mailroom_location_zip as string | undefined) ?? null;
+    const tail = [city, province, postal].filter(Boolean).join(", ");
     if (tail) parts.push(tail);
-
     const out = parts.filter(Boolean).join(", ").trim();
     return out || null;
   };
 
-  // copy full shipping address to clipboard (mailroom code + full address)
-  const copyFullShippingAddress = async (row: Row) => {
+  const copyFullShippingAddress = async (row: Row): Promise<void> => {
     const code = row.mailroom_code ?? null;
     const full = getFullAddressFromRaw(row.raw) ?? row.location ?? null;
     const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
@@ -469,54 +384,46 @@ export default function UserDashboard({
       console.error("copy failed", e);
       notifications.show({
         title: "Copy failed",
-        message: e?.message ?? String(e),
+        message: (e as Error).message ?? String(e),
         color: "red",
       });
     }
   };
 
-  const SortIcon = ({ col }: { col: string }) => {
-    if (sortBy !== col) return null;
-    return sortDir === "asc" ? (
-      <IconSortAscending size={14} />
-    ) : (
-      <IconSortDescending size={14} />
-    );
-  };
+  useEffect(() => {
+    let mounted = true;
+    const loadKyc = async (): Promise<void> => {
+      if (!session?.user?.id) return;
+      try {
+        const res = await fetch(
+          `/api/user/kyc?userId=${encodeURIComponent(session.user.id)}`,
+          { method: "GET", credentials: "include" },
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        let payload = json?.data ?? json;
+        if (payload && typeof payload === "object" && "kyc" in payload) {
+          payload = (payload as Record<string, unknown>).kyc as unknown;
+        }
+        if (Array.isArray(payload) && payload.length > 0) payload = payload[0];
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const ThSortable = ({ col, label }: { col: string; label: string }) => (
-    <Table.Th
-      style={{
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-        textTransform: "uppercase", // Uppercase headers
-        fontSize: "11px", // Smaller font
-        fontWeight: 700,
-        color: "var(--mantine-color-dimmed)",
-      }}
-      onClick={() => toggleSort(col)}
-    >
-      <Group gap={4}>
-        {label}
-        <SortIcon col={col} />
-      </Group>
-    </Table.Th>
-  );
+        const first =
+          (payload &&
+            (payload as Record<string, unknown>)?.user_kyc_first_name) ??
+          (payload && (payload as Record<string, unknown>)?.first_name) ??
+          (payload && (payload as Record<string, unknown>)?.firstName) ??
+          null;
+        if (mounted) setFirstName(first ? String(first) : null);
+      } catch {
+        /* ignore errors */
+      }
+    };
 
-  // Calculate global stats
-  const stats = useMemo(() => {
-    if (!rows) return { stored: 0, requests: 0, released: 0 };
-    let stored = 0;
-    let requests = 0;
-    let released = 0;
-    rows.forEach((row) => {
-      stored += row.stats.stored;
-      requests += row.stats.pending;
-      released += row.stats.released;
-    });
-    return { stored, requests, released };
-  }, [rows]);
+    void loadKyc();
+    return () => {
+      mounted = false;
+    };
+  }, [session?.user?.id]);
 
   if (loading) {
     return (
@@ -530,10 +437,12 @@ export default function UserDashboard({
   if (error) {
     return (
       <Stack align="center" py="xl">
-        <IconAlertCircle size={40} color="red" />
-        <Text c="red">{error}</Text>
-        <Button onClick={refresh} variant="subtle">
-          Try Again
+        <Text c="red" fw={700}>
+          Error
+        </Text>
+        <Text c="dimmed">{error}</Text>
+        <Button mt="md" onClick={refresh}>
+          Retry
         </Button>
       </Stack>
     );
@@ -541,11 +450,10 @@ export default function UserDashboard({
 
   return (
     <Stack gap="xl">
-      {/* 1. Welcome Section */}
       <Group justify="space-between" align="flex-end">
         <Box>
           <Title order={2} c="dark.8">
-            Hello, {session?.user?.name || "User"}
+            Hello, {firstName ?? "User"}
           </Title>
           <Text c="dimmed">Here is what&apos;s happening with your mail.</Text>
         </Box>
@@ -568,14 +476,13 @@ export default function UserDashboard({
         </Group>
       </Group>
 
-      {/* 2. High Level Stats (Simplified) */}
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <Paper
           p="md"
           radius="md"
           withBorder
           shadow="xs"
-          bg={stats.stored > 0 ? "blue.0" : undefined}
+          bg={rows && rows.length > 0 ? "blue.0" : undefined}
         >
           <Group>
             <ThemeIcon size="xl" radius="md" color="blue" variant="filled">
@@ -586,11 +493,12 @@ export default function UserDashboard({
                 Items in Storage
               </Text>
               <Text fw={700} size="xl" c="blue.9">
-                {stats.stored}
+                {rows ? rows.reduce((s, r) => s + r.stats.stored, 0) : 0}
               </Text>
             </div>
           </Group>
         </Paper>
+
         <Paper p="md" radius="md" withBorder shadow="xs">
           <Group>
             <ThemeIcon size="xl" radius="md" color="orange" variant="light">
@@ -601,11 +509,12 @@ export default function UserDashboard({
                 Pending Requests
               </Text>
               <Text fw={700} size="xl">
-                {stats.requests}
+                {rows ? rows.reduce((s, r) => s + r.stats.pending, 0) : 0}
               </Text>
             </div>
           </Group>
         </Paper>
+
         <Paper p="md" radius="md" withBorder shadow="xs">
           <Group>
             <ThemeIcon size="xl" radius="md" color="teal" variant="light">
@@ -616,7 +525,7 @@ export default function UserDashboard({
                 Total Released
               </Text>
               <Text fw={700} size="xl">
-                {stats.released}
+                {rows ? rows.reduce((s, r) => s + r.stats.released, 0) : 0}
               </Text>
             </div>
           </Group>
@@ -625,11 +534,11 @@ export default function UserDashboard({
 
       <Divider label="Your Active Subscriptions" labelPosition="center" />
 
-      {/* 3. Subscription Cards (Replaces the Table) */}
       {(() => {
-        const total = filtered.length;
+        const list = filtered;
+        const total = list.length;
         const start = (page - 1) * perPage;
-        const pageItems = filtered.slice(start, start + perPage);
+        const pageItems = list.slice(start, start + perPage);
         return (
           <>
             <SimpleGrid cols={{ base: 1, md: 2 }}>
@@ -643,13 +552,12 @@ export default function UserDashboard({
                 >
                   <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
                     <Group justify="space-between">
-                      {/* CHANGED: Added copy icon beside location (full shipping address) */}
                       <Group gap="xs" align="center">
                         <ThemeIcon color="violet" variant="light">
                           <IconMapPin size={16} />
                         </ThemeIcon>
                         <Text fw={600} size="sm">
-                          {row.location || "Unknown Location"}
+                          {row.location ?? "Unknown Location"}
                         </Text>
                         <ActionIcon
                           variant="light"
@@ -660,7 +568,6 @@ export default function UserDashboard({
                         </ActionIcon>
                       </Group>
                       <Badge
-                        // CHANGED: Update colors to handle INACTIVE/EXPIRING
                         color={(() => {
                           if (row.mailroom_status === "ACTIVE") return "green";
                           if (row.mailroom_status === "EXPIRING")
@@ -688,11 +595,10 @@ export default function UserDashboard({
                               ff="monospace"
                               c="violet.9"
                             >
-                              {row.mailroom_code || "PENDING"}
+                              {row.mailroom_code ?? "PENDING"}
                             </Text>
                           </div>
                         </Group>
-
                         <Text size="xs" c="dimmed" mt={6}>
                           {row.location ?? "Address not set"}
                         </Text>
@@ -705,7 +611,6 @@ export default function UserDashboard({
                       </Box>
                     </Group>
 
-                    {/* ADDED: Subscriber Details */}
                     <Box>
                       <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                         Subscriber
@@ -757,7 +662,6 @@ export default function UserDashboard({
                       </Box>
                     </Group>
 
-                    {/* show released count and pending requests per mailroom */}
                     <Group mt="sm" style={{ gap: 8 }}>
                       <Badge color="teal" variant="light">
                         Released: {row.stats.released}
@@ -772,7 +676,6 @@ export default function UserDashboard({
                     </Group>
                   </Stack>
 
-                  {/* CHANGED: Added Group for buttons */}
                   <Group mt="md" grow>
                     <Button
                       component={Link}
@@ -782,7 +685,6 @@ export default function UserDashboard({
                     >
                       Manage Mailbox
                     </Button>
-                    {/* ADDED: Cancel Button */}
                     {row.auto_renew && row.mailroom_status === "ACTIVE" && (
                       <Button
                         variant="light"
@@ -800,6 +702,7 @@ export default function UserDashboard({
                 </Card>
               ))}
             </SimpleGrid>
+
             {total > perPage && (
               <Group
                 justify="space-between"
@@ -835,7 +738,6 @@ export default function UserDashboard({
         );
       })()}
 
-      {/* ADDED: Cancel Confirmation Modal */}
       <Modal
         opened={cancelModalOpen}
         onClose={() => setCancelModalOpen(false)}

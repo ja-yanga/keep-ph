@@ -170,3 +170,64 @@ export type RewardDbRow = {
   rewards_claim_processed_at?: string | null;
   rewards_claim_proof_path?: string | null;
 };
+
+export type MailboxItem = {
+  mailbox_item_id?: string;
+  mailbox_item_status?: string | null;
+};
+
+export type LocationObj = {
+  mailroom_location_name?: string | null;
+  mailroom_location_city?: string | null;
+  mailroom_location_region?: string | null;
+  mailroom_location_barangay?: string | null;
+  mailroom_location_zip?: string | null;
+  formatted_address?: string | null;
+  address_line?: string | null;
+  line1?: string | null;
+  [key: string]: unknown;
+};
+
+export type PlanObj = {
+  mailroom_plan_name?: string | null;
+  mailroom_plan_price?: number | null;
+  [key: string]: unknown;
+};
+
+export type SubscriptionObj = {
+  subscription_id?: string;
+  subscription_expires_at?: string | null;
+  subscription_auto_renew?: boolean | null;
+  subscription_started_at?: string | null;
+  [key: string]: unknown;
+};
+
+export type UserKyc = {
+  user_kyc_first_name?: string | null;
+  user_kyc_last_name?: string | null;
+  user_kyc_status?: string | null;
+  [key: string]: unknown;
+};
+
+export type UsersObj = {
+  users_id?: string;
+  users_email?: string | null;
+  users_avatar_url?: string | null;
+  mobile_number?: string | null;
+  user_kyc_table?: UserKyc | null;
+  [key: string]: unknown;
+};
+
+export type RawRow = {
+  mailroom_registration_id?: string;
+  mailroom_registration_code?: string | null;
+  mailroom_registration_created_at?: string | null;
+  mailroom_registration_status?: boolean | null;
+  mailroom_location_table?: LocationObj | null;
+  mailroom_plan_table?: PlanObj | null;
+  mailbox_item_table?: MailboxItem[] | null;
+  subscription_table?: SubscriptionObj | null;
+  users_table?: UsersObj | null;
+  user_id?: string;
+  [key: string]: unknown;
+};
