@@ -469,96 +469,81 @@ export default function MailroomPackageView({
     return arr
       .map((p) => p as Record<string, unknown>)
       .map((p) => {
-        // canonical id candidates from different backend shapes
+        // canonical id (mailbox items / mailbox_item_table shape)
         const rawId =
-          (p.id as string | undefined) ??
-          (p.mailbox_item_id as string | undefined) ??
-          (p.mailboxItemId as string | undefined) ??
-          (p.mailbox_id as string | undefined) ??
-          (p.package_id as string | undefined) ??
-          undefined;
-
-        // canonical locker id candidates
+          getString(p as Record<string, unknown>, "mailbox_item_id") ??
+          getString(p as Record<string, unknown>, "id");
+        // locker id is location_locker_id on mailbox_item_table or location_locker_id at package level
         const lockerId =
-          (p.locker_id as string | undefined) ??
-          (p.location_locker_id as string | undefined) ??
+          getString(p as Record<string, unknown>, "location_locker_id") ??
+          getString(p as Record<string, unknown>, "locker_id") ??
           undefined;
 
-        // normalize any attached files returned under mailroom_file_table (or similar)
-        const candidateA = getProp<unknown>(
-          p as Record<string, unknown>,
-          "mailroom_file_table",
-        );
-        const candidateB = getProp<unknown>(
-          p as Record<string, unknown>,
-          "mailroom_files",
-        );
-        const candidateC = getProp<unknown>(
-          p as Record<string, unknown>,
-          "files",
-        );
-        let rawFiles: Record<string, unknown>[] = [];
-        if (Array.isArray(candidateA)) {
-          rawFiles = candidateA as Record<string, unknown>[];
-        } else if (Array.isArray(candidateB)) {
-          rawFiles = candidateB as Record<string, unknown>[];
-        } else if (Array.isArray(candidateC)) {
-          rawFiles = candidateC as Record<string, unknown>[];
-        } else {
-          rawFiles = [];
-        }
-        const firstFile = rawFiles.length > 0 ? rawFiles[0] : null;
-        const packagePhoto =
-          (firstFile &&
-            String(
-              firstFile.mailroom_file_url ??
-                firstFile.file_url ??
-                firstFile.url ??
-                "",
-            )) ||
-          String(p.mailbox_item_photo ?? p.package_photo ?? p.photo ?? "") ||
+        // mailbox_item_table (postgREST returns array or object) and direct mailbox_item_name/photo
+        const mailboxItemTable =
+          (p as Record<string, unknown>)["mailbox_item_table"] ??
+          (p as Record<string, unknown>)["mailbox_item"] ??
           undefined;
+        const mailboxItemName =
+          getString(p as Record<string, unknown>, "mailbox_item_name") ??
+          undefined;
+        const mailboxItemPhoto =
+          getString(p as Record<string, unknown>, "mailbox_item_photo") ??
+          undefined;
+
+        // normalize mailroom_file_table into package_files (schema: mailroom_file_*)
+        const rawFiles = Array.isArray(
+          (p as Record<string, unknown>)["mailroom_file_table"],
+        )
+          ? ((p as Record<string, unknown>)["mailroom_file_table"] as Record<
+              string,
+              unknown
+            >[])
+          : [];
         const packageFiles = rawFiles.map((f) => ({
-          id: String((f.mailroom_file_id ?? f.id ?? "") || ""),
-          name: String((f.mailroom_file_name ?? f.name ?? "") || ""),
-          url: String((f.mailroom_file_url ?? f.file_url ?? f.url ?? "") || ""),
+          id: getString(f as Record<string, unknown>, "mailroom_file_id") ?? "",
+          name:
+            getString(f as Record<string, unknown>, "mailroom_file_name") ?? "",
+          url:
+            getString(f as Record<string, unknown>, "mailroom_file_url") ?? "",
           size_mb:
-            Number((f.mailroom_file_size_mb ?? f.size_mb ?? 0) as unknown) || 0,
-          mime_type: String(
-            (f.mailroom_file_mime_type ?? f.mime_type ?? "") || "",
-          ),
-          type: String((f.mailroom_file_type ?? f.type ?? "") || ""),
-          uploaded_at: String(
-            (f.mailroom_file_uploaded_at ?? f.uploaded_at ?? "") || "",
-          ),
+            Number(
+              getString(f as Record<string, unknown>, "mailroom_file_size_mb"),
+            ) || 0,
+          mime_type:
+            getString(
+              f as Record<string, unknown>,
+              "mailroom_file_mime_type",
+            ) ?? "",
+          type:
+            getString(f as Record<string, unknown>, "mailroom_file_type") ?? "",
+          uploaded_at:
+            getString(
+              f as Record<string, unknown>,
+              "mailroom_file_uploaded_at",
+            ) ?? "",
         }));
 
         return {
           ...p,
-          // ensure mailbox_item fields map into the legacy package shape the UI expects
-          id: rawId !== undefined && rawId !== null ? String(rawId) : undefined,
+          id: rawId ? String(rawId) : undefined,
           locker_id: lockerId ?? undefined,
-          package_photo: packagePhoto,
-          package_files: packageFiles,
+          // expose mailbox_item_table and mailbox fields per schema
+          mailbox_item_table: mailboxItemTable,
+          mailbox_item_name: mailboxItemName,
+          mailbox_item_photo: mailboxItemPhoto,
+          // prefer mailbox_item_photo, otherwise first mailroom_file url
+          package_photo: mailboxItemPhoto ?? packageFiles[0]?.url ?? undefined,
+          package_files: packageFiles.length > 0 ? packageFiles : undefined,
           received_at:
-            (p.received_at as string | undefined) ??
-            (p.mailbox_item_received_at as string | undefined) ??
-            (p.mailbox_item_created_at as string | undefined) ??
-            undefined,
-          created_at:
-            (p.created_at as string | undefined) ??
-            (p.mailbox_item_created_at as string | undefined) ??
-            (p.received_at as string | undefined) ??
-            undefined,
-          updated_at:
-            (p.updated_at as string | undefined) ??
-            (p.mailbox_item_updated_at as string | undefined) ??
-            (p.updatedAt as string | undefined) ??
-            undefined,
-          status:
-            (p.status as string | undefined) ??
-            (p.mailbox_item_status as string | undefined) ??
-            (p.mailbox_status as string | undefined) ??
+            getString(
+              p as Record<string, unknown>,
+              "mailbox_item_received_at",
+            ) ??
+            getString(
+              p as Record<string, unknown>,
+              "mailbox_item_created_at",
+            ) ??
             undefined,
         } as Record<string, unknown>;
       })
@@ -610,6 +595,13 @@ export default function MailroomPackageView({
         ? getString(p.package, "package_name")
         : getString(p, "package_name");
       const pkgObj = pkgName ? { package_name: String(pkgName) } : undefined;
+      const topMailboxName =
+        getString(
+          p as Record<string, unknown>,
+          "mailbox_item_name",
+          "mailbox_item_title",
+        ) ?? undefined;
+      const mailboxTable = (p as Record<string, unknown>)["mailbox_item_table"];
       return files.map((f, i) => {
         const id =
           getString(f, "id", "mailroom_file_id") ?? `${p.id}-file-${i}`;
@@ -628,6 +620,9 @@ export default function MailroomPackageView({
           file_size_mb: size,
           uploaded_at: uploaded,
           package: pkgObj,
+          // preserve mailbox item info so UserScans can derive mailbox_item_name
+          mailbox_item_name: topMailboxName,
+          mailbox_item_table: mailboxTable,
         };
       });
     });
@@ -653,6 +648,15 @@ export default function MailroomPackageView({
             const pkgObj = pkgName
               ? { package_name: String(pkgName) }
               : undefined;
+            const topMailboxName =
+              getString(
+                r as Record<string, unknown>,
+                "mailbox_item_name",
+                "mailbox_item_title",
+              ) ?? undefined;
+            const mailboxTable = (r as Record<string, unknown>)[
+              "mailbox_item_table"
+            ];
             return {
               id: String(id),
               file_name: fileName,
@@ -660,6 +664,8 @@ export default function MailroomPackageView({
               file_size_mb: size,
               uploaded_at: uploaded,
               package: pkgObj,
+              mailbox_item_name: topMailboxName,
+              mailbox_item_table: mailboxTable,
             };
           })
         : [];

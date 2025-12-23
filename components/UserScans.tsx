@@ -101,9 +101,32 @@ export default function UserScans({
       const pkgRecord = isRecord(r.package)
         ? (r.package as Record<string, unknown>)
         : undefined;
+      // Prefer mailbox_item_name from mailbox_item_table when present,
+      // otherwise fall back to package/package_name shapes.
       let pkg: { package_name: string } | undefined;
-      if (pkgRecord) {
-        pkg = { package_name: getString(pkgRecord, "package_name") ?? "" };
+      // mailbox_item_table may be an array or object
+      const mb = (r as Record<string, unknown>)["mailbox_item_table"];
+      let mailboxName: string | undefined;
+      if (Array.isArray(mb) && mb.length > 0 && isRecord(mb[0])) {
+        mailboxName = getString(
+          mb[0] as Record<string, unknown>,
+          "mailbox_item_name",
+          "mailbox_item_title",
+          "name",
+        );
+      } else if (isRecord(mb)) {
+        mailboxName = getString(
+          mb as Record<string, unknown>,
+          "mailbox_item_name",
+          "mailbox_item_title",
+          "name",
+        );
+      }
+      if (mailboxName) {
+        pkg = { package_name: mailboxName };
+      } else if (pkgRecord) {
+        const pn = getString(pkgRecord, "package_name");
+        if (pn) pkg = { package_name: pn };
       } else {
         const pn = getString(r, "package_name");
         if (pn) pkg = { package_name: pn };
@@ -134,7 +157,23 @@ export default function UserScans({
     // treat explicit providedScans (including empty array) as authoritative — do not fetch
     if (providedScans !== undefined && providedScans !== null) {
       try {
-        setScans((providedScans as unknown[]).map((p) => normalize(p)));
+        // type guard for already-normalized scan objects
+        const isScanLike = (v: unknown): v is Scan =>
+          isRecord(v) &&
+          typeof (v as Record<string, unknown>).file_name === "string" &&
+          typeof (v as Record<string, unknown>).file_url === "string";
+
+        const looksNormalized =
+          Array.isArray(providedScans) &&
+          providedScans.length > 0 &&
+          isScanLike(providedScans[0]);
+
+        if (looksNormalized) {
+          setScans(providedScans as Scan[]);
+        } else {
+          setScans((providedScans as unknown[]).map((p) => normalize(p)));
+        }
+
         setUsage(
           (providedUsage as StorageUsage) ?? {
             used_mb: 0,
@@ -229,6 +268,47 @@ export default function UserScans({
     return `${mb.toFixed(2)} MB`;
   };
 
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null;
+
+  const derivePackageName = (s: unknown): string | null => {
+    if (!isRecord(s)) return null;
+    // prefer normalized package object
+    const pkgObj = s.package as Record<string, unknown> | undefined;
+    const tryString = (v: unknown): string | null =>
+      typeof v === "string" && v.trim().length > 0 ? v : null;
+
+    const candidateFromPkg = tryString(pkgObj?.package_name);
+    if (candidateFromPkg) return candidateFromPkg;
+
+    // top-level package_name or mailbox_item_name
+    const topPkg = tryString(s.package_name);
+    if (topPkg) return topPkg;
+    const topMailbox = tryString(s.mailbox_item_name);
+    if (topMailbox) return topMailbox;
+
+    // mailbox_item_table may be array or object
+    const mb = s.mailbox_item_table;
+    if (Array.isArray(mb) && mb.length > 0 && isRecord(mb[0])) {
+      return (
+        tryString((mb[0] as Record<string, unknown>).mailbox_item_name) ??
+        tryString((mb[0] as Record<string, unknown>).mailbox_item_title) ??
+        tryString((mb[0] as Record<string, unknown>).name) ??
+        null
+      );
+    }
+    if (isRecord(mb)) {
+      return (
+        tryString((mb as Record<string, unknown>).mailbox_item_name) ??
+        tryString((mb as Record<string, unknown>).mailbox_item_title) ??
+        tryString((mb as Record<string, unknown>).name) ??
+        null
+      );
+    }
+
+    return null;
+  };
+
   return (
     <>
       <Paper p="lg" radius="md" withBorder shadow="sm">
@@ -317,15 +397,21 @@ export default function UserScans({
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        {scan.package ? (
-                          <Badge variant="outline" color="gray" size="sm">
-                            {scan.package.package_name || "No Package"}
-                          </Badge>
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
+                        {(() => {
+                          const pkgName = derivePackageName(scan);
+                          if (pkgName) {
+                            return (
+                              <Badge variant="outline" color="gray" size="sm">
+                                {pkgName}
+                              </Badge>
+                            );
+                          }
+                          return (
+                            <Text size="sm" c="dimmed">
+                              —
+                            </Text>
+                          );
+                        })()}
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm">
