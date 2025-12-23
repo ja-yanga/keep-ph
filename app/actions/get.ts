@@ -150,3 +150,24 @@ export const getRewardProofUrl = async (
     return null;
   }
 };
+
+export const user_is_verified = async () => {
+  const {
+    data: { user },
+  } = await supabaseAdmin.auth.getUser();
+
+  // If no user, middleware will handle redirect to signin
+  if (!user) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("user_is_verified", {
+    input_user_id: user.id,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+};

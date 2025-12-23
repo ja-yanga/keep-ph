@@ -243,3 +243,50 @@ BEGIN
   );
 END;
 $$;
+
+-- Rewards status RPC consolidates referral count + claims metadata
+CREATE OR REPLACE FUNCTION public.get_user_kyc_by_user_id(input_user_id UUID)
+RETURNS public.user_kyc_table
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  result public.user_kyc_table%ROWTYPE;
+BEGIN
+  IF input_user_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT *
+  INTO result
+  FROM public.user_kyc_table
+  WHERE user_id = input_user_id
+  LIMIT 1;
+
+  RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.user_is_verified(input_user_id UUID)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  status_text TEXT;
+BEGIN
+  IF input_user_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT user_kyc_status
+  INTO status_text
+  FROM public.user_kyc_table
+  WHERE user_id = input_user_id
+  LIMIT 1;
+
+  RETURN status_text;
+END;
+$$;
