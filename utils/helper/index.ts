@@ -136,3 +136,13 @@ export const normalizeAdminClaim = (
     user: record.user ?? null,
   };
 };
+
+export const normalizeImageUrl = (url?: string | null) => {
+  if (!url) return null;
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+  if (typeof window !== "undefined") {
+    const prefix = url.startsWith("/") ? "" : "/";
+    return `${window.location.origin}${prefix}${url}`;
+  }
+  return url;
+};

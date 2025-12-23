@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  createClient,
-  createSupabaseServiceClient,
-} from "@/lib/supabase/server";
-
-const supabaseAdmin = createSupabaseServiceClient();
+import { createClient } from "@/lib/supabase/server";
+import { adminListUserKyc, getUserRole } from "@/app/actions/get";
 
 export async function GET(req: Request) {
   try {
@@ -17,13 +13,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // verify requester is admin
-    const { data: requester, error: requesterErr } = await supabaseAdmin
-      .from("users_table")
-      .select("users_role")
-      .eq("users_id", user.id)
-      .maybeSingle();
-    if (requesterErr) throw requesterErr;
-    if (!requester || requester.users_role !== "admin") {
+    const requesterRole = await getUserRole(user.id);
+    if (requesterRole !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -32,90 +23,40 @@ export async function GET(req: Request) {
     const q = url.searchParams.get("q") ?? "";
     const limit = Number(url.searchParams.get("limit") ?? "500");
 
-    const builder = supabaseAdmin
-      .from("user_kyc_table")
-      .select(
-        [
-          "user_kyc_id",
-          "user_id",
-          "user_kyc_status",
-          "user_kyc_id_document_type",
-          "user_kyc_id_front_url",
-          "user_kyc_id_back_url",
-          "user_kyc_first_name",
-          "user_kyc_last_name",
-          "user_kyc_submitted_at",
-          "user_kyc_verified_at",
-          "user_kyc_created_at",
-          "user_kyc_updated_at",
-          "user_kyc_address_table(user_kyc_address_line_one, user_kyc_address_line_two, user_kyc_address_city, user_kyc_address_region, user_kyc_address_postal_code)",
-        ].join(","),
-      )
-      .order("user_kyc_submitted_at", { ascending: false })
-      .limit(limit);
+    const raw = await adminListUserKyc(q, limit);
 
-    if (q) {
-      // simple ilike search against first and last name
-      builder.or(
-        `user_kyc_first_name.ilike.%${q}%,user_kyc_last_name.ilike.%${q}%`,
-      );
-    }
+    const processed = raw.map((row) => {
+      const firstName = row.user_kyc_first_name ?? "";
+      const lastName = row.user_kyc_last_name ?? "";
+      const fullName = `${firstName} ${lastName}`.trim();
 
-    const { data, error } = await builder;
-    if (error) throw error;
-
-    const processed = data
-      ? (data as unknown as Record<string, unknown>[]).map(
-          (row: Record<string, unknown>) => {
-            const {
-              user_kyc_id: id,
-              user_id,
-              user_kyc_status: status,
-              user_kyc_id_document_type: id_document_type,
-              user_kyc_id_front_url: id_front_url,
-              user_kyc_id_back_url: id_back_url,
-              user_kyc_first_name: first_name,
-              user_kyc_last_name: last_name,
-              user_kyc_submitted_at: submitted_at,
-              user_kyc_verified_at: verified_at,
-              user_kyc_created_at: created_at,
-              user_kyc_updated_at: updated_at,
-              user_kyc_address_table: addressTable,
-            } = row as Record<string, unknown>;
-            const address = (
-              addressTable as Array<Record<string, unknown>>
-            )?.[0]
-              ? {
-                  line1: (addressTable as Array<Record<string, unknown>>)[0]
-                    .user_kyc_address_line_one as string | undefined,
-                  line2: (addressTable as Array<Record<string, unknown>>)[0]
-                    .user_kyc_address_line_two as string | undefined,
-                  city: (addressTable as Array<Record<string, unknown>>)[0]
-                    .user_kyc_address_city as string | undefined,
-                  region: (addressTable as Array<Record<string, unknown>>)[0]
-                    .user_kyc_address_region as string | undefined,
-                  postal: (addressTable as Array<Record<string, unknown>>)[0]
-                    .user_kyc_address_postal_code as string | undefined,
-                }
-              : null;
-            return {
-              id,
-              user_id,
-              status,
-              id_document_type,
-              id_front_url,
-              id_back_url,
-              first_name,
-              last_name,
-              submitted_at,
-              verified_at,
-              created_at,
-              updated_at,
-              address,
-            };
-          },
-        )
-      : [];
+      return {
+        id: row.user_kyc_id,
+        user_id: row.user_id,
+        status: row.user_kyc_status ?? "SUBMITTED",
+        id_document_type: row.user_kyc_id_document_type,
+        id_front_url: row.user_kyc_id_front_url,
+        id_back_url: row.user_kyc_id_back_url,
+        first_name: row.user_kyc_first_name,
+        last_name: row.user_kyc_last_name,
+        full_name: fullName || null,
+        address: row.address
+          ? {
+              line1: row.address.line1 ?? undefined,
+              line2: row.address.line2 ?? undefined,
+              city: row.address.city ?? undefined,
+              region: row.address.region ?? undefined,
+              postal: row.address.postal
+                ? String(row.address.postal)
+                : undefined,
+            }
+          : null,
+        submitted_at: row.user_kyc_submitted_at,
+        verified_at: row.user_kyc_verified_at,
+        created_at: row.user_kyc_created_at,
+        updated_at: row.user_kyc_updated_at,
+      };
+    });
 
     return NextResponse.json({ data: processed });
   } catch (err) {
