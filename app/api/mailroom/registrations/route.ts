@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
-
-// const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-// const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-// const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// Admin client for database operations
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: Request) {
   try {
-    // 1. Authenticate User via Cookie (using @supabase/ssr)
-    const supabase = createSupabaseServiceClient();
+    const supabase = await createClient(); // binds cookie store from incoming request
 
     const {
       data: { user },
@@ -23,17 +16,14 @@ export async function GET(req: Request) {
 
     const userId = user.id;
 
-    // pagination / compact query params
     const url = new URL(req.url);
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 100);
     const page = Math.max(Number(url.searchParams.get("page") ?? 1), 1);
     const offset = (page - 1) * limit;
     const compact = url.searchParams.get("compact") === "1";
 
-    // fetch registrations for this user and include linked location & plan info
-    // select only required fields; when compact=1 return fewer fields
     const selectFields = compact
-      ? `mailroom_registration_id, mailroom_registration_code, mailroom_registration_created_at, mailroom_location_table ( mailroom_location_id, mailroom_location_name ), mailroom_plan_table ( mailroom_plan_id, mailroom_plan_name )`
+      ? `mailroom_registration_id, mailroom_registration_code, mailroom_registration_created_at, mailroom_location_table ( mailroom_location_id, mailroom_location_name ), mailroom_plan_table ( mailroom_plan_id, mailroom_plan_name ), subscription_table ( subscription_expires_at, subscription_auto_renew ) , users_table ( users_id, users_email, user_kyc_table ( user_kyc_first_name, user_kyc_last_name ) )`
       : `
         mailroom_registration_id,
         user_id,
@@ -42,9 +32,12 @@ export async function GET(req: Request) {
         mailroom_registration_code,
         mailroom_registration_status,
         mailroom_registration_created_at,
+        mailroom_registration_updated_at,
         mailroom_location_table ( mailroom_location_id, mailroom_location_name, mailroom_location_city, mailroom_location_region, mailroom_location_barangay, mailroom_location_zip ),
         mailroom_plan_table ( mailroom_plan_id, mailroom_plan_name, mailroom_plan_price ),
-        mailbox_item_table ( mailbox_item_id, mailbox_item_status )
+        mailbox_item_table ( mailbox_item_id, mailbox_item_status ),
+        subscription_table ( subscription_id, subscription_expires_at, subscription_auto_renew, subscription_started_at ),
+        users_table ( users_id, users_email, users_avatar_url, mobile_number, user_kyc_table ( user_kyc_first_name, user_kyc_last_name, user_kyc_status ) )
       `;
 
     const { data, error, count } = await supabase
@@ -57,14 +50,20 @@ export async function GET(req: Request) {
     if (error) {
       console.error("registrations fetch error:", error);
       return NextResponse.json(
-        { error: error.message || "Failed to load registrations" },
+        { error: error.message ?? "Failed to load registrations" },
         { status: 500 },
       );
     }
 
-    // return paginated data + total count; set short s-maxage for server cache
     return NextResponse.json(
-      { data, meta: { total: count ?? data?.length ?? 0, page, limit } },
+      {
+        data: data ?? [],
+        meta: {
+          total: count ?? (Array.isArray(data) ? data.length : 0),
+          page,
+          limit,
+        },
+      },
       {
         status: 200,
         headers: {
@@ -73,7 +72,7 @@ export async function GET(req: Request) {
         },
       },
     );
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("registrations route unexpected error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },

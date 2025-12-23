@@ -2,6 +2,7 @@
 import React from "react";
 import { cookies } from "next/headers";
 import UserDashboard from "./UserDashboard";
+import type { RawRow } from "@/utils/types/types";
 
 export default async function ServerUserDashboard() {
   // build cookie header to forward auth
@@ -17,11 +18,13 @@ export default async function ServerUserDashboard() {
       headers: { cookie: cookieHeader },
       cache: "no-store",
     });
-    const json = await res.json().catch(() => ({}));
-    const rows = Array.isArray(json?.data ?? json) ? (json.data ?? json) : [];
+    const json = await res.json().catch(() => ({}) as Record<string, unknown>);
+    const payload = (json as Record<string, unknown>)?.data ?? json;
+    const rows = Array.isArray(payload)
+      ? (payload as unknown as RawRow[])
+      : ([] as RawRow[]);
     return <UserDashboard initialData={rows} />;
   } catch {
-    // fallback to empty data so client still renders
     return <UserDashboard initialData={[]} />;
   }
 }
