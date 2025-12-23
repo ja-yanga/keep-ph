@@ -1,5 +1,12 @@
-import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types/types";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { parseAddressRow } from "@/utils/helper";
+import {
+  CreateUserAddressArgs,
+  RequestRewardClaimArgs,
+  RpcClaimResponse,
+  UpdateUserAddressArgs,
+  UserAddressRow,
+} from "@/utils/types/types";
 
 const supabase = createSupabaseServiceClient();
 
@@ -183,6 +190,78 @@ export async function createAddress({
 
   if (error) throw error;
   return { ok: true, address: data };
+}
+
+export async function createUserAddress(
+  args: CreateUserAddressArgs,
+): Promise<UserAddressRow> {
+  const { user_id, line1, label, line2, city, region, postal, is_default } =
+    args;
+
+  if (!user_id || !line1) {
+    throw new Error("user_id and line1 are required");
+  }
+
+  const { data, error } = await supabase.rpc("user_create_address", {
+    input_user_id: user_id,
+    input_line1: line1,
+    input_label: label ?? null,
+    input_line2: line2 ?? null,
+    input_city: city ?? null,
+    input_region: region ?? null,
+    input_postal: postal ?? null,
+    input_is_default: !!is_default,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return parseAddressRow(data);
+}
+
+export async function updateUserAddress(
+  args: UpdateUserAddressArgs,
+): Promise<UserAddressRow> {
+  const { address_id, line1, label, line2, city, region, postal, is_default } =
+    args;
+
+  if (!address_id || !line1) {
+    throw new Error("address_id and line1 are required");
+  }
+
+  const { data, error } = await supabase.rpc("user_update_address", {
+    input_user_address_id: address_id,
+    input_line1: line1,
+    input_label: label ?? null,
+    input_line2: line2 ?? null,
+    input_city: city ?? null,
+    input_region: region ?? null,
+    input_postal: postal ?? null,
+    input_is_default: !!is_default,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return parseAddressRow(data);
+}
+
+export async function deleteUserAddress(addressId: string): Promise<boolean> {
+  if (!addressId) {
+    throw new Error("addressId is required");
+  }
+
+  const { data, error } = await supabase.rpc("user_delete_address", {
+    input_user_address_id: addressId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data);
 }
 
 export const requestRewardClaim = async ({

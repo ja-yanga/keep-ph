@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
-
-const supabaseAdmin = createSupabaseServiceClient();
+import { updateUserAddress, deleteUserAddress } from "@/app/actions/post";
 
 export async function PUT(
   req: Request,
@@ -12,47 +10,22 @@ export async function PUT(
     const body = await req.json();
     const { label, line1, line2, city, region, postal, is_default } = body;
 
-    const { data: existing, error: exErr } = await supabaseAdmin
-      .from("user_address_table")
-      .select("user_id")
-      .eq("user_address_id", id)
-      .maybeSingle();
-
-    if (exErr || !existing) {
-      return NextResponse.json(
-        {
-          error: "Not found",
-          id,
-          details: exErr?.message ?? "no row returned",
-        },
-        { status: 404 },
-      );
+    if (!line1) {
+      return NextResponse.json({ error: "line1 required" }, { status: 400 });
     }
 
-    if (is_default) {
-      await supabaseAdmin
-        .from("user_address_table")
-        .update({ user_address_is_default: false })
-        .eq("user_id", existing.user_id);
-    }
+    const data = await updateUserAddress({
+      address_id: id,
+      label,
+      line1,
+      line2,
+      city,
+      region,
+      postal,
+      is_default,
+    });
 
-    const { data, error } = await supabaseAdmin
-      .from("user_address_table")
-      .update({
-        user_address_label: label ?? null,
-        user_address_line1: line1,
-        user_address_line2: line2 ?? null,
-        user_address_city: city ?? null,
-        user_address_region: region ?? null,
-        user_address_postal: postal ?? null,
-        user_address_is_default: !!is_default,
-      })
-      .eq("user_address_id", id)
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    return NextResponse.json({ ok: true, address: data });
+    return NextResponse.json({ data });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Server error";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
@@ -65,11 +38,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { error } = await supabaseAdmin
-      .from("user_address_table")
-      .delete()
-      .eq("user_address_id", id);
-    if (error) throw error;
+    const ok = await deleteUserAddress(id);
+    if (!ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Server error";

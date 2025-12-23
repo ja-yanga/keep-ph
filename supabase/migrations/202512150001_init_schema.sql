@@ -1,4 +1,4 @@
-﻿-- Remove all policies for files
+-- Remove all policies for files
 DROP POLICY IF EXISTS objects_policy ON storage.objects;
 DROP POLICY IF EXISTS buckets_policy ON storage.buckets;
 
@@ -531,3 +531,4 @@ CREATE INDEX idx_error_log_error_code ON error_log_table(error_code);
 CREATE INDEX idx_rewards_claim_user_id ON rewards_claim_table(user_id);
 CREATE INDEX idx_rewards_claim_status ON rewards_claim_table(rewards_claim_status);
 CREATE INDEX idx_rewards_claim_created_at ON rewards_claim_table(rewards_claim_created_at);
+

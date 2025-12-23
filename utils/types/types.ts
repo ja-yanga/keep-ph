@@ -264,3 +264,50 @@ export type UpdateUserKycStatusArgs = {
   userId: string;
   status: "VERIFIED" | "REJECTED";
 };
+
+export type UserAddressRow = {
+  user_address_id: string;
+  user_id: string;
+  user_address_label: string | null;
+  user_address_line1: string;
+  user_address_line2: string | null;
+  user_address_city: string | null;
+  user_address_region: string | null;
+  user_address_postal: string | null;
+  user_address_is_default: boolean;
+  user_address_created_at: string | null;
+};
+
+export type CreateUserAddressArgs = {
+  user_id: string;
+  label?: string;
+  line1: string;
+  line2?: string;
+  city?: string;
+  region?: string;
+  postal?: string;
+  is_default?: boolean;
+};
+
+export type UpdateUserAddressArgs = {
+  address_id: string;
+  label?: string;
+  line1: string;
+  line2?: string;
+  city?: string;
+  region?: string;
+  postal?: string;
+  is_default?: boolean;
+};
+
+export type Address = {
+  id: string;
+  label: string;
+  line1: string;
+  line2: string;
+  city: string;
+  region: string;
+  postal: string;
+  is_default: boolean;
+  user_id?: string;
+};

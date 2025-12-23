@@ -12,6 +12,7 @@ import {
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
+  UserAddressRow,
 } from "@/utils/types/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
@@ -30,6 +31,24 @@ const parseRpcArray = <T>(input: unknown): T[] => {
   }
   return [];
 };
+
+export async function getUserAddresses(
+  userId: string,
+): Promise<UserAddressRow[]> {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("user_list_addresses", {
+    input_user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return parseRpcArray<UserAddressRow>(data);
+}
 
 export async function getAdminRewardClaims(): Promise<AdminClaim[]> {
   try {
