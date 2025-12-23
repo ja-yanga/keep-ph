@@ -1,4 +1,4 @@
--- Remove all policies for files
+﻿-- Remove all policies for files
 DROP POLICY IF EXISTS objects_policy ON storage.objects;
 DROP POLICY IF EXISTS buckets_policy ON storage.buckets;
 
