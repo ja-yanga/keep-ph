@@ -164,3 +164,12 @@ export const parseAddressRow = (input: unknown): UserAddressRow => {
 
   return input as UserAddressRow;
 };
+
+export const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `Failed to fetch ${url}`);
+  }
+  return res.json().catch(() => ({}));
+};

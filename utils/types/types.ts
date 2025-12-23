@@ -311,3 +311,23 @@ export type Address = {
   is_default: boolean;
   user_id?: string;
 };
+
+export type AdminDashboardStats = {
+  pendingRequests: number;
+  storedPackages: number;
+  totalSubscribers: number;
+  lockerStats: {
+    total: number;
+    assigned: number;
+  };
+  recentPackages: Array<{
+    id: string;
+    package_name?: string | null;
+    package_type?: string | null;
+    status?: string | null;
+    received_at?: string | null;
+    registration?: {
+      full_name?: string | null;
+    } | null;
+  }>;
+};

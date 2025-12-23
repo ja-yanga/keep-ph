@@ -7,6 +7,7 @@ import {
 } from "@/utils/helper";
 import {
   AdminClaim,
+  AdminDashboardStats,
   AdminUserKyc,
   ClaimWithUrl,
   RewardsStatusResult,
@@ -231,4 +232,14 @@ export async function getUserRole(userId: string) {
   }
 
   return data ?? null;
+}
+
+export async function getDashboardContent(): Promise<AdminDashboardStats | null> {
+  const { data, error } = await supabaseAdmin.rpc("admin_dashboard_stats");
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as AdminDashboardStats | null) ?? null;
 }
