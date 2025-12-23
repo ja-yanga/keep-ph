@@ -1,4 +1,4 @@
-import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types/types";
+import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types";
 import {
   createClient,
   createSupabaseServiceClient,

@@ -1,10 +1,6 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { normalizeClaim, toBoolean, toNumber } from "@/utils/helper";
-import {
-  ClaimWithUrl,
-  RewardsStatusResult,
-  RpcClaim,
-} from "@/utils/types/types";
+import { ClaimWithUrl, RewardsStatusResult, RpcClaim } from "@/utils/types";
 
 const BUCKET = "REWARD-PROOFS";
 

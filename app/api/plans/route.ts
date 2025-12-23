@@ -1,8 +1,8 @@
 //TODO: convert to server component
 
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
-import type { MailroomPlan } from "@/utils/types/types";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import type { MailroomPlan } from "@/utils/types";
 
 type MailroomPlanTableRow = {
   mailroom_plan_id: string;
@@ -17,7 +17,7 @@ type MailroomPlanTableRow = {
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await createSupabaseServiceClient()
       .from("mailroom_plan_table")
       .select("*")
       .order("mailroom_plan_price", { ascending: true });

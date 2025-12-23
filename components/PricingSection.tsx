@@ -20,7 +20,7 @@ import {
 import { IconCheck, IconX } from "@tabler/icons-react";
 import Link from "next/link";
 import { LANDING_PAGE } from "@/utils/constants";
-import type { MailroomPlan } from "@/utils/types/types";
+import type { MailroomPlan } from "@/utils/types";
 
 const PRICING_COPY = LANDING_PAGE.pricing;
 const BILLING_OPTIONS = PRICING_COPY.segmentedControl.options;

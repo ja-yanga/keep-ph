@@ -1,4 +1,4 @@
-import { ClaimWithUrl, ReferralRow, RpcClaim } from "../types/types";
+import { ClaimWithUrl, ReferralRow, RpcClaim } from "../types";
 
 export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {
