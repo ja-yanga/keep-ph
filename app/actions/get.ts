@@ -7,6 +7,7 @@ import {
 } from "@/utils/helper";
 import {
   AdminClaim,
+  AdminUserKyc,
   ClaimWithUrl,
   RewardsStatusResult,
   RpcAdminClaim,
@@ -171,3 +172,44 @@ export const user_is_verified = async () => {
 
   return data ?? null;
 };
+
+export async function adminListUserKyc(
+  search = "",
+  limit = 500,
+): Promise<AdminUserKyc[]> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_user_kyc", {
+    input_search: search,
+    input_limit: limit,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const parsed =
+    typeof data === "string"
+      ? (JSON.parse(data) as unknown[])
+      : ((data as unknown[]) ?? []);
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed as AdminUserKyc[];
+}
+
+export async function getUserRole(userId: string) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("get_user_role", {
+    input_user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+}

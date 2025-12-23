@@ -2,15 +2,11 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type {
   AdminUpdateClaimResponse,
   RpcAdminClaim,
+  UpdateRewardClaimArgs,
+  UpdateUserKycStatusArgs,
 } from "@/utils/types/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
-
-type UpdateRewardClaimArgs = {
-  claimId: string;
-  status: "PROCESSING" | "PAID";
-  proofPath?: string | null;
-};
 
 export const updateRewardClaim = async ({
   claimId,
@@ -47,4 +43,29 @@ export const updateRewardClaim = async ({
     ok: true,
     claim: parsed.claim as RpcAdminClaim,
   };
+};
+
+export const adminUpdateUserKyc = async ({
+  userId,
+  status,
+}: UpdateUserKycStatusArgs) => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const normalizedStatus = status.toUpperCase();
+  if (normalizedStatus !== "VERIFIED" && normalizedStatus !== "REJECTED") {
+    throw new Error("Invalid status");
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("admin_update_user_kyc", {
+    input_user_id: userId,
+    input_status: normalizedStatus,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 };
