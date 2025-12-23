@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import Image from "next/image";
 import {
   Badge,
   Button,
@@ -16,9 +17,7 @@ import {
   Box,
   Divider,
   TextInput,
-  Select,
   useMantineTheme,
-  Checkbox,
 } from "@mantine/core";
 import {
   IconPackage,
@@ -35,32 +34,54 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useSession } from "@/components/SessionProvider";
+import PackageActionModal from "./PackageActionModal";
+
+type PackageShape = {
+  id: string;
+  registration_id?: string;
+  mailbox_item_id?: string;
+  mailbox_item_name?: string;
+  mailbox_item_photo?: string | null;
+  mailbox_item_type?: string;
+  mailbox_item_table?: unknown;
+  package?: { registration_id?: string; package_name?: string };
+  package_name?: string;
+  package_type?: string;
+  package_photo?: string;
+  package_files?: Array<{
+    id?: string;
+    url?: string;
+    mailbox_item_id?: string;
+  }>;
+  locker_id?: string;
+  locker?: { locker_code?: string };
+  status?: string;
+  mailbox_item_status?: string;
+  created_at?: unknown;
+  updated_at?: unknown;
+  received_at?: unknown;
+  notes?: unknown;
+  release_address_id?: string;
+  release_to_name?: string;
+  selected_address_id?: string;
+  [key: string]: unknown;
+};
 
 type UserPackagesProps = {
-  packages: Array<{
-    id: string;
-    registration_id?: string;
-    package?: { registration_id?: string };
-    locker_id?: string;
-    locker?: { locker_code?: string };
-    status?: string;
-    package_photo?: string;
-    [key: string]: unknown;
-  }>;
-  lockers: Array<{ id: string; locker_code?: string; [key: string]: unknown }>;
+  packages: PackageShape[];
+  lockers: Array<{ id: string; locker_code?: string }>;
   planCapabilities: {
     can_receive_mail: boolean;
     can_receive_parcels: boolean;
     can_digitize: boolean;
   };
   isStorageFull?: boolean;
-  onRefresh?: () => void | Promise<void>;
-  // injected from parent to avoid duplicate fetches
+  onRefreshAction?: () => void | Promise<void>;
   scanMap?: Record<string, string>;
   scans?: Array<{
     package_id?: string;
     file_url?: string;
-    [key: string]: unknown;
+    mailbox_item_id?: string;
   }>;
 };
 
@@ -69,126 +90,37 @@ export default function UserPackages({
   lockers,
   planCapabilities,
   isStorageFull = false,
-  onRefresh,
+  onRefreshAction,
   scanMap: providedScanMap,
   scans: providedScans,
 }: UserPackagesProps) {
   const theme = useMantineTheme();
-  const [localPackages, setLocalPackages] = useState<typeof packages>(packages);
+  const [localPackages, setLocalPackages] = useState<PackageShape[]>(() =>
+    normalizeIncomingPackages(packages),
+  );
   const [search, setSearch] = useState("");
-
-  // map of tracking_number|package_id -> file_url
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
 
-  // derive registrationId deterministically (primitive) to use in deps
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const registrationId = useMemo(() => {
-    const regPkg =
-      packages.find((p) => p.registration_id) ||
-      packages.find((p) => p.package?.registration_id);
-    return (
-      (regPkg && (regPkg.registration_id || regPkg.package?.registration_id)) ||
-      null
-    );
-  }, [packages]); // still depends on packages but yields a primitive id
-
-  // if parent provided scans/scanMap, use them and skip fetching locally
-  useEffect(() => {
-    if (providedScanMap) {
-      setScanMap(providedScanMap);
-      return;
-    }
-    if (providedScans) {
-      const map: Record<string, string> = {};
-      providedScans.forEach((s) => {
-        if (s.package_id && s.file_url) map[s.package_id] = s.file_url;
-      });
-      setScanMap(map);
-      return;
-    }
-    // otherwise keep existing fetch logic (unchanged) or no-op here
-  }, [providedScanMap, providedScans]);
-
-  useEffect(() => {
-    setLocalPackages(packages);
-  }, [packages]);
-
-  // always sync when parent prop changes (prevents stale/incorrect data)
-  useEffect(() => {
-    setLocalPackages(Array.isArray(packages) ? packages.slice() : []);
-  }, [packages]);
-
-  // Split packages into Active (Inbox) and History
-  const { activePackages, historyPackages } = useMemo(() => {
-    const active: typeof localPackages = [];
-    const history: typeof localPackages = [];
-
-    localPackages.forEach((pkg) => {
-      // Treat only retrieved/disposed as history. RELEASED stays in inbox (active).
-      if (["RETRIEVED", "DISPOSED"].includes(pkg.status)) {
-        history.push(pkg);
-      } else {
-        active.push(pkg);
-      }
-    });
-
-    active.sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-    history.sort(
-      (a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-    );
-
-    return { activePackages: active, historyPackages: history };
-  }, [localPackages]);
-
-  // --- SEARCH FILTERS ---
-  const filteredActivePackages = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return activePackages;
-    return activePackages.filter(
-      (pkg) =>
-        (pkg.package_name?.toLowerCase().includes(q) ?? false) ||
-        (pkg.package_type?.toLowerCase().includes(q) ?? false),
-    );
-  }, [activePackages, search]);
-
-  const filteredHistoryPackages = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return historyPackages;
-    return historyPackages.filter(
-      (pkg) =>
-        (pkg.package_name?.toLowerCase().includes(q) ?? false) ||
-        (pkg.package_type?.toLowerCase().includes(q) ?? false),
-    );
-  }, [historyPackages, search]);
-
-  // Action State
+  // UI state
   const [actionModalOpen, setActionModalOpen] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<{
-    id?: string;
-    registration_id?: string;
-    package_photo?: string;
-    release_address_id?: string;
-    [key: string]: unknown;
-  } | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<PackageShape | null>(
+    null,
+  );
   const [actionType, setActionType] = useState<
     "RELEASE" | "DISPOSE" | "SCAN" | "CONFIRM_RECEIVED" | null
   >(null);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // preview modal state (was missing)
+  // preview
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | null>(null);
   const [previewIsScan, setPreviewIsScan] = useState<boolean>(false);
 
-  // pagination for package lists
-  const [inboxPage, setInboxPage] = useState<number>(1);
-  const [historyPage, setHistoryPage] = useState<number>(1);
+  // pagination
+  const [inboxPage, setInboxPage] = useState(1);
+  const [historyPage, setHistoryPage] = useState(1);
   const perPage = 3;
 
   // addresses / release fields
@@ -202,106 +134,589 @@ export default function UserPackages({
       region?: string;
       postal?: string;
       is_default?: boolean;
+      users?: Record<string, unknown> | null;
     }>
   >([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     null,
   );
   const [releaseToName, setReleaseToName] = useState<string>("");
-  // recipient is not editable in modal — derived from selected address.contact_name or package user
+
   const { session } = useSession();
 
-  // pickup-on-behalf fields (stored in mailroom_packages.notes as JSON)
-  const [pickupOnBehalf, setPickupOnBehalf] = useState<boolean>(false);
-  const [behalfName, setBehalfName] = useState<string>("");
-  const [behalfMobile, setBehalfMobile] = useState<string>("");
+  // pickup-on-behalf
+  const [pickupOnBehalf, setPickupOnBehalf] = useState(false);
+  const [behalfName, setBehalfName] = useState("");
+  const [behalfMobile, setBehalfMobile] = useState("");
   const [behalfContactMode, setBehalfContactMode] = useState<
     "sms" | "viber" | "whatsapp"
   >("sms");
-
-  // validate Philippines mobile: starts with 09 and total 11 digits (e.g. 09121231234)
   const isBehalfMobileValid = /^09\d{9}$/.test(behalfMobile);
 
-  const handleActionClick = (
-    pkg: { id: string; status?: string; [key: string]: unknown },
+  // ...existing code...
+  // derive name helper (shared for handlers) — no `any`
+  const deriveNameFromPackageRecord = (pkg: unknown): string => {
+    if (!pkg || typeof pkg !== "object") return "";
+    const p = pkg as Record<string, unknown>;
+
+    const snap = p["release_to_name"] ?? p["releaseToName"];
+    if (typeof snap === "string" && snap.trim()) return snap.trim();
+
+    const pickUserObj = (): Record<string, unknown> | null => {
+      const candidates = [
+        p["user"],
+        p["users"],
+        p["user_data"],
+        p["mailbox_item_user"],
+        p["user_table"],
+      ];
+      for (const c of candidates) {
+        if (c && typeof c === "object" && !Array.isArray(c)) {
+          return c as Record<string, unknown>;
+        }
+      }
+      return null;
+    };
+
+    const userObj = pickUserObj();
+
+    const kyc =
+      (userObj &&
+        typeof userObj["user_kyc_table"] === "object" &&
+        (userObj["user_kyc_table"] as Record<string, unknown>)) ??
+      (typeof p["user_kyc_table"] === "object" &&
+        (p["user_kyc_table"] as Record<string, unknown>));
+
+    if (kyc) {
+      const fn =
+        (typeof kyc["user_kyc_first_name"] === "string" &&
+          (kyc["user_kyc_first_name"] as string).trim()) ||
+        (typeof kyc["user_kyc_firstname"] === "string" &&
+          (kyc["user_kyc_firstname"] as string).trim()) ||
+        "";
+      const ln =
+        (typeof kyc["user_kyc_last_name"] === "string" &&
+          (kyc["user_kyc_last_name"] as string).trim()) ||
+        (typeof kyc["user_kyc_lastname"] === "string" &&
+          (kyc["user_kyc_lastname"] as string).trim()) ||
+        "";
+      if (fn || ln) return `${fn} ${ln}`.trim();
+    }
+
+    if (userObj) {
+      const fn =
+        (typeof userObj["first_name"] === "string" &&
+          (userObj["first_name"] as string).trim()) ||
+        (typeof userObj["users_first_name"] === "string" &&
+          (userObj["users_first_name"] as string).trim()) ||
+        "";
+      const ln =
+        (typeof userObj["last_name"] === "string" &&
+          (userObj["last_name"] as string).trim()) ||
+        (typeof userObj["users_last_name"] === "string" &&
+          (userObj["users_last_name"] as string).trim()) ||
+        "";
+      const name = `${fn} ${ln}`.trim();
+      if (name) return name;
+    }
+
+    const fnTop =
+      typeof p["user_kyc_first_name"] === "string"
+        ? (p["user_kyc_first_name"] as string).trim()
+        : "";
+    const lnTop =
+      typeof p["user_kyc_last_name"] === "string"
+        ? (p["user_kyc_last_name"] as string).trim()
+        : "";
+    if (fnTop || lnTop) return `${fnTop} ${lnTop}`.trim();
+
+    const email =
+      (typeof p["users_email"] === "string" &&
+        (p["users_email"] as string).trim()) ||
+      (typeof p["users_email_address"] === "string" &&
+        (p["users_email_address"] as string).trim()) ||
+      "";
+    if (email) {
+      const at = email.indexOf("@");
+      return at > 0 ? email.slice(0, at) : email;
+    }
+
+    const mobile =
+      typeof p["mobile_number"] === "string"
+        ? (p["mobile_number"] as string).trim()
+        : "";
+    return mobile || "";
+  };
+  // ...existing code...
+
+  // apply incoming scans or map if provided
+  useEffect(() => {
+    if (providedScanMap) {
+      setScanMap(providedScanMap);
+      return;
+    }
+    if (providedScans) {
+      const map: Record<string, string> = {};
+      providedScans.forEach((s) => {
+        const mailboxItemId = (s as Record<string, unknown>)[
+          "mailbox_item_id"
+        ] as string | undefined;
+        const packageId = (s as Record<string, unknown>)["package_id"] as
+          | string
+          | undefined;
+        const url =
+          ((s as Record<string, unknown>)["file_url"] as string | undefined) ??
+          "";
+        if (mailboxItemId && url) map[mailboxItemId] = url;
+        if (packageId && url) map[packageId] = url;
+      });
+      setScanMap(map);
+    }
+  }, [providedScanMap, providedScans]);
+
+  // keep localPackages merged with server packages but preserve optimistic markers
+  useEffect(() => {
+    const normalized = normalizeIncomingPackages(packages);
+    setLocalPackages((prev) => {
+      const prevMap = (prev ?? []).reduce<Record<string, PackageShape>>(
+        (m, p) => {
+          if (p.id) m[p.id] = p;
+          return m;
+        },
+        {},
+      );
+
+      return normalized.map((p) => {
+        const id = p.id;
+        const prevEntry = id ? prevMap[id] : undefined;
+        if (
+          prevEntry &&
+          (prevEntry as Record<string, unknown>).__pending_request
+        ) {
+          return prevEntry;
+        }
+        return p;
+      });
+    });
+  }, [packages]);
+
+  const toTime = (v: unknown): number => {
+    if (v === undefined || v === null) return 0;
+    const s =
+      typeof v === "string" || typeof v === "number" || v instanceof Date
+        ? v
+        : String(v);
+    const d = new Date(s as string | number | Date);
+    const t = d.getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const { activePackages, historyPackages } = useMemo(() => {
+    const active: PackageShape[] = [];
+    const history: PackageShape[] = [];
+
+    localPackages.forEach((pkg) => {
+      const pkgStatus = pkg.mailbox_item_status ?? pkg.status ?? "STORED";
+      if (["RETRIEVED", "DISPOSED"].includes(pkgStatus)) {
+        history.push(pkg);
+      } else {
+        active.push(pkg);
+      }
+    });
+
+    active.sort((a, b) => toTime(b.created_at) - toTime(a.created_at));
+    history.sort((a, b) => toTime(b.updated_at) - toTime(a.updated_at));
+
+    return { activePackages: active, historyPackages: history };
+  }, [localPackages]);
+
+  const filteredActivePackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return activePackages;
+    return activePackages.filter((pkg) => {
+      const name = (pkg.mailbox_item_name ?? pkg.package_name ?? "")
+        .toString()
+        .toLowerCase();
+      const type = (pkg.mailbox_item_type ?? pkg.package_type ?? "")
+        .toString()
+        .toLowerCase();
+      return name.includes(q) || type.includes(q);
+    });
+  }, [activePackages, search]);
+
+  const filteredHistoryPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return historyPackages;
+    return historyPackages.filter((pkg) => {
+      const name = (pkg.mailbox_item_name ?? pkg.package_name ?? "")
+        .toString()
+        .toLowerCase();
+      const type = (pkg.mailbox_item_type ?? pkg.package_type ?? "")
+        .toString()
+        .toLowerCase();
+      return name.includes(q) || type.includes(q);
+    });
+  }, [historyPackages, search]);
+
+  // prepare address select options
+  const addressSelectData = useMemo(() => {
+    return addresses
+      .filter((a) => Boolean(a && a.id))
+      .map((a) => {
+        const labelParts = [
+          a.label || "Unnamed Address",
+          a.line1,
+          a.city,
+          a.postal,
+          a.is_default ? "(Default)" : "",
+        ].filter(Boolean);
+        return {
+          value: String(a.id),
+          label: labelParts.join(", "),
+        };
+      });
+  }, [addresses]);
+
+  // When user clicks an action button
+  const handleActionClick = async (
+    pkg: PackageShape,
     type: "RELEASE" | "DISPOSE" | "SCAN" | "CONFIRM_RECEIVED",
   ) => {
     setSelectedPackage(pkg);
     setActionType(type);
-    // prefill notes only for non-release actions; release will use addresses + name
-    setNotes(type === "RELEASE" ? "" : pkg?.notes || "");
 
-    // prefill release-related fields when requesting release
-    if (type === "RELEASE") {
-      // prefill from package snapshot, fallback to user's name; do not force editing
-      const userName =
-        `${pkg?.user?.first_name ?? ""} ${pkg?.user?.last_name ?? ""}`.trim() ||
-        "";
-      setReleaseToName(pkg?.release_to_name ?? userName);
+    // compute notes state
+    let notesValue = "";
+    if (type !== "RELEASE" && typeof pkg.notes === "string") {
+      notesValue = pkg.notes;
+    }
+    setNotes(notesValue);
 
-      // try to parse previous notes JSON for pickup-on-behalf data
-      setPickupOnBehalf(false);
-      setBehalfName("");
-      setBehalfMobile("");
-      setBehalfContactMode("sms");
-      try {
-        const n = pkg?.notes;
-        if (typeof n === "string" && n.trim().startsWith("{")) {
-          const parsed = JSON.parse(n);
-          if (parsed?.pickup_on_behalf) {
-            setPickupOnBehalf(true);
-            setBehalfName(parsed.name ?? "");
-            setBehalfMobile(parsed.mobile ?? "");
-            setBehalfContactMode(parsed.contact_mode ?? "sms");
-          }
+    // reset behalf state
+    setPickupOnBehalf(false);
+    setBehalfName("");
+    setBehalfMobile("");
+    setBehalfContactMode("sms");
+
+    // parse existing notes for pickup-on-behalf
+    try {
+      const n = pkg.notes;
+      if (typeof n === "string" && n.trim().startsWith("{")) {
+        const parsed = JSON.parse(n) as Record<string, unknown> | null;
+        if (parsed?.pickup_on_behalf) {
+          setPickupOnBehalf(true);
+          setBehalfName((parsed.name ?? "") as string);
+          setBehalfMobile((parsed.mobile ?? "") as string);
+          setBehalfContactMode(
+            (parsed.contact_mode ?? "sms") as "sms" | "viber" | "whatsapp",
+          );
         }
-      } catch {
-        /* ignore invalid notes */
       }
+    } catch {
+      // ignore invalid notes
+    }
 
-      // If package has a saved release_address_id use it,
-      // otherwise immediately select user's default address (if already loaded).
-      const pkgDefaultId = pkg?.release_address_id ?? null;
-      const userDefaultId =
-        !pkgDefaultId && Array.isArray(addresses)
+    // For RELEASE, ensure addresses loaded and releaseToName prefilled
+    if (type === "RELEASE") {
+      const pkgRecord = pkg as Record<string, unknown>;
+      const rawPkgDefault = (pkgRecord.release_address_id ??
+        pkgRecord.releaseAddressId) as unknown;
+      const pkgDefaultId =
+        typeof rawPkgDefault === "string" && rawPkgDefault.trim()
+          ? (rawPkgDefault as string)
+          : null;
+
+      if (addresses.length > 0) {
+        const userDefaultId = !pkgDefaultId
           ? (addresses.find((a) => a.is_default)?.id ?? null)
           : null;
-      // if pickup on behalf was previously selected, prefer clearing address to indicate pickup
-      setSelectedAddressId(
-        pkgDefaultId ?? (pickupOnBehalf ? null : userDefaultId),
-      );
-      // if we selected a default address, prefill releaseToName from it when possible
-      if (!pkgDefaultId && userDefaultId) {
-        const sel = addresses.find((a) => a.id === userDefaultId);
-        if (sel?.contact_name) setReleaseToName(sel.contact_name);
+        setSelectedAddressId(pkgDefaultId ?? userDefaultId);
+
+        let selectedName: string | undefined;
+        const rawRelName =
+          pkg.release_to_name ?? (pkg as Record<string, unknown>).releaseToName;
+        if (typeof rawRelName === "string" && rawRelName.trim()) {
+          selectedName = rawRelName.trim();
+        } else {
+          const found = addresses.find(
+            (a) => a.id === (pkgDefaultId ?? userDefaultId),
+          );
+          if (
+            found &&
+            typeof found.contact_name === "string" &&
+            found.contact_name.trim()
+          ) {
+            selectedName = found.contact_name.trim();
+          }
+        }
+
+        const fallbackUserName =
+          deriveNameFromPackageRecord(pkg as Record<string, unknown>) || "";
+        setReleaseToName(selectedName ?? fallbackUserName);
+        setActionModalOpen(true);
+        return;
       }
-    } else {
-      setReleaseToName("");
-      setSelectedAddressId(null);
-      setPickupOnBehalf(false);
-      setBehalfName("");
-      setBehalfMobile("");
-      setBehalfContactMode("sms");
+
+      // fetch addresses if missing
+      try {
+        let userId: string | null = (pkg as Record<string, unknown>)["user"]
+          ? ((
+              (pkg as Record<string, unknown>)["user"] as Record<
+                string,
+                unknown
+              >
+            )["id"] as string | null)
+          : null;
+        userId =
+          userId ??
+          ((pkg as Record<string, unknown>)["user_id"] as string | null);
+        if (!userId && session?.user?.id) userId = session.user.id;
+
+        if (!userId && pkg.registration_id) {
+          const r = await fetch(
+            `/api/mailroom/registrations/${encodeURIComponent(
+              String(pkg.registration_id),
+            )}`,
+            { credentials: "include" },
+          );
+          if (r.ok) {
+            const j = await r.json().catch(() => null);
+            userId = (j?.data?.user_id ?? j?.user_id ?? userId) as
+              | string
+              | null;
+          }
+        }
+
+        if (!userId) {
+          setAddresses([]);
+          setActionModalOpen(true);
+          return;
+        }
+
+        const res = await fetch(
+          `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
+          { credentials: "include" },
+        );
+        if (!res.ok) {
+          setAddresses([]);
+          setActionModalOpen(true);
+          return;
+        }
+
+        const json = await res.json().catch(() => null);
+
+        let rawArr: unknown[] = [];
+        if (Array.isArray(json?.data)) rawArr = json.data;
+        else if (Array.isArray(json)) rawArr = json;
+        else rawArr = [];
+
+        // ...existing code...
+        const normalized = rawArr
+
+          .map((a: unknown) => {
+            const obj = a as Record<string, unknown>;
+            let usersObj: Record<string, unknown> | null = null;
+            if (obj["users_table"] && typeof obj["users_table"] === "object") {
+              usersObj = obj["users_table"] as Record<string, unknown>;
+            } else if (obj["users"] && typeof obj["users"] === "object") {
+              usersObj = obj["users"] as Record<string, unknown>;
+            }
+
+            return {
+              id: String(obj.user_address_id ?? obj.id ?? ""),
+              label: (obj.user_address_label as string | undefined) ?? "",
+              contact_name:
+                (obj.user_address_contact_name as string | undefined) ??
+                (obj.contact_name as string | undefined) ??
+                "",
+              line1:
+                (obj.user_address_line1 as string | undefined) ??
+                (obj.line1 as string | undefined) ??
+                "",
+              line2:
+                (obj.user_address_line2 as string | undefined) ??
+                (obj.line2 as string | undefined) ??
+                "",
+              city:
+                (obj.user_address_city as string | undefined) ??
+                (obj.city as string | undefined) ??
+                "",
+              region:
+                (obj.user_address_region as string | undefined) ??
+                (obj.region as string | undefined) ??
+                "",
+              postal:
+                (obj.user_address_postal as string | undefined) ??
+                (obj.postal as string | undefined) ??
+                "",
+              is_default: Boolean(
+                obj.user_address_is_default ?? obj.is_default,
+              ),
+              users: usersObj,
+            };
+          })
+          // ...existing code...
+          .filter((a) => a.id);
+
+        setAddresses(normalized);
+
+        const userDefaultId = !pkgDefaultId
+          ? (normalized.find((a) => a.is_default)?.id ?? null)
+          : null;
+        setSelectedAddressId(pkgDefaultId ?? userDefaultId);
+
+        const chosenAddr = normalized.find(
+          (a) => a.id === (pkgDefaultId ?? userDefaultId),
+        );
+        let resolvedName: string | undefined;
+
+        const snap =
+          pkg.release_to_name ?? (pkg as Record<string, unknown>).releaseToName;
+        if (typeof snap === "string" && snap.trim()) {
+          resolvedName = snap.trim();
+        }
+
+        if (
+          !resolvedName &&
+          chosenAddr &&
+          typeof chosenAddr.contact_name === "string" &&
+          chosenAddr.contact_name.trim()
+        ) {
+          resolvedName = chosenAddr.contact_name.trim();
+        }
+
+        if (
+          !resolvedName &&
+          chosenAddr?.users &&
+          typeof chosenAddr.users === "object"
+        ) {
+          const u = chosenAddr.users as Record<string, unknown>;
+          const kyc =
+            u["user_kyc_table"] && typeof u["user_kyc_table"] === "object"
+              ? (u["user_kyc_table"] as Record<string, unknown>)
+              : undefined;
+          const fn =
+            kyc && typeof kyc["user_kyc_first_name"] === "string"
+              ? (kyc["user_kyc_first_name"] as string).trim()
+              : "";
+          const ln =
+            kyc && typeof kyc["user_kyc_last_name"] === "string"
+              ? (kyc["user_kyc_last_name"] as string).trim()
+              : "";
+          if (fn || ln) resolvedName = `${fn} ${ln}`.trim();
+          if (!resolvedName) {
+            const fn2 =
+              typeof u["first_name"] === "string"
+                ? (u["first_name"] as string).trim()
+                : "";
+            const ln2 =
+              typeof u["last_name"] === "string"
+                ? (u["last_name"] as string).trim()
+                : "";
+            if (fn2 || ln2) resolvedName = `${fn2} ${ln2}`.trim();
+            if (!resolvedName) {
+              const email =
+                typeof u["users_email"] === "string"
+                  ? (u["users_email"] as string).trim()
+                  : "";
+              if (email) {
+                const at = email.indexOf("@");
+                resolvedName = at > 0 ? email.slice(0, at) : email;
+              } else if (typeof u["mobile_number"] === "string") {
+                resolvedName = (u["mobile_number"] as string).trim();
+              }
+            }
+          }
+        }
+
+        // ...existing code...
+        if (!resolvedName) {
+          resolvedName =
+            deriveNameFromPackageRecord(pkg as Record<string, unknown>) ||
+            undefined;
+        }
+        // ...existing code...
+
+        setReleaseToName(resolvedName ?? "");
+      } catch (error) {
+        // log actual error only for debugging purposes
+        // keep behavior unchanged by not altering user flow
+        console.error("failed to fetch addresses in handleActionClick", error);
+        setAddresses([]);
+      }
     }
+
     setActionModalOpen(true);
   };
 
   const submitAction = async () => {
-    if (!selectedPackage || !actionType) return;
+    if (!selectedPackage || !actionType) {
+      notifications.show({
+        title: "Missing data",
+        message: "No package selected",
+        color: "red",
+      });
+      return;
+    }
 
-    // For RELEASE: derive a final name from (in order): releaseToName, selected address contact_name, package user name.
-    let finalReleaseToName = releaseToName;
+    const pkgId = String(
+      selectedPackage.id ??
+        selectedPackage.mailbox_item_id ??
+        selectedPackage.package_id ??
+        "",
+    );
+    if (!pkgId) {
+      notifications.show({
+        title: "Error",
+        message: "Could not identify package",
+        color: "red",
+      });
+      return;
+    }
+
+    let finalReleaseToName = releaseToName || "";
     if (actionType === "RELEASE") {
       if (!finalReleaseToName && selectedAddressId) {
         const sel = addresses.find((a) => a.id === selectedAddressId);
-        finalReleaseToName = sel?.contact_name ?? finalReleaseToName;
+        if (
+          sel &&
+          typeof sel.contact_name === "string" &&
+          sel.contact_name.trim()
+        ) {
+          finalReleaseToName = sel.contact_name.trim();
+        }
       }
+
       if (!finalReleaseToName) {
-        const userName = `${selectedPackage?.user?.first_name ?? ""} ${
-          selectedPackage?.user?.last_name ?? ""
-        }`.trim();
-        finalReleaseToName = userName || finalReleaseToName;
+        finalReleaseToName = deriveNameFromPackageRecord(
+          selectedPackage as Record<string, unknown>,
+        ).trim();
       }
+
+      if (!finalReleaseToName) {
+        const regId = String(selectedPackage.registration_id ?? "");
+        if (regId) {
+          try {
+            const r = await fetch(
+              `/api/mailroom/registrations/${encodeURIComponent(regId)}`,
+              { credentials: "include" },
+            );
+            if (r.ok) {
+              const j = await r.json().catch(() => null);
+              const regPayload = j?.data ?? j ?? null;
+              if (regPayload && typeof regPayload === "object") {
+                const nameFromReg = deriveNameFromPackageRecord(
+                  regPayload as Record<string, unknown>,
+                );
+                if (nameFromReg) finalReleaseToName = nameFromReg.trim();
+              }
+            }
+          } catch {
+            // ignore registration fetch errors
+          }
+        }
+      }
+
       if (!finalReleaseToName) {
         notifications.show({
           title: "Required field missing",
@@ -311,131 +726,128 @@ export default function UserPackages({
         });
         return;
       }
-      // ensure we use the resolved name going forward
+
       setReleaseToName(finalReleaseToName);
     }
 
     setSubmitting(true);
 
     try {
-      let newStatus = null;
+      let newStatus: string | null = null;
       if (actionType === "RELEASE") newStatus = "REQUEST_TO_RELEASE";
       if (actionType === "DISPOSE") newStatus = "REQUEST_TO_DISPOSE";
       if (actionType === "SCAN") newStatus = "REQUEST_TO_SCAN";
       if (actionType === "CONFIRM_RECEIVED") newStatus = "RETRIEVED";
-
       if (!newStatus) return;
 
-      const body: {
-        status: string;
-        notes?: string;
-        release_address_id?: string;
-        release_address?: string;
-        release_to_name?: string;
-      } = { status: newStatus };
+      const body: Record<string, unknown> = { status: newStatus };
       if (actionType === "RELEASE") {
-        body.selected_address_id = selectedAddressId || null;
-        body.release_to_name = finalReleaseToName || releaseToName || null;
-        // include pickup-on-behalf data in notes as JSON when selected
-        if (pickupOnBehalf) {
-          body.notes = JSON.stringify({
-            pickup_on_behalf: true,
-            name: behalfName,
-            mobile: behalfMobile,
-            contact_mode: behalfContactMode,
-          });
-        } else {
-          // clear prior pickup notes on normal release
-          body.notes = null;
-        }
-      } else if (!["DISPOSE", "SCAN"].includes(actionType || "")) {
-        // include notes for other actions, but do NOT include notes for DISPOSE/SCAN per request
-        body.notes = notes;
-      }
-
-      const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) throw new Error("Failed to update package");
-
-      // prefer server-returned updated package to keep local state consistent
-      const serverJson = await res.json().catch(() => null);
-      const updatedFromServer =
-        serverJson?.data ?? serverJson?.package ?? serverJson ?? null;
-      if (updatedFromServer && updatedFromServer.id) {
-        applyUpdatedPackage(updatedFromServer);
-        // ensure selectedPackage reference is updated if modal remains open
-        if (selectedPackage?.id === updatedFromServer.id) {
-          setSelectedPackage((prev) => ({
-            ...(prev ?? {}),
-            ...updatedFromServer,
-          }));
-        }
+        body.selected_address_id = selectedAddressId ?? null;
+        body.release_to_name = finalReleaseToName ?? null;
+        body.notes = pickupOnBehalf
+          ? JSON.stringify({
+              pickup_on_behalf: true,
+              name: behalfName,
+              mobile: behalfMobile,
+              contact_mode: behalfContactMode,
+            })
+          : null;
+      } else if (actionType === "DISPOSE" || actionType === "SCAN") {
+        body.notes = null;
       } else {
-        // fallback optimistic update if server didn't return object
-        setLocalPackages((current) =>
-          current.map((p) =>
-            p.id === selectedPackage.id
-              ? {
-                  ...p,
-                  status: newStatus,
-                  notes:
-                    actionType === "RELEASE" ? (body.notes ?? "") : p.notes,
-                  release_to_name:
-                    actionType === "RELEASE"
-                      ? releaseToName
-                      : p.release_to_name,
-                  release_address: releaseAddressString,
-                  updated_at: new Date().toISOString(),
-                }
-              : p,
-          ),
-        );
+        body.notes = notes || null;
       }
 
-      // Find the selected address object to populate the local state's release_address string
-      let releaseAddressString = selectedPackage.release_address || null;
-      if (actionType === "RELEASE" && selectedAddressId) {
-        const selectedAddress = addresses.find(
-          (a) => a.id === selectedAddressId,
-        );
-        if (selectedAddress) {
-          // Construct a readable snapshot of the address for local state
-          releaseAddressString = [
-            selectedAddress.label || selectedAddress.contact_name,
-            selectedAddress.line1,
-            selectedAddress.line2,
-            selectedAddress.city,
-            selectedAddress.region,
-            selectedAddress.postal,
-          ]
-            .filter(Boolean)
-            .join(", ");
-        }
-      }
+      const url = `/api/user/packages/${encodeURIComponent(pkgId)}`;
+      const bodyStr = JSON.stringify(body);
 
+      // optimistic local update and mark pending
       setLocalPackages((current) =>
         current.map((p) =>
-          p.id === selectedPackage.id
+          p.id === pkgId ||
+          (p.mailbox_item_id && String(p.mailbox_item_id) === pkgId)
             ? {
                 ...p,
+                mailbox_item_status: newStatus,
                 status: newStatus,
-                // persist changes locally: release clears old notes and stores release info
-                notes: actionType === "RELEASE" ? (body.notes ?? "") : p.notes,
+                mailbox_item_updated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                __pending_request: true,
                 release_to_name:
-                  actionType === "RELEASE" ? releaseToName : p.release_to_name,
-                release_address: releaseAddressString, // Use the structured string
+                  (body.release_to_name as string) ?? p.release_to_name,
+                selected_address_id:
+                  (body.selected_address_id as string) ?? p.selected_address_id,
               }
             : p,
         ),
       );
 
-      // ensure pagination stays on a valid page after the update
-      // reset to first page so the updated lists are visible immediately
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: bodyStr,
+      });
+      if (!res.ok) throw new Error("Failed to update package");
+
+      const serverJson = await res.json().catch(() => null);
+      const updatedFromServer =
+        serverJson?.mailbox_item ?? serverJson?.data ?? serverJson ?? null;
+
+      if (updatedFromServer && typeof updatedFromServer === "object") {
+        const u = updatedFromServer as Record<string, unknown>;
+        if (!u.id && (u.mailbox_item_id || u.id))
+          u.id = u.mailbox_item_id ?? u.id;
+        if (u.id) {
+          applyUpdatedPackage({
+            id: String(u.id),
+            ...(u as Record<string, unknown>),
+          });
+          if (
+            selectedPackage?.id === (u.mailbox_item_id ?? u.id) ||
+            pkgId === (u.mailbox_item_id ?? u.id)
+          ) {
+            setSelectedPackage(
+              (prev) => ({ ...(prev ?? {}), ...u }) as PackageShape,
+            );
+          }
+        }
+      } else {
+        setLocalPackages((cur) =>
+          cur.map((p) =>
+            p.id === pkgId ||
+            (p.mailbox_item_id && String(p.mailbox_item_id) === pkgId)
+              ? {
+                  ...p,
+                  mailbox_item_status: newStatus,
+                  status: newStatus,
+                  mailbox_item_updated_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  release_to_name:
+                    (body.release_to_name as string) ?? p.release_to_name,
+                  selected_address_id:
+                    (body.selected_address_id as string) ??
+                    p.selected_address_id,
+                }
+              : p,
+          ),
+        );
+        setSelectedPackage((prev) =>
+          prev
+            ? ({
+                ...prev,
+                mailbox_item_status: newStatus,
+                status: newStatus,
+                release_to_name:
+                  (body.release_to_name as string) ?? prev.release_to_name,
+                selected_address_id:
+                  (body.selected_address_id as string) ??
+                  prev.selected_address_id,
+              } as PackageShape)
+            : prev,
+        );
+      }
+
       setInboxPage(1);
       setHistoryPage(1);
 
@@ -445,82 +857,89 @@ export default function UserPackages({
         color: "green",
       });
 
-      setActionModalOpen(false);
-
-      if (onRefresh) {
+      // attempt to refresh parent and then poll server in background to ensure server state applied
+      const tryRefreshParent = async () => {
+        if (!onRefreshAction) return;
         try {
-          const maybePromise = onRefresh();
-          if (maybePromise instanceof Promise) {
-            await maybePromise;
-          }
-        } catch (e) {
-          console.error("onRefresh failed:", e);
+          const r = onRefreshAction();
+          if (r instanceof Promise) await r;
+        } catch {
+          // ignore refresh errors
         }
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Action failed";
+      };
+
+      const pollForServerUpdate = async (
+        pkgIdParam: string,
+        expectedStatus: string,
+        attempts = 6,
+        intervalMs = 1000,
+      ) => {
+        for (let i = 0; i < attempts; i += 1) {
+          await tryRefreshParent();
+          // fetch fresh list as a fallback if parent didn't refresh
+          try {
+            const r = await fetch("/api/user/packages", {
+              credentials: "include",
+            });
+            if (!r.ok) {
+              await new Promise((res) => setTimeout(res, intervalMs));
+              continue;
+            }
+            const j = await r.json().catch(() => null);
+
+            let arr: unknown[] = [];
+            if (Array.isArray(j?.data)) arr = j.data;
+            else if (Array.isArray(j)) arr = j;
+            else arr = [];
+
+            if (Array.isArray(arr)) {
+              const normalized = normalizeIncomingPackages(
+                arr as PackageShape[],
+              );
+              setLocalPackages(normalized);
+              const found = normalized.find((p) => getPkgId(p) === pkgIdParam);
+              const srvStatus = found
+                ? (found.mailbox_item_status ?? found.status)
+                : undefined;
+              if (srvStatus === expectedStatus) {
+                if (found && found.id) applyUpdatedPackage(found);
+                return true;
+              }
+            }
+          } catch {
+            // ignore fetch error
+          }
+          // wait then retry
+          await new Promise((res) => setTimeout(res, intervalMs));
+        }
+        return false;
+      };
+
+      void pollForServerUpdate(pkgId, body.status as string);
+      setActionModalOpen(false);
+    } catch (err) {
       notifications.show({
         title: "Error",
-        message: errorMessage,
+        message: err instanceof Error ? err.message : "Action failed",
         color: "red",
       });
+      // revert optimistic marker
+      setLocalPackages((cur) =>
+        cur.map((p) =>
+          p.id === (selectedPackage?.id ?? "")
+            ? (() => {
+                const copy = { ...p };
+                delete (copy as Record<string, unknown>).__pending_request;
+                return copy;
+              })()
+            : p,
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Download currently previewed scan (works with data URLs, same-origin, or fetches blob)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const downloadScan = async (): Promise<void> => {
-    if (!previewImage) return;
-    const fallbackName = (
-      previewTitle ||
-      selectedPackage?.package_name ||
-      "scan"
-    ).replace(/\s+/g, "_");
-    try {
-      const a = document.createElement("a");
-      a.href = previewImage;
-      a.target = "_blank";
-
-      let willDownloadDirectly = false;
-      if (previewImage.startsWith("data:")) willDownloadDirectly = true;
-      try {
-        const url = new URL(previewImage, location.href);
-        if (url.origin === location.origin) willDownloadDirectly = true;
-      } catch {
-        // ignore invalid URL
-      }
-
-      if (willDownloadDirectly) {
-        a.download = fallbackName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        return;
-      }
-
-      const res = await fetch(previewImage, { credentials: "include" });
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      a.href = blobUrl;
-      a.download = fallbackName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(blobUrl);
-    } catch (err: unknown) {
-      console.error("download failed", err);
-      notifications.show({
-        title: "Download failed",
-        message: err?.message || String(err),
-        color: "red",
-      });
-    }
-  };
-
-  // Request rescan for the selected package (PATCH -> status: REQUEST_TO_SCAN)
   const requestRescanFromModal = async (): Promise<void> => {
     if (!selectedPackage) return;
     setSubmitting(true);
@@ -538,19 +957,17 @@ export default function UserPackages({
           p.id === selectedPackage.id ? { ...p, status: "REQUEST_TO_SCAN" } : p,
         ),
       );
-
       notifications.show({
         title: "Rescan requested",
         message: "Your rescan request has been submitted to admin.",
         color: "green",
       });
       setImageModalOpen(false);
-    } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to request rescan";
+    } catch (err) {
       notifications.show({
         title: "Error",
-        message: errorMessage,
+        message:
+          err instanceof Error ? err.message : "Failed to request rescan",
         color: "red",
       });
     } finally {
@@ -558,60 +975,103 @@ export default function UserPackages({
     }
   };
 
-  // --- Render Component for a Single Package Card ---
-  const PackageCard = ({
-    pkg,
-  }: {
-    pkg: {
-      id: string;
-      package_photo?: string;
-      locker_id?: string;
-      locker?: { locker_code?: string };
-      status?: string;
-      [key: string]: unknown;
-    };
-  }) => {
-    // debug: ensure each package has its own photo/url
-    console.debug(
-      "PackageCard",
-      pkg.id,
-      pkg.package_photo,
-      pkg.image_url,
-      pkg.release_proof_url,
+  function applyUpdatedPackage(updatedPkg: {
+    id: string;
+    [key: string]: unknown;
+  }) {
+    setLocalPackages((prev) =>
+      prev.map((p) =>
+        p.id === updatedPkg.id
+          ? {
+              ...p,
+              ...(updatedPkg as Record<string, unknown>),
+              __pending_request: undefined,
+            }
+          : p,
+      ),
     );
+  }
 
-    const packageName = pkg.package_name || "—";
-    const type = pkg.package_type || "Parcel";
-    const status = pkg.status || "STORED";
+  const PackageCard = ({ pkg }: { pkg: PackageShape }) => {
+    const isPending = Boolean(
+      (pkg as Record<string, unknown>).__pending_request,
+    );
+    const tryString = (v: unknown): string | null =>
+      typeof v === "string" && v.trim().length > 0 ? v : null;
+
+    const topMailboxName = tryString(pkg.mailbox_item_name);
+    let packageName = topMailboxName ?? tryString(pkg.package_name) ?? "—";
+
+    const mb = pkg.mailbox_item_table;
+    if (!topMailboxName && mb && typeof mb === "object") {
+      const arr = Array.isArray(mb) ? (mb as Array<unknown>) : [mb];
+      if (arr.length > 0 && typeof arr[0] === "object") {
+        const first = arr[0] as Record<string, unknown>;
+        packageName =
+          tryString(first.mailbox_item_name) ??
+          tryString(first.mailbox_item_title) ??
+          tryString(first.name) ??
+          packageName;
+      }
+    }
+
+    const type = pkg.package_type ?? pkg.mailbox_item_type ?? "Parcel";
+    const status = pkg.mailbox_item_status ?? pkg.status ?? "STORED";
     const receivedDate = pkg.received_at;
-
     const isDocument = type === "Document";
 
     let lockerCode = pkg.locker?.locker_code;
     if (!lockerCode && pkg.locker_id && Array.isArray(lockers)) {
-      const assigned = lockers.find(
-        (l) =>
-          l.id === pkg.locker_id ||
-          l.locker_id === pkg.locker_id ||
-          l.locker?.id === pkg.locker_id,
-      );
-      if (assigned)
-        lockerCode = assigned.locker_code || assigned.locker?.locker_code;
+      const assigned = lockers.find((l) => l.id === pkg.locker_id);
+      if (assigned) lockerCode = assigned.locker_code;
     }
 
     const scanUrl =
-      pkg.scan_url ||
-      pkg.digital_scan_url ||
-      pkg.scanned_file_url ||
-      scanMap[pkg.id] || // prefer id-keyed map first
-      scanMap[`name:${pkg.package_name}`] ||
+      ((pkg as Record<string, unknown>).scan_url as string | undefined) ??
+      ((pkg as Record<string, unknown>).digital_scan_url as
+        | string
+        | undefined) ??
+      ((pkg as Record<string, unknown>).scanned_file_url as
+        | string
+        | undefined) ??
+      scanMap[pkg.id] ??
+      scanMap[String(pkg.mailbox_item_id)] ??
+      scanMap[String(pkg.package_id)] ??
       null;
-    const hasScan = Boolean(scanUrl);
+
+    // prefer current schema fields for release proof; fallback to legacy props
+    const getString = (v: unknown): string | null =>
+      typeof v === "string" && v.trim() ? v : null;
+
+    const mailroomFiles = (pkg as Record<string, unknown>).mailroom_files;
+    let mailroomFirstUrl: unknown = undefined;
+    if (Array.isArray(mailroomFiles) && mailroomFiles.length > 0) {
+      const mf0 = mailroomFiles[0];
+      if (mf0 && typeof mf0 === "object" && !Array.isArray(mf0)) {
+        const mf0Rec = mf0 as Record<string, unknown>;
+        if (typeof mf0Rec["mailroom_file_url"] === "string") {
+          mailroomFirstUrl = mf0Rec["mailroom_file_url"];
+        }
+      }
+    }
+
+    const releaseProofUrl: string | null =
+      getString((pkg as Record<string, unknown>).release_proof_url) ??
+      getString((pkg as Record<string, unknown>).image_url) ??
+      getString((pkg as Record<string, unknown>).mailroom_file_url) ??
+      getString(mailroomFirstUrl) ??
+      getString(pkg.package_files?.[0]?.url) ??
+      null;
 
     let statusColor = "blue";
     if (["RELEASED", "RETRIEVED"].includes(status)) statusColor = "green";
     else if (status === "DISPOSED") statusColor = "red";
-    else if (status.includes("REQUEST")) statusColor = "orange";
+    else if (String(status).includes("REQUEST")) statusColor = "orange";
+
+    const smallImageSrc =
+      (pkg.mailbox_item_photo as string | undefined) ??
+      (pkg.package_photo as string | undefined) ??
+      ((pkg.package_files && pkg.package_files[0]?.url) as string | undefined);
 
     return (
       <Paper p="md" radius="md" withBorder shadow="xs" bg="white">
@@ -645,32 +1105,27 @@ export default function UserPackages({
 
         <Divider my="sm" variant="dashed" />
 
-        {/* Package photo thumbnail (click to preview) */}
-        {pkg.package_photo && (
-          <Box mb="sm">
-            {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization */}
-            <img
-              key={`${pkg.id}-${pkg.package_photo}`}
-              src={pkg.package_photo}
+        {smallImageSrc && (
+          <Box
+            mb="sm"
+            style={{
+              width: 140,
+              height: 96,
+              margin: "0 auto",
+              position: "relative",
+            }}
+          >
+            <Image
+              src={smallImageSrc}
               alt="Package photo"
+              fill
+              style={{ objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
               onClick={() => {
                 setSelectedPackage(pkg);
                 setPreviewTitle("Package Photo");
-                setPreviewImage(pkg.package_photo);
+                setPreviewImage(smallImageSrc);
                 setPreviewIsScan(false);
                 setImageModalOpen(true);
-              }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-              style={{
-                width: 140,
-                height: 96,
-                objectFit: "cover",
-                borderRadius: 8,
-                cursor: "pointer",
-                display: "block",
-                margin: "0 auto",
               }}
             />
           </Box>
@@ -684,7 +1139,7 @@ export default function UserPackages({
             <Group gap={4}>
               <IconLock size={12} color="gray" />
               <Text size="sm" fw={500}>
-                {lockerCode || "—"}
+                {lockerCode ?? "—"}
               </Text>
             </Group>
           </Box>
@@ -693,7 +1148,9 @@ export default function UserPackages({
               Received
             </Text>
             <Text size="sm" fw={500}>
-              {receivedDate ? new Date(receivedDate).toLocaleDateString() : "—"}
+              {receivedDate
+                ? new Date(receivedDate as string).toLocaleDateString()
+                : "—"}
             </Text>
           </Box>
         </Group>
@@ -712,7 +1169,6 @@ export default function UserPackages({
               >
                 Release
               </Button>
-
               <Button
                 variant="light"
                 color="red"
@@ -726,9 +1182,15 @@ export default function UserPackages({
               </Button>
             </SimpleGrid>
 
-            {isDocument && planCapabilities.can_digitize && (
+            {isPending && (
+              <Text size="xs" c="orange" ta="center" mt="xs">
+                Request is being processed by admin.
+              </Text>
+            )}
+
+            {isDocument && planCapabilities.can_digitize && !isPending && (
               <>
-                {hasScan ? (
+                {scanUrl ? (
                   <Button
                     variant="default"
                     color="violet"
@@ -736,10 +1198,9 @@ export default function UserPackages({
                     size="xs"
                     leftSection={<IconEye size={14} />}
                     onClick={() => {
-                      setSelectedPackage(pkg); // <-- ensure modal actions know which package
+                      setSelectedPackage(pkg);
                       setPreviewTitle("View Scan");
                       setPreviewImage(scanUrl);
-                      // this preview is a scan
                       setPreviewIsScan(true);
                       setImageModalOpen(true);
                     }}
@@ -777,7 +1238,7 @@ export default function UserPackages({
               Confirm Receipt
             </Button>
 
-            {(pkg.release_proof_url || pkg.image_url) && (
+            {releaseProofUrl && (
               <Button
                 size="sm"
                 variant="default"
@@ -785,8 +1246,7 @@ export default function UserPackages({
                 onClick={() => {
                   setSelectedPackage(pkg);
                   setPreviewTitle("Proof of Release");
-                  setPreviewImage(pkg.release_proof_url || pkg.image_url);
-                  // proof image is not a scan
+                  setPreviewImage(releaseProofUrl);
                   setPreviewIsScan(false);
                   setImageModalOpen(true);
                 }}
@@ -798,7 +1258,7 @@ export default function UserPackages({
           </Group>
         )}
 
-        {status.includes("REQUEST") && (
+        {(String(status).includes("REQUEST") || isPending) && (
           <Text size="xs" c="orange" ta="center" mt="xs">
             Request is being processed by admin.
           </Text>
@@ -807,94 +1267,9 @@ export default function UserPackages({
     );
   };
 
-  // add/fix effect: fetch addresses when selectedPackage changes (robust userId resolution)
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (!selectedPackage) {
-          if (mounted) {
-            setAddresses([]);
-            setSelectedAddressId(null);
-          }
-          return;
-        }
-
-        // resolve userId from package, fallback to session user
-        let userId: string | null =
-          selectedPackage?.user?.id ?? selectedPackage?.user_id ?? null;
-        if (!userId && session?.user?.id) userId = session.user.id;
-
-        // fallback: try reading registration -> user if registration_id exists via a registration endpoint
-        if (!userId && selectedPackage?.registration_id) {
-          try {
-            const r = await fetch(
-              `/api/registrations?id=${encodeURIComponent(
-                selectedPackage.registration_id,
-              )}`,
-              { credentials: "include" },
-            );
-            if (r.ok) {
-              const j = await r.json().catch(() => ({}));
-              userId = j?.data?.user_id ?? j?.user_id ?? userId;
-            }
-          } catch {
-            // ignore - fallback remains null
-          }
-        }
-
-        if (!userId) {
-          if (mounted) {
-            setAddresses([]);
-            // keep selectedAddressId as-is (might be from pkg)
-          }
-          return;
-        }
-
-        const res = await fetch(
-          `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
-          { credentials: "include" },
-        );
-        if (!res.ok) {
-          if (mounted) setAddresses([]);
-          return;
-        }
-        const json = await res.json().catch(() => ({}));
-        const arr = Array.isArray(json?.data) ? json.data : json || [];
-        if (!mounted) return;
-
-        setAddresses(arr);
-
-        // If package already had a release_address_id prefer that,
-        // otherwise preselect the user's default address (is_default)
-        const pkgDefaultId = selectedPackage?.release_address_id ?? null;
-        if (pkgDefaultId) {
-          setSelectedAddressId(pkgDefaultId);
-        } else {
-          const def = arr.find((a) => a.is_default);
-          setSelectedAddressId(def?.id ?? null);
-        }
-      } catch (e) {
-        console.error("failed to load addresses", e);
-        if (mounted) {
-          setAddresses([]);
-        }
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [selectedPackage?.id, session?.user?.id]);
-
-  // use this helper after receiving updatedPkg from server
-  function applyUpdatedPackage(updatedPkg: {
-    id: string;
-    [key: string]: unknown;
-  }) {
-    setLocalPackages((prev) =>
-      prev.map((p) => (p.id === updatedPkg.id ? { ...p, ...updatedPkg } : p)),
-    );
-  }
+    setLocalPackages(normalizeIncomingPackages(packages));
+  }, [packages]);
 
   return (
     <>
@@ -915,7 +1290,6 @@ export default function UserPackages({
             </Tabs.List>
           </Group>
 
-          {/* --- SEARCH BAR --- */}
           <Box mb="md">
             <TextInput
               placeholder="Search by package name or package type..."
@@ -1069,255 +1443,30 @@ export default function UserPackages({
         </Tabs>
       </Paper>
 
-      {/* --- Action Modal --- */}
-      <Modal
+      <PackageActionModal
         opened={actionModalOpen}
         onClose={() => setActionModalOpen(false)}
-        title={
-          actionType === "CONFIRM_RECEIVED"
-            ? "Confirm Receipt"
-            : `Request ${actionType?.replace(/_/g, " ")}`
-        }
-        centered
-      >
-        <Stack>
-          <Text size="sm">
-            {actionType === "CONFIRM_RECEIVED"
-              ? "Are you sure you have received this package? This will mark it as RETRIEVED."
-              : `Are you sure you want to request to ${actionType?.toLowerCase()} this package?`}
-          </Text>
+        actionType={actionType}
+        selectedPackage={selectedPackage}
+        addresses={addresses}
+        addressSelectData={addressSelectData}
+        selectedAddressId={selectedAddressId}
+        setSelectedAddressId={setSelectedAddressId}
+        releaseToName={releaseToName}
+        setReleaseToName={setReleaseToName}
+        pickupOnBehalf={pickupOnBehalf}
+        setPickupOnBehalf={setPickupOnBehalf}
+        behalfName={behalfName}
+        setBehalfName={setBehalfName}
+        behalfMobile={behalfMobile}
+        setBehalfMobile={setBehalfMobile}
+        behalfContactMode={behalfContactMode}
+        setBehalfContactMode={setBehalfContactMode}
+        isBehalfMobileValid={isBehalfMobileValid}
+        submitting={submitting}
+        submitAction={submitAction}
+      />
 
-          {/* Release Fields */}
-          {actionType === "RELEASE" && (
-            <>
-              {/* IMPROVED ADDRESS SELECTOR (Required) */}
-              <Select
-                label="Shipping Address (required)"
-                placeholder="Select a saved address for shipping"
-                required
-                searchable
-                clearable={false}
-                maxDropdownHeight={320}
-                data={addresses.map((a) => ({
-                  value: a.id,
-                  label: [
-                    a.label || "Unnamed Address",
-                    a.line1,
-                    a.city,
-                    a.postal,
-                    a.is_default ? "(Default)" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(", "),
-                }))}
-                value={selectedAddressId}
-                onChange={(v) => {
-                  setSelectedAddressId(v);
-                  const sel = addresses.find((x) => x.id === v);
-                  if (sel?.contact_name) setReleaseToName(sel.contact_name);
-                }}
-                renderOption={({ option }) => {
-                  const a = addresses.find((addr) => addr.id === option.value);
-                  if (!a) return null;
-                  return (
-                    <Stack gap={2}>
-                      <Group
-                        justify="space-between"
-                        align="center"
-                        wrap="nowrap"
-                      >
-                        <Text
-                          fw={600}
-                          size="sm"
-                          style={{
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {a.label || "Unnamed Address"}
-                        </Text>
-                        {a.is_default && (
-                          <Badge variant="light" color="blue" size="sm">
-                            DEFAULT
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        Recipient: {a.contact_name || "N/A"}
-                      </Text>
-                      <Text size="xs" c="gray.7">
-                        {a.line1}
-                        {a.line2 ? `, ${a.line2}` : ""}
-                      </Text>
-                      <Text size="xs" c="gray.7">
-                        {[a.city, a.region, a.postal, a.country]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </Text>
-                    </Stack>
-                  );
-                }}
-              />
-
-              {/* Combined selected-address preview (includes Recipient) */}
-              <Box mt="md">
-                {(() => {
-                  if (selectedAddressId) {
-                    const sel = addresses.find(
-                      (a) => a.id === selectedAddressId,
-                    );
-                    if (!sel) return <Text c="dimmed">Loading address...</Text>;
-                    const fallbackUserName = `${
-                      selectedPackage?.user?.first_name ?? ""
-                    } ${selectedPackage?.user?.last_name ?? ""}`.trim();
-                    return (
-                      <Paper withBorder p="sm" radius="md" bg="gray.0">
-                        <Group justify="space-between" align="center">
-                          <div>
-                            <Text fw={600} size="sm">
-                              {sel.label || "Unnamed Address"}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              Recipient:{" "}
-                              {sel.contact_name || fallbackUserName || "N/A"}
-                            </Text>
-                          </div>
-                          {sel.is_default && (
-                            <Badge
-                              ml="xs"
-                              size="xs"
-                              color="blue"
-                              variant="light"
-                            >
-                              Default
-                            </Badge>
-                          )}
-                        </Group>
-
-                        <Text size="sm" c="dimmed" mt="8px">
-                          {sel.line1}
-                          {sel.line2 ? `, ${sel.line2}` : ""}
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {[sel.city, sel.region, sel.postal, sel.country]
-                            .filter(Boolean)
-                            .join(", ")}
-                        </Text>
-                        {sel.contact_phone && (
-                          <Text size="xs" c="dimmed" mt="4px">
-                            Phone: {sel.contact_phone}
-                          </Text>
-                        )}
-                      </Paper>
-                    );
-                  }
-                  if (selectedPackage?.release_address) {
-                    return (
-                      <Paper withBorder p="sm" radius="md" bg="gray.0">
-                        <Text fw={600} size="sm">
-                          Saved release snapshot
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {selectedPackage.release_address}
-                        </Text>
-                        {selectedPackage.release_to_name && (
-                          <Text size="xs" c="dimmed" mt="4px">
-                            Recipient: {selectedPackage.release_to_name}
-                          </Text>
-                        )}
-                      </Paper>
-                    );
-                  }
-                  return <Text c="dimmed">No shipping address selected.</Text>;
-                })()}
-              </Box>
-
-              {/* Pickup on behalf option */}
-              <Group align="center" mt="sm" mb="sm" gap="sm">
-                <Checkbox
-                  checked={pickupOnBehalf}
-                  onChange={(e) => {
-                    const val = !!e.currentTarget.checked;
-                    setPickupOnBehalf(val);
-                    // if opting for pickup on behalf, clear selected address (not shipping)
-                    if (val) setSelectedAddressId(null);
-                  }}
-                  label="Pickup on behalf"
-                />
-              </Group>
-
-              {pickupOnBehalf && (
-                <Stack>
-                  <TextInput
-                    label="Name of person picking up (required)"
-                    placeholder="Full name"
-                    value={behalfName}
-                    onChange={(e) => setBehalfName(e.currentTarget.value)}
-                    required
-                  />
-                  <TextInput
-                    label="Mobile number (required)"
-                    placeholder="0912XXXXXXX"
-                    value={behalfMobile}
-                    onChange={(e) => {
-                      // allow digits only and trim to 11 chars
-                      const digits = e.currentTarget.value
-                        .replace(/\D/g, "")
-                        .slice(0, 11);
-                      setBehalfMobile(digits);
-                    }}
-                    required
-                    maxLength={11}
-                    error={
-                      behalfMobile.length > 0 && !isBehalfMobileValid
-                        ? "Mobile must start with 09 and be 11 digits (e.g. 09121231234)"
-                        : undefined
-                    }
-                  />
-                  <Select
-                    label="Preferred contact method"
-                    data={[
-                      { value: "sms", label: "SMS" },
-                      { value: "viber", label: "Viber" },
-                      { value: "whatsapp", label: "WhatsApp" },
-                    ]}
-                    value={behalfContactMode}
-                    onChange={(v: string | null) =>
-                      setBehalfContactMode(
-                        (v || "sms") as "sms" | "viber" | "whatsapp",
-                      )
-                    }
-                  />
-                </Stack>
-              )}
-            </>
-          )}
-
-          {/* Note section for other actions */}
-          {/* Notes removed for DISPOSE and SCAN requests as requested */}
-
-          <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setActionModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              color="blue"
-              onClick={submitAction}
-              loading={submitting}
-              // Disable if it's a release action and no shipping address selected or pickup fields invalid
-              disabled={
-                actionType === "RELEASE" &&
-                ((!selectedAddressId && !pickupOnBehalf) ||
-                  (pickupOnBehalf && (!behalfName || !isBehalfMobileValid)))
-              }
-            >
-              Confirm
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      {/* --- Preview Modal --- */}
       <Modal
         opened={imageModalOpen}
         onClose={() => {
@@ -1340,31 +1489,33 @@ export default function UserPackages({
                 style={{ width: "100%", height: "70vh", border: "none" }}
               />
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization
-              <img
-                src={previewImage}
-                alt={previewTitle ?? "Preview"}
-                style={{
-                  width: "100%",
-                  maxHeight: "70vh",
-                  objectFit: "contain",
-                  borderRadius: 8,
-                }}
-              />
+              <Box
+                style={{ width: "100%", height: "70vh", position: "relative" }}
+              >
+                <Image
+                  src={previewImage}
+                  alt={previewTitle ?? "Preview"}
+                  fill
+                  style={{ objectFit: "contain", borderRadius: 8 }}
+                />
+              </Box>
             )}
 
             <Group justify="flex-end" mt="sm" gap="xs">
-              {/* Only show Request Rescan when preview is a scanned document */}
               {previewIsScan && (
                 <Button
                   size="xs"
                   color="violet"
                   onClick={requestRescanFromModal}
                   loading={submitting}
-                  disabled={
-                    typeof selectedPackage?.status === "string" &&
-                    selectedPackage.status.includes("REQUEST")
-                  }
+                  disabled={(() => {
+                    const selStatus = (selectedPackage?.mailbox_item_status ??
+                      selectedPackage?.status) as string | undefined;
+                    return (
+                      typeof selStatus === "string" &&
+                      selStatus.includes("REQUEST")
+                    );
+                  })()}
                 >
                   Request Rescan
                 </Button>
@@ -1378,3 +1529,23 @@ export default function UserPackages({
     </>
   );
 }
+
+// Helper: canonical id and normalization
+const getPkgId = (p: Record<string, unknown> | undefined): string =>
+  String(
+    p?.id ?? p?.mailbox_item_id ?? p?.mailboxItemId ?? p?.package_id ?? "",
+  );
+
+const normalizeIncomingPackages = (arr?: PackageShape[]) =>
+  (Array.isArray(arr) ? arr : []).map((p) => ({
+    ...p,
+    id: String(
+      (p as Record<string, unknown>).id ??
+        (p as Record<string, unknown>).mailbox_item_id ??
+        "",
+    ),
+    mailbox_item_status:
+      (p as Record<string, unknown>).mailbox_item_status ??
+      (p as Record<string, unknown>).status ??
+      "STORED",
+  })) as PackageShape[];
