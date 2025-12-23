@@ -12,11 +12,10 @@ export async function PATCH(
 ) {
   try {
     const id = (await params).id;
-    const body = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
 
-    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    // Authenticate user via cookie
     const supabase = await createClient();
-
     const {
       data: { user },
       error: authError,
@@ -25,99 +24,140 @@ export async function PATCH(
     if (authError || !user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
     const userId = user.id;
 
-    // 3. Verify Ownership
-    // First, find the package to see which registration it belongs to
-    const { data: pkg, error: pkgError } = await supabaseAdmin
-      .from("mailroom_packages")
-      .select("registration_id")
-      .eq("id", id)
+    // 1) Fetch mailbox item to determine registration ownership
+    const { data: itemRow, error: itemErr } = await supabaseAdmin
+      .from("mailbox_item_table")
+      .select("mailbox_item_id, mailroom_registration_id")
+      .eq("mailbox_item_id", id)
       .single();
 
-    if (pkgError || !pkg) {
-      return NextResponse.json({ error: "Package not found" }, { status: 404 });
-    }
-
-    // Second, verify that specific registration belongs to the user
-    const { data: registration, error: regError } = await supabaseAdmin
-      .from("mailroom_registrations")
-      .select("id, user_id")
-      .eq("id", pkg.registration_id)
-      .eq("user_id", userId)
-      .single();
-
-    if (regError || !registration) {
+    if (itemErr || !itemRow) {
       return NextResponse.json(
-        { error: "Registration not found or unauthorized" },
+        { error: "Mailbox item not found" },
         { status: 404 },
       );
     }
 
-    // Build updates object
+    const registrationId = (itemRow as Record<string, unknown>)
+      .mailroom_registration_id as string | undefined;
+    if (!registrationId) {
+      return NextResponse.json(
+        { error: "Registration not linked" },
+        { status: 400 },
+      );
+    }
+
+    // 2) Verify registration belongs to authenticated user
+    const { data: regRow, error: regErr } = await supabaseAdmin
+      .from("mailroom_registration_table")
+      .select("mailroom_registration_id, user_id")
+      .eq("mailroom_registration_id", registrationId)
+      .single();
+
+    if (regErr || !regRow) {
+      return NextResponse.json(
+        { error: "Registration not found" },
+        { status: 404 },
+      );
+    }
+    if ((regRow as Record<string, unknown>).user_id !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // 3) Build mailbox_item updates (map client fields to schema)
     const updates: Record<string, unknown> = {};
-    if (body.status !== undefined) updates.status = body.status;
-    // keep notes support for other actions (but UI will stop using it for release)
-    if (body.notes !== undefined) updates.notes = body.notes;
-    if (body.release_to_name !== undefined)
-      updates.release_to_name = body.release_to_name;
 
-    // If client sent a selected_address_id, validate ownership and persist ID + formatted copy
-    if (body.selected_address_id) {
-      const selectedAddressId = body.selected_address_id;
-      const { data: addr, error: addrErr } = await supabaseAdmin
-        .from("user_addresses")
-        .select(
-          "id, user_id, label, contact_name, line1, line2, city, region, postal",
-        )
-        .eq("id", selectedAddressId)
-        .single();
+    // validate and apply status only if allowed
+    const ALLOWED_STATUSES = [
+      "STORED",
+      "RELEASED",
+      "RETRIEVED",
+      "DISPOSED",
+      "REQUEST_TO_RELEASE",
+      "REQUEST_TO_DISPOSE",
+      "REQUEST_TO_SCAN",
+    ];
+    if (body.status !== undefined) {
+      const s = String(body.status);
+      if (ALLOWED_STATUSES.includes(s)) updates.mailbox_item_status = s;
+      else
+        return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
 
-      if (addrErr || !addr) {
-        return NextResponse.json(
-          { error: "Selected address not found" },
-          { status: 400 },
-        );
-      }
+    // support updated timestamps handled by DB
+    // Handle selected address (user_address_table)
+    if (Object.prototype.hasOwnProperty.call(body, "selected_address_id")) {
+      // allow null to clear saved address
+      const selectedAddressIdRaw = body.selected_address_id;
+      const selectedAddressId =
+        selectedAddressIdRaw === null ? null : String(selectedAddressIdRaw);
+      if (selectedAddressId) {
+        const { data: addr, error: addrErr } = await supabaseAdmin
+          .from("user_address_table")
+          .select(
+            "user_address_id, user_id, user_address_label, user_address_line1, user_address_line2, user_address_city, user_address_region, user_address_postal",
+          )
+          .eq("user_address_id", selectedAddressId)
+          .single();
 
-      // Ensure address belongs to the authenticated user (registration.user_id === userId)
-      if (String(addr.user_id) !== String(userId)) {
-        return NextResponse.json(
-          { error: "Address does not belong to this user" },
-          { status: 403 },
-        );
-      }
+        if (addrErr || !addr) {
+          return NextResponse.json(
+            { error: "Selected address not found" },
+            { status: 400 },
+          );
+        }
+        if ((addr as Record<string, unknown>).user_id !== userId) {
+          return NextResponse.json(
+            { error: "Address does not belong to this user" },
+            { status: 403 },
+          );
+        }
 
-      const formatted = [
-        addr.label ?? "",
-        addr.line1 ?? "",
-        addr.line2 ?? "",
-        addr.city ?? "",
-        addr.region ?? "",
-        addr.postal ?? "",
-      ]
-        .filter(Boolean)
-        .join(", ");
+        const formatted = [
+          (addr as Record<string, unknown>).user_address_label ?? "",
+          (addr as Record<string, unknown>).user_address_line1 ?? "",
+          (addr as Record<string, unknown>).user_address_line2 ?? "",
+          (addr as Record<string, unknown>).user_address_city ?? "",
+          (addr as Record<string, unknown>).user_address_region ?? "",
+          (addr as Record<string, unknown>).user_address_postal ?? "",
+        ]
+          .filter(Boolean)
+          .join(", ");
 
-      updates.release_address_id = selectedAddressId;
-      updates.release_address = formatted;
-
-      // If client didn't provide explicit release_to_name, use contact_name from address (snapshot)
-      if (
-        body.release_to_name === undefined ||
-        body.release_to_name === null ||
-        body.release_to_name === ""
-      ) {
-        updates.release_to_name = addr.contact_name ?? null;
+        updates.user_address_id = selectedAddressId;
+        updates.mailbox_item_release_address = formatted;
+      } else {
+        // clear the address/release snapshot
+        updates.user_address_id = null;
+        updates.mailbox_item_release_address = null;
       }
     }
 
-    // 4. Update Package
+    // Optional: include forward address / tracking fields into mail_action_request if provided
+    const forwardAddress =
+      typeof body.forward_address === "string"
+        ? body.forward_address
+        : undefined;
+    const forwardTracking =
+      typeof body.forward_tracking_number === "string"
+        ? body.forward_tracking_number
+        : undefined;
+    const forward3pl =
+      typeof body.forward_3pl_name === "string"
+        ? body.forward_3pl_name
+        : undefined;
+    const forwardTrackingUrl =
+      typeof body.forward_tracking_url === "string"
+        ? body.forward_tracking_url
+        : undefined;
+
+    // 4) Update mailbox_item_table row
     const { data, error } = await supabaseAdmin
-      .from("mailroom_packages")
+      .from("mailbox_item_table")
       .update(updates)
-      .eq("id", id)
+      .eq("mailbox_item_id", id)
       .select()
       .single();
 
@@ -125,9 +165,133 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, package: data });
-  } catch (err) {
-    console.error("Update package error:", err);
+    // 5) If the user requested an action (eg. REQUEST_TO_RELEASE / REQUEST_TO_DISPOSE / REQUEST_TO_SCAN),
+    // create a mail_action_request_table entry for processing
+    const requestedStatus = updates.mailbox_item_status as string | undefined;
+    const requestTypeMap: Record<string, string> = {
+      REQUEST_TO_RELEASE: "RELEASE",
+      REQUEST_TO_DISPOSE: "DISPOSE",
+      REQUEST_TO_SCAN: "SCAN",
+    };
+    const actionType = requestedStatus
+      ? requestTypeMap[requestedStatus]
+      : undefined;
+
+    if (actionType) {
+      const insertObj: Record<string, unknown> = {
+        mailbox_item_id: id,
+        user_id: userId,
+        mail_action_request_type: actionType,
+        mail_action_request_status: "PROCESSING",
+      };
+      if (forwardAddress)
+        insertObj.mail_action_request_forward_address = forwardAddress;
+      if (forwardTracking)
+        insertObj.mail_action_request_forward_tracking_number = forwardTracking;
+      if (forward3pl)
+        insertObj.mail_action_request_forward_3pl_name = forward3pl;
+      if (forwardTrackingUrl)
+        insertObj.mail_action_request_forward_tracking_url = forwardTrackingUrl;
+
+      // Attach release/address snapshot into an existing text column (no schema changes).
+      // Serialize release details and store under mail_action_request_forward_address
+      // so processing workers can read the release snapshot.
+      if (actionType === "RELEASE") {
+        const releaseInfo: Record<string, unknown> = {};
+        if (
+          typeof updates.user_address_id === "string" &&
+          updates.user_address_id
+        )
+          releaseInfo.user_address_id = updates.user_address_id;
+        if (
+          typeof updates.mailbox_item_release_address === "string" &&
+          updates.mailbox_item_release_address
+        )
+          releaseInfo.release_address = updates.mailbox_item_release_address;
+
+        // parse notes for pickup-on-behalf payload (notes may be JSON string or object)
+        let notesObj: Record<string, unknown> | null = null;
+        if (typeof body.notes === "string" && body.notes.trim()) {
+          try {
+            const parsed = JSON.parse(body.notes);
+            if (parsed && typeof parsed === "object")
+              notesObj = parsed as Record<string, unknown>;
+          } catch {
+            // ignore invalid JSON
+          }
+        } else if (body.notes && typeof body.notes === "object") {
+          notesObj = body.notes as Record<string, unknown>;
+        }
+
+        if (notesObj?.pickup_on_behalf) {
+          const name =
+            typeof notesObj.name === "string" && notesObj.name.trim()
+              ? notesObj.name.trim()
+              : undefined;
+          const mobile =
+            typeof notesObj.mobile === "string" && notesObj.mobile.trim()
+              ? notesObj.mobile.trim()
+              : undefined;
+          const contact_mode =
+            typeof notesObj.contact_mode === "string"
+              ? notesObj.contact_mode
+              : undefined;
+          releaseInfo.pickup_on_behalf = {
+            name: name ?? null,
+            mobile: mobile ?? null,
+            contact_mode: contact_mode ?? null,
+          };
+        }
+
+        let releaseToName: string | undefined;
+        if (typeof body.release_to_name === "string" && body.release_to_name)
+          releaseToName = body.release_to_name;
+        else if (typeof body.releaseToName === "string" && body.releaseToName)
+          releaseToName = body.releaseToName;
+        if (releaseToName) releaseInfo.release_to_name = releaseToName;
+
+        if (Object.keys(releaseInfo).length > 0) {
+          try {
+            const existingForward =
+              typeof insertObj.mail_action_request_forward_address === "string"
+                ? insertObj.mail_action_request_forward_address
+                : undefined;
+            if (existingForward) {
+              insertObj.mail_action_request_forward_address = JSON.stringify({
+                forward_address: existingForward,
+                release: releaseInfo,
+              });
+            } else {
+              insertObj.mail_action_request_forward_address =
+                JSON.stringify(releaseInfo);
+            }
+          } catch {
+            // fallback: store the release_to_name or release_address as plain string if JSON fails
+            if (releaseInfo.release_to_name)
+              insertObj.mail_action_request_forward_address = String(
+                releaseInfo.release_to_name,
+              );
+            else if (releaseInfo.release_address)
+              insertObj.mail_action_request_forward_address = String(
+                releaseInfo.release_address,
+              );
+          }
+        }
+      }
+
+      const { error: insertErr } = await supabaseAdmin
+        .from("mail_action_request_table")
+        .insert(insertObj);
+
+      if (insertErr) {
+        // log and continue — the mailbox_item update succeeded
+        console.error("Failed to create mail action request:", insertErr);
+      }
+    }
+
+    return NextResponse.json({ ok: true, mailbox_item: data });
+  } catch (err: unknown) {
+    console.error("Update mailbox item error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

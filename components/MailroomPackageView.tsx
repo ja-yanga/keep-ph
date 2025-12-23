@@ -1031,7 +1031,7 @@ export default function MailroomPackageView({
                     can_digitize: Boolean(plan.can_digitize),
                   }}
                   isStorageFull={isStorageFull}
-                  onRefresh={handleRefresh}
+                  onRefreshAction={handleRefresh}
                   scanMap={scanMap}
                   scans={scans}
                 />
