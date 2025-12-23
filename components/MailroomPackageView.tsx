@@ -39,122 +39,80 @@ import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import UserPackages from "./UserPackages";
 import UserScans from "./UserScans";
+import type { RawRow } from "@/utils/types/types";
 
-function addMonths(iso?: string | null, months = 0) {
+function addMonths(iso?: string | null, months = 0): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   d.setMonth(d.getMonth() + months);
   return d.toISOString();
 }
 
-export type MailroomPackageViewItem = {
-  id?: string;
-  packages?: Array<{ id?: string; locker_id?: string; [key: string]: unknown }>;
-  lockers?: Array<{
-    id?: string;
-    locker_code?: string;
-    status?: string;
-    locker?: { locker_code?: string; name?: string; label?: string };
-    label?: string;
-    [key: string]: unknown;
-  }>;
-  months?: number | string;
-  mailroom_plans?:
-    | {
-        can_digitize?: boolean;
-        can_receive_mail?: boolean;
-        can_receive_parcels?: boolean;
-        name?: string;
-        [key: string]: unknown;
-      }
-    | Array<{
-        can_digitize?: boolean;
-        can_receive_mail?: boolean;
-        can_receive_parcels?: boolean;
-        name?: string;
-        [key: string]: unknown;
-      }>;
-  mailroom_locations?:
-    | {
-        formatted_address?: string;
-        name?: string;
-        address?: string;
-        city?: string;
-        region?: string;
-        postal?: string;
-        [key: string]: unknown;
-      }
-    | Array<{
-        formatted_address?: string;
-        name?: string;
-        address?: string;
-        city?: string;
-        region?: string;
-        postal?: string;
-        [key: string]: unknown;
-      }>;
-  location?: {
-    formatted_address?: string;
-    name?: string;
-    address?: string;
-    city?: string;
-    region?: string;
-    postal?: string;
-    [key: string]: unknown;
-  };
-  full_name?: string;
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  mobile?: string;
-  user_name?: string;
-  users?: {
-    full_name?: string;
-    first_name?: string;
-    last_name?: string;
-    email?: string;
-    mobile?: string;
-    [key: string]: unknown;
-  };
-  created_at?: string;
-  expiry_at?: string;
-  [key: string]: unknown;
-} | null;
+export type MailroomPackageViewItem = RawRow | null;
 
 type MailroomPackageViewProps = {
   item: MailroomPackageViewItem;
   loading: boolean;
   error: string | null;
-  // allow onRefresh to return a Promise<void> or void and be optional
-  onRefresh?: () => void | Promise<void>;
+  /**
+   * Rename to indicate a Server Action or atomic action prop.
+   * If you pass a client-side function from a parent, Next will error.
+   * Either pass a Server Action here or omit the prop.
+   */
+  onRefreshAction?: () => Promise<void> | void;
 };
 
 export default function MailroomPackageView({
   item,
   loading,
   error,
-  onRefresh,
+  onRefreshAction,
 }: MailroomPackageViewProps) {
   const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
   const [isStorageFull, setIsStorageFull] = useState(false);
-  // 1. Add a refresh key state to force updates
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // LOCAL copy of item so this view can refetch and render fresh data
   const [localItem, setLocalItem] = useState<MailroomPackageViewItem>(
     item ?? null,
   );
 
-  // Keep localItem in sync when parent provides a new item object/id
   useEffect(() => {
     setLocalItem(item ?? null);
-  }, [item?.id]);
+  }, [item?.id, item]);
 
   const source = localItem ?? item;
 
-  // CENTRALIZED scans state / map / usage
+  const firstOf = <T,>(v: T | T[] | undefined | null): T | null => {
+    if (v === undefined || v === null) return null;
+    return Array.isArray(v) ? ((v[0] as T) ?? null) : (v as T);
+  };
+
+  const getProp = <T,>(
+    obj: Record<string, unknown> | null,
+    key: string,
+  ): T | undefined =>
+    obj ? (obj[key] as unknown as T | undefined) : undefined;
+
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null;
+
+  const getString = (
+    obj: Record<string, unknown> | undefined,
+    ...keys: string[]
+  ): string | undefined => {
+    if (!obj) return undefined;
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === "string") return v;
+      if (typeof v === "number") return String(v);
+    }
+    return undefined;
+  };
+
+  const src = (source as Record<string, unknown> | null) ?? null;
+  const regId = getProp<string>(src, "id") ?? null;
+
   const [scans, setScans] = useState<
-    Array<{ package_id?: string; file_url?: string; [key: string]: unknown }>
+    Array<{ package_id?: string; file_url?: string }>
   >([]);
   const [scanMap, setScanMap] = useState<Record<string, string>>({});
   const [scansUsage, setScansUsage] = useState<{
@@ -162,17 +120,12 @@ export default function MailroomPackageView({
     limit_mb?: number;
     percentage?: number;
   } | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const [scansLoading, setScansLoading] = useState(false);
 
-  // 2. Create a wrapper function that triggers both local and parent refresh
-  const handleRefresh = async () => {
+  const handleRefresh = async (): Promise<void> => {
     setRefreshKey((prev) => prev + 1);
     try {
-      // call parent refresh if available (may perform broader refresh)
-      if (typeof onRefresh === "function") {
-        const res = onRefresh();
-        // guard against void: only await when a Promise is returned
+      if (typeof onRefreshAction === "function") {
+        const res = onRefreshAction();
         if (res !== undefined && res instanceof Promise) {
           await res;
         }
@@ -181,15 +134,21 @@ export default function MailroomPackageView({
       console.warn("parent onRefresh failed", e);
     }
 
-    // fetch fresh registration and update local state so view updates immediately
-    const id = item?.id ?? localItem?.id;
+    const id =
+      getProp<string>(src, "id") ??
+      getProp<string>(
+        (item ?? localItem) as Record<string, unknown> | null,
+        "id",
+      );
     if (id) {
-      const fresh = await fetchRegistration(id);
+      const fresh = await fetchRegistration(String(id));
       if (fresh) setLocalItem(fresh);
     }
   };
 
-  const fetchRegistration = async (id?: string) => {
+  const fetchRegistration = async (
+    id?: string,
+  ): Promise<MailroomPackageViewItem | null> => {
     if (!id) return null;
     try {
       const res = await fetch(
@@ -199,42 +158,82 @@ export default function MailroomPackageView({
         },
       );
       if (!res.ok) return null;
-      const json = await res.json().catch(() => ({}));
-      // depending on API shape, registration may be in json or json.data
-      return json?.data ?? json;
+      const json = await res
+        .json()
+        .catch(() => ({}) as Record<string, unknown>);
+      return (json?.data ?? json) as MailroomPackageViewItem;
     } catch (e) {
       console.error("failed to fetch registration", e);
       return null;
     }
   };
 
-  // Plan Capabilities
-  const plan =
-    (Array.isArray(source?.mailroom_plans)
-      ? source.mailroom_plans[0]
-      : source?.mailroom_plans) ||
-    ({} as {
+  const plan = useMemo(() => {
+    const rawPlan = (firstOf(
+      getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+        src,
+        "mailroom_plan_table",
+      ),
+    ) ??
+      firstOf(
+        getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+          src,
+          "mailroom_plans",
+        ),
+      ) ??
+      null) as Record<string, unknown> | null;
+
+    const can_digitize =
+      Boolean(getProp<boolean>(rawPlan, "mailroom_plan_can_digitize")) ||
+      Boolean(getProp<boolean>(rawPlan, "can_digitize")) ||
+      Boolean(getProp<boolean>(rawPlan, "canDigitize"));
+
+    const can_receive_mail =
+      Boolean(getProp<boolean>(rawPlan, "mailroom_plan_can_receive_mail")) ||
+      Boolean(getProp<boolean>(rawPlan, "can_receive_mail"));
+
+    const can_receive_parcels =
+      Boolean(getProp<boolean>(rawPlan, "mailroom_plan_can_receive_parcels")) ||
+      Boolean(getProp<boolean>(rawPlan, "can_receive_parcels"));
+
+    const mailroom_plan_name =
+      (rawPlan &&
+        (getProp<string>(rawPlan, "mailroom_plan_name") ??
+          getProp<string>(rawPlan, "name") ??
+          getProp<string>(rawPlan, "plan_name"))) ??
+      null;
+
+    return {
+      ...(rawPlan ?? {}),
+      can_digitize,
+      can_receive_mail,
+      can_receive_parcels,
+      mailroom_plan_name,
+    } as {
       can_digitize?: boolean;
       can_receive_mail?: boolean;
       can_receive_parcels?: boolean;
+      mailroom_plan_name?: string | null;
+      name?: string;
       [key: string]: unknown;
-    });
+    };
+  }, [src]);
 
-  // Check storage usage
   useEffect(() => {
     const controller = new AbortController();
-    const checkStorage = async () => {
-      if (!source?.id || !(plan as { can_digitize?: boolean }).can_digitize)
-        return;
+    const checkStorage = async (): Promise<void> => {
+      if (!src?.id || !Boolean(plan.can_digitize)) return;
       try {
-        const res = await fetch(`/api/user/scans?registrationId=${source.id}`, {
+        const res = await fetch(`/api/user/scans?registrationId=${src.id}`, {
           credentials: "include",
           signal: controller.signal,
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.usage) {
-            setIsStorageFull(data.usage.used_mb >= data.usage.limit_mb);
+          if (data?.usage) {
+            setIsStorageFull(
+              Boolean(data.usage.used_mb >= data.usage.limit_mb),
+            );
           }
         }
       } catch (e) {
@@ -244,13 +243,12 @@ export default function MailroomPackageView({
       }
     };
 
-    checkStorage();
+    void checkStorage();
     return () => controller.abort();
-  }, [source?.id, plan.can_digitize, refreshKey]); // use primitive id
+  }, [src?.id, plan.can_digitize, refreshKey]);
 
-  // CENTRALIZED scans state / map / usage
   useEffect(() => {
-    if (!source?.id || !plan.can_digitize) {
+    if (!src?.id || !Boolean(plan.can_digitize)) {
       setScans([]);
       setScanMap({});
       setScansUsage(null);
@@ -260,97 +258,116 @@ export default function MailroomPackageView({
     let mounted = true;
     (async () => {
       try {
-        setScansLoading(true);
-        const res = await fetch(`/api/user/scans?registrationId=${source.id}`, {
-          credentials: "include",
-          signal: controller.signal,
-        });
+        const res = await fetch(
+          `/api/user/scans?registrationId=${encodeURIComponent(String(regId))}`,
+          {
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
         if (!res.ok) return;
-        const data = await res.json().catch(() => ({}));
-        const arr = Array.isArray(data?.scans) ? data.scans : [];
+        const data = await res
+          .json()
+          .catch(() => ({}) as Record<string, unknown>);
+        const arr = Array.isArray((data as Record<string, unknown>).scans)
+          ? ((data as Record<string, unknown>).scans as Array<{
+              package_id?: string;
+              file_url?: string;
+            }>)
+          : [];
         const map: Record<string, string> = {};
-        arr.forEach((s: { package_id?: string; file_url?: string }) => {
-          if (s.package_id && s.file_url) map[s.package_id] = s.file_url;
+        arr.forEach((s) => {
+          if (s.package_id && s.file_url)
+            map[String(s.package_id)] = String(s.file_url);
         });
         if (!mounted) return;
         setScans(arr);
         setScanMap(map);
-        setScansUsage(data.usage ?? null);
+        setScansUsage((data as Record<string, unknown>).usage ?? null);
       } catch (err) {
         if (err instanceof Error && err.name !== "AbortError")
           console.error(err);
       } finally {
-        if (mounted) setScansLoading(false);
+        // no-op
       }
     })();
     return () => {
       mounted = false;
       controller.abort();
     };
-  }, [source?.id, plan.can_digitize, refreshKey]);
+  }, [src?.id, plan.can_digitize, refreshKey]);
 
-  // Helper to build a full address (similar to UserDashboard)
   const getFullAddressFromRaw = (
     raw:
       | {
           formatted_address?: string;
+          mailroom_location_name?: string;
+          mailroom_location_city?: string;
+          mailroom_location_region?: string;
+          mailroom_location_zip?: string;
+          address_line?: string;
           name?: string;
-          line1?: string;
-          line2?: string;
           address?: string;
           city?: string;
           region?: string;
           postal?: string;
           [key: string]: unknown;
         }
-      | Array<{
-          formatted_address?: string;
-          name?: string;
-          address?: string;
-          city?: string;
-          region?: string;
-          postal?: string;
-          [key: string]: unknown;
-        }>
+      | Array<{ [key: string]: unknown }>
       | null
       | undefined,
   ): string | null => {
     if (!raw) return null;
-    // Handle array case - take first element
-    const loc = Array.isArray(raw) ? raw[0] : raw;
+    const loc = Array.isArray(raw)
+      ? (raw[0] as Record<string, unknown>)
+      : (raw as Record<string, unknown>);
     if (!loc) return null;
-    if (loc?.formatted_address) return String(loc.formatted_address);
+    if (
+      typeof loc.formatted_address === "string" &&
+      loc.formatted_address.trim()
+    )
+      return String(loc.formatted_address).trim();
 
     const parts: string[] = [];
-    const name = loc?.name ?? null;
+    const name = (loc.mailroom_location_name ?? loc.name) as string | undefined;
     if (name) parts.push(String(name));
-
-    const street =
-      loc?.address_line ||
-      loc?.street ||
-      loc?.line1 ||
-      loc?.line ||
-      loc?.address;
+    const street = (loc.address_line ?? loc.address ?? loc.line1) as
+      | string
+      | undefined;
     if (street) parts.push(String(street));
-
-    const city = loc?.city || loc?.town || null;
-    const province = loc?.province || loc?.state || loc?.region || null;
-    const postal = loc?.postal_code || loc?.postal || loc?.zip || null;
-    const country = loc?.country || null;
-    const tail = [city, province, postal, country].filter(Boolean).join(", ");
+    const city = (loc.mailroom_location_city ?? loc.city) as string | undefined;
+    const province = (loc.mailroom_location_region ?? loc.region) as
+      | string
+      | undefined;
+    const postal = (loc.mailroom_location_zip ?? loc.postal) as
+      | string
+      | undefined;
+    const tail = [city, province, postal].filter(Boolean).join(", ");
     if (tail) parts.push(tail);
-
     const out = parts.filter(Boolean).join(", ").trim();
     return out || null;
   };
 
-  const copyFullShippingAddress = async () => {
-    const code = item?.mailroom_code ?? "-";
-    const locations = item?.mailroom_locations;
-    const loc = Array.isArray(locations) ? locations[0] : locations;
+  const copyFullShippingAddress = async (): Promise<void> => {
+    const code = getProp<string>(src, "mailroom_code") ?? "-";
+    const loc =
+      firstOf(
+        getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+          src,
+          "mailroom_location_table",
+        ),
+      ) ??
+      firstOf(
+        getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+          src,
+          "mailroom_locations",
+        ),
+      ) ??
+      getProp<Record<string, unknown> | null>(src, "location") ??
+      null;
     const full =
-      getFullAddressFromRaw(locations) ||
-      [loc?.address, loc?.city, loc?.region].filter(Boolean).join(", ") ||
+      (getFullAddressFromRaw(loc) ??
+        [loc?.address, loc?.city, loc?.region].filter(Boolean).join(", ")) ||
       null;
     const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
     if (!txt) {
@@ -379,37 +396,288 @@ export default function MailroomPackageView({
     }
   };
 
-  // Filter packages based on selected locker
-  const filteredPackages = useMemo(() => {
-    const pkgs = Array.isArray(source?.packages)
-      ? (source.packages as Array<{
-          id: string;
-          locker_id?: string;
-          [key: string]: unknown;
-        }>)
-      : [];
-    if (!selectedLockerId) return pkgs;
-
-    return pkgs.filter((p) => {
-      if (!Array.isArray(item?.lockers)) return false;
-
-      const assigned = (
-        item.lockers as Array<{
-          id?: string;
-          locker_id?: string;
-          locker?: { id?: string };
-          [key: string]: unknown;
-        }>
-      ).find(
-        (l) =>
-          l.id === p.locker_id ||
-          l.locker_id === p.locker_id ||
-          (l.locker as { id?: string } | undefined)?.id === p.locker_id,
+  // normalize lockers shape once for rendering and lookup (avoid using unknown '{}' keys directly)
+  const normalizedLockers = useMemo(() => {
+    const raw = Array.isArray(src?.lockers) ? (src!.lockers as unknown[]) : [];
+    return raw.map((L, i) => {
+      const locker = L as Record<string, unknown>;
+      const id = String(
+        locker.location_locker_id ??
+          locker.id ??
+          (locker.location_locker as Record<string, unknown> | undefined)?.id ??
+          `locker-${i}`,
       );
-
-      return assigned && assigned.id === selectedLockerId;
+      const code = String(
+        locker.location_locker_code ??
+          (locker.location_locker as Record<string, unknown> | undefined)
+            ?.location_locker_code ??
+          (locker.location_locker as Record<string, unknown> | undefined)
+            ?.code ??
+          locker.locker_code ??
+          (locker.locker as Record<string, unknown> | undefined)?.locker_code ??
+          locker.code ??
+          locker.name ??
+          locker.label ??
+          "—",
+      );
+      const status = String(locker.status ?? "Normal");
+      return { id, code, status, raw: locker } as {
+        id: string;
+        code: string;
+        status: string;
+        raw: Record<string, unknown>;
+      };
     });
-  }, [source, selectedLockerId]);
+  }, [src?.lockers]);
+
+  // count of normalized lockers for UI display
+  const lockerCount: number = normalizedLockers.length;
+
+  const filteredPackages = useMemo(() => {
+    let pkgs: unknown[] = [];
+    const mailbox = getProp<unknown>(src, "mailbox_item_table");
+    const packagesVal = getProp<unknown>(src, "packages");
+    if (Array.isArray(mailbox)) {
+      pkgs = mailbox;
+    } else if (Array.isArray(packagesVal)) {
+      pkgs = packagesVal;
+    } else {
+      pkgs = [];
+    }
+    if (!selectedLockerId) return pkgs;
+    return pkgs.filter((p: unknown) => {
+      const pp = p as Record<string, unknown>;
+      if (!Array.isArray(src?.lockers)) return false;
+      const ppLocker =
+        (pp.locker as Record<string, unknown> | undefined) ?? undefined;
+      const pkgLockerId = String(
+        // prefer common shapes: locker_id, top-level location_locker_id, nested locker.location_locker_id or locker.id
+        pp.locker_id ??
+          pp.location_locker_id ??
+          ppLocker?.location_locker_id ??
+          ppLocker?.id ??
+          "",
+      );
+      return normalizedLockers.some(
+        (l) => l.id === selectedLockerId && l.id === pkgLockerId,
+      );
+    });
+  }, [src, selectedLockerId, normalizedLockers]);
+
+  const normalizedPackages = useMemo(() => {
+    const arr = Array.isArray(filteredPackages) ? filteredPackages : [];
+    return arr
+      .map((p) => p as Record<string, unknown>)
+      .map((p) => {
+        // canonical id candidates from different backend shapes
+        const rawId =
+          (p.id as string | undefined) ??
+          (p.mailbox_item_id as string | undefined) ??
+          (p.mailboxItemId as string | undefined) ??
+          (p.mailbox_id as string | undefined) ??
+          (p.package_id as string | undefined) ??
+          undefined;
+
+        // canonical locker id candidates
+        const lockerId =
+          (p.locker_id as string | undefined) ??
+          (p.location_locker_id as string | undefined) ??
+          undefined;
+
+        // normalize any attached files returned under mailroom_file_table (or similar)
+        const candidateA = getProp<unknown>(
+          p as Record<string, unknown>,
+          "mailroom_file_table",
+        );
+        const candidateB = getProp<unknown>(
+          p as Record<string, unknown>,
+          "mailroom_files",
+        );
+        const candidateC = getProp<unknown>(
+          p as Record<string, unknown>,
+          "files",
+        );
+        let rawFiles: Record<string, unknown>[] = [];
+        if (Array.isArray(candidateA)) {
+          rawFiles = candidateA as Record<string, unknown>[];
+        } else if (Array.isArray(candidateB)) {
+          rawFiles = candidateB as Record<string, unknown>[];
+        } else if (Array.isArray(candidateC)) {
+          rawFiles = candidateC as Record<string, unknown>[];
+        } else {
+          rawFiles = [];
+        }
+        const firstFile = rawFiles.length > 0 ? rawFiles[0] : null;
+        const packagePhoto =
+          (firstFile &&
+            String(
+              firstFile.mailroom_file_url ??
+                firstFile.file_url ??
+                firstFile.url ??
+                "",
+            )) ||
+          String(p.mailbox_item_photo ?? p.package_photo ?? p.photo ?? "") ||
+          undefined;
+        const packageFiles = rawFiles.map((f) => ({
+          id: String((f.mailroom_file_id ?? f.id ?? "") || ""),
+          name: String((f.mailroom_file_name ?? f.name ?? "") || ""),
+          url: String((f.mailroom_file_url ?? f.file_url ?? f.url ?? "") || ""),
+          size_mb:
+            Number((f.mailroom_file_size_mb ?? f.size_mb ?? 0) as unknown) || 0,
+          mime_type: String(
+            (f.mailroom_file_mime_type ?? f.mime_type ?? "") || "",
+          ),
+          type: String((f.mailroom_file_type ?? f.type ?? "") || ""),
+          uploaded_at: String(
+            (f.mailroom_file_uploaded_at ?? f.uploaded_at ?? "") || "",
+          ),
+        }));
+
+        return {
+          ...p,
+          // ensure mailbox_item fields map into the legacy package shape the UI expects
+          id: rawId !== undefined && rawId !== null ? String(rawId) : undefined,
+          locker_id: lockerId ?? undefined,
+          package_photo: packagePhoto,
+          package_files: packageFiles,
+          received_at:
+            (p.received_at as string | undefined) ??
+            (p.mailbox_item_received_at as string | undefined) ??
+            (p.mailbox_item_created_at as string | undefined) ??
+            undefined,
+          created_at:
+            (p.created_at as string | undefined) ??
+            (p.mailbox_item_created_at as string | undefined) ??
+            (p.received_at as string | undefined) ??
+            undefined,
+          updated_at:
+            (p.updated_at as string | undefined) ??
+            (p.mailbox_item_updated_at as string | undefined) ??
+            (p.updatedAt as string | undefined) ??
+            undefined,
+          status:
+            (p.status as string | undefined) ??
+            (p.mailbox_item_status as string | undefined) ??
+            (p.mailbox_status as string | undefined) ??
+            undefined,
+        } as Record<string, unknown>;
+      })
+      .filter(
+        (p): p is Record<string, unknown> & { id: string } =>
+          p != null && typeof p.id === "string" && p.id.length > 0,
+      )
+      .map(
+        (p) =>
+          p as {
+            id: string;
+            locker_id?: string;
+            received_at?: string;
+            created_at?: string;
+            updated_at?: string;
+            status?: string;
+            package_photo?: string;
+            package_files?: Array<{
+              id: string;
+              name: string;
+              url: string;
+              size_mb: number;
+              mime_type: string;
+              type: string;
+              uploaded_at: string;
+            }>;
+            [key: string]: unknown;
+          },
+      );
+  }, [filteredPackages]);
+
+  // merge scans from backend API (scans state) with per-package mailroom_file entries
+  const mergedScans = useMemo(() => {
+    type LocalScan = {
+      id: string;
+      file_name: string;
+      file_url: string;
+      file_size_mb: number;
+      uploaded_at: string;
+      package?: { package_name: string };
+    };
+
+    const fromPackages: LocalScan[] = normalizedPackages.flatMap((p) => {
+      const files =
+        Array.isArray(p.package_files) && p.package_files.length > 0
+          ? (p.package_files as Record<string, unknown>[])
+          : [];
+      const pkgName = isRecord(p.package)
+        ? getString(p.package, "package_name")
+        : getString(p, "package_name");
+      const pkgObj = pkgName ? { package_name: String(pkgName) } : undefined;
+      return files.map((f, i) => {
+        const id =
+          getString(f, "id", "mailroom_file_id") ?? `${p.id}-file-${i}`;
+        const fileName = getString(f, "name", "mailroom_file_name") ?? "";
+        const fileUrl = getString(f, "url", "mailroom_file_url") ?? "";
+        const size =
+          Number(getString(f, "size_mb", "mailroom_file_size_mb")) || 0;
+        const uploaded =
+          getString(f, "uploaded_at", "mailroom_file_uploaded_at") ??
+          getString(p, "created_at") ??
+          "";
+        return {
+          id: String(id),
+          file_name: fileName,
+          file_url: fileUrl,
+          file_size_mb: size,
+          uploaded_at: uploaded,
+          package: pkgObj,
+        };
+      });
+    });
+
+    const fromApi: LocalScan[] =
+      Array.isArray(scans) && scans.length > 0
+        ? (scans as unknown[]).map((s) => {
+            const r = isRecord(s) ? s : {};
+            const id =
+              getString(r, "id", "mailroom_file_id") ??
+              `${Math.random().toString(36).slice(2)}`;
+            const fileName =
+              getString(r, "file_name", "mailroom_file_name") ?? "";
+            const fileUrl = getString(r, "file_url", "mailroom_file_url") ?? "";
+            const size =
+              Number(getString(r, "file_size_mb", "mailroom_file_size_mb")) ||
+              0;
+            const uploaded =
+              getString(r, "uploaded_at", "mailroom_file_uploaded_at") ?? "";
+            const pkgName = isRecord(r.package)
+              ? getString(r.package as Record<string, unknown>, "package_name")
+              : getString(r, "package_name");
+            const pkgObj = pkgName
+              ? { package_name: String(pkgName) }
+              : undefined;
+            return {
+              id: String(id),
+              file_name: fileName,
+              file_url: fileUrl,
+              file_size_mb: size,
+              uploaded_at: uploaded,
+              package: pkgObj,
+            };
+          })
+        : [];
+
+    const map = new Map<string, LocalScan>();
+    for (const sc of [...fromPackages, ...fromApi]) {
+      const key = sc.file_url || sc.id;
+      if (!map.has(key)) map.set(key, sc);
+    }
+    return Array.from(map.values());
+  }, [normalizedPackages, scans]);
+
+  const getLockerStatusColor = (status?: string | null): string => {
+    if (status === "Full") return "red";
+    if (status === "Near Full") return "orange";
+    if (status === "Empty") return "gray";
+    return "blue";
+  };
 
   if (loading) {
     return (
@@ -460,24 +728,112 @@ export default function MailroomPackageView({
     );
   }
 
-  const locations = item.mailroom_locations;
-  const locId = Array.isArray(locations) ? locations[0]?.id : locations?.id;
-  const accountNumber = `U${String(item.user_id ?? "u").slice(0, 8)}-L${String(
-    item.location_id ?? locId ?? "l",
-  ).slice(0, 8)}-M${String(item.id ?? "").slice(0, 8)}`;
+  const locations =
+    firstOf(
+      getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+        src,
+        "mailroom_location_table",
+      ),
+    ) ??
+    firstOf(
+      getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+        src,
+        "mailroom_locations",
+      ),
+    ) ??
+    getProp<Record<string, unknown> | null>(src, "location") ??
+    null;
+  const locId =
+    (locations && (locations as Record<string, unknown>)["id"]) ??
+    getProp<string>(src, "location_id");
+  const accountNumber = `U${String(getProp<string>(src, "user_id") ?? "u").slice(0, 8)}-L${String(locId ?? "l").slice(0, 8)}-M${String(getProp<string>(src, "id") ?? "").slice(0, 8)}`;
+
+  const getSubscriptionExpiry = (s: unknown): string | null => {
+    if (!s) return null;
+    if (Array.isArray(s) && s.length > 0) {
+      return String(
+        (s[0] as Record<string, unknown>)?.subscription_expires_at ?? null,
+      );
+    }
+    if (typeof s === "object") {
+      return String(
+        (s as Record<string, unknown>)?.subscription_expires_at ?? null,
+      );
+    }
+    return null;
+  };
+
   const expiry =
-    item.months && item.created_at
-      ? addMonths(item.created_at, Number(item.months))
-      : (item.expiry_at ?? null);
+    getSubscriptionExpiry(getProp<unknown>(src, "subscription_table")) ??
+    getProp<string>(src, "expiry_at") ??
+    (getProp<string | number>(src, "months") &&
+    getProp<string>(src, "created_at")
+      ? addMonths(
+          String(getProp<string>(src, "created_at")),
+          Number(getProp<string | number>(src, "months")),
+        )
+      : null);
+
+  const planObj = (firstOf(
+    getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+      src,
+      "mailroom_plan_table",
+    ),
+  ) ??
+    firstOf(
+      getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
+        src,
+        "mailroom_plans",
+      ),
+    ) ??
+    null) as Record<string, unknown> | null;
+
+  const planName = String(
+    (planObj &&
+      ((planObj.mailroom_plan_name as string) ?? (planObj.name as string))) ??
+      getProp<string>(src, "package_name") ??
+      getProp<string>(src, "title") ??
+      "Mailroom Package",
+  );
 
   const items = [
     { title: "Dashboard", href: "/dashboard" },
     { title: "Mailroom Details", href: "#" },
-  ].map((item, index) => (
-    <Anchor href={item.href} key={index} component={Link} size="sm">
-      {item.title}
+  ].map((it, index) => (
+    <Anchor href={it.href} key={index} component={Link} size="sm">
+      {it.title}
     </Anchor>
   ));
+
+  // precompute user name pieces to avoid deeply nested expressions in JSX
+  const usersTable =
+    getProp<Record<string, unknown> | null>(src, "users_table") ?? null;
+  const rawKyc = usersTable
+    ? (usersTable["user_kyc_table"] as
+        | Record<string, unknown>
+        | Record<string, unknown>[]
+        | null)
+    : null;
+  const kyc = firstOf(rawKyc) as Record<string, unknown> | null;
+  const firstName =
+    getProp<string>(src, "first_name") ??
+    (kyc ? (kyc["user_kyc_first_name"] as string | undefined) : undefined) ??
+    null;
+  const lastName =
+    getProp<string>(src, "last_name") ??
+    (kyc ? (kyc["user_kyc_last_name"] as string | undefined) : undefined) ??
+    null;
+  let fullNameValue: string | null = null;
+  const rawFullName =
+    getProp<string>(src, "full_name") ?? getProp<string>(src, "user_name");
+  if (rawFullName) {
+    fullNameValue = rawFullName;
+  } else if (firstName || lastName) {
+    fullNameValue =
+      `${firstName ?? ""}${firstName && lastName ? " " : ""}${lastName ?? ""}`.trim();
+  } else {
+    fullNameValue = null;
+  }
 
   return (
     <Box
@@ -491,23 +847,12 @@ export default function MailroomPackageView({
       <DashboardNav />
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
-          {/* Header Section */}
           <Stack gap="lg" mb="xl">
             <Breadcrumbs>{items}</Breadcrumbs>
             <Group justify="space-between" align="flex-start">
               <Box>
                 <Title order={2} c="dark.8">
-                  {(() => {
-                    const planName = Array.isArray(item.mailroom_plans)
-                      ? item.mailroom_plans[0]?.name
-                      : item.mailroom_plans?.name;
-                    return String(
-                      planName ??
-                        item.package_name ??
-                        item.title ??
-                        "Mailroom Package",
-                    );
-                  })()}
+                  {planName}
                 </Title>
                 <Text c="dimmed" size="sm" mt={4}>
                   Account #: {accountNumber}
@@ -515,7 +860,6 @@ export default function MailroomPackageView({
               </Box>
               <Group>
                 <Tooltip label="Refresh Data">
-                  {/* 4. Use handleRefresh instead of onRefresh directly */}
                   <ActionIcon variant="light" size="lg" onClick={handleRefresh}>
                     <IconRefresh size={20} />
                   </ActionIcon>
@@ -533,10 +877,8 @@ export default function MailroomPackageView({
           </Stack>
 
           <Grid gutter="md">
-            {/* Left Column: Main Info */}
             <Grid.Col span={{ base: 12, md: 8 }}>
               <Stack gap="md">
-                {/* Status Cards Row */}
                 <Grid gutter="md">
                   <Grid.Col span={{ base: 12, sm: 6 }}>
                     <Paper p="md" radius="md" withBorder shadow="sm">
@@ -562,6 +904,7 @@ export default function MailroomPackageView({
                       </Group>
                     </Paper>
                   </Grid.Col>
+
                   <Grid.Col span={{ base: 12, sm: 6 }}>
                     <Paper p="md" radius="md" withBorder shadow="sm">
                       <Group>
@@ -569,7 +912,11 @@ export default function MailroomPackageView({
                           size="lg"
                           radius="md"
                           variant="light"
-                          color={item.locker_status ? "gray" : "yellow"}
+                          color={
+                            getProp<string>(src, "locker_status")
+                              ? "gray"
+                              : "yellow"
+                          }
                         >
                           <IconLock size={20} />
                         </ThemeIcon>
@@ -579,9 +926,15 @@ export default function MailroomPackageView({
                           </Text>
                           <Badge
                             size="lg"
-                            color={item.locker_status ? "gray" : "yellow"}
+                            color={
+                              getProp<string>(src, "locker_status")
+                                ? "gray"
+                                : "yellow"
+                            }
                           >
-                            {String(item.locker_status ?? "Active")}
+                            {String(
+                              getProp<string>(src, "locker_status") ?? "Active",
+                            )}
                           </Badge>
                         </Box>
                       </Group>
@@ -589,7 +942,6 @@ export default function MailroomPackageView({
                   </Grid.Col>
                 </Grid>
 
-                {/* Lockers Section */}
                 <Paper p="lg" radius="md" withBorder shadow="sm">
                   <Group justify="space-between" mb="md">
                     <Group gap="xs">
@@ -608,11 +960,11 @@ export default function MailroomPackageView({
                         </Button>
                       )}
                       <Badge variant="light">
-                        {String(item.locker_qty ?? item.lockers?.length ?? 0)}{" "}
-                        Assigned
+                        {String(lockerCount)} Assigned
                       </Badge>
                     </Group>
                   </Group>
+
                   <Table highlightOnHover>
                     <Table.Thead>
                       <Table.Tr>
@@ -621,60 +973,33 @@ export default function MailroomPackageView({
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
-                      {Array.isArray(item.lockers) &&
-                      item.lockers.length > 0 ? (
-                        item.lockers.map(
-                          (L: {
-                            id?: string;
-                            locker_code?: string;
-                            status?: string;
-                            locker?: {
-                              locker_code?: string;
-                              name?: string;
-                              label?: string;
-                            };
-                            label?: string;
-                          }) => (
-                            <Table.Tr
-                              key={L.id}
-                              style={{ cursor: "pointer" }}
-                              bg={
-                                selectedLockerId === L.id
-                                  ? "var(--mantine-color-blue-0)"
-                                  : undefined
-                              }
-                              onClick={() =>
-                                setSelectedLockerId((curr) =>
-                                  curr === L.id ? null : (L.id ?? null),
-                                )
-                              }
-                            >
-                              <Table.Td fw={500}>
-                                {L.locker_code ??
-                                  L.locker?.locker_code ??
-                                  L.locker?.name ??
-                                  L.locker?.label ??
-                                  L.label ??
-                                  "—"}
-                              </Table.Td>
-                              <Table.Td>
-                                {/* Render Capacity Status */}
-                                <Badge
-                                  variant="light"
-                                  color={(() => {
-                                    if (L.status === "Full") return "red";
-                                    if (L.status === "Near Full")
-                                      return "orange";
-                                    if (L.status === "Empty") return "gray";
-                                    return "blue";
-                                  })()}
-                                >
-                                  {L.status || "Normal"}
-                                </Badge>
-                              </Table.Td>
-                            </Table.Tr>
-                          ),
-                        )
+                      {normalizedLockers.length > 0 ? (
+                        normalizedLockers.map((L) => (
+                          <Table.Tr
+                            key={L.id}
+                            style={{ cursor: "pointer" }}
+                            bg={
+                              selectedLockerId === L.id
+                                ? "var(--mantine-color-blue-0)"
+                                : undefined
+                            }
+                            onClick={() =>
+                              setSelectedLockerId((curr) =>
+                                curr === L.id ? null : L.id,
+                              )
+                            }
+                          >
+                            <Table.Td fw={500}>{L.code}</Table.Td>
+                            <Table.Td>
+                              <Badge
+                                variant="light"
+                                color={getLockerStatusColor(L.status)}
+                              >
+                                {L.status}
+                              </Badge>
+                            </Table.Td>
+                          </Table.Tr>
+                        ))
                       ) : (
                         <Table.Tr>
                           <Table.Td colSpan={2}>
@@ -688,22 +1013,16 @@ export default function MailroomPackageView({
                   </Table>
                 </Paper>
 
-                {/* Packages Section */}
                 <UserPackages
-                  packages={filteredPackages}
-                  lockers={(source?.lockers ?? []).filter(
-                    (
-                      l,
-                    ): l is {
-                      id: string;
-                      locker_code?: string;
-                      [key: string]: unknown;
-                    } => !!l.id,
-                  )}
+                  packages={normalizedPackages}
+                  lockers={normalizedLockers.map((l) => ({
+                    id: l.id,
+                    locker_code: l.code,
+                  }))}
                   planCapabilities={{
-                    can_receive_mail: plan.can_receive_mail === true,
-                    can_receive_parcels: plan.can_receive_parcels === true,
-                    can_digitize: plan.can_digitize === true,
+                    can_receive_mail: Boolean(plan.can_receive_mail),
+                    can_receive_parcels: Boolean(plan.can_receive_parcels),
+                    can_digitize: Boolean(plan.can_digitize),
                   }}
                   isStorageFull={isStorageFull}
                   onRefresh={handleRefresh}
@@ -711,22 +1030,10 @@ export default function MailroomPackageView({
                   scans={scans}
                 />
 
-                {/* Digital Storage Section (Only if plan allows) */}
-                {/* 6. Add key={refreshKey} to force UserScans to remount/refetch */}
                 {plan.can_digitize && (
                   <UserScans
                     key={refreshKey}
-                    registrationId={source?.id ?? ""}
-                    scans={
-                      scans as Array<{
-                        id: string;
-                        file_name: string;
-                        file_url: string;
-                        file_size_mb: number;
-                        uploaded_at: string;
-                        package?: { package_name: string };
-                      }>
-                    }
+                    scans={mergedScans ?? []}
                     usage={
                       scansUsage
                         ? {
@@ -741,10 +1048,8 @@ export default function MailroomPackageView({
               </Stack>
             </Grid.Col>
 
-            {/* Right Column: Details Sidebar */}
             <Grid.Col span={{ base: 12, md: 4 }}>
               <Stack gap="md">
-                {/* User Details Card */}
                 <Paper p="md" radius="md" withBorder shadow="sm">
                   <Group mb="md">
                     <ThemeIcon variant="light" color="indigo">
@@ -757,24 +1062,29 @@ export default function MailroomPackageView({
                       <Text size="xs" c="dimmed">
                         Full Name
                       </Text>
-                      <Text fw={500}>
-                        {item.full_name ??
-                          item.user_name ??
-                          item.users?.full_name ??
-                          (`${
-                            item.first_name ?? item.users?.first_name ?? ""
-                          } ${
-                            item.last_name ?? item.users?.last_name ?? ""
-                          }`.trim() ||
-                            "—")}
-                      </Text>
+                      <Text fw={500}>{String(fullNameValue ?? "—")}</Text>
                     </Box>
                     <Box>
                       <Text size="xs" c="dimmed">
                         Email
                       </Text>
                       <Text fw={500} style={{ wordBreak: "break-all" }}>
-                        {String(item.email ?? item.users?.email ?? "—")}
+                        {String(
+                          getProp<string>(src, "email") ??
+                            (getProp<Record<string, unknown> | null>(
+                              src,
+                              "users_table",
+                            )
+                              ? getProp<string>(
+                                  getProp<Record<string, unknown> | null>(
+                                    src,
+                                    "users_table",
+                                  ) as Record<string, unknown>,
+                                  "users_email",
+                                )
+                              : undefined) ??
+                            "—",
+                        )}
                       </Text>
                     </Box>
                     <Group grow>
@@ -783,14 +1093,28 @@ export default function MailroomPackageView({
                           Mobile
                         </Text>
                         <Text fw={500}>
-                          {String(item.mobile ?? item.users?.mobile ?? "—")}
+                          {String(
+                            getProp<string>(src, "mobile") ??
+                              (getProp<Record<string, unknown> | null>(
+                                src,
+                                "users_table",
+                              )
+                                ? getProp<string>(
+                                    getProp<Record<string, unknown> | null>(
+                                      src,
+                                      "users_table",
+                                    ) as Record<string, unknown>,
+                                    "mobile_number",
+                                  )
+                                : undefined) ??
+                              "—",
+                          )}
                         </Text>
                       </Box>
                     </Group>
                   </Stack>
                 </Paper>
 
-                {/* Location Details Card */}
                 <Paper p="md" radius="md" withBorder shadow="sm">
                   <Group mb="md">
                     <ThemeIcon variant="light" color="orange">
@@ -814,7 +1138,14 @@ export default function MailroomPackageView({
                         Mailroom Code
                       </Text>
                       <Text fw={500} ff="monospace">
-                        {item.mailroom_code ?? "—"}
+                        {String(
+                          getProp<string>(src, "mailroom_code") ??
+                            getProp<string>(
+                              src,
+                              "mailroom_registration_code",
+                            ) ??
+                            "—",
+                        )}
                       </Text>
                     </Box>
                     <Box>
@@ -822,7 +1153,15 @@ export default function MailroomPackageView({
                         Location Name
                       </Text>
                       <Text fw={500}>
-                        {item.mailroom_locations?.name ?? "—"}
+                        {String(
+                          (locations &&
+                            (locations as Record<string, unknown>)[
+                              "mailroom_location_name"
+                            ]) ??
+                            (locations &&
+                              (locations as Record<string, unknown>)["name"]) ??
+                            "—",
+                        )}
                       </Text>
                     </Box>
                     <Box>
@@ -834,21 +1173,20 @@ export default function MailroomPackageView({
                         size="sm"
                         style={{ wordBreak: "break-word" }}
                       >
-                        {getFullAddressFromRaw(item.mailroom_locations) ||
+                        {(getFullAddressFromRaw(locations) ??
                           [
-                            item.mailroom_locations?.address,
-                            item.mailroom_locations?.city,
-                            item.mailroom_locations?.region,
+                            (locations as Record<string, unknown>)?.address,
+                            (locations as Record<string, unknown>)?.city,
+                            (locations as Record<string, unknown>)?.region,
                           ]
                             .filter(Boolean)
-                            .join(", ") ||
+                            .join(", ")) ||
                           "—"}
                       </Text>
                     </Box>
                   </Stack>
                 </Paper>
 
-                {/* Plan Details Card */}
                 <Paper p="md" radius="md" withBorder shadow="sm">
                   <Group mb="md">
                     <ThemeIcon variant="light" color="teal">
@@ -862,7 +1200,13 @@ export default function MailroomPackageView({
                         Plan Name
                       </Text>
                       <Text fw={500}>
-                        {item.mailroom_plans?.name ?? item.plan ?? "—"}
+                        {String(
+                          (plan as Record<string, unknown>)
+                            ?.mailroom_plan_name ??
+                            (plan as Record<string, unknown>)?.name ??
+                            getProp<string>(src, "plan") ??
+                            "—",
+                        )}
                       </Text>
                     </Box>
                     <Box>
@@ -870,8 +1214,10 @@ export default function MailroomPackageView({
                         Date Created
                       </Text>
                       <Text fw={500}>
-                        {item.created_at
-                          ? new Date(item.created_at).toLocaleDateString()
+                        {getProp<string>(src, "created_at")
+                          ? new Date(
+                              String(getProp<string>(src, "created_at")),
+                            ).toLocaleDateString()
                           : "—"}
                       </Text>
                     </Box>
@@ -882,10 +1228,12 @@ export default function MailroomPackageView({
                       </Text>
                       <Text fw={500}>
                         {(() => {
-                          if (!item.months) return "—";
-                          return Number(item.months) >= 12
-                            ? "Annual"
-                            : "Monthly";
+                          const monthsVal = getProp<string | number>(
+                            src,
+                            "months",
+                          );
+                          if (!monthsVal) return "—";
+                          return Number(monthsVal) >= 12 ? "Annual" : "Monthly";
                         })()}
                       </Text>
                     </Box>
@@ -896,7 +1244,17 @@ export default function MailroomPackageView({
                           Registration Location
                         </Text>
                         <Text fw={500}>
-                          {item.mailroom_locations?.name ?? "—"}
+                          {String(
+                            (locations &&
+                              (locations as Record<string, unknown>)[
+                                "mailroom_location_name"
+                              ]) ??
+                              (locations &&
+                                (locations as Record<string, unknown>)[
+                                  "name"
+                                ]) ??
+                              "—",
+                          )}
                         </Text>
                       </Box>
                       <Box>
@@ -909,16 +1267,15 @@ export default function MailroomPackageView({
                       </Box>
                     </Group>
 
-                    {/* Plan Capabilities Icons */}
-                    {(plan.can_receive_mail ||
-                      plan.can_receive_parcels ||
-                      plan.can_digitize) && (
+                    {(Boolean(plan.can_receive_mail) ||
+                      Boolean(plan.can_receive_parcels) ||
+                      Boolean(plan.can_digitize)) && (
                       <Box mt="xs">
                         <Text size="xs" c="dimmed" mb={6}>
                           Included Features
                         </Text>
                         <Group gap="xs">
-                          {plan.can_receive_mail && (
+                          {Boolean(plan.can_receive_mail) && (
                             <Tooltip label="Can Receive Mail" withArrow>
                               <ThemeIcon
                                 variant="light"
@@ -930,7 +1287,7 @@ export default function MailroomPackageView({
                               </ThemeIcon>
                             </Tooltip>
                           )}
-                          {plan.can_receive_parcels && (
+                          {Boolean(plan.can_receive_parcels) && (
                             <Tooltip label="Can Receive Parcels" withArrow>
                               <ThemeIcon
                                 variant="light"
@@ -942,7 +1299,7 @@ export default function MailroomPackageView({
                               </ThemeIcon>
                             </Tooltip>
                           )}
-                          {plan.can_digitize && (
+                          {Boolean(plan.can_digitize) && (
                             <Tooltip
                               label="Digital Scanning Included"
                               withArrow

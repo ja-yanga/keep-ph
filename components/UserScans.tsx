@@ -47,7 +47,7 @@ type StorageUsage = {
 };
 
 type UserScansProps = {
-  registrationId: string;
+  registrationId?: string;
   scans?: Scan[];
   usage?: StorageUsage | null;
 };
@@ -70,10 +70,81 @@ export default function UserScans({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchScans = useCallback(async () => {
-    if (providedScans) {
-      setScans(providedScans);
-      setUsage(providedUsage ?? { used_mb: 0, limit_mb: 0, percentage: 0 });
-      setLoading(false);
+    const isRecord = (v: unknown): v is Record<string, unknown> =>
+      typeof v === "object" && v !== null;
+
+    const getString = (
+      obj: Record<string, unknown> | undefined,
+      ...keys: string[]
+    ): string | undefined => {
+      if (!obj) return undefined;
+      for (const k of keys) {
+        const v = obj[k];
+        if (typeof v === "string") return v;
+        if (typeof v === "number") return String(v);
+      }
+      return undefined;
+    };
+
+    const normalize = (s: unknown): Scan => {
+      const r = isRecord(s) ? s : {};
+      const id =
+        getString(
+          r,
+          "id",
+          "mailroom_file_id",
+          "file_id",
+          "fileUrlId",
+          "package_id",
+        ) ??
+        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const pkgRecord = isRecord(r.package)
+        ? (r.package as Record<string, unknown>)
+        : undefined;
+      let pkg: { package_name: string } | undefined;
+      if (pkgRecord) {
+        pkg = { package_name: getString(pkgRecord, "package_name") ?? "" };
+      } else {
+        const pn = getString(r, "package_name");
+        if (pn) pkg = { package_name: pn };
+      }
+
+      return {
+        id: String(id),
+        file_name:
+          getString(r, "file_name", "mailroom_file_name", "name") ?? "",
+        file_url:
+          getString(r, "file_url", "mailroom_file_url", "url", "fileUrl") ?? "",
+        file_size_mb:
+          Number(
+            getString(r, "file_size_mb", "mailroom_file_size_mb", "size_mb"),
+          ) || 0,
+        uploaded_at:
+          getString(
+            r,
+            "uploaded_at",
+            "mailroom_file_uploaded_at",
+            "created_at",
+            "uploadedAt",
+          ) ?? "",
+        package: pkg,
+      };
+    };
+
+    // treat explicit providedScans (including empty array) as authoritative — do not fetch
+    if (providedScans !== undefined && providedScans !== null) {
+      try {
+        setScans((providedScans as unknown[]).map((p) => normalize(p)));
+        setUsage(
+          (providedUsage as StorageUsage) ?? {
+            used_mb: 0,
+            limit_mb: 0,
+            percentage: 0,
+          },
+        );
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (!registrationId) return;
@@ -85,7 +156,9 @@ export default function UserScans({
       );
       if (res.ok) {
         const data = await res.json();
-        setScans(data.scans ?? []);
+        // normalize remote API shape too (safe typing)
+        const remoteScans = Array.isArray(data.scans) ? data.scans : [];
+        setScans((remoteScans as unknown[]).map((r) => normalize(r)));
         setUsage(data.usage ?? { used_mb: 0, limit_mb: 0, percentage: 0 });
       } else {
         console.error("API Error:", await res.text());
