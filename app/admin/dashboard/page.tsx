@@ -1,17 +1,17 @@
 "use client";
 
-import React, {useEffect} from "react";
-import {useRouter} from "next/navigation";
-import {Box, Container, Loader, Center} from "@mantine/core";
-import {useSession} from "@/components/SessionProvider";
+import React, { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Box, Container, Loader, Center } from "@mantine/core";
+import { useSession } from "@/components/SessionProvider";
 
 // Components
-import AdminDashboard from "@/components/AdminDashboard";
+import AdminDashboard from "@/components/pages/admin/DashboardPage/AdminDashboard";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 
 export default function AdminDashboardPage() {
-  const {session, loading} = useSession();
+  const { session, loading } = useSession();
   const router = useRouter();
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function AdminDashboardPage() {
       }}
     >
       <DashboardNav />
-      <main style={{flex: 1}}>
+      <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <AdminDashboard />
         </Container>
