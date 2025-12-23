@@ -9,9 +9,8 @@ const supabaseAdmin = createSupabaseServiceClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Authenticate User via Cookie (using @supabase/ssr)
+    // Authenticate User via Cookie (server-side)
     const supabase = await createClient();
-
     const {
       data: { user },
       error: authError,
@@ -21,16 +20,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 2. Get Body
     const body = await req.json();
-    const { first_name, last_name, avatar_data_url } = body;
+    const { avatar_data_url } = body;
 
     let publicAvatarUrl: string | null = null;
 
-    // 3. Handle Avatar Upload (Server-side)
+    // Handle Avatar Upload (Server-side)
     if (avatar_data_url) {
-      // Expecting data URL: data:image/png;base64,iVBOR...
-      const matches = avatar_data_url.match(/^data:(.+);base64,(.+)$/);
+      const matches = (avatar_data_url as string).match(
+        /^data:(.+);base64,(.+)$/,
+      );
       if (!matches) {
         return NextResponse.json(
           { error: "Invalid avatar data" },
@@ -39,13 +38,12 @@ export async function POST(req: NextRequest) {
       }
 
       const mimeType = matches[1];
-      const buffer = Buffer.from(matches[2] as string, "base64");
+      const buffer = Buffer.from(matches[2], "base64");
       const fileExt = mimeType.split("/")[1] || "png";
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
-      // Upload to 'avatars' bucket using Admin client
       const { error: uploadError } = await supabaseAdmin.storage
-        .from("avatars")
+        .from("AVATARS")
         .upload(fileName, buffer, {
           contentType: mimeType,
           upsert: true,
@@ -59,29 +57,25 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Get Public URL
       const { data: urlData } = supabaseAdmin.storage
-        .from("avatars")
+        .from("AVATARS")
         .getPublicUrl(fileName);
 
-      publicAvatarUrl = urlData.publicUrl;
+      publicAvatarUrl = urlData.publicUrl ?? null;
     }
 
-    // 4. Update Profile using Admin client
-    const updatePayload: Record<string, unknown> = {
-      first_name,
-      last_name,
-    };
+    // Update users_table avatar column only (first/last name come from KYC table and are read-only)
+    const updatePayload: Record<string, unknown> = {};
+    if (publicAvatarUrl) updatePayload.users_avatar_url = publicAvatarUrl;
 
-    // Only update avatar_url if a new one was generated
-    if (publicAvatarUrl) {
-      updatePayload.avatar_url = publicAvatarUrl;
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json({ message: "Nothing to update" });
     }
 
     const { error: updateError } = await supabaseAdmin
-      .from("users")
+      .from("users_table")
       .update(updatePayload)
-      .eq("id", user.id);
+      .eq("users_id", user.id);
 
     if (updateError) throw updateError;
 

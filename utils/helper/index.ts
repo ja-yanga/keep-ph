@@ -2,9 +2,9 @@ import { ClaimWithUrl, ReferralRow, RpcClaim } from "../types";
 
 export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {
-    green: ["VERIFIED"],
+    green: ["VERIFIED", "PAID"],
     blue: [],
-    yellow: ["SUBMITTED"],
+    yellow: ["SUBMITTED", "PENDING"],
     red: ["REJECTED"],
     orange: [],
   };
@@ -113,5 +113,20 @@ export const normalizeClaim = (
     processed_at: toStringOrNull(record.processed_at),
     proof_path: toStringOrNull(record.proof_path),
     proof_url: toStringOrNull(record.proof_url),
+  };
+};
+
+export const normalizeAdminClaim = (
+  raw: RpcAdminClaim | unknown,
+): AdminClaim | null => {
+  const base = normalizeClaim(raw);
+  if (!base) {
+    return null;
+  }
+
+  const record = raw as RpcAdminClaim;
+  return {
+    ...base,
+    user: record.user ?? null,
   };
 };

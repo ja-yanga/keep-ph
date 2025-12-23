@@ -263,12 +263,12 @@ export default function KycPage() {
   return (
     <>
       <Navbar />
-      <Container size="sm" py="xl">
-        {initialLoading ? (
-          <Center style={{ padding: 80 }}>
-            <Loader />
-          </Center>
-        ) : (
+      {initialLoading ? (
+        <Center h="90vh">
+          <Loader />
+        </Center>
+      ) : (
+        <Container size="sm" py="xl">
           <Stack gap="xl">
             <Group
               justify="space-between"
@@ -775,8 +775,9 @@ export default function KycPage() {
               </Paper>
             )}
           </Stack>
-        )}
-      </Container>
+        </Container>
+      )}
+
       <Footer />
 
       {/* MODAL FOR ENLARGED PHOTO PREVIEW */}

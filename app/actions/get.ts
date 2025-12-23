@@ -1,30 +1,62 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { normalizeClaim, toBoolean, toNumber } from "@/utils/helper";
-import { ClaimWithUrl, RewardsStatusResult, RpcClaim } from "@/utils/types";
-
-const BUCKET = "REWARD-PROOFS";
+import {
+  normalizeAdminClaim,
+  normalizeClaim,
+  toBoolean,
+  toNumber,
+} from "@/utils/helper";
+import {
+  AdminClaim,
+  ClaimWithUrl,
+  RewardsStatusResult,
+  RpcAdminClaim,
+  RpcClaim,
+} from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
-const resolveProofUrl = async (path: string): Promise<string | null> => {
-  try {
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUrl(path, 60 * 60);
-    if (!error && data?.signedUrl) {
-      return data.signedUrl;
+const parseRpcArray = <T>(input: unknown): T[] => {
+  if (Array.isArray(input)) {
+    return input as T[];
+  }
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
     }
-  } catch {
-    // ignore signed-url failure and fall back to public URL
   }
-
-  try {
-    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
-    return data?.publicUrl ?? null;
-  } catch {
-    return null;
-  }
+  return [];
 };
+
+export async function getAdminRewardClaims(): Promise<AdminClaim[]> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc("admin_list_reward_claims");
+    if (error) {
+      throw error;
+    }
+
+    const payload = parseRpcArray<RpcAdminClaim>(data);
+
+    const normalized = payload
+      .map((item) => normalizeAdminClaim(item))
+      .filter((claim): claim is AdminClaim => claim !== null);
+
+    const claimsWithProof = await Promise.all(
+      normalized.map(async (claim) => {
+        const proofUrl = claim.proof_path
+          ? await getRewardProofUrl(claim.proof_path)
+          : null;
+        return { ...claim, proof_url: proofUrl };
+      }),
+    );
+
+    return claimsWithProof;
+  } catch (err) {
+    throw err;
+  }
+}
 
 export async function getRewardStatus(
   userId: string,
@@ -77,7 +109,7 @@ export async function getRewardStatus(
           return claim;
         }
 
-        const proofUrl = await resolveProofUrl(claim.proof_path);
+        const proofUrl = await getRewardProofUrl(claim.proof_path);
         return { ...claim, proof_url: proofUrl };
       }),
     );
@@ -94,3 +126,48 @@ export async function getRewardStatus(
     throw err;
   }
 }
+
+export const getRewardProofUrl = async (
+  path: string,
+): Promise<string | null> => {
+  const BUCKET = "REWARD-PROOFS";
+  if (!path) return null;
+  try {
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .createSignedUrl(path, 60 * 60);
+    if (!error && data?.signedUrl) {
+      return data.signedUrl;
+    }
+  } catch {
+    // ignore and fall back to public URL
+  }
+
+  try {
+    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+    return data?.publicUrl ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const user_is_verified = async () => {
+  const {
+    data: { user },
+  } = await supabaseAdmin.auth.getUser();
+
+  // If no user, middleware will handle redirect to signin
+  if (!user) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("user_is_verified", {
+    input_user_id: user.id,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+};

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
-import {
-  createClient,
-  createSupabaseServiceClient,
-} from "@/lib/supabase/server";
-import { submitKYC } from "@/app/actions/post";
-
-const supabaseAdmin = createSupabaseServiceClient();
+import { createClient } from "@/lib/supabase/server";
+import { getUserKYC, submitKYC } from "@/app/actions/post";
 
 export async function POST(req: Request) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const form = await req.formData();
-    const result = await submitKYC(form);
+    const result = await submitKYC(form, user.id);
     return NextResponse.json(result);
   } catch (err: unknown) {
     console.error("KYC submit error:", err);
@@ -22,29 +24,19 @@ export async function POST(req: Request) {
 }
 
 // NEW: GET handler returns current user's KYC row (if any)
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const supabase = await createClient();
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data, error } = await supabaseAdmin
-      .from("user_kyc_table")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    if (req.method === "GET") {
-      return NextResponse.json({ ok: true, kyc: data ?? null });
-    }
-
-    // return NextResponse.json({ ok: true, kyc: data ?? null });
+    const kyc = await getUserKYC(user.id);
+    return NextResponse.json({ ok: true, kyc });
   } catch (err) {
     console.error("KYC fetch error:", err);
     return NextResponse.json({ error: err as string }, { status: 500 });

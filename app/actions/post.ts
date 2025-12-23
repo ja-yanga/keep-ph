@@ -1,20 +1,36 @@
 import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types";
-import {
-  createClient,
-  createSupabaseServiceClient,
-} from "@/lib/supabase/server";
-
-const supabaseAdmin = createSupabaseServiceClient();
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 const supabase = createSupabaseServiceClient();
 
-export async function submitKYC(formData: FormData) {
-  const supabase = await createClient();
+export async function getUserKYC(userId: string) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const { data, error } = await supabase.rpc("get_user_kyc_by_user_id", {
+    input_user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  if (Array.isArray(data)) {
+    return data[0] ?? null;
+  }
+
+  return data;
+}
+
+export async function submitKYC(formData: FormData, userId: string) {
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
 
   const document_type = String(formData.get("document_type") ?? "");
   const document_number = String(formData.get("document_number") ?? "");
@@ -44,8 +60,8 @@ export async function submitKYC(formData: FormData) {
 
   const bucket = "USER-KYC-DOCUMENTS"; // ensure this bucket exists in Supabase storage
   const ts = Date.now();
-  const frontName = `${user.id}/front-${ts}-${(front as File).name ?? "front"}`;
-  const backName = `${user.id}/back-${ts}-${(back as File).name ?? "back"}`;
+  const frontName = `${userId}/front-${ts}-${(front as File).name ?? "front"}`;
+  const backName = `${userId}/back-${ts}-${(back as File).name ?? "back"}`;
 
   const frontBuffer = Buffer.from(await front.arrayBuffer());
   const backBuffer = Buffer.from(await back.arrayBuffer());
@@ -76,7 +92,7 @@ export async function submitKYC(formData: FormData) {
   const id_back_url = backUrlData?.publicUrl ?? "";
 
   const upsertPayload = {
-    user_id: user.id,
+    user_id: userId,
     user_kyc_status: "SUBMITTED",
     user_kyc_id_document_type: document_type,
     user_kyc_id_front_url: id_front_url,
@@ -87,7 +103,7 @@ export async function submitKYC(formData: FormData) {
     user_kyc_agreements_accepted: true, // assume accepted on submit
   };
 
-  const { data: kycData, error: upErr } = await supabaseAdmin
+  const { data: kycData, error: upErr } = await supabase
     .from("user_kyc_table")
     .upsert(upsertPayload, { onConflict: "user_id" })
     .select()
@@ -105,7 +121,7 @@ export async function submitKYC(formData: FormData) {
       user_kyc_address_postal_code: postal ? parseInt(postal) : null,
       user_kyc_address_is_default: true,
     };
-    const { error: addrErr } = await supabaseAdmin
+    const { error: addrErr } = await supabase
       .from("user_kyc_address_table")
       .insert(addressPayload);
     if (addrErr) throw addrErr;
@@ -132,7 +148,7 @@ export async function createAddress({
   is_default?: boolean;
 }) {
   // Get user_kyc_id from user_id
-  const { data: kycData, error: kycError } = await supabaseAdmin
+  const { data: kycData, error: kycError } = await supabase
     .from("user_kyc_table")
     .select("user_kyc_id")
     .eq("user_id", user_id)
@@ -143,13 +159,13 @@ export async function createAddress({
   const user_kyc_id = kycData.user_kyc_id;
 
   if (is_default) {
-    await supabaseAdmin
+    await supabase
       .from("user_kyc_address_table")
       .update({ user_kyc_address_is_default: false })
       .eq("user_kyc_id", user_kyc_id);
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabase
     .from("user_kyc_address_table")
     .insert([
       {
