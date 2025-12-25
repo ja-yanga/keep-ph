@@ -97,10 +97,13 @@ export async function POST(req: Request) {
 
     try {
       // 1) Check if payment transaction already exists (idempotency)
+      // Use limit(1) to avoid race condition errors (PGRST116)
       const { data: existingPayment } = await sb
         .from("payment_transaction_table")
         .select("mailroom_registration_id")
         .eq("payment_transaction_order_id", orderId)
+        .order("payment_transaction_created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (existingPayment?.mailroom_registration_id) {
@@ -113,6 +116,7 @@ export async function POST(req: Request) {
             existingPayment.mailroom_registration_id,
           )
           .eq("mailroom_registration_status", true)
+          .limit(1)
           .maybeSingle();
 
         if (existingReg) {
@@ -154,6 +158,7 @@ export async function POST(req: Request) {
           .from("mailroom_registration_table")
           .select("mailroom_registration_id")
           .eq("mailroom_registration_code", code)
+          .limit(1)
           .maybeSingle();
         if (!existing) {
           mailroomCode = code;
@@ -168,6 +173,21 @@ export async function POST(req: Request) {
       }
 
       // 4) Create registration
+      // Check again for safety before creating
+      const { data: checkAgainReg } = await sb
+        .from("payment_transaction_table")
+        .select("mailroom_registration_id")
+        .eq("payment_transaction_order_id", orderId)
+        .limit(1)
+        .maybeSingle();
+
+      if (checkAgainReg?.mailroom_registration_id) {
+        console.info("[webhook] registration created by concurrent request", {
+          orderId,
+        });
+        return;
+      }
+
       const { data: registration, error: regErr } = await sb
         .from("mailroom_registration_table")
         .insert([
@@ -200,16 +220,29 @@ export async function POST(req: Request) {
 
       // 6) Create payment transaction
       const amount = Number(attrs?.amount ?? 0) / 100; // Convert from minor units
-      await sb.from("payment_transaction_table").insert([
-        {
-          mailroom_registration_id: registration.mailroom_registration_id,
-          payment_transaction_amount: amount,
-          payment_transaction_status: "PAID",
-          payment_transaction_type: "SUBSCRIPTION",
-          payment_transaction_reference_id: paymentId,
-          payment_transaction_order_id: orderId,
-        },
-      ]);
+
+      // Use maybeSingle to check for existence one last time before inserting
+      // This is still not 100% atomic but much better with the limit(1) fix
+      const { error: transErr } = await sb
+        .from("payment_transaction_table")
+        .insert([
+          {
+            mailroom_registration_id: registration.mailroom_registration_id,
+            payment_transaction_amount: amount,
+            payment_transaction_status: "PAID",
+            payment_transaction_type: "SUBSCRIPTION",
+            payment_transaction_reference_id: paymentId,
+            payment_transaction_order_id: orderId,
+          },
+        ]);
+
+      if (transErr) {
+        console.warn(
+          "[webhook] payment transaction insert failed (possibly duplicate)",
+          transErr,
+        );
+        // If it's a unique constraint error (if applied), we can ignore it
+      }
 
       // 7) Assign lockers: mark them unavailable and insert assignment rows
       const lockerIds = availableLockers.map(

@@ -589,10 +589,13 @@ export async function getMailroomRegistrationByOrder(
     }
 
     // Look up by payment transaction order_id
+    // Use limit(1) to handle potential duplicates gracefully and avoid PGRST116
     const { data: paymentData, error: paymentError } = await supabaseAdmin
       .from("payment_transaction_table")
       .select("mailroom_registration_id")
       .eq("payment_transaction_order_id", orderId)
+      .order("payment_transaction_created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (paymentError) {
