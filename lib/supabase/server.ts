@@ -48,21 +48,15 @@ export async function createClient() {
  *                If false (default), redirects to /signin for Server Components.
  * @returns { user, supabase } if authenticated
  * @throws Error if isAPI=true and user is not authenticated
+ *
+ * Supports both authentication methods:
+ * - Browser requests: Uses cookies (automatic via createClient)
+ * - API clients (Postman): Uses Authorization: Bearer <token> header
  */
 export const getAuthenticatedUser = cache(async (isAPI: boolean = false) => {
-  // For API routes, explicitly require Authorization header
-  if (isAPI) {
-    const headerList = await headers();
-    const authHeader = headerList.get("Authorization");
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.error("API route called without Authorization header");
-      throw new Error(
-        "Unauthorized. Please provide a valid Bearer token in the Authorization header.",
-      );
-    }
-  }
-
+  // createClient() automatically handles both:
+  // 1. Authorization header (for API clients like Postman)
+  // 2. Cookies (for browser requests)
   const supabase = await createClient();
   const {
     data: { user },
@@ -73,13 +67,17 @@ export const getAuthenticatedUser = cache(async (isAPI: boolean = false) => {
   if (error || !user) {
     if (isAPI) {
       // Log for debugging
+      const headerList = await headers();
+      const authHeader = headerList.get("Authorization");
       console.error("Authentication failed:", {
         error: error?.message || "No error object",
         hasUser: !!user,
         errorCode: error?.status,
+        hasAuthHeader: !!authHeader,
+        hasCookies: (await cookies()).getAll().length > 0,
       });
       throw new Error(
-        "Unauthorized. Please provide a valid session or Bearer token.",
+        "Unauthorized. Please provide a valid session (cookies) or Bearer token in the Authorization header.",
       );
     }
     redirect("/signin");

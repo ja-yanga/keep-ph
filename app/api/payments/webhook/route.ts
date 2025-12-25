@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   const data = payload?.data;
   if (!data) return NextResponse.json({ ok: false }, { status: 400 });
 
-  // helper that upserts a payment resource (shape: { id, type: 'payment', attributes: { ... } })
+  // helper that processes a payment resource and finalizes registration
+  // Note: Payment data is stored in payment_transaction_table during finalization
   async function upsertPaymentResource(payRes: {
     id?: string;
     attributes?: {
@@ -28,33 +29,16 @@ export async function POST(req: Request) {
     const metadata = attrs?.metadata ?? {};
     const orderId = metadata?.order_id ?? null;
 
-    const upsertRes = await sb.from("paymongo_payments").upsert(
-      {
-        id: payId,
-        source_id: attrs?.source?.id ?? null,
-        order_id: orderId,
-        status: attrs?.status ?? null,
-        amount: attrs?.amount ?? null,
-        currency: attrs?.currency ?? null,
-        raw: payRes,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    );
-
-    console.debug("[webhook] upsertPaymentResource result:", {
+    // Log payment for debugging (payment data will be stored in payment_transaction_table during finalization)
+    console.debug("[webhook] processing payment resource:", {
       id: payId,
-      data: Array.isArray(upsertRes?.data)
-        ? (upsertRes.data as unknown[]).slice(0, 5)
-        : (upsertRes?.data ?? null),
-      error: upsertRes?.error,
+      orderId,
+      status: attrs?.status,
+      amount: attrs?.amount,
     });
 
-    if (upsertRes?.error) {
-      throw upsertRes.error;
-    }
-
-    // finalize server-side registration immediately after a successful upsert
+    // Finalize server-side registration
+    // This will create the registration, subscription, payment transaction, and assign lockers
     try {
       await finalizeRegistrationFromPayment(payRes);
     } catch (finalErr) {
@@ -62,7 +46,8 @@ export async function POST(req: Request) {
         "[webhook] finalizeRegistrationFromPayment error:",
         finalErr,
       );
-      // don't throw here — we already upserted payment; finalize is best-effort and idempotent
+      // Re-throw to let caller handle it
+      throw finalErr;
     }
 
     return { id: payId, orderId };
@@ -94,14 +79,10 @@ export async function POST(req: Request) {
     }
 
     const userId = meta.user_id ?? "";
-    const fullName = meta.full_name ?? "";
-    const email = meta.email ?? "";
-    const mobile = meta.mobile ?? "";
     const locationId = meta.location_id ?? "";
     const planId = meta.plan_id ?? "";
     const lockerQty = Math.max(1, Number(meta.locker_qty ?? 1));
     const months = Math.max(1, Number(meta.months ?? 1));
-    const notes = meta.notes ?? "";
     const paymentId = payRes?.id ?? null;
 
     if (!userId || !locationId || !planId) {
@@ -115,27 +96,40 @@ export async function POST(req: Request) {
     }
 
     try {
-      // 1) Check if registration already finalized (idempotency)
-      const { data: existing } = await sb
-        .from("mailroom_registrations")
-        .select("*")
-        .eq("order_id", orderId)
+      // 1) Check if payment transaction already exists (idempotency)
+      const { data: existingPayment } = await sb
+        .from("payment_transaction_table")
+        .select("mailroom_registration_id")
+        .eq("payment_transaction_order_id", orderId)
         .maybeSingle();
 
-      if (existing && existing.paid) {
-        console.info("[webhook] registration already finalized", {
-          orderId,
-          registrationId: existing.id,
-        });
-        return;
+      if (existingPayment?.mailroom_registration_id) {
+        // Check if registration exists and is active
+        const { data: existingReg } = await sb
+          .from("mailroom_registration_table")
+          .select("mailroom_registration_id")
+          .eq(
+            "mailroom_registration_id",
+            existingPayment.mailroom_registration_id,
+          )
+          .eq("mailroom_registration_status", true)
+          .maybeSingle();
+
+        if (existingReg) {
+          console.info("[webhook] registration already finalized", {
+            orderId,
+            registrationId: existingReg.mailroom_registration_id,
+          });
+          return;
+        }
       }
 
       // 2) Check available lockers
       const { data: availableLockers } = await sb
-        .from("location_lockers")
-        .select("id")
-        .eq("location_id", locationId)
-        .eq("is_available", true)
+        .from("location_locker_table")
+        .select("location_locker_id")
+        .eq("mailroom_location_id", locationId)
+        .eq("location_locker_is_available", true)
         .limit(lockerQty);
 
       if (!availableLockers || availableLockers.length < lockerQty) {
@@ -144,82 +138,98 @@ export async function POST(req: Request) {
           available: availableLockers?.length ?? 0,
           needed: lockerQty,
         });
-        // Optionally notify admin / store a flag; return 200 so webhook isn't retried endlessly
         return;
       }
 
-      // 3) Upsert registration using order_id for idempotency
-      const insertPayload = {
-        user_id: userId,
-        location_id: locationId,
-        plan_id: planId,
-        locker_qty: lockerQty,
-        months,
-        notes,
-        full_name: fullName,
-        email,
-        mobile,
-        order_id: orderId,
-        paid: true,
-        paymongo_payment_id: paymentId,
-        mailroom_code: null,
-        mailroom_status: true,
-      };
+      // 3) Generate unique mailroom code
+      let mailroomCode = "";
+      let isUnique = false;
+      let attempts = 0;
+      while (!isUnique && attempts < 10) {
+        const code = `KPH-${Math.random()
+          .toString(36)
+          .slice(2, 6)
+          .toUpperCase()}`;
+        const { data: existing } = await sb
+          .from("mailroom_registration_table")
+          .select("mailroom_registration_id")
+          .eq("mailroom_registration_code", code)
+          .maybeSingle();
+        if (!existing) {
+          mailroomCode = code;
+          isUnique = true;
+        }
+        attempts++;
+      }
 
-      const { data: upserted, error: upsertErr } = await sb
-        .from("mailroom_registrations")
-        .upsert([insertPayload], { onConflict: "order_id" })
+      if (!isUnique) {
+        console.error("[webhook] failed to generate unique mailroom_code");
+        return;
+      }
+
+      // 4) Create registration
+      const { data: registration, error: regErr } = await sb
+        .from("mailroom_registration_table")
+        .insert([
+          {
+            user_id: userId,
+            mailroom_location_id: locationId,
+            mailroom_plan_id: planId,
+            mailroom_registration_code: mailroomCode,
+            mailroom_registration_status: true,
+          },
+        ])
         .select()
-        .maybeSingle();
+        .single();
 
-      if (upsertErr) {
-        console.error("[webhook] registration upsert failed", upsertErr);
+      if (regErr || !registration) {
+        console.error("[webhook] registration insert failed", regErr);
         return;
       }
-      const registration = upserted;
 
-      // 4) Generate unique mailroom_code if missing (best-effort)
-      if (!registration?.mailroom_code) {
-        let attempts = 0;
-        let created = false;
-        while (!created && attempts < 6) {
-          const code = `KPH-${Math.random()
-            .toString(36)
-            .slice(2, 6)
-            .toUpperCase()}`;
-          const { error: codeErr } = await sb
-            .from("mailroom_registrations")
-            .update({ mailroom_code: code })
-            .eq("id", registration.id)
-            .is("mailroom_code", null);
-          if (!codeErr) created = true;
-          attempts++;
-        }
-        if (!created) {
-          console.error(
-            "[webhook] failed to generate unique mailroom_code for registration",
-            registration.id,
-          );
-        }
-      }
+      // 5) Create subscription
+      const expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + months);
+      await sb.from("subscription_table").insert([
+        {
+          mailroom_registration_id: registration.mailroom_registration_id,
+          subscription_billing_cycle: months === 12 ? "YEARLY" : "MONTHLY",
+          subscription_expires_at: expiresAt.toISOString(),
+        },
+      ]);
 
-      // 5) Assign lockers: mark them unavailable and insert assignment rows
-      const lockerIds = availableLockers.map((l: { id: string }) => l.id);
+      // 6) Create payment transaction
+      const amount = Number(attrs?.amount ?? 0) / 100; // Convert from minor units
+      await sb.from("payment_transaction_table").insert([
+        {
+          mailroom_registration_id: registration.mailroom_registration_id,
+          payment_transaction_amount: amount,
+          payment_transaction_status: "PAID",
+          payment_transaction_type: "SUBSCRIPTION",
+          payment_transaction_reference_id: paymentId,
+          payment_transaction_order_id: orderId,
+        },
+      ]);
+
+      // 7) Assign lockers: mark them unavailable and insert assignment rows
+      const lockerIds = availableLockers.map(
+        (l: { location_locker_id: string }) => l.location_locker_id,
+      );
       await sb
-        .from("location_lockers")
-        .update({ is_available: false })
-        .in("id", lockerIds);
+        .from("location_locker_table")
+        .update({ location_locker_is_available: false })
+        .in("location_locker_id", lockerIds);
 
       const assignments = lockerIds.map((lockerId: string) => ({
-        registration_id: registration.id,
-        locker_id: lockerId,
-        status: "Normal",
+        mailroom_registration_id: registration.mailroom_registration_id,
+        location_locker_id: lockerId,
+        mailroom_assigned_locker_status: "Normal" as const,
       }));
-      await sb.from("mailroom_assigned_lockers").insert(assignments);
+      await sb.from("mailroom_assigned_locker_table").insert(assignments);
 
       console.info("[webhook] finalized registration from payment", {
         orderId,
-        registrationId: registration.id,
+        registrationId: registration.mailroom_registration_id,
       });
     } catch (err) {
       console.error("[webhook] finalizeRegistrationFromPayment error:", err);

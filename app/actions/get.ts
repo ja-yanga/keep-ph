@@ -572,3 +572,161 @@ export async function getDashboardContent(): Promise<AdminDashboardStats | null>
 
   return (data as AdminDashboardStats | null) ?? null;
 }
+
+/**
+ * Gets mailroom registration by order ID.
+ * Looks up the payment transaction first, then fetches the registration.
+ *
+ * Used in:
+ * - app/api/mailroom/lookup-by-order/route.ts - API endpoint for order lookup
+ */
+export async function getMailroomRegistrationByOrder(
+  orderId: string,
+): Promise<unknown | null> {
+  try {
+    if (!orderId) {
+      return null;
+    }
+
+    // Look up by payment transaction order_id
+    const { data: paymentData, error: paymentError } = await supabaseAdmin
+      .from("payment_transaction_table")
+      .select("mailroom_registration_id")
+      .eq("payment_transaction_order_id", orderId)
+      .maybeSingle();
+
+    if (paymentError) {
+      console.error(
+        "[getMailroomRegistrationByOrder] payment lookup error:",
+        paymentError,
+      );
+      throw new Error(
+        `Database error: ${paymentError.message || "Unknown error"}`,
+      );
+    }
+
+    if (!paymentData?.mailroom_registration_id) {
+      return null;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("mailroom_registration_table")
+      .select("*")
+      .eq("mailroom_registration_id", paymentData.mailroom_registration_id)
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        "[getMailroomRegistrationByOrder] registration lookup error:",
+        error,
+      );
+      throw new Error(`Database error: ${error.message || "Unknown error"}`);
+    }
+
+    return data ?? null;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
+ * Calculates the registration amount based on plan, locker quantity, months, and referral code.
+ *
+ * Used in:
+ * - app/api/mailroom/register/route.ts - API endpoint for registration
+ */
+export async function calculateRegistrationAmount({
+  planId,
+  lockerQty,
+  months,
+  referralCode,
+}: {
+  planId: string;
+  lockerQty: number;
+  months: number;
+  referralCode?: string;
+}): Promise<number> {
+  try {
+    // Fetch Plan Price
+    const { data: plan, error: planError } = await supabaseAdmin
+      .from("mailroom_plan_table")
+      .select("mailroom_plan_price")
+      .eq("mailroom_plan_id", planId)
+      .single();
+
+    if (planError || !plan) {
+      throw new Error("Invalid plan selected");
+    }
+
+    // Calculate base amount
+    let amountDue =
+      Number(plan.mailroom_plan_price) * Number(lockerQty) * Number(months);
+
+    // Apply yearly discount
+    if (Number(months) === 12) {
+      amountDue = amountDue * 0.8;
+    }
+
+    // Apply referral discount
+    if (referralCode) {
+      const { data: referrer } = await supabaseAdmin
+        .from("users_table")
+        .select("users_id")
+        .eq("users_referral_code", referralCode)
+        .single();
+
+      if (referrer) {
+        amountDue = amountDue * 0.95;
+      }
+    }
+
+    return amountDue;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
+ * Checks if enough lockers are available at a location.
+ *
+ * Used in:
+ * - app/api/mailroom/register/route.ts - API endpoint for registration
+ */
+export async function checkLockerAvailability({
+  locationId,
+  lockerQty,
+}: {
+  locationId: string;
+  lockerQty: number;
+}): Promise<{ available: boolean; count: number }> {
+  try {
+    const { data: availableLockers, error: lockerCheckError } =
+      await supabaseAdmin
+        .from("location_locker_table")
+        .select("location_locker_id")
+        .eq("mailroom_location_id", locationId)
+        .eq("location_locker_is_available", true)
+        .limit(lockerQty);
+
+    if (lockerCheckError) {
+      throw new Error("Failed to check locker availability");
+    }
+
+    const count = availableLockers?.length ?? 0;
+    return {
+      available: count >= lockerQty,
+      count,
+    };
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}

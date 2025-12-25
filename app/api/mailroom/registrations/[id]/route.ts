@@ -9,7 +9,7 @@ export async function GET(
 
   try {
     // This helper automatically handles session refresh and picks up
-    // the Authorization: Bearer token from headers via createClient().
+    // the Authorization: Bearer token from headers OR cookies via createClient().
     // Passing isAPI=true throws an error (instead of redirecting) for proper API responses.
     const { user, supabase } = await getAuthenticatedUser(true);
 

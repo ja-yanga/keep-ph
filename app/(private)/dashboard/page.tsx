@@ -3,14 +3,27 @@ import DashboardNav from "../../../components/DashboardNav";
 import Footer from "@/components/Footer";
 import DashboardContent from "@/components/DashboardContent";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
-import { getMailroomRegistrations } from "@/app/actions/get";
+import { fetchFromAPI } from "@/utils/fetcher";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+
+type RegistrationsResponse = {
+  data: unknown[];
+  meta?: {
+    total: number;
+    page: number;
+    limit: number;
+  };
+};
 
 export default async function DashboardPage() {
-  const { user } = await getAuthenticatedUser();
+  await getAuthenticatedUser();
 
   let registrations: unknown[] = [];
   try {
-    registrations = await getMailroomRegistrations(user.id);
+    const response = await fetchFromAPI<RegistrationsResponse>(
+      API_ENDPOINTS.mailroom.registrations,
+    );
+    registrations = response.data ?? [];
   } catch (error) {
     console.error("Error fetching mailroom registrations:", error);
     registrations = [];

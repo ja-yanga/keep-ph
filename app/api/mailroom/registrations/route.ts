@@ -4,7 +4,7 @@ import { getAuthenticatedUser } from "@/lib/supabase/server";
 export async function GET(req: Request) {
   try {
     // This helper automatically handles session refresh and picks up
-    // the Authorization: Bearer token from headers via createClient().
+    // the Authorization: Bearer token from headers OR cookies via createClient().
     // Passing isAPI=true throws an error (instead of redirecting) for proper API responses.
     const isAPI = true;
     const { user, supabase } = await getAuthenticatedUser(isAPI);
