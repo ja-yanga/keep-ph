@@ -1,11 +1,10 @@
 import { getAuthenticatedUser } from "@/lib/supabase/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function GET(
-  req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // Await params to ensure we get the ID correctly in Next.js 15+
   const { id } = await params;
 
   try {
@@ -67,12 +66,45 @@ export async function GET(
         })
         .filter(Boolean) || [];
 
-    const responseData = {
-      ...registration,
+    const reg = (registration as Record<string, unknown>) ?? {};
+    const usersTable =
+      (reg.users_table as Record<string, unknown> | undefined) ?? null;
+    const subscription =
+      (reg.subscription_table as Record<string, unknown> | undefined) ?? null;
+    const plan =
+      (reg.mailroom_plan_table as Record<string, unknown> | undefined) ?? null;
+    const mailboxItems = (reg.mailbox_item_table as unknown) ?? null;
+    const locationTable = (reg.mailroom_location_table as unknown) ?? null;
+
+    const normalized = {
+      id: (reg.mailroom_registration_id as string) ?? (reg.id as string) ?? id,
+      user_id: (reg.user_id as string) ?? null,
+      mailroom_code:
+        (reg.mailroom_registration_code as string) ??
+        (reg.mailroom_code as string) ??
+        null,
+      created_at:
+        (reg.mailroom_registration_created_at as string) ??
+        (reg.created_at as string) ??
+        null,
+      months: plan?.mailroom_plan_price ?? null,
+      mailroom_plan_table: plan ?? null,
+      subscription_table: subscription ?? null,
+      expiry_at:
+        subscription?.subscription_expires_at ??
+        (reg.expiry_at as string) ??
+        null,
+      mailroom_location_table: locationTable ?? null,
+      mailbox_item_table: Array.isArray(mailboxItems)
+        ? mailboxItems
+        : (mailboxItems ?? null),
+      users: usersTable ?? null,
+      users_table: usersTable ?? null,
       lockers,
+      raw: reg,
     };
 
-    return NextResponse.json({ data: responseData });
+    return NextResponse.json({ data: normalized });
   } catch (err: unknown) {
     // Handle authentication errors with proper 401 response
     if (err instanceof Error && err.message.includes("Unauthorized")) {

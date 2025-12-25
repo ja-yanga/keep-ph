@@ -23,7 +23,6 @@ export async function GET() {
       .order("user_address_created_at", { ascending: false });
 
     if (error) throw error;
-
     return NextResponse.json({ data: data || [] });
   } catch (err: unknown) {
     console.error("user.addresses.GET:", err);

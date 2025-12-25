@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import MailroomPackageView, {
   type MailroomPackageViewItem,
 } from "@/components/MailroomPackageView";
 
 export default function MailroomPackagePage() {
   const params = useParams();
-  const router = useRouter();
+  // const router = useRouter();
   const id = params?.id ?? "";
   const [item, setItem] = useState<MailroomPackageViewItem>(null);
   const [loading, setLoading] = useState(true);
@@ -64,14 +64,5 @@ export default function MailroomPackagePage() {
     };
   }, [id]);
 
-  return (
-    <MailroomPackageView
-      item={item}
-      loading={loading}
-      error={error}
-      onRefresh={() => {
-        router.refresh();
-      }}
-    />
-  );
+  return <MailroomPackageView item={item} loading={loading} error={error} />;
 }

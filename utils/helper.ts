@@ -1,4 +1,11 @@
-import { ClaimWithUrl, ReferralRow, RpcClaim } from "./types";
+import {
+  AdminClaim,
+  ClaimWithUrl,
+  ReferralRow,
+  RpcAdminClaim,
+  RpcClaim,
+  UserAddressRow,
+} from "./types";
 
 export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {
@@ -129,4 +136,40 @@ export const normalizeAdminClaim = (
     ...base,
     user: record.user ?? null,
   };
+};
+
+export const normalizeImageUrl = (url?: string | null) => {
+  if (!url) return null;
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+  if (typeof window !== "undefined") {
+    const prefix = url.startsWith("/") ? "" : "/";
+    return `${window.location.origin}${prefix}${url}`;
+  }
+  return url;
+};
+
+export const parseAddressRow = (input: unknown): UserAddressRow => {
+  if (!input) {
+    throw new Error("Address payload missing");
+  }
+
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input) as UserAddressRow;
+      return parsed;
+    } catch {
+      throw new Error("Invalid address payload");
+    }
+  }
+
+  return input as UserAddressRow;
+};
+
+export const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `Failed to fetch ${url}`);
+  }
+  return res.json().catch(() => ({}));
 };

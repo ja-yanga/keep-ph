@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  createClient,
-  createSupabaseServiceClient,
-} from "@/lib/supabase/server";
-
-const supabaseAdmin = createSupabaseServiceClient();
+import { createClient } from "@/lib/supabase/server";
+import { getUserRole } from "@/app/actions/get";
+import { adminUpdateUserKyc } from "@/app/actions/update";
 
 export async function POST(
   req: Request,
@@ -20,13 +17,8 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // verify requester is admin
-    const { data: requester, error: requesterErr } = await supabaseAdmin
-      .from("users_table")
-      .select("users_role")
-      .eq("users_id", user.id)
-      .maybeSingle();
-    if (requesterErr) throw requesterErr;
-    if (!requester || requester.users_role !== "admin") {
+    const requesterRole = await getUserRole(user.id);
+    if (requesterRole !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -46,8 +38,6 @@ export async function POST(
     const action = String(body?.action ?? "").toUpperCase();
 
     let statusDb: string;
-    const now = new Date().toISOString();
-
     if (action === "VERIFIED") {
       statusDb = "VERIFIED";
     } else if (action === "REJECTED") {
@@ -56,28 +46,12 @@ export async function POST(
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    type UpdatePayload = {
-      user_kyc_status: string;
-      user_kyc_updated_at: string;
-      user_kyc_verified_at?: string;
-    };
+    const data = await adminUpdateUserKyc({
+      userId,
+      status: statusDb as "VERIFIED" | "REJECTED",
+    });
 
-    const updatePayload: UpdatePayload = {
-      user_kyc_status: statusDb,
-      user_kyc_updated_at: now,
-    };
-    if (statusDb === "VERIFIED") updatePayload.user_kyc_verified_at = now;
-
-    const { data, error } = await supabaseAdmin
-      .from("user_kyc_table")
-      .update(updatePayload)
-      .eq("user_id", userId)
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-
-    return NextResponse.json({ ok: true, data });
+    return NextResponse.json(data);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("admin KYC action error:", err);

@@ -231,3 +231,103 @@ export type RawRow = {
   user_id?: string;
   [key: string]: unknown;
 };
+
+export type AdminUserKyc = {
+  user_kyc_id: string;
+  user_id: string;
+  user_kyc_status: string | null;
+  user_kyc_id_document_type: string | null;
+  user_kyc_id_front_url: string | null;
+  user_kyc_id_back_url: string | null;
+  user_kyc_first_name: string | null;
+  user_kyc_last_name: string | null;
+  user_kyc_submitted_at: string | null;
+  user_kyc_verified_at: string | null;
+  user_kyc_created_at: string | null;
+  user_kyc_updated_at: string | null;
+  address: {
+    line1?: string | null;
+    line2?: string | null;
+    city?: string | null;
+    region?: string | null;
+    postal?: number | string | null;
+  } | null;
+};
+
+export type UpdateRewardClaimArgs = {
+  claimId: string;
+  status: "PROCESSING" | "PAID";
+  proofPath?: string | null;
+};
+
+export type UpdateUserKycStatusArgs = {
+  userId: string;
+  status: "VERIFIED" | "REJECTED";
+};
+
+export type UserAddressRow = {
+  user_address_id: string;
+  user_id: string;
+  user_address_label: string | null;
+  user_address_line1: string;
+  user_address_line2: string | null;
+  user_address_city: string | null;
+  user_address_region: string | null;
+  user_address_postal: string | null;
+  user_address_is_default: boolean;
+  user_address_created_at: string | null;
+};
+
+export type CreateUserAddressArgs = {
+  user_id: string;
+  label?: string;
+  line1: string;
+  line2?: string;
+  city?: string;
+  region?: string;
+  postal?: string;
+  is_default?: boolean;
+};
+
+export type UpdateUserAddressArgs = {
+  address_id: string;
+  label?: string;
+  line1: string;
+  line2?: string;
+  city?: string;
+  region?: string;
+  postal?: string;
+  is_default?: boolean;
+};
+
+export type Address = {
+  id: string;
+  label: string;
+  line1: string;
+  line2: string;
+  city: string;
+  region: string;
+  postal: string;
+  is_default: boolean;
+  user_id?: string;
+};
+
+export type AdminDashboardStats = {
+  pendingRequests: number;
+  storedPackages: number;
+  totalSubscribers: number;
+  lockerStats: {
+    total: number;
+    assigned: number;
+  };
+  recentPackages: Array<{
+    id: string;
+    package_name?: string | null;
+    package_type?: string | null;
+    status?: string | null;
+    received_at?: string | null;
+    registration?: {
+      full_name?: string | null;
+    } | null;
+  }>;
+};

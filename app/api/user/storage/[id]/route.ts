@@ -56,38 +56,48 @@ export async function DELETE(
     // use admin client for cross-table checks & storage deletion
     const admin = supabaseAdmin;
 
-    // fetch scan row with package -> registration
-    const { data: scanRow, error: scanErr } = await admin
-      .from("mailroom_scans")
-      .select(`id, file_url, package:mailroom_packages(id, registration_id)`)
-      .eq("id", scanId)
+    // fetch file row with mailbox_item -> registration
+    const { data: fileRow, error: fileErr } = await admin
+      .from("mailroom_file_table")
+      .select(
+        `
+        mailroom_file_id,
+        mailroom_file_url,
+        mailbox_item_table (
+          mailbox_item_id,
+          mailroom_registration_id
+        )
+      `,
+      )
+      .eq("mailroom_file_id", scanId)
       .single();
 
-    if (scanErr || !scanRow) {
-      console.error("[DELETE] scan not found", scanErr);
+    if (fileErr || !fileRow) {
+      console.error("[DELETE] file not found", fileErr);
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
 
-    const pkg = (
-      scanRow as {
-        package?:
-          | { registration_id?: string }
-          | Array<{ registration_id?: string }>;
-      }
-    ).package;
-    const regId = Array.isArray(pkg)
-      ? pkg[0]?.registration_id
-      : pkg?.registration_id;
-
-    if (!regId) {
-      return NextResponse.json({ error: "Orphan scan" }, { status: 400 });
+    // mailbox_item_table may be returned as object or array
+    const mailboxItem =
+      (fileRow as Record<string, unknown>)["mailbox_item_table"] ?? null;
+    let regId: string | undefined;
+    if (Array.isArray(mailboxItem)) {
+      regId = (mailboxItem[0] as Record<string, unknown>)
+        ?.mailroom_registration_id as string | undefined;
+    } else if (mailboxItem && typeof mailboxItem === "object") {
+      regId = (mailboxItem as Record<string, unknown>)
+        .mailroom_registration_id as string | undefined;
     }
 
-    // verify registration belongs to current user
+    if (!regId) {
+      return NextResponse.json({ error: "Orphan file" }, { status: 400 });
+    }
+
+    // verify registration belongs to current user (use correct table name)
     const { data: regRow, error: regErr } = await admin
-      .from("mailroom_registrations")
-      .select("id, user_id")
-      .eq("id", regId)
+      .from("mailroom_registration_table")
+      .select("mailroom_registration_id, user_id")
+      .eq("mailroom_registration_id", regId)
       .single();
 
     if (regErr || !regRow) {
@@ -98,11 +108,12 @@ export async function DELETE(
       );
     }
 
-    if (regRow.user_id !== user.id) {
+    if ((regRow as Record<string, unknown>).user_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const fileUrl: string = (scanRow as { file_url?: string }).file_url || "";
+    const fileUrl: string =
+      (fileRow as { mailroom_file_url?: string }).mailroom_file_url || "";
     try {
       const match = fileUrl.match(
         /\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/,
@@ -125,9 +136,9 @@ export async function DELETE(
     }
 
     const { error: delErr } = await admin
-      .from("mailroom_scans")
+      .from("mailroom_file_table")
       .delete()
-      .eq("id", scanId);
+      .eq("mailroom_file_id", scanId);
 
     if (delErr) {
       throw delErr;
