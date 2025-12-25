@@ -290,3 +290,161 @@ BEGIN
   RETURN status_text;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION public.admin_list_user_kyc(
+  input_search TEXT DEFAULT '',
+  input_limit INTEGER DEFAULT 500
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  sanitized_limit INTEGER := LEAST(GREATEST(COALESCE(input_limit, 1), 1), 1000);
+  search_term TEXT := COALESCE(input_search, '');
+  result JSON := '[]'::JSON;
+BEGIN
+  WITH base AS (
+    SELECT
+      uk.user_kyc_id,
+      uk.user_id,
+      uk.user_kyc_status,
+      uk.user_kyc_id_document_type,
+      uk.user_kyc_id_front_url,
+      uk.user_kyc_id_back_url,
+      uk.user_kyc_first_name,
+      uk.user_kyc_last_name,
+      uk.user_kyc_submitted_at,
+      uk.user_kyc_verified_at,
+      uk.user_kyc_created_at,
+      uk.user_kyc_updated_at,
+      addr.user_kyc_address_line_one AS addr_line1,
+      addr.user_kyc_address_line_two AS addr_line2,
+      addr.user_kyc_address_city AS addr_city,
+      addr.user_kyc_address_region AS addr_region,
+      addr.user_kyc_address_postal_code AS addr_postal
+
+    FROM public.user_kyc_table uk
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM public.user_kyc_address_table a
+      WHERE a.user_kyc_id = uk.user_kyc_id
+      ORDER BY a.user_kyc_address_created_at DESC
+      LIMIT 1
+    ) addr ON TRUE
+    WHERE
+      search_term = ''
+      OR uk.user_kyc_first_name ILIKE '%' || search_term || '%'
+      OR uk.user_kyc_last_name ILIKE '%' || search_term || '%'
+    ORDER BY uk.user_kyc_submitted_at DESC NULLS LAST
+    LIMIT sanitized_limit
+  )
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'user_kyc_id', user_kyc_id,
+        'user_id', user_id,
+        'user_kyc_status', user_kyc_status,
+        'user_kyc_id_document_type', user_kyc_id_document_type,
+        'user_kyc_id_front_url', user_kyc_id_front_url,
+        'user_kyc_id_back_url', user_kyc_id_back_url,
+        'user_kyc_first_name', user_kyc_first_name,
+        'user_kyc_last_name', user_kyc_last_name,
+        'user_kyc_submitted_at', user_kyc_submitted_at,
+        'user_kyc_verified_at', user_kyc_verified_at,
+        'user_kyc_created_at', user_kyc_created_at,
+        'user_kyc_updated_at', user_kyc_updated_at,
+        'address', CASE
+          WHEN addr_line1 IS NULL
+            AND addr_line2 IS NULL
+            AND addr_city IS NULL
+            AND addr_region IS NULL
+            AND addr_postal IS NULL
+          THEN NULL
+          ELSE JSON_BUILD_OBJECT(
+            'line1', addr_line1,
+            'line2', addr_line2,
+            'city', addr_city,
+            'region', addr_region,
+            'postal', addr_postal
+          )
+        END
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO result
+  FROM base;
+
+  RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_update_user_kyc(
+  input_user_id UUID,
+  input_status TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  normalized_status TEXT;
+  updated_row public.user_kyc_table%ROWTYPE;
+BEGIN
+  IF input_user_id IS NULL THEN
+    RAISE EXCEPTION 'input_user_id is required';
+  END IF;
+
+  normalized_status := UPPER(COALESCE(input_status, ''));
+
+  IF normalized_status NOT IN ('VERIFIED', 'REJECTED') THEN
+    RAISE EXCEPTION 'Invalid status %', normalized_status;
+  END IF;
+
+  UPDATE public.user_kyc_table
+  SET
+    user_kyc_status = normalized_status::public.user_kyc_status,
+    user_kyc_updated_at = NOW(),
+    user_kyc_verified_at = CASE
+      WHEN normalized_status = 'VERIFIED' THEN NOW()
+      ELSE user_kyc_verified_at
+    END
+  WHERE user_id = input_user_id
+  RETURNING * INTO updated_row;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User KYC not found';
+  END IF;
+
+  RETURN JSON_BUILD_OBJECT(
+    'ok', TRUE,
+    'data', ROW_TO_JSON(updated_row)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_user_role(input_user_id UUID)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  role_text TEXT;
+BEGIN
+  IF input_user_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT users_role
+  INTO role_text
+  FROM public.users_table
+  WHERE users_id = input_user_id
+  LIMIT 1;
+
+  RETURN role_text;
+END;
+$$;

@@ -19,19 +19,7 @@ import {
 } from "@mantine/core";
 import { IconPlus, IconTrash, IconEdit, IconMapPin } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-
-// Helper type for address data consistency - UPDATED to include contact_name
-type Address = {
-  id: string;
-  label: string;
-  line1: string;
-  line2: string;
-  city: string;
-  region: string;
-  postal: string;
-  is_default: boolean;
-  user_id?: string;
-};
+import { Address } from "@/utils/types/types";
 
 const initialFormState: Address = {
   id: "",

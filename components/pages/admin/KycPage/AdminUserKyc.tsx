@@ -28,6 +28,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { useDisclosure } from "@mantine/hooks";
+import { getStatusFormat, normalizeImageUrl } from "@/utils/helper";
 
 type KycRow = {
   id: string;
@@ -124,17 +125,6 @@ export default function AdminUserKyc() {
   const [resolvedBack] = useState<string | null>(null);
   const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
   const [zoomOpen, { open: openZoom, close: closeZoom }] = useDisclosure(false);
-
-  // Normalize a stored or relative URL to an absolute URL for the browser
-  const normalizeImageUrl = (url?: string | null) => {
-    if (!url) return null;
-    if (url.startsWith("http") || url.startsWith("data:")) return url;
-    if (typeof window !== "undefined") {
-      const prefix = url.startsWith("/") ? "" : "/";
-      return `${window.location.origin}${prefix}${url}`;
-    }
-    return url;
-  };
 
   useEffect(() => {
     let arr: KycRow[];
@@ -248,6 +238,7 @@ export default function AdminUserKyc() {
           striped
           highlightOnHover
           records={paginated}
+          idAccessor="id"
           fetching={isValidating}
           minHeight={250}
           page={page}
@@ -295,19 +286,8 @@ export default function AdminUserKyc() {
               title: "Status",
               width: 130,
               render: (r: KycRow) => {
-                let color: string;
-                if (r.status === "VERIFIED") {
-                  color = "green";
-                } else if (r.status === "SUBMITTED") {
-                  color = "yellow";
-                } else {
-                  color = "gray";
-                }
                 return (
-                  <Badge
-                    color={color as "green" | "yellow" | "gray"}
-                    variant="light"
-                  >
+                  <Badge color={getStatusFormat(r.status)} variant="light">
                     {r.status}
                   </Badge>
                 );

@@ -47,7 +47,7 @@ type StorageUsage = {
 };
 
 type UserScansProps = {
-  registrationId: string;
+  registrationId?: string;
   scans?: Scan[];
   usage?: StorageUsage | null;
 };
@@ -70,10 +70,120 @@ export default function UserScans({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchScans = useCallback(async () => {
-    if (providedScans) {
-      setScans(providedScans);
-      setUsage(providedUsage ?? { used_mb: 0, limit_mb: 0, percentage: 0 });
-      setLoading(false);
+    const isRecord = (v: unknown): v is Record<string, unknown> =>
+      typeof v === "object" && v !== null;
+
+    const getString = (
+      obj: Record<string, unknown> | undefined,
+      ...keys: string[]
+    ): string | undefined => {
+      if (!obj) return undefined;
+      for (const k of keys) {
+        const v = obj[k];
+        if (typeof v === "string") return v;
+        if (typeof v === "number") return String(v);
+      }
+      return undefined;
+    };
+
+    const normalize = (s: unknown): Scan => {
+      const r = isRecord(s) ? s : {};
+      const id =
+        getString(
+          r,
+          "id",
+          "mailroom_file_id",
+          "file_id",
+          "fileUrlId",
+          "package_id",
+        ) ??
+        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const pkgRecord = isRecord(r.package)
+        ? (r.package as Record<string, unknown>)
+        : undefined;
+      // Prefer mailbox_item_name from mailbox_item_table when present,
+      // otherwise fall back to package/package_name shapes.
+      let pkg: { package_name: string } | undefined;
+      // mailbox_item_table may be an array or object
+      const mb = (r as Record<string, unknown>)["mailbox_item_table"];
+      let mailboxName: string | undefined;
+      if (Array.isArray(mb) && mb.length > 0 && isRecord(mb[0])) {
+        mailboxName = getString(
+          mb[0] as Record<string, unknown>,
+          "mailbox_item_name",
+          "mailbox_item_title",
+          "name",
+        );
+      } else if (isRecord(mb)) {
+        mailboxName = getString(
+          mb as Record<string, unknown>,
+          "mailbox_item_name",
+          "mailbox_item_title",
+          "name",
+        );
+      }
+      if (mailboxName) {
+        pkg = { package_name: mailboxName };
+      } else if (pkgRecord) {
+        const pn = getString(pkgRecord, "package_name");
+        if (pn) pkg = { package_name: pn };
+      } else {
+        const pn = getString(r, "package_name");
+        if (pn) pkg = { package_name: pn };
+      }
+
+      return {
+        id: String(id),
+        file_name:
+          getString(r, "file_name", "mailroom_file_name", "name") ?? "",
+        file_url:
+          getString(r, "file_url", "mailroom_file_url", "url", "fileUrl") ?? "",
+        file_size_mb:
+          Number(
+            getString(r, "file_size_mb", "mailroom_file_size_mb", "size_mb"),
+          ) || 0,
+        uploaded_at:
+          getString(
+            r,
+            "uploaded_at",
+            "mailroom_file_uploaded_at",
+            "created_at",
+            "uploadedAt",
+          ) ?? "",
+        package: pkg,
+      };
+    };
+
+    // treat explicit providedScans (including empty array) as authoritative — do not fetch
+    if (providedScans !== undefined && providedScans !== null) {
+      try {
+        // type guard for already-normalized scan objects
+        const isScanLike = (v: unknown): v is Scan =>
+          isRecord(v) &&
+          typeof (v as Record<string, unknown>).file_name === "string" &&
+          typeof (v as Record<string, unknown>).file_url === "string";
+
+        const looksNormalized =
+          Array.isArray(providedScans) &&
+          providedScans.length > 0 &&
+          isScanLike(providedScans[0]);
+
+        if (looksNormalized) {
+          setScans(providedScans as Scan[]);
+        } else {
+          setScans((providedScans as unknown[]).map((p) => normalize(p)));
+        }
+
+        setUsage(
+          (providedUsage as StorageUsage) ?? {
+            used_mb: 0,
+            limit_mb: 0,
+            percentage: 0,
+          },
+        );
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (!registrationId) return;
@@ -85,7 +195,9 @@ export default function UserScans({
       );
       if (res.ok) {
         const data = await res.json();
-        setScans(data.scans ?? []);
+        // normalize remote API shape too (safe typing)
+        const remoteScans = Array.isArray(data.scans) ? data.scans : [];
+        setScans((remoteScans as unknown[]).map((r) => normalize(r)));
         setUsage(data.usage ?? { used_mb: 0, limit_mb: 0, percentage: 0 });
       } else {
         console.error("API Error:", await res.text());
@@ -154,6 +266,47 @@ export default function UserScans({
   const formatFileSize = (mb: number) => {
     if (mb < 1) return `${(mb * 1024).toFixed(0)} KB`;
     return `${mb.toFixed(2)} MB`;
+  };
+
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null;
+
+  const derivePackageName = (s: unknown): string | null => {
+    if (!isRecord(s)) return null;
+    // prefer normalized package object
+    const pkgObj = s.package as Record<string, unknown> | undefined;
+    const tryString = (v: unknown): string | null =>
+      typeof v === "string" && v.trim().length > 0 ? v : null;
+
+    const candidateFromPkg = tryString(pkgObj?.package_name);
+    if (candidateFromPkg) return candidateFromPkg;
+
+    // top-level package_name or mailbox_item_name
+    const topPkg = tryString(s.package_name);
+    if (topPkg) return topPkg;
+    const topMailbox = tryString(s.mailbox_item_name);
+    if (topMailbox) return topMailbox;
+
+    // mailbox_item_table may be array or object
+    const mb = s.mailbox_item_table;
+    if (Array.isArray(mb) && mb.length > 0 && isRecord(mb[0])) {
+      return (
+        tryString((mb[0] as Record<string, unknown>).mailbox_item_name) ??
+        tryString((mb[0] as Record<string, unknown>).mailbox_item_title) ??
+        tryString((mb[0] as Record<string, unknown>).name) ??
+        null
+      );
+    }
+    if (isRecord(mb)) {
+      return (
+        tryString((mb as Record<string, unknown>).mailbox_item_name) ??
+        tryString((mb as Record<string, unknown>).mailbox_item_title) ??
+        tryString((mb as Record<string, unknown>).name) ??
+        null
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -244,15 +397,21 @@ export default function UserScans({
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        {scan.package ? (
-                          <Badge variant="outline" color="gray" size="sm">
-                            {scan.package.package_name || "No Package"}
-                          </Badge>
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
+                        {(() => {
+                          const pkgName = derivePackageName(scan);
+                          if (pkgName) {
+                            return (
+                              <Badge variant="outline" color="gray" size="sm">
+                                {pkgName}
+                              </Badge>
+                            );
+                          }
+                          return (
+                            <Text size="sm" c="dimmed">
+                              —
+                            </Text>
+                          );
+                        })()}
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm">
