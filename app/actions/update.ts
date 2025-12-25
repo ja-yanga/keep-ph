@@ -1,3 +1,5 @@
+"use server";
+
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { AdminUpdateClaimResponse, RpcAdminClaim } from "@/utils/types";
 

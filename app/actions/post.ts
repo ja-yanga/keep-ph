@@ -1,3 +1,5 @@
+"use server";
+
 import { RequestRewardClaimArgs, RpcClaimResponse } from "@/utils/types";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 

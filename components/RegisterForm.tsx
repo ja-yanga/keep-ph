@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import {
   Box,
   Paper,
@@ -26,8 +25,6 @@ import {
   ThemeIcon,
   SegmentedControl,
   ActionIcon,
-  Loader,
-  Center,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useRouter } from "next/navigation";
@@ -46,7 +43,37 @@ import {
   IconScan,
 } from "@tabler/icons-react";
 
-export default function RegisterForm() {
+type Plan = {
+  id: string;
+  name: string;
+  price: number;
+  can_receive_mail?: boolean;
+  can_receive_parcels?: boolean;
+  storage_limit?: number;
+  can_digitize?: boolean;
+  description?: string;
+};
+
+type Location = {
+  id: string;
+  name: string;
+  region?: string;
+  city?: string;
+  barangay?: string;
+  zip?: string;
+};
+
+type RegisterFormProps = {
+  initialPlans?: Plan[];
+  initialLocations?: Location[];
+  initialLocationAvailability?: Record<string, number>;
+};
+
+export default function RegisterForm({
+  initialPlans = [],
+  initialLocations = [],
+  initialLocationAvailability = {},
+}: RegisterFormProps) {
   const router = useRouter();
   const { session } = useSession();
 
@@ -59,29 +86,16 @@ export default function RegisterForm() {
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
 
-  const [locations, setLocations] = useState<
-    Array<{ id: string; name: string; city?: string; region?: string }>
-  >([]);
-  const [plans, setPlans] = useState<
-    Array<{
-      id: string;
-      name: string;
-      price: number;
-      can_receive_mail?: boolean;
-      can_receive_parcels?: boolean;
-      storage_limit?: number;
-      can_digitize?: boolean;
-      description?: string;
-    }>
-  >([]);
+  const [locations] = useState<Location[]>(initialLocations);
+  const [plans] = useState<Plan[]>(initialPlans);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [lockerQty, setLockerQty] = useState<number | string>(1);
 
-  // NEW: State to store available locker counts per location
-  const [locationAvailability, setLocationAvailability] = useState<
-    Record<string, number>
-  >({});
+  // Location availability from server-side
+  const [locationAvailability] = useState<Record<string, number>>(
+    initialLocationAvailability,
+  );
 
   // NEW: Billing Cycle State
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(
@@ -104,9 +118,6 @@ export default function RegisterForm() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
   const [success, setSuccess] = useState<string | null>(null);
 
-  // initial load state for fetching locations/plans/availability
-  const [initLoading, setInitLoading] = useState(true);
-
   // Update months when billing cycle changes
   useEffect(() => {
     if (billingCycle === "annual") {
@@ -115,84 +126,6 @@ export default function RegisterForm() {
       setMonths(1);
     }
   }, [billingCycle]);
-
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        const supabase = createClient();
-        // 1. Fetch Locations
-        const { data: locs } = await supabase
-          .from("mailroom_locations")
-          .select("id,name,region,city,barangay,zip")
-          .order("name", { ascending: true });
-
-        // 2. Fetch Plans with Capabilities
-        const { data: plns } = await supabase
-          .from("mailroom_plans")
-          .select(
-            "id,name,price,description,can_receive_mail,can_receive_parcels,can_digitize,storage_limit",
-          )
-          .order("price", { ascending: true });
-
-        // 3. Fetch Available Locker Counts from API
-        let counts: Record<string, number> = {};
-        try {
-          const res = await fetch("/api/mailroom/locations/availability");
-          if (res.ok) {
-            counts = await res.json();
-          } else {
-            console.error("Failed to fetch availability");
-          }
-        } catch (err) {
-          console.error("Error fetching availability:", err);
-        }
-
-        if (!mounted) return;
-
-        if (locs) setLocations(locs);
-        if (plns) {
-          const normalized = plns.map(
-            (p: {
-              id: string;
-              name: string;
-              price: number;
-              can_receive_mail?: boolean;
-              can_receive_parcels?: boolean;
-              storage_limit?: number;
-              can_digitize?: boolean;
-              description?: string;
-            }) => ({
-              ...p,
-              price: Number(p.price),
-            }),
-          );
-          setPlans(normalized);
-        }
-
-        // Set the counts directly from API response
-        setLocationAvailability(counts);
-      } catch (err) {
-        console.error("RegisterForm initial load error:", err);
-      } finally {
-        if (mounted) setInitLoading(false);
-      }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-  // show loader while initial data is fetched
-  if (initLoading) {
-    return (
-      <Paper withBorder p="lg" radius="md" style={{ minHeight: 280 }}>
-        <Center style={{ padding: 48 }}>
-          <Loader />
-        </Center>
-      </Paper>
-    );
-  }
 
   // Derived State
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
@@ -520,213 +453,222 @@ export default function RegisterForm() {
                   />
                 </Group>
 
-                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                  {plans.map((p) => {
-                    // Calculate pricing for display
-                    const monthlyBase = p.price;
-                    const annualTotal = monthlyBase * 12 * 0.8;
-                    const annualMonthlyEquivalent = monthlyBase * 0.8;
+                {plans.length === 0 ? (
+                  <Alert color="yellow" title="No Plans Available">
+                    <Text size="sm">
+                      No mailroom plans are currently available. Please contact
+                      support or check back later.
+                    </Text>
+                  </Alert>
+                ) : (
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                    {plans.map((p) => {
+                      // Calculate pricing for display
+                      const monthlyBase = p.price;
+                      const annualTotal = monthlyBase * 12 * 0.8;
+                      const annualMonthlyEquivalent = monthlyBase * 0.8;
 
-                    const displayPrice =
-                      billingCycle === "annual"
-                        ? annualMonthlyEquivalent
-                        : monthlyBase;
+                      const displayPrice =
+                        billingCycle === "annual"
+                          ? annualMonthlyEquivalent
+                          : monthlyBase;
 
-                    const isSelected = selectedPlanId === p.id;
-                    const isPopular = p.name === "Personal"; // Static "Popular" flag
+                      const isSelected = selectedPlanId === p.id;
+                      const isPopular = p.name === "Personal"; // Static "Popular" flag
 
-                    // DYNAMIC FEATURES LIST based on DB columns
-                    const features = [];
+                      // DYNAMIC FEATURES LIST based on DB columns
+                      const features = [];
 
-                    // 1. Storage
-                    if (p.storage_limit && p.storage_limit > 0) {
-                      // Convert MB to GB if >= 1024, otherwise show MB
-                      const storageLabel =
-                        p.storage_limit >= 1024
-                          ? `${(p.storage_limit / 1024).toFixed(
-                              0,
-                            )}GB Digital Storage`
-                          : `${p.storage_limit}MB Digital Storage`;
+                      // 1. Storage
+                      if (p.storage_limit && p.storage_limit > 0) {
+                        // Convert MB to GB if >= 1024, otherwise show MB
+                        const storageLabel =
+                          p.storage_limit >= 1024
+                            ? `${(p.storage_limit / 1024).toFixed(
+                                0,
+                              )}GB Digital Storage`
+                            : `${p.storage_limit}MB Digital Storage`;
 
-                      features.push({
-                        label: storageLabel,
-                        icon: IconBox,
-                      });
-                    }
+                        features.push({
+                          label: storageLabel,
+                          icon: IconBox,
+                        });
+                      }
 
-                    // 2. Mail
-                    if (p.can_receive_mail) {
-                      features.push({
-                        label: "Mail Reception",
-                        icon: IconMail,
-                      });
-                    }
+                      // 2. Mail
+                      if (p.can_receive_mail) {
+                        features.push({
+                          label: "Mail Reception",
+                          icon: IconMail,
+                        });
+                      }
 
-                    // 3. Parcels
-                    if (p.can_receive_parcels) {
-                      features.push({
-                        label: "Parcel Reception",
-                        icon: IconPackage,
-                      });
-                    }
+                      // 3. Parcels
+                      if (p.can_receive_parcels) {
+                        features.push({
+                          label: "Parcel Reception",
+                          icon: IconPackage,
+                        });
+                      }
 
-                    // 4. Digitization
-                    if (p.can_digitize) {
-                      features.push({
-                        label: "Scan & Digitize",
-                        icon: IconScan,
-                      });
-                    }
+                      // 4. Digitization
+                      if (p.can_digitize) {
+                        features.push({
+                          label: "Scan & Digitize",
+                          icon: IconScan,
+                        });
+                      }
 
-                    return (
-                      <Card
-                        key={p.id}
-                        padding="xl"
-                        radius="md"
-                        withBorder
-                        onClick={() => setSelectedPlanId(p.id)}
-                        style={{
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
-                          borderColor: isSelected
-                            ? "#26316D"
-                            : "var(--mantine-color-gray-3)",
-                          borderWidth: isSelected ? 2 : 1,
-                          backgroundColor: isSelected
-                            ? "var(--mantine-color-blue-0)"
-                            : "white",
-                          transform: isSelected ? "translateY(-4px)" : "none",
-                          boxShadow: isSelected
-                            ? "0 10px 20px rgba(38, 49, 109, 0.1)"
-                            : "none",
-                          position: "relative",
-                          overflow: "visible",
-                        }}
-                      >
-                        {isPopular && (
-                          <Badge
-                            color="orange"
-                            variant="filled"
-                            size="sm"
-                            style={{
-                              position: "absolute",
-                              top: -10,
-                              right: 20,
-                              zIndex: 10,
-                              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                            }}
-                          >
-                            MOST POPULAR
-                          </Badge>
-                        )}
-
-                        <Stack justify="space-between" h="100%">
-                          <Box>
-                            <Group
-                              justify="space-between"
-                              align="flex-start"
-                              mb="md"
+                      return (
+                        <Card
+                          key={p.id}
+                          padding="xl"
+                          radius="md"
+                          withBorder
+                          onClick={() => setSelectedPlanId(p.id)}
+                          style={{
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
+                            borderColor: isSelected
+                              ? "#26316D"
+                              : "var(--mantine-color-gray-3)",
+                            borderWidth: isSelected ? 2 : 1,
+                            backgroundColor: isSelected
+                              ? "var(--mantine-color-blue-0)"
+                              : "white",
+                            transform: isSelected ? "translateY(-4px)" : "none",
+                            boxShadow: isSelected
+                              ? "0 10px 20px rgba(38, 49, 109, 0.1)"
+                              : "none",
+                            position: "relative",
+                            overflow: "visible",
+                          }}
+                        >
+                          {isPopular && (
+                            <Badge
+                              color="orange"
+                              variant="filled"
+                              size="sm"
+                              style={{
+                                position: "absolute",
+                                top: -10,
+                                right: 20,
+                                zIndex: 10,
+                                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                              }}
                             >
-                              <Badge
-                                size="lg"
-                                variant={isSelected ? "filled" : "light"}
-                                color={isSelected ? "blue" : "gray"}
-                                style={{
-                                  backgroundColor: isSelected
-                                    ? "#26316D"
-                                    : undefined,
-                                }}
+                              MOST POPULAR
+                            </Badge>
+                          )}
+
+                          <Stack justify="space-between" h="100%">
+                            <Box>
+                              <Group
+                                justify="space-between"
+                                align="flex-start"
+                                mb="md"
                               >
-                                {p.name}
-                              </Badge>
-                              {isSelected && (
-                                <ThemeIcon
-                                  color="#26316D"
-                                  radius="xl"
-                                  size="md"
-                                  variant="filled"
+                                <Badge
+                                  size="lg"
+                                  variant={isSelected ? "filled" : "light"}
+                                  color={isSelected ? "blue" : "gray"}
+                                  style={{
+                                    backgroundColor: isSelected
+                                      ? "#26316D"
+                                      : undefined,
+                                  }}
                                 >
-                                  <IconCheck size={14} />
-                                </ThemeIcon>
-                              )}
-                            </Group>
+                                  {p.name}
+                                </Badge>
+                                {isSelected && (
+                                  <ThemeIcon
+                                    color="#26316D"
+                                    radius="xl"
+                                    size="md"
+                                    variant="filled"
+                                  >
+                                    <IconCheck size={14} />
+                                  </ThemeIcon>
+                                )}
+                              </Group>
 
-                            <Group align="baseline" gap={4}>
-                              <Text
-                                size="xl"
-                                fw={800}
-                                c="#26316D"
-                                style={{ fontSize: "2rem", lineHeight: 1 }}
-                              >
-                                {format(displayPrice)}
-                              </Text>
-                              <Text c="dimmed" fw={500}>
-                                /mo
-                              </Text>
-                            </Group>
-
-                            {billingCycle === "annual" ? (
-                              <Group gap={6} mt={4} mb="md">
-                                <Text size="xs" c="dimmed" td="line-through">
-                                  {format(monthlyBase)}
+                              <Group align="baseline" gap={4}>
+                                <Text
+                                  size="xl"
+                                  fw={800}
+                                  c="#26316D"
+                                  style={{ fontSize: "2rem", lineHeight: 1 }}
+                                >
+                                  {format(displayPrice)}
                                 </Text>
-                                <Text size="xs" c="green" fw={600}>
-                                  Billed {format(annualTotal)} yearly
+                                <Text c="dimmed" fw={500}>
+                                  /mo
                                 </Text>
                               </Group>
-                            ) : (
-                              <Box h={22} mt={4} mb="md" />
-                            )}
 
-                            <Divider my="sm" variant="dashed" />
-
-                            <Text
-                              size="sm"
-                              c="dimmed"
-                              mb="md"
-                              style={{ lineHeight: 1.4 }}
-                            >
-                              {p.description}
-                            </Text>
-
-                            <Stack gap="sm">
-                              {features.map((f, idx) => (
-                                <Group key={idx} gap="sm">
-                                  <ThemeIcon
-                                    color={isSelected ? "blue" : "gray"}
-                                    variant="light"
-                                    size="sm"
-                                    radius="xl"
-                                  >
-                                    <IconCheck size={10} />
-                                  </ThemeIcon>
-                                  <Text size="sm" fw={500} c="dark.3">
-                                    {f.label}
+                              {billingCycle === "annual" ? (
+                                <Group gap={6} mt={4} mb="md">
+                                  <Text size="xs" c="dimmed" td="line-through">
+                                    {format(monthlyBase)}
+                                  </Text>
+                                  <Text size="xs" c="green" fw={600}>
+                                    Billed {format(annualTotal)} yearly
                                   </Text>
                                 </Group>
-                              ))}
-                            </Stack>
-                          </Box>
+                              ) : (
+                                <Box h={22} mt={4} mb="md" />
+                              )}
 
-                          <Button
-                            fullWidth
-                            variant={isSelected ? "filled" : "light"}
-                            color="blue"
-                            mt="xl"
-                            style={{
-                              backgroundColor: isSelected
-                                ? "#26316D"
-                                : undefined,
-                              color: isSelected ? "white" : undefined,
-                            }}
-                          >
-                            {isSelected ? "Selected" : "Select Plan"}
-                          </Button>
-                        </Stack>
-                      </Card>
-                    );
-                  })}
-                </SimpleGrid>
+                              <Divider my="sm" variant="dashed" />
+
+                              <Text
+                                size="sm"
+                                c="dimmed"
+                                mb="md"
+                                style={{ lineHeight: 1.4 }}
+                              >
+                                {p.description}
+                              </Text>
+
+                              <Stack gap="sm">
+                                {features.map((f, idx) => (
+                                  <Group key={idx} gap="sm">
+                                    <ThemeIcon
+                                      color={isSelected ? "blue" : "gray"}
+                                      variant="light"
+                                      size="sm"
+                                      radius="xl"
+                                    >
+                                      <IconCheck size={10} />
+                                    </ThemeIcon>
+                                    <Text size="sm" fw={500} c="dark.3">
+                                      {f.label}
+                                    </Text>
+                                  </Group>
+                                ))}
+                              </Stack>
+                            </Box>
+
+                            <Button
+                              fullWidth
+                              variant={isSelected ? "filled" : "light"}
+                              color="blue"
+                              mt="xl"
+                              style={{
+                                backgroundColor: isSelected
+                                  ? "#26316D"
+                                  : undefined,
+                                color: isSelected ? "white" : undefined,
+                              }}
+                            >
+                              {isSelected ? "Selected" : "Select Plan"}
+                            </Button>
+                          </Stack>
+                        </Card>
+                      );
+                    })}
+                  </SimpleGrid>
+                )}
 
                 {/* REMOVED: Configuration Section from Step 1 */}
               </Stack>

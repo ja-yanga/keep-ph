@@ -1,7 +1,5 @@
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-
-const supabase = createSupabaseServiceClient();
 
 export async function GET(
   req: NextRequest,
@@ -11,49 +9,60 @@ export async function GET(
   const { id } = await params;
 
   try {
+    // This helper automatically handles session refresh and picks up
+    // the Authorization: Bearer token from headers via createClient().
+    // Passing isAPI=true throws an error (instead of redirecting) for proper API responses.
+    const { user, supabase } = await getAuthenticatedUser(true);
+
     // 1. Fetch Registration with relations
+    // Using the user's supabase client ensures RLS is applied.
+    // Assuming the table name is 'mailroom_registration_table' based on the plural route.
     const { data: registration, error } = await supabase
-      .from("mailroom_registrations")
+      .from("mailroom_registration_table")
       .select(
         `
         *,
-        mailroom_plans (*),
-        mailroom_locations (*),
-        users (*),
-        packages:mailroom_packages (*)
+        mailroom_plan_table (*),
+        mailroom_location_table (*),
+        users_table (*),
+        mailbox_item_table (*)
       `,
       )
-      .eq("id", id)
+      .eq("mailroom_registration_id", id)
+      .eq("user_id", user.id)
       .single();
 
     if (error) {
       console.error("Registration fetch error:", error);
       return NextResponse.json(
-        { error: "Registration not found" },
+        { error: "Registration not found or unauthorized" },
         { status: 404 },
       );
     }
 
     // 2. Fetch Assigned Lockers
+    // We might need the service role client if RLS is too restrictive for this join,
+    // but better to keep it secure first.
     const { data: assignedLockers } = await supabase
-      .from("mailroom_assigned_lockers")
+      .from("mailroom_assigned_locker_table")
       .select(
         `
         *,
-        locker:location_lockers (*)
+        location_locker_table (*)
       `,
       )
-      .eq("registration_id", id);
+      .eq("mailroom_registration_id", id);
 
     // 3. Format the response
-    // Update: Merge the assignment status into the locker object
     const lockers =
       assignedLockers
-        ?.map((a: { locker?: unknown; status?: string }) => {
-          if (!a.locker) return null;
+        ?.map((a) => {
+          const locker = a.location_locker_table;
+          if (!locker) return null;
           return {
-            ...(a.locker as Record<string, unknown>),
-            status: a.status, // <--- Pass the status from the assignment to the locker object
+            ...(locker as Record<string, unknown>),
+            status: (a as Record<string, unknown>)
+              .mailroom_assigned_locker_status,
           };
         })
         .filter(Boolean) || [];
@@ -63,8 +72,12 @@ export async function GET(
       lockers,
     };
 
-    return NextResponse.json(responseData);
+    return NextResponse.json({ data: responseData });
   } catch (err: unknown) {
+    // Handle authentication errors with proper 401 response
+    if (err instanceof Error && err.message.includes("Unauthorized")) {
+      return NextResponse.json({ error: err.message }, { status: 401 });
+    }
     console.error("API Error:", err);
     const errorMessage =
       err instanceof Error ? err.message : "Unknown error occurred";
