@@ -513,6 +513,7 @@ export default function UserPackages({
 
         const fallbackUserName =
           deriveNameFromPackageRecord(pkg as Record<string, unknown>) || "";
+        // ensure prefill completed before opening modal (avoid render race)
         let resolved = selectedName ?? fallbackUserName;
         if (!resolved) {
           const regId = String(
@@ -524,7 +525,9 @@ export default function UserPackages({
           if (k && (k.first || k.last))
             resolved = `${k.first} ${k.last}`.trim();
         }
+        await Promise.resolve(); // ensure state queue (optional)
         setReleaseToName(resolved ?? "");
+        // open modal after releaseToName set
         setActionModalOpen(true);
         return;
       }

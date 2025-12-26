@@ -216,16 +216,13 @@ export default function PackageActionModal({
     if (selectedAddressId) {
       const sel = addresses.find((a) => a.id === selectedAddressId);
       if (!sel) return <Text c="dimmed">Loading address...</Text>;
-      const fallbackUserName = recipientName;
+
       return (
         <Paper withBorder p="sm" radius="md" bg="gray.0">
           <Group justify="space-between" align="center">
             <div>
               <Text fw={600} size="sm">
                 {sel.label || "Unnamed Address"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Recipient: {sel.contact_name || fallbackUserName || "N/A"}
               </Text>
             </div>
             {sel.is_default && (
