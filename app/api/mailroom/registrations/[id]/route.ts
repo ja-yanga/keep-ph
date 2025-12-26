@@ -23,7 +23,7 @@ export async function GET(
         *,
         mailroom_plan_table (*),
         mailroom_location_table (*),
-        users_table (*),
+        users_table (*, user_kyc_table (*)),
         mailbox_item_table (*)
       `,
       )
@@ -69,6 +69,10 @@ export async function GET(
     const reg = (registration as Record<string, unknown>) ?? {};
     const usersTable =
       (reg.users_table as Record<string, unknown> | undefined) ?? null;
+    const userKycTable = Array.isArray(usersTable?.user_kyc_table)
+      ? usersTable?.user_kyc_table[0]
+      : (usersTable?.user_kyc_table ?? null);
+
     const subscription =
       (reg.subscription_table as Record<string, unknown> | undefined) ?? null;
     const plan =
@@ -100,6 +104,7 @@ export async function GET(
         : (mailboxItems ?? null),
       users: usersTable ?? null,
       users_table: usersTable ?? null,
+      user_kyc_table: userKycTable ?? null,
       lockers,
       raw: reg,
     };
