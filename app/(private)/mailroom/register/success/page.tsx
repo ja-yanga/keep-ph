@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Alert, Loader, Center } from "@mantine/core";
 import { IconCheck } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 export default function MailroomRegisterSuccessPage() {
   const router = useRouter();
@@ -23,18 +24,20 @@ export default function MailroomRegisterSuccessPage() {
     async function check() {
       try {
         // check server-side registration finalization (preferred)
-        const res = await fetch(
-          `/api/mailroom/lookup-by-order?order=${encodeURIComponent(orderStr)}`,
-        );
+        const res = await fetch(API_ENDPOINTS.mailroom.lookupByOrder(orderStr));
         const json = await res.json().catch(() => null);
         setDebug(json);
         const registration = json?.data ?? null;
 
         if (!mounted) return;
 
-        if (registration && registration.paid) {
+        if (
+          registration &&
+          (registration.mailroom_registration_status === true ||
+            registration.paid)
+        ) {
           setStatus("paid");
-          setTimeout(() => router.push("/dashboard"), 1400);
+          router.push("/dashboard");
           return;
         }
 

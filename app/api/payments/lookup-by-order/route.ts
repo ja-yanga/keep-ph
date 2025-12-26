@@ -15,33 +15,21 @@ export async function GET(req: Request) {
     const sb = createSupabaseServiceClient();
 
     // 1) Try DB first (recommended)
-    // prefer payment record if it exists (final status)
-    const { data: paymentRow } = await sb
-      .from("paymongo_payments")
-      .select("*")
-      .eq("order_id", order)
+    // Look up payment transaction by order_id
+    const { data: paymentTransaction } = await sb
+      .from("payment_transaction_table")
+      .select(
+        "payment_transaction_id, payment_transaction_amount, payment_transaction_status, payment_transaction_reference_id, payment_transaction_order_id, payment_transaction_created_at, mailroom_registration_id",
+      )
+      .eq("payment_transaction_order_id", order)
       .limit(1)
-      .single();
-    if (paymentRow) {
-      return NextResponse.json({
-        source: "db",
-        resource: paymentRow,
-        type: "payment",
-      });
-    }
+      .maybeSingle();
 
-    // otherwise fallback to stored source/resource
-    const { data: dbRow, error: dbErr } = await sb
-      .from("paymongo_resources")
-      .select("*")
-      .eq("order_id", order)
-      .limit(1)
-      .single();
-    if (!dbErr && dbRow) {
+    if (paymentTransaction) {
       return NextResponse.json({
         source: "db",
-        resource: dbRow,
-        type: dbRow.type || "source",
+        resource: paymentTransaction,
+        type: "payment_transaction",
       });
     }
 

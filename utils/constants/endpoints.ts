@@ -34,6 +34,8 @@ export const API_ENDPOINTS = {
     locationsAvailability: "/api/mailroom/locations/availability",
     registrations: "/api/mailroom/registrations",
     registration: (id: string) => `/api/mailroom/registrations/${id}`,
+    lookupByOrder: (orderId: string) =>
+      `/api/mailroom/lookup-by-order?order=${encodeURIComponent(orderId)}`,
   },
 
   // Payments

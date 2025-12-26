@@ -5,12 +5,25 @@ import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import RegisterForm from "@/components/RegisterForm";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
-import {
-  getUserVerificationStatus,
-  getMailroomPlans,
-  getMailroomLocations,
-  getLocationAvailability,
-} from "@/app/actions/get";
+import { getUserVerificationStatus } from "@/app/actions/get";
+import { fetchFromAPI } from "@/utils/fetcher";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import type { MailroomPlan } from "@/utils/types";
+
+type LocationsResponse = {
+  data: Array<{
+    id: string;
+    name: string;
+    region: string | null;
+    city: string | null;
+    barangay: string | null;
+    zip: string | null;
+  }>;
+};
+
+type AvailabilityResponse = {
+  data: Record<string, number>;
+};
 
 export default async function RegisterMailroomPage() {
   const { user } = await getAuthenticatedUser();
@@ -21,22 +34,44 @@ export default async function RegisterMailroomPage() {
     redirect("/mailroom/kyc");
   }
 
-  // Fetch all data from server actions in parallel
-  const [plansData, locationsData, locationAvailability] = await Promise.all([
-    getMailroomPlans(),
-    getMailroomLocations(),
-    getLocationAvailability(),
-  ]);
+  // Fetch all data from API endpoints in parallel
+  let plans: MailroomPlan[] = [];
+  let locations: LocationsResponse["data"] = [];
+  let locationAvailability: Record<string, number> = {};
 
-  // Map nulls to undefined to match RegisterForm's expected types
-  const plans = plansData.map((p) => ({
-    ...p,
+  try {
+    const [plansResponse, locationsResponse, availabilityResponse] =
+      await Promise.all([
+        fetchFromAPI<MailroomPlan[]>(API_ENDPOINTS.mailroom.plans),
+        fetchFromAPI<LocationsResponse>(API_ENDPOINTS.mailroom.locations),
+        fetchFromAPI<AvailabilityResponse>(
+          API_ENDPOINTS.mailroom.locationsAvailability,
+        ),
+      ]);
+
+    plans = plansResponse;
+    locations = locationsResponse.data ?? [];
+    locationAvailability = availabilityResponse.data ?? {};
+  } catch (error) {
+    console.error("Error fetching mailroom registration data:", error);
+    // Continue with empty data - RegisterForm will handle it
+  }
+
+  // Map to match RegisterForm's expected types
+  const formattedPlans = plans.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
     description: p.description ?? undefined,
-    storage_limit: p.storage_limit ?? undefined,
+    storage_limit: p.storageLimit ?? undefined,
+    can_receive_mail: p.canReceiveMail,
+    can_receive_parcels: p.canReceiveParcels,
+    can_digitize: p.canDigitize,
   }));
 
-  const locations = locationsData.map((l) => ({
-    ...l,
+  const formattedLocations = locations.map((l) => ({
+    id: l.id,
+    name: l.name,
     region: l.region ?? undefined,
     city: l.city ?? undefined,
     barangay: l.barangay ?? undefined,
@@ -59,8 +94,8 @@ export default async function RegisterMailroomPage() {
             Register Mailroom Service
           </Title>
           <RegisterForm
-            initialPlans={plans}
-            initialLocations={locations}
+            initialPlans={formattedPlans}
+            initialLocations={formattedLocations}
             initialLocationAvailability={locationAvailability}
           />
         </Container>

@@ -280,3 +280,133 @@ export const requestRewardClaim = async ({
   if (error) throw error;
   return data as RpcClaimResponse | null;
 };
+
+/**
+ * Generates a unique mailroom registration code.
+ */
+async function generateMailroomCode(): Promise<string> {
+  let mailroomCode = "";
+  let isUnique = false;
+  let attempts = 0;
+
+  while (!isUnique && attempts < 10) {
+    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+    mailroomCode = `KPH-${randomStr}`;
+
+    const { data: existing } = await supabase
+      .from("mailroom_registration_table")
+      .select("mailroom_registration_id")
+      .eq("mailroom_registration_code", mailroomCode)
+      .maybeSingle();
+
+    if (!existing) {
+      isUnique = true;
+    }
+    attempts++;
+  }
+
+  if (!isUnique) {
+    throw new Error("Failed to generate unique mailroom code");
+  }
+
+  return mailroomCode;
+}
+
+/**
+ * Creates a mailroom registration with locker assignments.
+ *
+ * Used in:
+ * - app/api/mailroom/register/route.ts - API endpoint for registration
+ */
+export async function createMailroomRegistration({
+  userId,
+  locationId,
+  planId,
+  lockerQty,
+}: {
+  userId: string;
+  locationId: string;
+  planId: string;
+  lockerQty: number;
+}): Promise<{
+  registration: unknown;
+  lockerIds: string[];
+}> {
+  try {
+    // Generate unique mailroom code
+    const mailroomCode = await generateMailroomCode();
+
+    // Create registration
+    const { data: registration, error: regError } = await supabase
+      .from("mailroom_registration_table")
+      .insert([
+        {
+          user_id: userId,
+          mailroom_location_id: locationId,
+          mailroom_plan_id: planId,
+          mailroom_registration_code: mailroomCode,
+          mailroom_registration_status: true,
+        },
+      ])
+      .select()
+      .single();
+
+    if (regError || !registration) {
+      throw new Error(regError?.message || "Failed to create registration");
+    }
+
+    // Get available lockers
+    const { data: availableLockers, error: lockerError } = await supabase
+      .from("location_locker_table")
+      .select("location_locker_id")
+      .eq("mailroom_location_id", locationId)
+      .eq("location_locker_is_available", true)
+      .limit(lockerQty);
+
+    if (
+      lockerError ||
+      !availableLockers ||
+      availableLockers.length < lockerQty
+    ) {
+      throw new Error("Insufficient lockers available");
+    }
+
+    const lockerIds = availableLockers.map((l) => l.location_locker_id);
+
+    // Mark lockers as unavailable
+    const { error: updateError } = await supabase
+      .from("location_locker_table")
+      .update({ location_locker_is_available: false })
+      .in("location_locker_id", lockerIds);
+
+    if (updateError) {
+      console.error("Failed to update locker status:", updateError);
+      // Note: In production, you might want to rollback the registration here
+    }
+
+    // Create assignment records
+    const assignments = lockerIds.map((lockerId) => ({
+      mailroom_registration_id: registration.mailroom_registration_id,
+      location_locker_id: lockerId,
+      mailroom_assigned_locker_status: "Normal" as const,
+    }));
+
+    const { error: assignError } = await supabase
+      .from("mailroom_assigned_locker_table")
+      .insert(assignments);
+
+    if (assignError) {
+      console.error("Failed to assign lockers:", assignError);
+    }
+
+    return {
+      registration,
+      lockerIds,
+    };
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
