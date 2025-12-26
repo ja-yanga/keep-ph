@@ -153,7 +153,6 @@ export default function UserPackages({
   >("sms");
   const isBehalfMobileValid = /^09\d{9}$/.test(behalfMobile);
 
-  // ...existing code...
   // derive name helper (shared for handlers) — no `any`
   const deriveNameFromPackageRecord = (pkg: unknown): string => {
     if (!pkg || typeof pkg !== "object") return "";
@@ -247,7 +246,69 @@ export default function UserPackages({
         : "";
     return mobile || "";
   };
-  // ...existing code...
+
+  // type guard shared across the component (define once)
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null;
+
+  // fetch registration and return user_kyc first/last if available
+  const fetchRegistrationKyc = async (
+    regId: string,
+  ): Promise<{ first: string; last: string } | null> => {
+    if (!regId) return null;
+    try {
+      const res = await fetch(
+        `/api/mailroom/registrations/${encodeURIComponent(regId)}`,
+        {
+          credentials: "include",
+        },
+      );
+      if (!res.ok) return null;
+      const json = await res.json().catch(() => null);
+      const payload = (json?.data ?? json) as unknown;
+
+      let reg: Record<string, unknown> | null = null;
+      if (
+        Array.isArray(payload) &&
+        payload.length > 0 &&
+        isRecord(payload[0])
+      ) {
+        reg = payload[0];
+      } else if (isRecord(payload)) {
+        reg = payload;
+      } else {
+        reg = null;
+      }
+      if (!reg || typeof reg !== "object") return null;
+
+      const usersTable = reg.users_table ?? reg.users ?? null;
+
+      let kyc: Record<string, unknown> | null = null;
+      if (
+        Array.isArray(usersTable) &&
+        usersTable.length > 0 &&
+        isRecord(usersTable[0])
+      ) {
+        const firstUser = usersTable[0] as Record<string, unknown>;
+        if (isRecord(firstUser.user_kyc_table)) {
+          kyc = firstUser.user_kyc_table as Record<string, unknown>;
+        }
+      } else if (isRecord(usersTable)) {
+        const ut = usersTable as Record<string, unknown>;
+        if (isRecord(ut.user_kyc_table)) {
+          kyc = ut.user_kyc_table as Record<string, unknown>;
+        }
+      } else if (isRecord(reg.user_kyc_table)) {
+        kyc = reg.user_kyc_table as Record<string, unknown>;
+      }
+      if (!kyc) return null;
+      const first = String(kyc.user_kyc_first_name ?? "").trim();
+      const last = String(kyc.user_kyc_last_name ?? "").trim();
+      return { first, last };
+    } catch {
+      return null;
+    }
+  };
 
   // apply incoming scans or map if provided
   useEffect(() => {
@@ -452,7 +513,21 @@ export default function UserPackages({
 
         const fallbackUserName =
           deriveNameFromPackageRecord(pkg as Record<string, unknown>) || "";
-        setReleaseToName(selectedName ?? fallbackUserName);
+        // ensure prefill completed before opening modal (avoid render race)
+        let resolved = selectedName ?? fallbackUserName;
+        if (!resolved) {
+          const regId = String(
+            (pkg as Record<string, unknown>).mailroom_registration_id ??
+              (pkg as Record<string, unknown>).registration_id ??
+              "",
+          );
+          const k = await fetchRegistrationKyc(regId);
+          if (k && (k.first || k.last))
+            resolved = `${k.first} ${k.last}`.trim();
+        }
+        await Promise.resolve(); // ensure state queue (optional)
+        setReleaseToName(resolved ?? "");
+        // open modal after releaseToName set
         setActionModalOpen(true);
         return;
       }
@@ -510,7 +585,6 @@ export default function UserPackages({
         else if (Array.isArray(json)) rawArr = json;
         else rawArr = [];
 
-        // ...existing code...
         const normalized = rawArr
 
           .map((a: unknown) => {
@@ -555,7 +629,6 @@ export default function UserPackages({
               users: usersObj,
             };
           })
-          // ...existing code...
           .filter((a) => a.id);
 
         setAddresses(normalized);
@@ -629,19 +702,14 @@ export default function UserPackages({
           }
         }
 
-        // ...existing code...
         if (!resolvedName) {
           resolvedName =
             deriveNameFromPackageRecord(pkg as Record<string, unknown>) ||
             undefined;
         }
-        // ...existing code...
 
         setReleaseToName(resolvedName ?? "");
-      } catch (error) {
-        // log actual error only for debugging purposes
-        // keep behavior unchanged by not altering user flow
-        console.error("failed to fetch addresses in handleActionClick", error);
+      } catch {
         setAddresses([]);
       }
     }
@@ -694,7 +762,17 @@ export default function UserPackages({
       }
 
       if (!finalReleaseToName) {
-        const regId = String(selectedPackage.registration_id ?? "");
+        const regId = String(
+          (selectedPackage as Record<string, unknown>)
+            ?.mailroom_registration_id ??
+            (selectedPackage as Record<string, unknown>)?.registration_id ??
+            (
+              (selectedPackage as Record<string, unknown>)?.package as
+                | Record<string, unknown>
+                | undefined
+            )?.registration_id ??
+            "",
+        );
         if (regId) {
           try {
             const r = await fetch(

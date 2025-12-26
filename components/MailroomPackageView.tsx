@@ -158,10 +158,24 @@ export default function MailroomPackageView({
         },
       );
       if (!res.ok) return null;
-      const json = await res
-        .json()
-        .catch(() => ({}) as Record<string, unknown>);
-      return (json?.data ?? json) as MailroomPackageViewItem;
+      const json = await res.json().catch(() => null);
+      const payload = (json?.data ?? json) as Record<string, unknown> | null;
+
+      if (payload) {
+        const usersTable = payload.users_table ?? payload.users ?? null;
+        let userKyc: unknown = null;
+        if (Array.isArray(usersTable)) {
+          userKyc = usersTable[0]?.user_kyc_table ?? null;
+        } else if (usersTable && typeof usersTable === "object") {
+          userKyc =
+            (usersTable as Record<string, unknown>)["user_kyc_table"] ?? null;
+        }
+        if (!userKyc && payload["user_kyc_table"]) {
+          userKyc = payload["user_kyc_table"];
+        }
+      }
+
+      return payload as MailroomPackageViewItem | null;
     } catch (e) {
       console.error("failed to fetch registration", e);
       return null;
@@ -822,7 +836,7 @@ export default function MailroomPackageView({
         | null)
     : null;
 
-  console.log("usersTable", usersTable);
+  // debug log removed
   const kyc = firstOf(rawKyc) as Record<string, unknown> | null;
   const firstName =
     getProp<string>(src, "first_name") ??

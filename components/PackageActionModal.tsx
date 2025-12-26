@@ -144,6 +144,8 @@ export default function PackageActionModal({
 
   const recipientName = deriveRecipientName();
 
+  // removed unused `recipientDisplay` to satisfy ESLint (use `recipientName` / `releaseToName` where needed)
+
   // avoid nested ternary usage by computing values up-front
   let titleText = "";
   if (actionType === "CONFIRM_RECEIVED") {
@@ -195,9 +197,7 @@ export default function PackageActionModal({
   const confirmDisabled =
     actionType === "RELEASE" ? releaseMissingRecipient || pickupInvalid : false;
 
-  // Avoid nested ternary in JSX by extracting address preview renderer
   const renderAddressPreview = (): React.ReactNode => {
-    // normalize possibly-unknown package fields to strings to satisfy JSX/ReactNode typing
     const releaseAddressStr =
       selectedPackage && selectedPackage.release_address !== undefined
         ? String(
@@ -214,16 +214,13 @@ export default function PackageActionModal({
     if (selectedAddressId) {
       const sel = addresses.find((a) => a.id === selectedAddressId);
       if (!sel) return <Text c="dimmed">Loading address...</Text>;
-      const fallbackUserName = recipientName;
+
       return (
         <Paper withBorder p="sm" radius="md" bg="gray.0">
           <Group justify="space-between" align="center">
             <div>
               <Text fw={600} size="sm">
                 {sel.label || "Unnamed Address"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Recipient: {sel.contact_name || fallbackUserName || "N/A"}
               </Text>
             </div>
             {sel.is_default && (
@@ -386,20 +383,7 @@ export default function PackageActionModal({
           </Button>
           <Button
             color="blue"
-            onClick={() => {
-              console.log("PackageActionModal Confirm click", {
-                actionType,
-                selectedPackage,
-                selectedAddressId,
-                releaseToName,
-                pickupOnBehalf,
-                behalfName,
-                behalfMobile,
-                behalfContactMode,
-                confirmDisabled,
-              });
-              void submitAction();
-            }}
+            onClick={() => void submitAction()}
             loading={submitting}
             disabled={confirmDisabled}
           >
