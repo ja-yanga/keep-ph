@@ -772,3 +772,12 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
     released: number;
   }>(data);
 }
+
+export async function getAllMailRoomLocation() {
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_list_mailroom_locations",
+  );
+
+  if (error) throw error;
+  return data;
+}
