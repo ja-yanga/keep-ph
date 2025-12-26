@@ -39,7 +39,7 @@ import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import UserPackages from "./UserPackages";
 import UserScans from "./UserScans";
-import type { RawRow } from "@/utils/types/types";
+import type { RawRow } from "@/utils/types";
 
 function addMonths(iso?: string | null, months = 0): string | null {
   if (!iso) return null;
@@ -814,12 +814,15 @@ export default function MailroomPackageView({
   // precompute user name pieces to avoid deeply nested expressions in JSX
   const usersTable =
     getProp<Record<string, unknown> | null>(src, "users_table") ?? null;
+
   const rawKyc = usersTable
     ? (usersTable["user_kyc_table"] as
         | Record<string, unknown>
         | Record<string, unknown>[]
         | null)
     : null;
+
+  console.log("usersTable", usersTable);
   const kyc = firstOf(rawKyc) as Record<string, unknown> | null;
   const firstName =
     getProp<string>(src, "first_name") ??
