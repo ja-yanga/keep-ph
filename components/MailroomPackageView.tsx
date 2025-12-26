@@ -173,8 +173,7 @@ export default function MailroomPackageView({
         if (!userKyc && payload["user_kyc_table"]) {
           userKyc = payload["user_kyc_table"];
         }
-        console.log("fetched registration users_table:", usersTable);
-        console.log("fetched registration user_kyc_table:", userKyc);
+        // debug logs removed
       }
 
       return payload as MailroomPackageViewItem | null;
@@ -838,7 +837,7 @@ export default function MailroomPackageView({
         | null)
     : null;
 
-  console.log("usersTable", usersTable);
+  // debug log removed
   const kyc = firstOf(rawKyc) as Record<string, unknown> | null;
   const firstName =
     getProp<string>(src, "first_name") ??

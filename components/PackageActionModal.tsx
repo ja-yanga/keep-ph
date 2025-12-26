@@ -385,20 +385,7 @@ export default function PackageActionModal({
           </Button>
           <Button
             color="blue"
-            onClick={() => {
-              console.log("PackageActionModal Confirm click", {
-                actionType,
-                selectedPackage,
-                selectedAddressId,
-                releaseToName,
-                pickupOnBehalf,
-                behalfName,
-                behalfMobile,
-                behalfContactMode,
-                confirmDisabled,
-              });
-              void submitAction();
-            }}
+            onClick={() => void submitAction()}
             loading={submitting}
             disabled={confirmDisabled}
           >

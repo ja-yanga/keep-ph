@@ -709,10 +709,8 @@ export default function UserPackages({
         }
 
         setReleaseToName(resolvedName ?? "");
-      } catch (error) {
-        // log actual error only for debugging purposes
-        // keep behavior unchanged by not altering user flow
-        console.error("failed to fetch addresses in handleActionClick", error);
+      } catch {
+        // ignore fetch errors — keep behavior unchanged
         setAddresses([]);
       }
     }
