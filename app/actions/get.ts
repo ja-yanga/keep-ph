@@ -10,6 +10,7 @@ import {
   AdminDashboardStats,
   AdminUserKyc,
   ClaimWithUrl,
+  MailroomPlanRow,
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
@@ -393,6 +394,34 @@ export async function getMailroomPlans(): Promise<
         can_digitize: plan.mailroom_plan_can_digitize,
       })) ?? []
     );
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+export async function adminListMailroomPlans(): Promise<MailroomPlanRow[]> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc(
+      "admin_list_mailroom_plans",
+    );
+
+    if (error) {
+      console.error("Error fetching admin mailroom plans:", {
+        error,
+        code: error.code,
+        message: error.message,
+      });
+      throw new Error(
+        `Database error: ${error.message || "Unknown error"}${
+          error.code ? ` (${error.code})` : ""
+        }`,
+      );
+    }
+
+    return parseRpcArray<MailroomPlanRow>(data);
   } catch (err) {
     if (err instanceof Error) {
       throw err;

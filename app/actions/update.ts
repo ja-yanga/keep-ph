@@ -3,6 +3,8 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type {
   AdminUpdateClaimResponse,
+  AdminUpdateMailroomPlanArgs,
+  MailroomPlanRow,
   RpcAdminClaim,
   UpdateRewardClaimArgs,
   UpdateUserKycStatusArgs,
@@ -70,4 +72,29 @@ export const adminUpdateUserKyc = async ({
   }
 
   return data;
+};
+
+export const adminUpdateMailroomPlan = async ({
+  id,
+  updates,
+}: AdminUpdateMailroomPlanArgs): Promise<MailroomPlanRow> => {
+  if (!id) {
+    throw new Error("Plan ID is required");
+  }
+
+  const payload = {
+    input_plan_id: id,
+    input_updates: updates,
+  };
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_update_mailroom_plan",
+    payload,
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MailroomPlanRow;
 };

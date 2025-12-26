@@ -40,17 +40,8 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
-
-type Plan = {
-  id: string;
-  name: string;
-  price: number;
-  description?: string | null;
-  storage_limit?: number | null;
-  can_receive_mail: boolean;
-  can_receive_parcels: boolean;
-  can_digitize: boolean;
-};
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { Plan } from "@/utils/types";
 
 export default function MailroomPlans() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -124,7 +115,7 @@ export default function MailroomPlans() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/mailroom/plans");
+      const res = await fetch(API_ENDPOINTS.admin.mailroom.plans);
       if (!res.ok) {
         throw new Error("Failed to load plans");
       }
@@ -193,7 +184,7 @@ export default function MailroomPlans() {
         can_receive_parcels: values.can_receive_parcels,
         can_digitize: values.can_digitize,
       };
-      const res = await fetch(`/api/admin/mailroom/plans/${editPlan.id}`, {
+      const res = await fetch(API_ENDPOINTS.admin.mailroom.plan(editPlan.id), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
