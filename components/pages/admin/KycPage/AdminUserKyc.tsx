@@ -29,6 +29,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { useDisclosure } from "@mantine/hooks";
 import { getStatusFormat, normalizeImageUrl } from "@/utils/helper";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type KycRow = {
   id: string;
@@ -107,10 +108,13 @@ function formatAddress(address?: KycRow["address"]): React.ReactNode {
 }
 
 export default function AdminUserKyc() {
-  const key = "/api/admin/user-kyc";
-  const { data, error, isValidating } = useSWR(key, fetcher, {
-    revalidateOnFocus: true,
-  });
+  const { data, error, isValidating } = useSWR(
+    API_ENDPOINTS.admin.userKyc(),
+    fetcher,
+    {
+      revalidateOnFocus: true,
+    },
+  );
 
   // pagination state required by DataTable props
   const [page, setPage] = useState<number>(1);
@@ -164,7 +168,7 @@ export default function AdminUserKyc() {
   const actionVerify = async (r: KycRow, status: "VERIFIED" | "REJECTED") => {
     setProcessing(true);
     try {
-      const res = await fetch(`/api/admin/user-kyc/${r.user_id}`, {
+      const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: status }),
@@ -175,7 +179,7 @@ export default function AdminUserKyc() {
         message: `Set ${status}`,
         color: "green",
       });
-      await swrMutate(key);
+      await swrMutate(API_ENDPOINTS.admin.userKyc());
       setModalOpen(false);
     } catch (e) {
       console.error(e);

@@ -45,6 +45,7 @@ import Navbar from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
 import { getStatusFormat } from "@/utils/helper";
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -92,7 +93,9 @@ export default function KycPage() {
 
     (async () => {
       try {
-        const r = await fetch("/api/user/kyc", { credentials: "include" });
+        const r = await fetch(API_ENDPOINTS.user.kyc, {
+          credentials: "include",
+        });
         if (!r.ok) {
           if (mounted) setStatus("NONE");
           if (mounted) setInitialLoading(false);
@@ -175,7 +178,7 @@ export default function KycPage() {
       fd.append("front", frontFile as Blob);
       fd.append("back", backFile as Blob);
 
-      const res = await fetch("/api/user/kyc", {
+      const res = await fetch(API_ENDPOINTS.user.kyc, {
         method: "POST",
         credentials: "include",
         body: fd,

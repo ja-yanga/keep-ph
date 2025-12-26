@@ -331,3 +331,23 @@ export type AdminDashboardStats = {
     } | null;
   }>;
 };
+export type LocationRow = {
+  mailroom_location_id: string;
+  mailroom_location_name: string;
+  mailroom_location_region?: string | null;
+  mailroom_location_city?: string | null;
+  mailroom_location_barangay?: string | null;
+  mailroom_location_zip?: string | null;
+  mailroom_location_total_lockers?: number | null;
+  mailroom_location_prefix?: string | null;
+};
+
+export type AdminCreateMailroomLocationArgs = {
+  name: string;
+  code?: string | null;
+  region?: string | null;
+  city?: string | null;
+  barangay?: string | null;
+  zip?: string | null;
+  total_lockers?: number | null;
+};
