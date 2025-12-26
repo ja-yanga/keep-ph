@@ -64,5 +64,7 @@ export default function MailroomPackagePage() {
     };
   }, [id]);
 
+  console.log("item", item);
+
   return <MailroomPackageView item={item} loading={loading} error={error} />;
 }
