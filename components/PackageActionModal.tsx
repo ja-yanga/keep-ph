@@ -197,9 +197,7 @@ export default function PackageActionModal({
   const confirmDisabled =
     actionType === "RELEASE" ? releaseMissingRecipient || pickupInvalid : false;
 
-  // Avoid nested ternary in JSX by extracting address preview renderer
   const renderAddressPreview = (): React.ReactNode => {
-    // normalize possibly-unknown package fields to strings to satisfy JSX/ReactNode typing
     const releaseAddressStr =
       selectedPackage && selectedPackage.release_address !== undefined
         ? String(

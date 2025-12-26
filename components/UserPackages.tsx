@@ -710,7 +710,6 @@ export default function UserPackages({
 
         setReleaseToName(resolvedName ?? "");
       } catch {
-        // ignore fetch errors — keep behavior unchanged
         setAddresses([]);
       }
     }

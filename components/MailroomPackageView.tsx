@@ -173,7 +173,6 @@ export default function MailroomPackageView({
         if (!userKyc && payload["user_kyc_table"]) {
           userKyc = payload["user_kyc_table"];
         }
-        // debug logs removed
       }
 
       return payload as MailroomPackageViewItem | null;
