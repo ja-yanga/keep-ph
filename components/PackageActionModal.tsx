@@ -144,6 +144,8 @@ export default function PackageActionModal({
 
   const recipientName = deriveRecipientName();
 
+  // removed unused `recipientDisplay` to satisfy ESLint (use `recipientName` / `releaseToName` where needed)
+
   // avoid nested ternary usage by computing values up-front
   let titleText = "";
   if (actionType === "CONFIRM_RECEIVED") {
