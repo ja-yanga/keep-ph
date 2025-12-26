@@ -3,7 +3,9 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { parseAddressRow } from "@/utils/helper";
 import {
+  AdminCreateMailroomLocationArgs,
   CreateUserAddressArgs,
+  LocationRow,
   RequestRewardClaimArgs,
   RpcClaimResponse,
   UpdateUserAddressArgs,
@@ -409,4 +411,31 @@ export async function createMailroomRegistration({
     }
     throw new Error(`Unexpected error: ${String(err)}`);
   }
+}
+
+export async function adminCreateMailroomLocation(
+  args: AdminCreateMailroomLocationArgs,
+): Promise<LocationRow> {
+  const payload = {
+    input_name: args.name,
+    input_code: args.code ?? null,
+    input_region: args.region ?? null,
+    input_city: args.city ?? null,
+    input_barangay: args.barangay ?? null,
+    input_zip: args.zip ?? null,
+    input_total_lockers: args.total_lockers ?? 0,
+  };
+
+  const { data, error } = await supabase.rpc(
+    "admin_create_mailroom_location",
+    payload,
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const row =
+    typeof data === "string" ? (JSON.parse(data) as LocationRow) : data;
+  return row as LocationRow;
 }

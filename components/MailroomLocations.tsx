@@ -33,6 +33,7 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type Location = {
   id: string;
@@ -130,7 +131,7 @@ export default function MailroomLocations() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/mailroom/locations");
+      const res = await fetch(API_ENDPOINTS.admin.mailroom.locations);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
@@ -165,7 +166,7 @@ export default function MailroomLocations() {
         zip: values.zip || null,
         total_lockers: values.total_lockers || 0,
       };
-      const res = await fetch("/api/admin/mailroom/locations", {
+      const res = await fetch(API_ENDPOINTS.admin.mailroom.locations, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
