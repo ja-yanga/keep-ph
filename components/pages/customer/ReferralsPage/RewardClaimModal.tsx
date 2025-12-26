@@ -16,7 +16,7 @@ import {
 } from "@mantine/core";
 import { IconAward, IconWallet } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { RewardClaimModalProps, RpcClaimResponse } from "@/utils/types/types";
+import { RewardClaimModalProps, RpcClaimResponse } from "@/utils/types";
 import { REFERRALS_UI } from "@/utils/constants";
 
 export default function RewardClaimModal({

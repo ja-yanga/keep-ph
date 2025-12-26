@@ -12,7 +12,12 @@ export async function GET(req: Request) {
     return NextResponse.json(status);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("rewards.status:", message);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("rewards.status error:", {
+      message,
+      stack,
+      error: err,
+    });
     return NextResponse.json(
       { error: message || "Server error" },
       { status: 500 },

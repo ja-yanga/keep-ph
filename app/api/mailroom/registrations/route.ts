@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 
 export async function GET(req: Request) {
   try {
-    const supabase = await createClient(); // binds cookie store from incoming request
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    // This helper automatically handles session refresh and picks up
+    // the Authorization: Bearer token from headers via createClient().
+    // Passing isAPI=true throws an error (instead of redirecting) for proper API responses.
+    const isAPI = true;
+    const { user, supabase } = await getAuthenticatedUser(isAPI);
 
     const userId = user.id;
 
@@ -73,6 +68,10 @@ export async function GET(req: Request) {
       },
     );
   } catch (err: unknown) {
+    // Handle authentication errors with proper 401 response
+    if (err instanceof Error && err.message.includes("Unauthorized")) {
+      return NextResponse.json({ error: err.message }, { status: 401 });
+    }
     console.error("registrations route unexpected error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },

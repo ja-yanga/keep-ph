@@ -10,7 +10,7 @@ import type {
   ReferralRow,
   NormalizedReferral,
   ReferralsTableProps,
-} from "@/utils/types/types";
+} from "@/utils/types";
 import { pickStringValue } from "@/utils/helper";
 import { REFERRALS_UI } from "@/utils/constants";
 

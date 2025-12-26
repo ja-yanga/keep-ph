@@ -1,10 +1,12 @@
+"use server";
+
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type {
   AdminUpdateClaimResponse,
   RpcAdminClaim,
   UpdateRewardClaimArgs,
   UpdateUserKycStatusArgs,
-} from "@/utils/types/types";
+} from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
 

@@ -1,3 +1,5 @@
+"use server";
+
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { parseAddressRow } from "@/utils/helper";
 import {
@@ -6,7 +8,7 @@ import {
   RpcClaimResponse,
   UpdateUserAddressArgs,
   UserAddressRow,
-} from "@/utils/types/types";
+} from "@/utils/types";
 
 const supabase = createSupabaseServiceClient();
 

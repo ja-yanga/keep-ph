@@ -5,7 +5,7 @@ import {
   RpcAdminClaim,
   RpcClaim,
   UserAddressRow,
-} from "../types/types";
+} from "./types";
 
 export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {

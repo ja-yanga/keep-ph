@@ -291,6 +291,8 @@ BEGIN
 END;
 $$;
 
+<<<<<<<< HEAD:supabase/migrations/20251222_000004_add_rpc.sql
+========
 CREATE OR REPLACE FUNCTION public.admin_list_user_kyc(
   input_search TEXT DEFAULT '',
   input_limit INTEGER DEFAULT 500
@@ -448,3 +450,4 @@ BEGIN
   RETURN role_text;
 END;
 $$;
+>>>>>>>> dev:supabase/migrations/202512150003_add_rpc.sql

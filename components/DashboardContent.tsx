@@ -21,16 +21,22 @@ import {
 } from "@tabler/icons-react";
 import { useSession } from "@/components/SessionProvider";
 import UserDashboard from "@/components/UserDashboard";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function DashboardContent() {
+export default function DashboardContent({
+  initialRegistrations = [],
+}: {
+  initialRegistrations?: unknown[];
+}) {
   const { session, loading } = useSession();
   const router = useRouter();
   const firstName = session?.profile?.first_name ?? null;
   const displayName = firstName ?? session?.user?.email ?? "User";
 
-  const [hasMailroom, setHasMailroom] = useState<boolean | null>(null);
+  const hasMailroom = Array.isArray(initialRegistrations)
+    ? initialRegistrations.length > 0
+    : false;
 
   // Redirect admins
   useEffect(() => {
@@ -39,43 +45,10 @@ export default function DashboardContent() {
     }
   }, [loading, session?.role, router]);
 
-  useEffect(() => {
-    if (loading) return;
-
-    let mounted = true;
-    async function load() {
-      if (!session?.user?.id) {
-        if (mounted) setHasMailroom(false);
-        return;
-      }
-      try {
-        const res = await fetch("/api/mailroom/registrations", {
-          credentials: "include",
-        });
-        if (!mounted) return;
-        if (!res.ok) {
-          setHasMailroom(false);
-          return;
-        }
-        const json = await res.json().catch(() => ({}));
-        const rows = Array.isArray(json?.data ?? json)
-          ? (json.data ?? json)
-          : [];
-        setHasMailroom(rows.length > 0);
-      } catch {
-        if (mounted) setHasMailroom(false);
-      }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, [session?.user?.id, loading]);
-
   return (
     <Box style={{ flex: 1, paddingTop: 32, paddingBottom: 32 }}>
       {(() => {
-        if (loading || hasMailroom === null) {
+        if (loading) {
           return (
             <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
               <Loader />
