@@ -82,7 +82,8 @@ export const API_ENDPOINTS = {
       list: "/api/admin/rewards",
       reward: (id: string) => `/api/admin/rewards/${id}`,
     },
-    userKyc: (userId: string) => `/api/admin/user-kyc/${userId}`,
+    userKyc: (userId?: string) =>
+      userId ? `/api/admin/user-kyc/${userId}` : `/api/admin/user-kyc`,
   },
 
   // Onboarding
