@@ -30,6 +30,7 @@ import {
 import dayjs from "dayjs";
 import { fetcher } from "@/utils/helper";
 import { StatCard } from "./StatCard";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type DashboardStats = {
   pendingRequests: number;
@@ -57,11 +58,9 @@ export default function AdminDashboard() {
     data,
     error,
     isValidating: isRefreshingSWR,
-  } = useSWR<DashboardStats | undefined>(
-    "/api/admin/dashboard/stats",
-    fetcher,
-    { revalidateOnFocus: true },
-  );
+  } = useSWR<DashboardStats | undefined>(API_ENDPOINTS.admin.stats, fetcher, {
+    revalidateOnFocus: true,
+  });
 
   const loading = !data && !error;
 
@@ -70,7 +69,7 @@ export default function AdminDashboard() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await swrMutate("/api/admin/dashboard/stats");
+      await swrMutate(API_ENDPOINTS.admin.stats);
     } catch (e) {
       console.error("refresh failed", e);
     } finally {

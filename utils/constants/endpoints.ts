@@ -62,6 +62,7 @@ export const API_ENDPOINTS = {
   // Admin endpoints
   admin: {
     analytics: "/api/admin/analytics",
+    stats: "/api/admin/dashboard/stats",
     mailroom: {
       plans: "/api/admin/mailroom/plans",
       plan: (id: string) => `/api/admin/mailroom/plans/${id}`,
