@@ -18,6 +18,7 @@ import { IconAward, IconWallet } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { RewardClaimModalProps, RpcClaimResponse } from "@/utils/types";
 import { REFERRALS_UI } from "@/utils/constants";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 export default function RewardClaimModal({
   opened,
@@ -78,7 +79,7 @@ export default function RewardClaimModal({
     const methodToSend = paymentMethod.toUpperCase();
 
     try {
-      const res = await fetch("/api/rewards/claim", {
+      const res = await fetch(API_ENDPOINTS.rewards.claim, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

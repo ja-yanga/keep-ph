@@ -33,6 +33,7 @@ import { maskAccount, pickNumber, pickString } from "@/utils/helper";
 import { REFERRALS_UI } from "@/utils/constants";
 import RewardClaimModal from "./RewardClaimModal";
 import { ReferralsTable } from "./ReferralsRow";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 export default function ReferralsContent() {
   const { session } = useSession();
@@ -73,14 +74,14 @@ export default function ReferralsContent() {
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const genPromise = !referralCode
-        ? fetch("/api/referrals/generate", {
+        ? fetch(API_ENDPOINTS.referrals.generate, {
             method: "POST",
             signal: controller.signal,
           }).catch(() => null)
         : Promise.resolve<Response | null>(null);
 
       const listPromise = fetch(
-        `/api/referrals/list?user_id=${session.user.id}`,
+        `${API_ENDPOINTS.referrals.list}?user_id=${session.user.id}`,
         { signal: controller.signal },
       ).catch(() => null);
 
@@ -134,7 +135,9 @@ export default function ReferralsContent() {
     if (!session?.user?.id) return;
     setClaimLoading(true);
     try {
-      const res = await fetch(`/api/rewards/status?userId=${session.user.id}`);
+      const res = await fetch(
+        `${API_ENDPOINTS.rewards.status}?userId=${session.user.id}`,
+      );
       if (!res.ok) {
         console.error(
           "Error fetching rewards status:",
