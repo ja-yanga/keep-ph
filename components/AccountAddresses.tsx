@@ -19,7 +19,8 @@ import {
 } from "@mantine/core";
 import { IconPlus, IconTrash, IconEdit, IconMapPin } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { Address } from "@/utils/types/types";
+import { Address } from "@/utils/types";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 const initialFormState: Address = {
   id: "",
@@ -36,6 +37,8 @@ export default function AccountAddresses({ userId }: { userId: string }) {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Address | null>(null);
   const [editing, setEditing] = useState<Address | null>(null);
   // Using the typed initialFormState ensures consistency
   const [form, setForm] = useState<Address>(initialFormState);
@@ -45,9 +48,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
     setLoading(true);
     const t0 = performance.now();
     try {
-      const res = await fetch(
-        `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
-      );
+      const res = await fetch(API_ENDPOINTS.user.addresses());
       const json = await res.json();
       // Normalize API shape to internal Address shape (avoid nested ternary)
       let rows: Record<string, unknown>[] = [];
@@ -138,7 +139,9 @@ export default function AccountAddresses({ userId }: { userId: string }) {
 
       if (editing && editing.id) {
         // UPDATE existing address
-        url = `/api/user/addresses/${encodeURIComponent(String(editing.id))}`;
+        url = API_ENDPOINTS.user.addresses(
+          encodeURIComponent(String(editing.id)),
+        );
         method = "PUT";
 
         // Remove extraneous fields for PUT request body
@@ -151,7 +154,7 @@ export default function AccountAddresses({ userId }: { userId: string }) {
         });
       } else {
         // CREATE new address
-        url = `/api/user/addresses`;
+        url = API_ENDPOINTS.user.addresses();
         method = "POST";
 
         // Remove id/created_at for POST request body
@@ -192,9 +195,8 @@ export default function AccountAddresses({ userId }: { userId: string }) {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this address?")) return;
     try {
-      const res = await fetch(`/api/user/addresses/${id}`, {
+      const res = await fetch(API_ENDPOINTS.user.addresses(id), {
         method: "DELETE",
       });
       const json = await res.json();
@@ -300,7 +302,10 @@ export default function AccountAddresses({ userId }: { userId: string }) {
                     <ActionIcon
                       variant="light"
                       color="red"
-                      onClick={() => remove(a.id)}
+                      onClick={() => {
+                        setDeleteTarget(a);
+                        setDeleteModalOpen(true);
+                      }}
                       aria-label="Delete address"
                       disabled={a.is_default} // Prevent deleting the default address easily
                       title={
@@ -419,6 +424,52 @@ export default function AccountAddresses({ userId }: { userId: string }) {
               }
             >
               Save Address
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setDeleteTarget(null);
+        }}
+        title="Delete address"
+        centered
+        size="sm"
+      >
+        <Stack>
+          <Text>
+            {deleteTarget?.label
+              ? `Remove “${deleteTarget.label}”?`
+              : "Remove this address?"}
+          </Text>
+          <Text c="dimmed" size="sm">
+            This action cannot be undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="default"
+              onClick={() => {
+                setDeleteModalOpen(false);
+                setDeleteTarget(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={async () => {
+                if (!deleteTarget?.id) return;
+                await remove(deleteTarget.id);
+                setDeleteModalOpen(false);
+                setDeleteTarget(null);
+              }}
+              disabled={loading}
+              loading={loading}
+            >
+              Delete
             </Button>
           </Group>
         </Stack>
