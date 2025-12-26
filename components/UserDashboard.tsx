@@ -34,7 +34,7 @@ import {
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 import { notifications } from "@mantine/notifications";
-import type { RawRow, LocationObj } from "@/utils/types/types";
+import type { RawRow, LocationObj } from "@/utils/types";
 
 type Row = {
   id: string;
@@ -55,11 +55,43 @@ type Row = {
   raw?: RawRow;
 };
 
+type Totals = { stored: number; pending: number; released: number } | null;
+
 const addMonths = (iso?: string | null, months = 0): string | null => {
   if (!iso) return null;
   const d = new Date(iso);
   d.setMonth(d.getMonth() + months);
   return d.toISOString();
+};
+
+// helper: normalize mailbox items without using `any`
+const toItems = (raw: unknown): Record<string, unknown>[] => {
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) =>
+          v && typeof v === "object"
+            ? (v as Record<string, unknown>)
+            : { value: v },
+        );
+      }
+      return parsed && typeof parsed === "object"
+        ? [parsed as Record<string, unknown>]
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(raw)) {
+    return raw.map((v) =>
+      v && typeof v === "object"
+        ? (v as Record<string, unknown>)
+        : { value: v },
+    );
+  }
+  if (raw && typeof raw === "object") return [raw as Record<string, unknown>];
+  return [];
 };
 
 const mapDataToRows = (data: RawRow[]): Row[] =>
@@ -102,44 +134,62 @@ const mapDataToRows = (data: RawRow[]): Row[] =>
       computedStatus = r.mailroom_registration_status ? "ACTIVE" : "INACTIVE";
     }
 
+    // normalize mailbox items: accept array, single object, JSON string, or alternative keys
+    const rawItems: unknown =
+      (r as unknown as Record<string, unknown>)["mailbox_item_table"] ??
+      (r as unknown as Record<string, unknown>)["mailbox_items"] ??
+      (r as unknown as Record<string, unknown>)["items"] ??
+      [];
+    const items = toItems(rawItems);
+
+    // prefer server-provided per-registration stats (_stats) if present
+    const rpcStats = (r as Record<string, unknown>)["_stats"] as unknown;
     let stored = 0;
     let pending = 0;
     let released = 0;
 
-    const items = Array.isArray(r.mailbox_item_table)
-      ? r.mailbox_item_table
-      : [];
-    const seen = new Set<string | undefined>();
-    items.forEach((p) => {
-      const id = p.mailbox_item_id;
-      if (id && seen.has(id)) return;
-      if (id) seen.add(id);
+    if (rpcStats && typeof rpcStats === "object") {
+      stored = Number((rpcStats as Record<string, unknown>).stored ?? 0);
+      pending = Number((rpcStats as Record<string, unknown>).pending ?? 0);
+      released = Number((rpcStats as Record<string, unknown>).released ?? 0);
+    } else {
+      const seen = new Set<string>();
+      items.forEach((p) => {
+        const idVal = (p["mailbox_item_id"] ??
+          p["id"] ??
+          p["package_id"] ??
+          p["mailbox_item_id_raw"]) as unknown;
+        const id = idVal == null ? "" : String(idVal);
+        if (id && seen.has(id)) return;
+        if (id) seen.add(id);
 
-      const s = String(p.mailbox_item_status ?? "").toUpperCase();
+        const statusVal = (p["mailbox_item_status"] ??
+          p["status"] ??
+          p["state"]) as unknown;
+        const s = String(statusVal ?? "").toUpperCase();
 
-      if (s === "RELEASED") {
-        released += 1;
-      }
-
-      if (s.includes("REQUEST")) {
-        pending += 1;
-      }
-
-      if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) {
-        stored += 1;
-      }
-    });
+        if (s === "RELEASED") released += 1;
+        if (s.includes("REQUEST")) pending += 1;
+        if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(s)) stored += 1;
+      });
+    }
 
     // subscriber name from users_table.user_kyc_table if present (readonly KYC)
     const userObj = r.users_table ?? null;
     const kyc = userObj?.user_kyc_table ?? null;
     const first = kyc?.user_kyc_first_name ?? null;
     const last = kyc?.user_kyc_last_name ?? null;
-    const name =
-      first || last
-        ? `${first ? String(first) : ""}${first && last ? " " : ""}${last ? String(last) : ""}`
-        : (locationName ??
-          `Mailroom #${String(r.mailroom_registration_id ?? "").slice(0, 8)}`);
+    let name: string;
+    if (first || last) {
+      const parts: string[] = [];
+      if (first) parts.push(String(first));
+      if (last) parts.push(String(last));
+      name = parts.join(" ");
+    } else {
+      name =
+        locationName ??
+        `Mailroom #${String(r.mailroom_registration_id ?? "").slice(0, 8)}`;
+    }
 
     return {
       id: String(r.mailroom_registration_id ?? ""),
@@ -166,6 +216,7 @@ export default function UserDashboard({
   const [page, setPage] = useState<number>(1);
   const perPage = 2;
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [totals, setTotals] = useState<Totals>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,7 +233,12 @@ export default function UserDashboard({
 
   const [firstName, setFirstName] = useState<string | null>(null);
 
-  const fetcher = async (url: string): Promise<RawRow[]> => {
+  const fetcher = async (
+    url: string,
+  ): Promise<{
+    rows: RawRow[];
+    stats?: { stored: number; pending: number; released: number };
+  }> => {
     const res = await fetch(url, { method: "GET", credentials: "include" });
     if (!res.ok) {
       const json = await res
@@ -208,27 +264,64 @@ export default function UserDashboard({
     } else {
       rowsArr = [];
     }
-    return rowsArr;
+    const stats =
+      json?.meta && typeof json.meta === "object"
+        ? ((json.meta as Record<string, unknown>).stats as
+            | {
+                stored: number;
+                pending: number;
+                released: number;
+              }
+            | undefined)
+        : undefined;
+    return { rows: rowsArr, stats };
   };
 
   const swrKey = session?.user?.id ? "/api/mailroom/registrations" : null;
-  const { data: apiData, error: swrError } = useSWR<RawRow[] | undefined>(
-    swrKey,
-    fetcher,
-    {
-      revalidateOnFocus: true,
-      fallbackData: initialData ?? undefined,
-    },
-  );
+  const fallbackDataObj = React.useMemo(() => {
+    if (initialData && !Array.isArray(initialData)) return undefined;
+    if (initialData) return { rows: initialData, stats: undefined };
+    return undefined;
+  }, [initialData]);
+
+  const { data: apiData, error: swrError } = useSWR<
+    | {
+        rows: RawRow[];
+        stats?: { stored: number; pending: number; released: number };
+      }
+    | undefined
+  >(swrKey, fetcher, {
+    revalidateOnFocus: true,
+    fallbackData: fallbackDataObj,
+  });
 
   useEffect(() => {
     setLoading(Boolean(!rows && !swrError && !apiData));
     setError(swrError ? (swrError as Error).message : null);
-    if (Array.isArray(apiData)) {
-      setRows(mapDataToRows(apiData));
+    if (apiData && Array.isArray(apiData.rows)) {
+      setRows(mapDataToRows(apiData.rows));
+      setTotals(apiData.stats ?? null);
     }
     setLoading(false);
   }, [apiData, swrError]);
+
+  const storedCount = useMemo(() => {
+    if (totals) return totals.stored;
+    if (rows) return rows.reduce((s, r) => s + r.stats.stored, 0);
+    return 0;
+  }, [totals, rows]);
+
+  const pendingCount = useMemo(() => {
+    if (totals) return totals.pending;
+    if (rows) return rows.reduce((s, r) => s + r.stats.pending, 0);
+    return 0;
+  }, [totals, rows]);
+
+  const releasedCount = useMemo(() => {
+    if (totals) return totals.released;
+    if (rows) return rows.reduce((s, r) => s + r.stats.released, 0);
+    return 0;
+  }, [totals, rows]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -493,7 +586,7 @@ export default function UserDashboard({
                 Items in Storage
               </Text>
               <Text fw={700} size="xl" c="blue.9">
-                {rows ? rows.reduce((s, r) => s + r.stats.stored, 0) : 0}
+                {storedCount}
               </Text>
             </div>
           </Group>
@@ -509,7 +602,7 @@ export default function UserDashboard({
                 Pending Requests
               </Text>
               <Text fw={700} size="xl">
-                {rows ? rows.reduce((s, r) => s + r.stats.pending, 0) : 0}
+                {pendingCount}
               </Text>
             </div>
           </Group>
@@ -525,7 +618,7 @@ export default function UserDashboard({
                 Total Released
               </Text>
               <Text fw={700} size="xl">
-                {rows ? rows.reduce((s, r) => s + r.stats.released, 0) : 0}
+                {releasedCount}
               </Text>
             </div>
           </Group>

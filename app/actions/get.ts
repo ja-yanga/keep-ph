@@ -733,3 +733,42 @@ export async function checkLockerAvailability({
     throw new Error(`Unexpected error: ${String(err)}`);
   }
 }
+
+export async function getUserMailroomStats(
+  userId: string,
+): Promise<{ stored: number; pending: number; released: number } | null> {
+  if (!userId) return null;
+  const { data, error } = await supabaseAdmin.rpc("get_user_mailroom_stats", {
+    input_user_id: userId,
+  });
+  if (error) throw error;
+  const payload = typeof data === "string" ? JSON.parse(data) : data;
+  if (!payload || typeof payload !== "object") return null;
+  return {
+    stored: Number((payload as Record<string, unknown>).stored ?? 0),
+    pending: Number((payload as Record<string, unknown>).pending ?? 0),
+    released: Number((payload as Record<string, unknown>).released ?? 0),
+  };
+}
+
+export async function getUserMailroomRegistrationStats(userId: string): Promise<
+  Array<{
+    mailroom_registration_id: string;
+    stored: number;
+    pending: number;
+    released: number;
+  }>
+> {
+  if (!userId) return [];
+  const { data, error } = await supabaseAdmin.rpc(
+    "get_user_mailroom_registration_stats",
+    { input_user_id: userId },
+  );
+  if (error) throw error;
+  return parseRpcArray<{
+    mailroom_registration_id: string;
+    stored: number;
+    pending: number;
+    released: number;
+  }>(data);
+}
