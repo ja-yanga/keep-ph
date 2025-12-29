@@ -7,6 +7,7 @@ import useSWR, { mutate as swrMutate } from "swr";
 import {
   ActionIcon,
   Alert,
+  Autocomplete,
   Badge,
   Box,
   Button,
@@ -23,7 +24,7 @@ import {
   Tabs,
   SegmentedControl,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useDebouncedValue } from "@mantine/hooks";
 // Added useSearchParams
 import { useSearchParams } from "next/navigation";
 import {
@@ -43,6 +44,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
 import dayjs from "dayjs";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type Registration = {
   id: string;
@@ -110,6 +112,14 @@ export default function MailroomPackages() {
   const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Recipient search state for async autocomplete (performance optimization for 20k+ users)
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [debouncedRecipientSearch] = useDebouncedValue(recipientSearch, 300);
+  const [recipientOptions, setRecipientOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [searchingRecipients, setSearchingRecipients] = useState(false);
 
   // New Filter States
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
@@ -217,7 +227,7 @@ export default function MailroomPackages() {
   >("Normal");
 
   // Single SWR key for combined endpoint
-  const packagesKey = "/api/admin/mailroom/packages";
+  const packagesKey = API_ENDPOINTS.admin.mailroom.packages;
   const fetcher = async (url: string) => {
     // avoid stale cached responses when revalidating
     const res = await fetch(url, { cache: "no-store" });
@@ -292,6 +302,58 @@ export default function MailroomPackages() {
     }
   }, [opened, scanModalOpen, releaseModalOpen, disposeModalOpen]);
 
+  // Fetch recipient options asynchronously with search (performance optimization for large datasets)
+  useEffect(() => {
+    const fetchRecipients = async () => {
+      const searchQuery = debouncedRecipientSearch.trim();
+
+      // Only search if user typed at least 2 characters, or if empty (load initial 50)
+      if (searchQuery.length > 0 && searchQuery.length < 2) {
+        setRecipientOptions([]);
+        return;
+      }
+
+      setSearchingRecipients(true);
+      try {
+        const url = new URL(
+          "/api/admin/mailroom/registrations/search",
+          window.location.origin,
+        );
+        url.searchParams.set("q", searchQuery);
+        url.searchParams.set("limit", "50");
+
+        const res = await fetch(url.toString());
+        if (!res.ok) {
+          throw new Error("Failed to fetch recipients");
+        }
+
+        const json = await res.json();
+        const results = (json.data || []) as Registration[];
+
+        const options = results.map((r) => {
+          const planName = Array.isArray(r.mailroom_plans)
+            ? r.mailroom_plans[0]?.name
+            : (r.mailroom_plans as { name?: string })?.name;
+          return {
+            value: r.id,
+            label: `${r.mailroom_code || "No Code"} - ${r.email} (${
+              planName || "Unknown Plan"
+            })`,
+          };
+        });
+
+        setRecipientOptions(options);
+      } catch (error) {
+        console.error("Error fetching recipients:", error);
+        setRecipientOptions([]);
+      } finally {
+        setSearchingRecipients(false);
+      }
+    };
+
+    fetchRecipients();
+  }, [debouncedRecipientSearch]);
+
   const clearFilters = () => {
     setSearch("");
     setFilterStatus(null);
@@ -320,6 +382,18 @@ export default function MailroomPackages() {
         status: pkg.status,
         // notes: pkg.notes || "",
       });
+      // Find registration to populate recipient search
+      const reg = registrations.find((r) => r.id === pkg.registration_id);
+      let planName: string | undefined;
+      if (reg?.mailroom_plans) {
+        planName = Array.isArray(reg.mailroom_plans)
+          ? reg.mailroom_plans[0]?.name
+          : (reg.mailroom_plans as { name?: string })?.name;
+      }
+      const regLabel = reg
+        ? `${reg.mailroom_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
+        : "";
+      setRecipientSearch(regLabel);
       // keep packagePhoto null so existing image is used unless user picks a new one
       setPackagePhoto(null);
     } else {
@@ -332,6 +406,7 @@ export default function MailroomPackages() {
         package_type: "Parcel",
         status: "STORED",
       });
+      setRecipientSearch("");
       setPackagePhoto(null);
     }
     open();
@@ -384,12 +459,14 @@ export default function MailroomPackages() {
     if (
       !formData.package_name ||
       !formData.registration_id ||
-      !formData.package_type ||
-      !formData.status
+      !formData.package_type
     ) {
       setFormError("Please fill in all required fields");
       return;
     }
+
+    // Status is always STORED for new packages
+    const finalStatus = editingPackage ? formData.status : "STORED";
 
     // Photo is required (either newly selected or existing on editingPackage)
     if (
@@ -433,6 +510,7 @@ export default function MailroomPackages() {
 
       const payload: Record<string, unknown> = {
         ...formData,
+        status: finalStatus, // Always STORED for new packages, use formData.status for edits
       };
 
       // Only send locker_status when ADDING a package
@@ -1137,34 +1215,44 @@ export default function MailroomPackages() {
               })
             }
           />
-          <Select
+          <Autocomplete
             label="Recipient"
-            placeholder="Select recipient"
+            placeholder="Type to search recipients (min 2 characters)..."
             required
-            searchable
-            // Limit displayed options to first 10 for performance/virtualization safety
-            data={registrations.slice(0, 10).map((r) => {
-              const planName = Array.isArray(
-                r.mailroom_plans,
-              ) /* API may return array */
-                ? r.mailroom_plans[0]?.name
-                : (r.mailroom_plans as { name?: string })?.name;
-              return {
-                value: r.id,
-                label: `${r.mailroom_code || "No Code"} - ${r.email} (${
-                  planName || "Unknown Plan"
-                })`,
-              };
-            })}
-            value={formData.registration_id}
-            onChange={(val) => handleRegistrationChange(val)}
-            // Custom filter allows searching by any part of the label string
-            filter={({ options, search }) => {
-              const q = search.toLowerCase().trim();
-              return (
-                options as Array<{ label: string; value: string }>
-              ).filter((option) => option.label.toLowerCase().includes(q));
+            data={recipientOptions}
+            value={
+              recipientOptions.find(
+                (opt) => opt.value === formData.registration_id,
+              )?.label || recipientSearch
+            }
+            onChange={(val) => {
+              setRecipientSearch(val);
+              // If exact match found, set the registration_id
+              const matched = recipientOptions.find((opt) => opt.label === val);
+              if (matched) {
+                handleRegistrationChange(matched.value);
+              } else if (!val) {
+                handleRegistrationChange(null);
+              }
             }}
+            onOptionSubmit={(val) => {
+              handleRegistrationChange(val);
+              const matched = recipientOptions.find((opt) => opt.value === val);
+              setRecipientSearch(matched?.label || "");
+            }}
+            rightSection={
+              searchingRecipients ? (
+                <Text size="xs" c="dimmed">
+                  Searching...
+                </Text>
+              ) : undefined
+            }
+            description={
+              recipientSearch.length > 0 && recipientSearch.length < 2
+                ? "Type at least 2 characters to search"
+                : undefined
+            }
+            limit={50}
           />
           <Select
             label="Assign Locker"
@@ -1226,15 +1314,18 @@ export default function MailroomPackages() {
               setFormData({ ...formData, package_type: val || "" })
             }
           />
-          <Select
-            label="Status"
-            required
-            data={STATUSES}
-            value={formData.status}
-            onChange={(val) =>
-              setFormData({ ...formData, status: val || "STORED" })
-            }
-          />
+          {/* Status field - only show when editing, not when adding */}
+          {editingPackage && (
+            <Select
+              label="Status"
+              required
+              data={STATUSES}
+              value={formData.status}
+              onChange={(val) =>
+                setFormData({ ...formData, status: val || "STORED" })
+              }
+            />
+          )}
 
           {/* Locker Capacity Control - Only show when ADDING a package */}
           {!editingPackage && (

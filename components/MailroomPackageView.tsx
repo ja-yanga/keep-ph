@@ -783,6 +783,8 @@ export default function MailroomPackageView({
     return null;
   };
 
+  console.log("src", src);
+
   const expiry =
     getSubscriptionExpiry(getProp<unknown>(src, "subscription_table")) ??
     getProp<string>(src, "expiry_at") ??

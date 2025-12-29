@@ -780,6 +780,75 @@ export async function getUserMailroomStats(
   };
 }
 
+/**
+ * Gets all admin mailroom packages with related data (packages, registrations, lockers, assigned lockers).
+ * Returns an object with packages array, registrations array, lockers array, assignedLockers array, and total count.
+ *
+ * Used in:
+ * - app/api/admin/mailroom/packages/route.ts - API endpoint for admin packages
+ */
+export async function adminGetMailroomPackages(args: {
+  limit?: number;
+  offset?: number;
+  compact?: boolean;
+}): Promise<{
+  packages: unknown[];
+  registrations: unknown[];
+  lockers: unknown[];
+  assignedLockers: unknown[];
+  totalCount: number;
+}> {
+  const limit = Math.min(args.limit ?? 50, 200);
+  const offset = args.offset ?? 0;
+  const compact = args.compact ?? false;
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "get_admin_mailroom_packages",
+    {
+      input_limit: limit,
+      input_offset: offset,
+      input_compact: compact,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  // Parse data if it's a string, otherwise use as is
+  let rpcData: Record<string, unknown> = {};
+  try {
+    rpcData =
+      typeof data === "string"
+        ? JSON.parse(data)
+        : (data as Record<string, unknown>);
+  } catch (parseError) {
+    console.error("Failed to parse RPC response:", parseError);
+    throw new Error("Failed to parse response");
+  }
+
+  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
+  const registrations = Array.isArray(rpcData.registrations)
+    ? rpcData.registrations
+    : [];
+  const lockers = Array.isArray(rpcData.lockers) ? rpcData.lockers : [];
+  const assignedLockers = Array.isArray(rpcData.assignedLockers)
+    ? rpcData.assignedLockers
+    : [];
+  const totalCount =
+    typeof rpcData.total_count === "number"
+      ? rpcData.total_count
+      : packages.length;
+
+  return {
+    packages,
+    registrations,
+    lockers,
+    assignedLockers,
+    totalCount,
+  };
+}
+
 export async function getUserMailroomRegistrationStats(userId: string): Promise<
   Array<{
     mailroom_registration_id: string;
