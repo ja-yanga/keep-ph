@@ -9,11 +9,11 @@ import {
 
 export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {
-    green: ["VERIFIED", "PAID"],
+    green: ["VERIFIED", "PAID", "NORMAL"],
     blue: [],
     yellow: ["SUBMITTED", "PENDING"],
-    red: ["REJECTED"],
-    orange: [],
+    red: ["REJECTED", "FULL"],
+    orange: ["NEAR FULL"],
   };
 
   const statusToColor = Object.entries(colorGroups).reduce(

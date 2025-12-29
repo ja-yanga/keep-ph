@@ -2,49 +2,40 @@
 
 import { useState, useMemo, useEffect } from "react";
 import {
-  Badge,
+  ActionIcon,
   Box,
   Button,
   Container,
   Grid,
   Group,
-  Loader,
-  Paper,
   Stack,
-  Table,
   Text,
   Title,
-  ThemeIcon,
-  ActionIcon,
   Tooltip,
   Breadcrumbs,
   Anchor,
 } from "@mantine/core";
-import {
-  IconArrowLeft,
-  IconRefresh,
-  IconUser,
-  IconMapPin,
-  IconCalendar,
-  IconLock,
-  IconCreditCard,
-  IconMail,
-  IconPackage,
-  IconScan,
-  IconCopy,
-} from "@tabler/icons-react";
-import { notifications } from "@mantine/notifications";
+import { IconArrowLeft, IconRefresh } from "@tabler/icons-react";
 import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
-import UserPackages from "../../../UserPackages";
-import UserScans from "../../../UserScans";
 import type {
   MailroomPackageViewItem,
   MailroomPackageViewProps,
 } from "@/utils/types";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { addMonths } from "@/utils/helper";
+import MailroomLoading from "./components/MailroomLoading";
+import MailroomError from "./components/MailroomError";
+import MailroomMainContent from "./components/MailroomMainContent";
+import MailroomSidebar from "./components/MailroomSidebar";
+import {
+  addMonths,
+  firstOf,
+  getProp,
+  getString,
+  getSubscriptionExpiry,
+  isRecord,
+} from "./utils";
 
 export default function MailroomPackageView({
   item,
@@ -64,34 +55,6 @@ export default function MailroomPackageView({
   }, [item?.id, item]);
 
   const source = localItem ?? item;
-
-  const firstOf = <T,>(v: T | T[] | undefined | null): T | null => {
-    if (v === undefined || v === null) return null;
-    return Array.isArray(v) ? ((v[0] as T) ?? null) : (v as T);
-  };
-
-  const getProp = <T,>(
-    obj: Record<string, unknown> | null,
-    key: string,
-  ): T | undefined =>
-    obj ? (obj[key] as unknown as T | undefined) : undefined;
-
-  const isRecord = (v: unknown): v is Record<string, unknown> =>
-    typeof v === "object" && v !== null;
-
-  const getString = (
-    obj: Record<string, unknown> | undefined,
-    ...keys: string[]
-  ): string | undefined => {
-    if (!obj) return undefined;
-    for (const k of keys) {
-      const v = obj[k];
-      if (typeof v === "string") return v;
-      if (typeof v === "number") return String(v);
-    }
-    return undefined;
-  };
-
   const src = (source as Record<string, unknown> | null) ?? null;
   const regId = getProp<string>(src, "id") ?? null;
 
@@ -104,6 +67,25 @@ export default function MailroomPackageView({
     limit_mb?: number;
     percentage?: number;
   } | null>(null);
+
+  const fetchRegistration = async (
+    id?: string,
+  ): Promise<MailroomPackageViewItem | null> => {
+    if (!id) return null;
+    try {
+      const res = await fetch(API_ENDPOINTS.mailroom.registration(id), {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      const json = await res
+        .json()
+        .catch(() => ({}) as Record<string, unknown>);
+      return (json?.data ?? json) as MailroomPackageViewItem;
+    } catch (e) {
+      console.error("failed to fetch registration", e);
+      return null;
+    }
+  };
 
   const handleRefresh = async (): Promise<void> => {
     setRefreshKey((prev) => prev + 1);
@@ -127,25 +109,6 @@ export default function MailroomPackageView({
     if (id) {
       const fresh = await fetchRegistration(String(id));
       if (fresh) setLocalItem(fresh);
-    }
-  };
-
-  const fetchRegistration = async (
-    id?: string,
-  ): Promise<MailroomPackageViewItem | null> => {
-    if (!id) return null;
-    try {
-      const res = await fetch(API_ENDPOINTS.mailroom.registration(id), {
-        credentials: "include",
-      });
-      if (!res.ok) return null;
-      const json = await res
-        .json()
-        .catch(() => ({}) as Record<string, unknown>);
-      return (json?.data ?? json) as MailroomPackageViewItem;
-    } catch (e) {
-      console.error("failed to fetch registration", e);
-      return null;
     }
   };
 
@@ -279,106 +242,7 @@ export default function MailroomPackageView({
       mounted = false;
       controller.abort();
     };
-  }, [src?.id, plan.can_digitize, refreshKey]);
-
-  const getFullAddressFromRaw = (
-    raw:
-      | {
-          formatted_address?: string;
-          mailroom_location_name?: string;
-          mailroom_location_city?: string;
-          mailroom_location_region?: string;
-          mailroom_location_zip?: string;
-          address_line?: string;
-          name?: string;
-          address?: string;
-          city?: string;
-          region?: string;
-          postal?: string;
-          [key: string]: unknown;
-        }
-      | Array<{ [key: string]: unknown }>
-      | null
-      | undefined,
-  ): string | null => {
-    if (!raw) return null;
-    const loc = Array.isArray(raw)
-      ? (raw[0] as Record<string, unknown>)
-      : (raw as Record<string, unknown>);
-    if (!loc) return null;
-    if (
-      typeof loc.formatted_address === "string" &&
-      loc.formatted_address.trim()
-    )
-      return String(loc.formatted_address).trim();
-
-    const parts: string[] = [];
-    const name = (loc.mailroom_location_name ?? loc.name) as string | undefined;
-    if (name) parts.push(String(name));
-    const street = (loc.address_line ?? loc.address ?? loc.line1) as
-      | string
-      | undefined;
-    if (street) parts.push(String(street));
-    const city = (loc.mailroom_location_city ?? loc.city) as string | undefined;
-    const province = (loc.mailroom_location_region ?? loc.region) as
-      | string
-      | undefined;
-    const postal = (loc.mailroom_location_zip ?? loc.postal) as
-      | string
-      | undefined;
-    const tail = [city, province, postal].filter(Boolean).join(", ");
-    if (tail) parts.push(tail);
-    const out = parts.filter(Boolean).join(", ").trim();
-    return out || null;
-  };
-
-  const copyFullShippingAddress = async (): Promise<void> => {
-    const code = getProp<string>(src, "mailroom_code") ?? "-";
-    const loc =
-      firstOf(
-        getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
-          src,
-          "mailroom_location_table",
-        ),
-      ) ??
-      firstOf(
-        getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
-          src,
-          "mailroom_locations",
-        ),
-      ) ??
-      getProp<Record<string, unknown> | null>(src, "location") ??
-      null;
-    const full =
-      (getFullAddressFromRaw(loc) ??
-        [loc?.address, loc?.city, loc?.region].filter(Boolean).join(", ")) ||
-      null;
-    const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
-    if (!txt) {
-      notifications.show({
-        title: "Nothing to copy",
-        message: "No full address available",
-        color: "yellow",
-      });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(txt);
-      notifications.show({
-        title: "Copied",
-        message: "Full shipping address copied to clipboard",
-        color: "teal",
-      });
-    } catch (e: unknown) {
-      console.error("copy failed", e);
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      notifications.show({
-        title: "Copy failed",
-        message: errorMessage,
-        color: "red",
-      });
-    }
-  };
+  }, [src?.id, plan.can_digitize, refreshKey, regId]);
 
   // normalize lockers shape once for rendering and lookup (avoid using unknown '{}' keys directly)
   const normalizedLockers = useMemo(() => {
@@ -568,6 +432,8 @@ export default function MailroomPackageView({
       file_size_mb: number;
       uploaded_at: string;
       package?: { package_name: string };
+      mailbox_item_name?: string;
+      mailbox_item_table?: unknown;
     };
 
     const fromPackages: LocalScan[] = normalizedPackages.flatMap((p) => {
@@ -662,62 +528,6 @@ export default function MailroomPackageView({
     return Array.from(map.values());
   }, [normalizedPackages, scans]);
 
-  const getLockerStatusColor = (status?: string | null): string => {
-    if (status === "Full") return "red";
-    if (status === "Near Full") return "orange";
-    if (status === "Empty") return "gray";
-    return "blue";
-  };
-
-  if (loading) {
-    return (
-      <Box
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#F8F9FA",
-        }}
-      >
-        <DashboardNav />
-        <Container py="xl" size="xl">
-          <Loader />
-        </Container>
-        <Footer />
-      </Box>
-    );
-  }
-
-  if (error || !item) {
-    return (
-      <Box
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#F8F9FA",
-        }}
-      >
-        <DashboardNav />
-        <Container py="xl" size="xl">
-          <Paper p="xl" radius="md" withBorder>
-            <Stack align="center">
-              <Text c="red" size="lg" fw={500}>
-                {error ?? "Not found"}
-              </Text>
-              <Link href="/dashboard">
-                <Button leftSection={<IconArrowLeft size={16} />}>
-                  Back to Dashboard
-                </Button>
-              </Link>
-            </Stack>
-          </Paper>
-        </Container>
-        <Footer />
-      </Box>
-    );
-  }
-
   const locations =
     firstOf(
       getProp<Record<string, unknown> | Record<string, unknown>[] | null>(
@@ -737,21 +547,6 @@ export default function MailroomPackageView({
     (locations && (locations as Record<string, unknown>)["id"]) ??
     getProp<string>(src, "location_id");
   const accountNumber = `U${String(getProp<string>(src, "user_id") ?? "u").slice(0, 8)}-L${String(locId ?? "l").slice(0, 8)}-M${String(getProp<string>(src, "id") ?? "").slice(0, 8)}`;
-
-  const getSubscriptionExpiry = (s: unknown): string | null => {
-    if (!s) return null;
-    if (Array.isArray(s) && s.length > 0) {
-      return String(
-        (s[0] as Record<string, unknown>)?.subscription_expires_at ?? null,
-      );
-    }
-    if (typeof s === "object") {
-      return String(
-        (s as Record<string, unknown>)?.subscription_expires_at ?? null,
-      );
-    }
-    return null;
-  };
 
   const expiry =
     getSubscriptionExpiry(getProp<unknown>(src, "subscription_table")) ??
@@ -806,7 +601,6 @@ export default function MailroomPackageView({
         | null)
     : null;
 
-  console.log("usersTable", usersTable);
   const kyc = firstOf(rawKyc) as Record<string, unknown> | null;
   const firstName =
     getProp<string>(src, "first_name") ??
@@ -828,496 +622,92 @@ export default function MailroomPackageView({
     fullNameValue = null;
   }
 
-  return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "#F8F9FA",
-      }}
-    >
-      <DashboardNav />
-      <main style={{ flex: 1 }}>
-        <Container size="xl" py="xl">
-          <Stack gap="lg" mb="xl">
-            <Breadcrumbs>{items}</Breadcrumbs>
-            <Group justify="space-between" align="flex-start">
-              <Box>
-                <Title order={2} c="dark.8">
-                  {planName}
-                </Title>
-                <Text c="dimmed" size="sm" mt={4}>
-                  Account #: {accountNumber}
-                </Text>
-              </Box>
-              <Group>
-                <Tooltip label="Refresh Data">
-                  <ActionIcon variant="light" size="lg" onClick={handleRefresh}>
-                    <IconRefresh size={20} />
-                  </ActionIcon>
-                </Tooltip>
-                <Link href="/dashboard">
-                  <Button
-                    variant="default"
-                    leftSection={<IconArrowLeft size={16} />}
-                  >
-                    Back
-                  </Button>
-                </Link>
+  const content = (() => {
+    if (loading) return <MailroomLoading />;
+    if (error || !item) return <MailroomError error={error} />;
+
+    return (
+      <Box
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          flexDirection: "column",
+          backgroundColor: "#F8F9FA",
+        }}
+      >
+        <DashboardNav />
+        <main style={{ flex: 1 }}>
+          <Container size="xl" py="xl">
+            <Stack gap="lg" mb="xl">
+              <Breadcrumbs>{items}</Breadcrumbs>
+              <Group justify="space-between" align="flex-start">
+                <Box>
+                  <Title order={2} c="dark.8">
+                    {planName}
+                  </Title>
+                  <Text c="dimmed" size="sm" mt={4}>
+                    Account #: {accountNumber}
+                  </Text>
+                </Box>
+                <Group>
+                  <Tooltip label="Refresh Data">
+                    <ActionIcon
+                      variant="light"
+                      size="lg"
+                      onClick={handleRefresh}
+                    >
+                      <IconRefresh size={20} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Link href="/dashboard">
+                    <Button
+                      variant="default"
+                      leftSection={<IconArrowLeft size={16} />}
+                    >
+                      Back
+                    </Button>
+                  </Link>
+                </Group>
               </Group>
-            </Group>
-          </Stack>
+            </Stack>
 
-          <Grid gutter="md">
-            <Grid.Col span={{ base: 12, md: 8 }}>
-              <Stack gap="md">
-                <Grid gutter="md">
-                  <Grid.Col span={{ base: 12, sm: 6 }}>
-                    <Paper p="md" radius="md" withBorder shadow="sm">
-                      <Group>
-                        <ThemeIcon
-                          size="lg"
-                          radius="md"
-                          variant="light"
-                          color="blue"
-                        >
-                          <IconCalendar size={20} />
-                        </ThemeIcon>
-                        <Box>
-                          <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                            Subscription Expiry
-                          </Text>
-                          <Text fw={700} size="lg">
-                            {expiry
-                              ? new Date(expiry).toLocaleDateString()
-                              : "—"}
-                          </Text>
-                        </Box>
-                      </Group>
-                    </Paper>
-                  </Grid.Col>
-
-                  <Grid.Col span={{ base: 12, sm: 6 }}>
-                    <Paper p="md" radius="md" withBorder shadow="sm">
-                      <Group>
-                        <ThemeIcon
-                          size="lg"
-                          radius="md"
-                          variant="light"
-                          color={
-                            getProp<string>(src, "locker_status")
-                              ? "gray"
-                              : "yellow"
-                          }
-                        >
-                          <IconLock size={20} />
-                        </ThemeIcon>
-                        <Box>
-                          <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                            Locker Status
-                          </Text>
-                          <Badge
-                            size="lg"
-                            color={
-                              getProp<string>(src, "locker_status")
-                                ? "gray"
-                                : "yellow"
-                            }
-                          >
-                            {String(
-                              getProp<string>(src, "locker_status") ?? "Active",
-                            )}
-                          </Badge>
-                        </Box>
-                      </Group>
-                    </Paper>
-                  </Grid.Col>
-                </Grid>
-
-                <Paper p="lg" radius="md" withBorder shadow="sm">
-                  <Group justify="space-between" mb="md">
-                    <Group gap="xs">
-                      <IconLock size={20} color="gray" />
-                      <Title order={4}>Assigned Lockers</Title>
-                    </Group>
-                    <Group>
-                      {selectedLockerId && (
-                        <Button
-                          variant="subtle"
-                          size="xs"
-                          color="red"
-                          onClick={() => setSelectedLockerId(null)}
-                        >
-                          Clear Filter
-                        </Button>
-                      )}
-                      <Badge variant="light">
-                        {String(lockerCount)} Assigned
-                      </Badge>
-                    </Group>
-                  </Group>
-
-                  <Table highlightOnHover>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Locker Code</Table.Th>
-                        <Table.Th>Capacity Status</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {normalizedLockers.length > 0 ? (
-                        normalizedLockers.map((L) => (
-                          <Table.Tr
-                            key={L.id}
-                            style={{ cursor: "pointer" }}
-                            bg={
-                              selectedLockerId === L.id
-                                ? "var(--mantine-color-blue-0)"
-                                : undefined
-                            }
-                            onClick={() =>
-                              setSelectedLockerId((curr) =>
-                                curr === L.id ? null : L.id,
-                              )
-                            }
-                          >
-                            <Table.Td fw={500}>{L.code}</Table.Td>
-                            <Table.Td>
-                              <Badge
-                                variant="light"
-                                color={getLockerStatusColor(L.status)}
-                              >
-                                {L.status}
-                              </Badge>
-                            </Table.Td>
-                          </Table.Tr>
-                        ))
-                      ) : (
-                        <Table.Tr>
-                          <Table.Td colSpan={2}>
-                            <Text c="dimmed" size="sm">
-                              No lockers assigned
-                            </Text>
-                          </Table.Td>
-                        </Table.Tr>
-                      )}
-                    </Table.Tbody>
-                  </Table>
-                </Paper>
-
-                <UserPackages
-                  packages={normalizedPackages}
-                  lockers={normalizedLockers.map((l) => ({
-                    id: l.id,
-                    locker_code: l.code,
-                  }))}
-                  planCapabilities={{
-                    can_receive_mail: Boolean(plan.can_receive_mail),
-                    can_receive_parcels: Boolean(plan.can_receive_parcels),
-                    can_digitize: Boolean(plan.can_digitize),
-                  }}
+            <Grid gutter="md">
+              <Grid.Col span={{ base: 12, md: 8 }}>
+                <MailroomMainContent
+                  src={src}
+                  expiry={expiry}
+                  lockerCount={lockerCount}
+                  normalizedLockers={normalizedLockers}
+                  selectedLockerId={selectedLockerId}
+                  setSelectedLockerId={setSelectedLockerId}
+                  normalizedPackages={normalizedPackages}
+                  plan={plan}
                   isStorageFull={isStorageFull}
-                  onRefreshAction={handleRefresh}
+                  handleRefresh={handleRefresh}
                   scanMap={scanMap}
                   scans={scans}
+                  refreshKey={refreshKey}
+                  mergedScans={mergedScans}
+                  scansUsage={scansUsage}
                 />
+              </Grid.Col>
 
-                {plan.can_digitize && (
-                  <UserScans
-                    key={refreshKey}
-                    scans={mergedScans ?? []}
-                    usage={
-                      scansUsage
-                        ? {
-                            used_mb: scansUsage.used_mb ?? 0,
-                            limit_mb: scansUsage.limit_mb ?? 0,
-                            percentage: scansUsage.percentage ?? 0,
-                          }
-                        : null
-                    }
-                  />
-                )}
-              </Stack>
-            </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <MailroomSidebar
+                  src={src}
+                  fullNameValue={fullNameValue}
+                  locations={locations}
+                  plan={plan}
+                  expiry={expiry}
+                />
+              </Grid.Col>
+            </Grid>
+          </Container>
+        </main>
+        <Footer />
+      </Box>
+    );
+  })();
 
-            <Grid.Col span={{ base: 12, md: 4 }}>
-              <Stack gap="md">
-                <Paper p="md" radius="md" withBorder shadow="sm">
-                  <Group mb="md">
-                    <ThemeIcon variant="light" color="indigo">
-                      <IconUser size={18} />
-                    </ThemeIcon>
-                    <Text fw={600}>User Details</Text>
-                  </Group>
-                  <Stack gap="sm">
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Full Name
-                      </Text>
-                      <Text fw={500}>{String(fullNameValue ?? "—")}</Text>
-                    </Box>
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Email
-                      </Text>
-                      <Text fw={500} style={{ wordBreak: "break-all" }}>
-                        {String(
-                          getProp<string>(src, "email") ??
-                            (getProp<Record<string, unknown> | null>(
-                              src,
-                              "users_table",
-                            )
-                              ? getProp<string>(
-                                  getProp<Record<string, unknown> | null>(
-                                    src,
-                                    "users_table",
-                                  ) as Record<string, unknown>,
-                                  "users_email",
-                                )
-                              : undefined) ??
-                            "—",
-                        )}
-                      </Text>
-                    </Box>
-                    <Group grow>
-                      <Box>
-                        <Text size="xs" c="dimmed">
-                          Mobile
-                        </Text>
-                        <Text fw={500}>
-                          {String(
-                            getProp<string>(src, "mobile") ??
-                              (getProp<Record<string, unknown> | null>(
-                                src,
-                                "users_table",
-                              )
-                                ? getProp<string>(
-                                    getProp<Record<string, unknown> | null>(
-                                      src,
-                                      "users_table",
-                                    ) as Record<string, unknown>,
-                                    "users_phone",
-                                  )
-                                : undefined) ??
-                              "—",
-                          )}
-                        </Text>
-                      </Box>
-                    </Group>
-                  </Stack>
-                </Paper>
-
-                <Paper p="md" radius="md" withBorder shadow="sm">
-                  <Group mb="md">
-                    <ThemeIcon variant="light" color="orange">
-                      <IconMapPin size={18} />
-                    </ThemeIcon>
-                    <Group>
-                      <Text fw={600}>Location Details</Text>
-                      <ActionIcon
-                        size="sm"
-                        variant="light"
-                        onClick={copyFullShippingAddress}
-                        title="Copy full shipping address"
-                      >
-                        <IconCopy size={14} />
-                      </ActionIcon>
-                    </Group>
-                  </Group>
-                  <Stack gap="sm">
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Mailroom Code
-                      </Text>
-                      <Text fw={500} ff="monospace">
-                        {String(
-                          getProp<string>(src, "mailroom_code") ??
-                            getProp<string>(
-                              src,
-                              "mailroom_registration_code",
-                            ) ??
-                            "—",
-                        )}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Location Name
-                      </Text>
-                      <Text fw={500}>
-                        {String(
-                          (locations &&
-                            (locations as Record<string, unknown>)[
-                              "mailroom_location_name"
-                            ]) ??
-                            (locations &&
-                              (locations as Record<string, unknown>)["name"]) ??
-                            "—",
-                        )}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Full Address
-                      </Text>
-                      <Text
-                        fw={500}
-                        size="sm"
-                        style={{ wordBreak: "break-word" }}
-                      >
-                        {(getFullAddressFromRaw(locations) ??
-                          [
-                            (locations as Record<string, unknown>)?.address,
-                            (locations as Record<string, unknown>)?.city,
-                            (locations as Record<string, unknown>)?.region,
-                          ]
-                            .filter(Boolean)
-                            .join(", ")) ||
-                          "—"}
-                      </Text>
-                    </Box>
-                  </Stack>
-                </Paper>
-
-                <Paper p="md" radius="md" withBorder shadow="sm">
-                  <Group mb="md">
-                    <ThemeIcon variant="light" color="teal">
-                      <IconCreditCard size={18} />
-                    </ThemeIcon>
-                    <Text fw={600}>Plan Details</Text>
-                  </Group>
-                  <Stack gap="sm">
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Plan Name
-                      </Text>
-                      <Text fw={500}>
-                        {String(
-                          (plan as Record<string, unknown>)
-                            ?.mailroom_plan_name ??
-                            (plan as Record<string, unknown>)?.name ??
-                            getProp<string>(src, "plan") ??
-                            "—",
-                        )}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Date Created
-                      </Text>
-                      <Text fw={500}>
-                        {getProp<string>(src, "created_at")
-                          ? new Date(
-                              String(getProp<string>(src, "created_at")),
-                            ).toLocaleDateString()
-                          : "—"}
-                      </Text>
-                    </Box>
-
-                    <Box>
-                      <Text size="xs" c="dimmed">
-                        Billing
-                      </Text>
-                      <Text fw={500}>
-                        {(() => {
-                          const monthsVal = getProp<string | number>(
-                            src,
-                            "months",
-                          );
-                          if (!monthsVal) return "—";
-                          return Number(monthsVal) >= 12 ? "Annual" : "Monthly";
-                        })()}
-                      </Text>
-                    </Box>
-
-                    <Group grow>
-                      <Box>
-                        <Text size="xs" c="dimmed">
-                          Registration Location
-                        </Text>
-                        <Text fw={500}>
-                          {String(
-                            (locations &&
-                              (locations as Record<string, unknown>)[
-                                "mailroom_location_name"
-                              ]) ??
-                              (locations &&
-                                (locations as Record<string, unknown>)[
-                                  "name"
-                                ]) ??
-                              "—",
-                          )}
-                        </Text>
-                      </Box>
-                      <Box>
-                        <Text size="xs" c="dimmed">
-                          Expiry Date
-                        </Text>
-                        <Text fw={500}>
-                          {expiry ? new Date(expiry).toLocaleDateString() : "—"}
-                        </Text>
-                      </Box>
-                    </Group>
-
-                    {(Boolean(plan.can_receive_mail) ||
-                      Boolean(plan.can_receive_parcels) ||
-                      Boolean(plan.can_digitize)) && (
-                      <Box mt="xs">
-                        <Text size="xs" c="dimmed" mb={6}>
-                          Included Features
-                        </Text>
-                        <Group gap="xs">
-                          {Boolean(plan.can_receive_mail) && (
-                            <Tooltip label="Can Receive Mail" withArrow>
-                              <ThemeIcon
-                                variant="light"
-                                color="blue"
-                                size="md"
-                                radius="md"
-                              >
-                                <IconMail size={18} />
-                              </ThemeIcon>
-                            </Tooltip>
-                          )}
-                          {Boolean(plan.can_receive_parcels) && (
-                            <Tooltip label="Can Receive Parcels" withArrow>
-                              <ThemeIcon
-                                variant="light"
-                                color="orange"
-                                size="md"
-                                radius="md"
-                              >
-                                <IconPackage size={18} />
-                              </ThemeIcon>
-                            </Tooltip>
-                          )}
-                          {Boolean(plan.can_digitize) && (
-                            <Tooltip
-                              label="Digital Scanning Included"
-                              withArrow
-                            >
-                              <ThemeIcon
-                                variant="light"
-                                color="cyan"
-                                size="md"
-                                radius="md"
-                              >
-                                <IconScan size={18} />
-                              </ThemeIcon>
-                            </Tooltip>
-                          )}
-                        </Group>
-                      </Box>
-                    )}
-                  </Stack>
-                </Paper>
-              </Stack>
-            </Grid.Col>
-          </Grid>
-        </Container>
-      </main>
-      <Footer />
-    </Box>
-  );
+  return content;
 }
