@@ -292,7 +292,8 @@ async function generateMailroomCode(): Promise<string> {
   let attempts = 0;
 
   while (!isUnique && attempts < 10) {
-    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+    // use hex (base16) instead of base36
+    const randomStr = Math.random().toString(16).substring(2, 8).toUpperCase(); // 6 hex chars
     mailroomCode = `KPH-${randomStr}`;
 
     const { data: existing } = await supabase

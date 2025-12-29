@@ -1,7 +1,7 @@
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
 import { NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const propertyId = process.env.GA_PROPERTY_ID;
     const email = process.env.GOOGLE_CLIENT_EMAIL;
@@ -14,6 +14,18 @@ export async function GET() {
       );
     }
 
+    const url = new URL(req.url);
+    const range = url.searchParams.get("range") ?? "7d";
+    const rangeMap: Record<string, { startDate: string; endDate: string }> = {
+      "1d": { startDate: "1daysAgo", endDate: "today" },
+      "7d": { startDate: "7daysAgo", endDate: "today" },
+      "30d": { startDate: "30daysAgo", endDate: "today" },
+      "90d": { startDate: "90daysAgo", endDate: "today" },
+      "180d": { startDate: "180daysAgo", endDate: "today" },
+      "365d": { startDate: "365daysAgo", endDate: "today" },
+    };
+    const dateRange = rangeMap[range] ?? rangeMap["7d"];
+
     const analyticsDataClient = new BetaAnalyticsDataClient({
       credentials: {
         client_email: email,
@@ -21,39 +33,48 @@ export async function GET() {
       },
     });
 
-    // NEW: Fetch Realtime Active Users (Last 30 mins)
+    // realtime active users (always fetch)
     const [realtimeResponse] = await analyticsDataClient.runRealtimeReport({
       property: `properties/${propertyId}`,
       metrics: [{ name: "activeUsers" }],
     });
-
     const activeNow = Number(
       realtimeResponse.rows?.[0]?.metricValues?.[0]?.value || 0,
     );
 
-    // 1. Fetch Trend Data (Visitors & Pageviews) - Last 7 Days
+    // Trend Data using selected range
     const [trendResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
-      dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
+      dateRanges: [
+        { startDate: dateRange.startDate, endDate: dateRange.endDate },
+      ],
       dimensions: [{ name: "date" }],
       metrics: [{ name: "activeUsers" }, { name: "screenPageViews" }],
+      limit: 10000,
       orderBys: [
-        { dimension: { orderType: "ALPHANUMERIC", dimensionName: "date" } },
+        {
+          dimension: { orderType: "ALPHANUMERIC", dimensionName: "date" },
+          desc: false,
+        },
       ],
     });
 
-    // 2. Fetch Device Data - Last 30 Days
+    // Device Data using selected range
     const [deviceResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
-      dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+      dateRanges: [
+        { startDate: dateRange.startDate, endDate: dateRange.endDate },
+      ],
       dimensions: [{ name: "deviceCategory" }],
       metrics: [{ name: "activeUsers" }],
     });
 
-    // 3. Fetch Top Pages - Last 30 Days (Filtered)
+    // Top Pages using selected range
     const [pagesResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
-      dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+      dateRanges: [
+        { startDate: dateRange.startDate, endDate: dateRange.endDate },
+      ],
       dimensions: [{ name: "pagePath" }],
       metrics: [{ name: "screenPageViews" }],
       dimensionFilter: {
@@ -89,18 +110,13 @@ export async function GET() {
     });
 
     // --- Process Data for Frontend ---
-
-    // Map Trend
-    // GA returns date as YYYYMMDD, let's format it simply
     const visitorData =
       trendResponse.rows?.map((row) => {
         const dateStr = row.dimensionValues?.[0].value || "";
-        // Format YYYYMMDD to readable (e.g., MM/DD)
         const formattedDate =
           dateStr.length === 8
             ? `${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}`
             : dateStr;
-
         return {
           date: formattedDate,
           visitors: Number(row.metricValues?.[0].value || 0),
@@ -108,33 +124,28 @@ export async function GET() {
         };
       }) || [];
 
-    // Map Devices
     const deviceColors: Record<string, string> = {
       desktop: "#228BE6",
       mobile: "#12B886",
       tablet: "#7950f2",
     };
-
     const deviceData =
       deviceResponse.rows?.map((row) => {
         const name = (
           row.dimensionValues?.[0].value || "unknown"
         ).toLowerCase();
         return {
-          name: name,
+          name,
           value: Number(row.metricValues?.[0].value || 0),
           color: deviceColors[name] || "#868e96",
         };
       }) || [];
-
-    // Map Pages
     const topPages =
       pagesResponse.rows?.map((row) => ({
         name: row.dimensionValues?.[0].value || "/",
         views: Number(row.metricValues?.[0].value || 0),
       })) || [];
 
-    // Calculate Totals from the trend data
     const totalVisitors = visitorData.reduce(
       (acc, curr) => acc + curr.visitors,
       0,
@@ -148,11 +159,7 @@ export async function GET() {
       visitorData,
       deviceData,
       topPages,
-      stats: {
-        activeNow, // NEW field
-        totalVisitors,
-        totalPageViews,
-      },
+      stats: { activeNow, totalVisitors, totalPageViews },
     });
   } catch (error: unknown) {
     console.error("Analytics API Error:", error);
