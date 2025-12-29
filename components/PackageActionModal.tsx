@@ -23,7 +23,6 @@ type AddressOption = {
   region?: string;
   postal?: string;
   country?: string;
-  contact_phone?: string;
   is_default?: boolean;
   users?: Record<string, unknown> | null;
 };
@@ -102,13 +101,19 @@ export default function PackageActionModal({
     return mobile || "";
   };
 
+  // local copy so newly created address shows immediately
+  const [localAddresses, setLocalAddresses] = React.useState<AddressOption[]>(
+    () => addresses,
+  );
+  React.useEffect(() => setLocalAddresses(addresses), [addresses]);
+
   // derive recipient display name from available package/address shapes (no `any`)
   const deriveRecipientName = (): string => {
     if (releaseToName && releaseToName.trim()) return releaseToName.trim();
 
     // selected address first (if it contains a users object or contact_name)
     if (selectedAddressId) {
-      const sel = addresses.find((a) => a.id === selectedAddressId);
+      const sel = localAddresses.find((a) => a.id === selectedAddressId);
       if (sel) {
         if (typeof sel.contact_name === "string" && sel.contact_name.trim())
           return sel.contact_name.trim();
@@ -175,8 +180,111 @@ export default function PackageActionModal({
       : {};
   };
 
-  const addressesAvailable = addresses.length > 0;
+  const addressesAvailable = localAddresses.length > 0;
   const userName = getUsername(safeGetUser(selectedPackage));
+
+  // open add form only when there are no addresses; update when `addresses` changes
+  const [showAddAddress, setShowAddAddress] = React.useState(
+    () => (addresses ?? []).length === 0,
+  );
+  React.useEffect(() => {
+    setShowAddAddress((addresses ?? []).length === 0);
+  }, [addresses]);
+
+  const [newAddr, setNewAddr] = React.useState({
+    label: "",
+    line1: "",
+    line2: "",
+    city: "",
+    region: "",
+    postal: "",
+    is_default: false,
+  });
+
+  // extract user id from selectedPackage similar to AccountAddresses (server expects user_id)
+  const getPackageUserId = (): string => {
+    const u = safeGetUser(selectedPackage);
+    return String(u.users_id ?? u.user_id ?? u.id ?? "");
+  };
+
+  const submitNewAddress = async (): Promise<void> => {
+    // require the full set (line2 optional)
+    if (
+      !newAddr.label ||
+      !newAddr.line1 ||
+      !newAddr.city ||
+      !newAddr.region ||
+      !newAddr.postal
+    )
+      return;
+    try {
+      // match AccountAddresses payload shape
+      const body = {
+        label: newAddr.label.trim(),
+        line1: newAddr.line1,
+        line2: newAddr.line2 || null,
+        city: newAddr.city,
+        region: newAddr.region,
+        postal: newAddr.postal,
+        // first address becomes default automatically
+        is_default: localAddresses.length === 0,
+        user_id: getPackageUserId(),
+      };
+      const res = await fetch("/api/user/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Create address failed");
+
+      const created = (json?.data && (json.data[0] ?? json.data)) ?? json;
+      const createdId = String(created?.id ?? created?.user_address_id ?? "");
+      const option: AddressOption = {
+        id: createdId,
+        label: String(
+          created?.label ?? created?.user_address_label ?? newAddr.label,
+        ),
+        line1: String(
+          created?.line1 ?? created?.user_address_line1 ?? newAddr.line1,
+        ),
+        line2: String(
+          created?.line2 ?? created?.user_address_line2 ?? newAddr.line2,
+        ),
+        city: String(
+          created?.city ?? created?.user_address_city ?? newAddr.city,
+        ),
+        region: String(
+          created?.region ?? created?.user_address_region ?? newAddr.region,
+        ),
+        postal: String(
+          created?.postal ?? created?.user_address_postal ?? newAddr.postal,
+        ),
+        users: (created?.users as Record<string, unknown> | null) ?? null,
+        is_default: Boolean(
+          created?.is_default ??
+          created?.user_address_is_default ??
+          newAddr.is_default,
+        ),
+      };
+
+      setLocalAddresses((s) => [option, ...s]);
+      setSelectedAddressId(option.id);
+      if (option.label) setReleaseToName(option.label);
+      setShowAddAddress(false);
+      setNewAddr({
+        label: "",
+        line1: "",
+        line2: "",
+        city: "",
+        region: "",
+        postal: "",
+        is_default: false,
+      });
+    } catch {
+      // ignore UI error handling here (use notifications in real flow)
+    }
+  };
 
   const releaseMissingRecipient =
     actionType === "RELEASE" &&
@@ -195,9 +303,7 @@ export default function PackageActionModal({
   const confirmDisabled =
     actionType === "RELEASE" ? releaseMissingRecipient || pickupInvalid : false;
 
-  // Avoid nested ternary in JSX by extracting address preview renderer
   const renderAddressPreview = (): React.ReactNode => {
-    // normalize possibly-unknown package fields to strings to satisfy JSX/ReactNode typing
     const releaseAddressStr =
       selectedPackage && selectedPackage.release_address !== undefined
         ? String(
@@ -212,18 +318,15 @@ export default function PackageActionModal({
         : "";
 
     if (selectedAddressId) {
-      const sel = addresses.find((a) => a.id === selectedAddressId);
+      const sel = localAddresses.find((a) => a.id === selectedAddressId);
       if (!sel) return <Text c="dimmed">Loading address...</Text>;
-      const fallbackUserName = recipientName;
+
       return (
         <Paper withBorder p="sm" radius="md" bg="gray.0">
           <Group justify="space-between" align="center">
             <div>
               <Text fw={600} size="sm">
                 {sel.label || "Unnamed Address"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Recipient: {sel.contact_name || fallbackUserName || "N/A"}
               </Text>
             </div>
             {sel.is_default && (
@@ -241,11 +344,6 @@ export default function PackageActionModal({
               .filter(Boolean)
               .join(", ")}
           </Text>
-          {sel.contact_phone && (
-            <Text size="xs" c="dimmed" mt="4px">
-              Phone: {sel.contact_phone}
-            </Text>
-          )}
         </Paper>
       );
     }
@@ -278,52 +376,185 @@ export default function PackageActionModal({
 
         {actionType === "RELEASE" && (
           <>
-            <Select
-              label="Shipping Address (required)"
-              placeholder="Select a saved address for shipping"
-              required
-              searchable
-              clearable={false}
-              maxDropdownHeight={320}
-              data={addressSelectData}
-              value={selectedAddressId}
-              onChange={(v) => {
-                setSelectedAddressId(v);
-                const sel = addresses.find((x) => x.id === v);
-                if (sel?.contact_name) setReleaseToName(sel.contact_name);
-              }}
-              renderOption={({ option }) => {
-                const a = addresses.find((addr) => addr.id === option.value);
-                if (!a) return null;
-                return (
-                  <Stack gap={2}>
-                    <Group justify="space-between" align="center" wrap="nowrap">
-                      <Text
-                        fw={600}
-                        size="sm"
-                        style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+            {addressesAvailable && (
+              <Select
+                label="Shipping Address (required)"
+                placeholder="Select a saved address for shipping"
+                required
+                searchable
+                clearable={false}
+                maxDropdownHeight={320}
+                data={
+                  localAddresses.length > 0
+                    ? localAddresses.map((a) => ({
+                        value: a.id,
+                        label:
+                          (a.label && a.label.trim()) ||
+                          (a.line1 && String(a.line1).slice(0, 60)) ||
+                          "Address",
+                      }))
+                    : addressSelectData
+                }
+                value={selectedAddressId}
+                onChange={(v) => {
+                  setSelectedAddressId(v);
+                  const sel = localAddresses.find((x) => x.id === v);
+                  if (sel?.contact_name) setReleaseToName(sel.contact_name);
+                }}
+                renderOption={({ option }) => {
+                  const a = localAddresses.find(
+                    (addr) => addr.id === option.value,
+                  );
+                  if (!a) return null;
+                  return (
+                    <Stack gap={2}>
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        wrap="nowrap"
                       >
-                        {a.label || "Unnamed Address"}
+                        <Text
+                          fw={600}
+                          size="sm"
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {a.label || "Unnamed Address"}
+                        </Text>
+                        {a.is_default && (
+                          <Badge variant="light" color="blue" size="sm">
+                            DEFAULT
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text size="xs" c="gray.7">
+                        {a.line1}
+                        {a.line2 ? `, ${a.line2}` : ""}
                       </Text>
-                      {a.is_default && (
-                        <Badge variant="light" color="blue" size="sm">
-                          DEFAULT
-                        </Badge>
-                      )}
+                      <Text size="xs" c="gray.7">
+                        {[a.city, a.region, a.postal, a.country]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </Text>
+                    </Stack>
+                  );
+                }}
+              />
+            )}
+
+            {/* inline add address — if no addresses, render form immediately; otherwise keep toggle */}
+            <Box mt="sm">
+              {addressesAvailable && !showAddAddress && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAddAddress(true)}
+                >
+                  Add address
+                </Button>
+              )}
+
+              {(showAddAddress || !addressesAvailable) && (
+                <Paper withBorder p="md" mt="sm" radius="md">
+                  <Stack>
+                    <TextInput
+                      label="Address Label (e.g., Home, Office) *"
+                      placeholder="Short name for this location"
+                      value={newAddr.label}
+                      onChange={(e) =>
+                        setNewAddr({
+                          ...newAddr,
+                          label: e.currentTarget.value,
+                        })
+                      }
+                      required
+                    />
+                    <TextInput
+                      label="Address Line 1 (Street/Brgy/House No.) *"
+                      placeholder="House/Unit number, Street, Barangay"
+                      value={newAddr.line1}
+                      onChange={(e) =>
+                        setNewAddr({
+                          ...newAddr,
+                          line1: e.currentTarget.value,
+                        })
+                      }
+                      required
+                    />
+                    <TextInput
+                      label="Address Line 2 (Unit/Landmark/Subdivision)"
+                      placeholder="Unit / Landmark / Subdivision (optional)"
+                      value={newAddr.line2}
+                      onChange={(e) =>
+                        setNewAddr({
+                          ...newAddr,
+                          line2: e.currentTarget.value,
+                        })
+                      }
+                    />
+                    <TextInput
+                      label="City *"
+                      placeholder="e.g., Quezon City"
+                      value={newAddr.city}
+                      onChange={(e) =>
+                        setNewAddr({
+                          ...newAddr,
+                          city: e.currentTarget.value,
+                        })
+                      }
+                      required
+                    />
+                    <TextInput
+                      label="Region/Province *"
+                      placeholder="e.g., Metro Manila"
+                      value={newAddr.region}
+                      onChange={(e) =>
+                        setNewAddr({
+                          ...newAddr,
+                          region: e.currentTarget.value,
+                        })
+                      }
+                      required
+                    />
+                    <TextInput
+                      label="Postal Code *"
+                      placeholder="e.g., 1100"
+                      value={newAddr.postal}
+                      onChange={(e) =>
+                        setNewAddr({
+                          ...newAddr,
+                          postal: e.currentTarget.value,
+                        })
+                      }
+                      inputMode="numeric"
+                      required
+                    />
+                    {/* first created address is set as default automatically */}
+                    <Group align="right" mt="xs">
+                      <Button
+                        variant="default"
+                        onClick={() => setShowAddAddress(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => void submitNewAddress()}
+                        disabled={
+                          !newAddr.label ||
+                          !newAddr.line1 ||
+                          !newAddr.city ||
+                          !newAddr.region ||
+                          !newAddr.postal
+                        }
+                      >
+                        Save
+                      </Button>
                     </Group>
-                    <Text size="xs" c="gray.7">
-                      {a.line1}
-                      {a.line2 ? `, ${a.line2}` : ""}
-                    </Text>
-                    <Text size="xs" c="gray.7">
-                      {[a.city, a.region, a.postal, a.country]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </Text>
                   </Stack>
-                );
-              }}
-            />
+                </Paper>
+              )}
+            </Box>
 
             <Box mt="md">{renderAddressPreview()}</Box>
 
@@ -386,20 +617,7 @@ export default function PackageActionModal({
           </Button>
           <Button
             color="blue"
-            onClick={() => {
-              console.log("PackageActionModal Confirm click", {
-                actionType,
-                selectedPackage,
-                selectedAddressId,
-                releaseToName,
-                pickupOnBehalf,
-                behalfName,
-                behalfMobile,
-                behalfContactMode,
-                confirmDisabled,
-              });
-              void submitAction();
-            }}
+            onClick={() => void submitAction()}
             loading={submitting}
             disabled={confirmDisabled}
           >
