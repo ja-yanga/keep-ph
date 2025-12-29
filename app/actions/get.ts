@@ -871,9 +871,14 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
     const count = stats.get(id)!;
     const status = item.mailbox_item_status.toUpperCase();
     if (status === "RELEASED") count.released++;
-    else if (status.includes("REQUEST")) count.pending++;
-    else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status))
+    else if (status.includes("REQUEST")) {
+      count.pending++;
+      if (status === "REQUEST_TO_SCAN") {
+        count.stored++;
+      }
+    } else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)) {
       count.stored++;
+    }
   });
 
   return Array.from(stats.entries()).map(([id, counts]) => ({
@@ -971,9 +976,16 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
             };
 
             if (status === "RELEASED") cur.released += 1;
-            else if (status.includes("REQUEST")) cur.pending += 1;
-            else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status))
+            else if (status.includes("REQUEST")) {
+              cur.pending += 1;
+              if (status === "REQUEST_TO_SCAN") {
+                cur.stored += 1;
+              }
+            } else if (
+              !["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)
+            ) {
               cur.stored += 1;
+            }
 
             regMap.set(idKey, cur);
           }
