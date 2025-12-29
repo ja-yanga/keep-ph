@@ -733,40 +733,23 @@ export async function calculateRegistrationAmount({
   referralCode?: string;
 }): Promise<number> {
   try {
-    // Fetch Plan Price
-    const { data: plan, error: planError } = await supabaseAdmin
-      .from("mailroom_plan_table")
-      .select("mailroom_plan_price")
-      .eq("mailroom_plan_id", planId)
-      .single();
+    const { data, error } = await supabaseAdmin.rpc(
+      "calculate_registration_amount",
+      {
+        input_data: {
+          plan_id: planId,
+          locker_qty: lockerQty,
+          months: months,
+          referral_code: referralCode,
+        },
+      },
+    );
 
-    if (planError || !plan) {
-      throw new Error("Invalid plan selected");
+    if (error) {
+      throw error;
     }
 
-    // Calculate base amount
-    let amountDue =
-      Number(plan.mailroom_plan_price) * Number(lockerQty) * Number(months);
-
-    // Apply yearly discount
-    if (Number(months) === 12) {
-      amountDue = amountDue * 0.8;
-    }
-
-    // Apply referral discount
-    if (referralCode) {
-      const { data: referrer } = await supabaseAdmin
-        .from("users_table")
-        .select("users_id")
-        .eq("users_referral_code", referralCode)
-        .single();
-
-      if (referrer) {
-        amountDue = amountDue * 0.95;
-      }
-    }
-
-    return amountDue;
+    return Number(data);
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -789,22 +772,25 @@ export async function checkLockerAvailability({
   lockerQty: number;
 }): Promise<{ available: boolean; count: number }> {
   try {
-    const { data: availableLockers, error: lockerCheckError } =
-      await supabaseAdmin
-        .from("location_locker_table")
-        .select("location_locker_id")
-        .eq("mailroom_location_id", locationId)
-        .eq("location_locker_is_available", true)
-        .limit(lockerQty);
+    const { data, error } = await supabaseAdmin.rpc(
+      "check_locker_availability",
+      {
+        input_data: {
+          location_id: locationId,
+          locker_qty: lockerQty,
+        },
+      },
+    );
 
-    if (lockerCheckError) {
-      throw new Error("Failed to check locker availability");
+    if (error) {
+      throw error;
     }
 
-    const count = availableLockers?.length ?? 0;
+    const payload = typeof data === "string" ? JSON.parse(data) : data;
+
     return {
-      available: count >= lockerQty,
-      count,
+      available: Boolean(payload.available),
+      count: Number(payload.count),
     };
   } catch (err) {
     if (err instanceof Error) {

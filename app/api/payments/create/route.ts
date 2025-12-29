@@ -37,8 +37,12 @@ export async function POST(req: Request) {
       paymentMethodTypes = [type];
     }
 
+    const qty = body.quantity || 1;
+
     const attrs: Record<string, unknown> = {
-      line_items: [{ currency, amount, name: orderId ?? "Order", quantity: 1 }],
+      line_items: [
+        { currency, amount, name: orderId ?? "Order", quantity: qty },
+      ],
       send_email_receipt: false,
       show_description: true,
       show_line_items: true,
