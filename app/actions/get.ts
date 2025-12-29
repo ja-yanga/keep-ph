@@ -873,7 +873,14 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
     if (status === "RELEASED") count.released++;
     else if (status.includes("REQUEST")) {
       count.pending++;
-      if (status === "REQUEST_TO_SCAN") {
+      // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
+      if (
+        [
+          "REQUEST_TO_SCAN",
+          "REQUEST_TO_RELEASE",
+          "REQUEST_TO_DISPOSE",
+        ].includes(status)
+      ) {
         count.stored++;
       }
     } else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)) {
@@ -978,7 +985,14 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
             if (status === "RELEASED") cur.released += 1;
             else if (status.includes("REQUEST")) {
               cur.pending += 1;
-              if (status === "REQUEST_TO_SCAN") {
+              // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
+              if (
+                [
+                  "REQUEST_TO_SCAN",
+                  "REQUEST_TO_RELEASE",
+                  "REQUEST_TO_DISPOSE",
+                ].includes(status)
+              ) {
                 cur.stored += 1;
               }
             } else if (
