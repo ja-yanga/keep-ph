@@ -39,7 +39,7 @@ import {
 } from "recharts";
 
 export default function AnalyticsDashboard() {
-  const [timeRange, setTimeRange] = useState<string | null>("7d");
+  const [timeRange, setTimeRange] = useState<string>("7d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,12 +59,10 @@ export default function AnalyticsDashboard() {
       try {
         setLoading(true);
         const res = await fetch(`/api/admin/analytics?range=${timeRange}`);
-
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.error || "Failed to load analytics data");
         }
-
         const json = await res.json();
         setData(json);
       } catch (err: unknown) {
@@ -74,7 +72,6 @@ export default function AnalyticsDashboard() {
         setLoading(false);
       }
     }
-
     fetchAnalytics();
   }, [timeRange]);
 
@@ -110,9 +107,15 @@ export default function AnalyticsDashboard() {
         <Title order={3}>Website Analytics</Title>
         <Select
           value={timeRange}
-          onChange={setTimeRange}
-          data={[{ value: "7d", label: "Last 7 Days" }]}
-          w={150}
+          onChange={(v) => setTimeRange(v ?? "7d")}
+          data={[
+            { value: "7d", label: "Last 7 days" },
+            { value: "30d", label: "Last 30 days" },
+            { value: "90d", label: "Last 90 days (3 months)" },
+            { value: "180d", label: "Last 180 days (6 months)" },
+            { value: "365d", label: "Last 12 months" },
+          ]}
+          w={200}
         />
       </Group>
 

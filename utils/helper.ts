@@ -9,11 +9,11 @@ import {
 
 export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {
-    green: ["VERIFIED", "PAID"],
+    green: ["VERIFIED", "PAID", "NORMAL"],
     blue: [],
     yellow: ["SUBMITTED", "PENDING"],
-    red: ["REJECTED"],
-    orange: [],
+    red: ["REJECTED", "FULL"],
+    orange: ["NEAR FULL"],
   };
 
   const statusToColor = Object.entries(colorGroups).reduce(
@@ -172,4 +172,11 @@ export const fetcher = async (url: string) => {
     throw new Error(txt || `Failed to fetch ${url}`);
   }
   return res.json().catch(() => ({}));
+};
+
+export const addMonths = (iso?: string | null, months = 0): string | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString();
 };

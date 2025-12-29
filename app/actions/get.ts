@@ -11,6 +11,7 @@ import {
   AdminUserKyc,
   ClaimWithUrl,
   MailroomPlanRow,
+  RegCounts,
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
@@ -337,6 +338,56 @@ export async function getMailroomRegistrations(
     }
 
     return payload;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
+ * Gets a single mailroom registration by ID for a user.
+ * Fetches registration with deep relations and assigned lockers.
+ *
+ * Used in:
+ * - app/api/mailroom/registrations/[id]/route.ts
+ */
+export async function getMailroomRegistration(
+  userId: string,
+  registrationId: string,
+): Promise<{ registration: unknown; lockers: unknown[] } | null> {
+  try {
+    // 1. Fetch Registration with relations using RPC
+    const { data: registration, error } = await supabaseAdmin.rpc(
+      "get_user_mailroom_registration",
+      {
+        input_data: {
+          input_user_id: userId,
+          input_registration_id: registrationId,
+        },
+      },
+    );
+
+    if (error) {
+      console.error("Registration fetch error:", error);
+      return null;
+    }
+
+    // 2. Fetch Assigned Lockers using RPC
+    const { data: assignedLockers } = await supabaseAdmin.rpc(
+      "get_user_assigned_lockers",
+      {
+        input_data: {
+          input_registration_id: registrationId,
+        },
+      },
+    );
+
+    return {
+      registration,
+      lockers: assignedLockers ?? [],
+    };
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -682,40 +733,23 @@ export async function calculateRegistrationAmount({
   referralCode?: string;
 }): Promise<number> {
   try {
-    // Fetch Plan Price
-    const { data: plan, error: planError } = await supabaseAdmin
-      .from("mailroom_plan_table")
-      .select("mailroom_plan_price")
-      .eq("mailroom_plan_id", planId)
-      .single();
+    const { data, error } = await supabaseAdmin.rpc(
+      "calculate_registration_amount",
+      {
+        input_data: {
+          plan_id: planId,
+          locker_qty: lockerQty,
+          months: months,
+          referral_code: referralCode,
+        },
+      },
+    );
 
-    if (planError || !plan) {
-      throw new Error("Invalid plan selected");
+    if (error) {
+      throw error;
     }
 
-    // Calculate base amount
-    let amountDue =
-      Number(plan.mailroom_plan_price) * Number(lockerQty) * Number(months);
-
-    // Apply yearly discount
-    if (Number(months) === 12) {
-      amountDue = amountDue * 0.8;
-    }
-
-    // Apply referral discount
-    if (referralCode) {
-      const { data: referrer } = await supabaseAdmin
-        .from("users_table")
-        .select("users_id")
-        .eq("users_referral_code", referralCode)
-        .single();
-
-      if (referrer) {
-        amountDue = amountDue * 0.95;
-      }
-    }
-
-    return amountDue;
+    return Number(data);
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -738,22 +772,25 @@ export async function checkLockerAvailability({
   lockerQty: number;
 }): Promise<{ available: boolean; count: number }> {
   try {
-    const { data: availableLockers, error: lockerCheckError } =
-      await supabaseAdmin
-        .from("location_locker_table")
-        .select("location_locker_id")
-        .eq("mailroom_location_id", locationId)
-        .eq("location_locker_is_available", true)
-        .limit(lockerQty);
+    const { data, error } = await supabaseAdmin.rpc(
+      "check_locker_availability",
+      {
+        input_data: {
+          location_id: locationId,
+          locker_qty: lockerQty,
+        },
+      },
+    );
 
-    if (lockerCheckError) {
-      throw new Error("Failed to check locker availability");
+    if (error) {
+      throw error;
     }
 
-    const count = availableLockers?.length ?? 0;
+    const payload = typeof data === "string" ? JSON.parse(data) : data;
+
     return {
-      available: count >= lockerQty,
-      count,
+      available: Boolean(payload.available),
+      count: Number(payload.count),
     };
   } catch (err) {
     if (err instanceof Error) {
@@ -858,17 +895,58 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
   }>
 > {
   if (!userId) return [];
-  const { data, error } = await supabaseAdmin.rpc(
-    "get_user_mailroom_registration_stats",
-    { input_user_id: userId },
-  );
-  if (error) throw error;
-  return parseRpcArray<{
-    mailroom_registration_id: string;
-    stored: number;
-    pending: number;
-    released: number;
-  }>(data);
+
+  // Get registration IDs for the user
+  const { data: registrations, error: regError } = await supabaseAdmin
+    .from("mailroom_registration_table")
+    .select("mailroom_registration_id")
+    .eq("user_id", userId);
+
+  if (regError) throw regError;
+
+  const regIds = registrations?.map((r) => r.mailroom_registration_id) || [];
+  if (regIds.length === 0) return [];
+
+  // Get mailbox items for these registrations
+  const { data: items, error: itemsError } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .select("mailroom_registration_id, mailbox_item_status")
+    .in("mailroom_registration_id", regIds);
+
+  if (itemsError) throw itemsError;
+
+  // Group and count stats
+  const stats = new Map<
+    string,
+    { stored: number; pending: number; released: number }
+  >();
+  items?.forEach((item) => {
+    const id = item.mailroom_registration_id;
+    if (!stats.has(id)) stats.set(id, { stored: 0, pending: 0, released: 0 });
+    const count = stats.get(id)!;
+    const status = item.mailbox_item_status.toUpperCase();
+    if (status === "RELEASED") count.released++;
+    else if (status.includes("REQUEST")) {
+      count.pending++;
+      // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
+      if (
+        [
+          "REQUEST_TO_SCAN",
+          "REQUEST_TO_RELEASE",
+          "REQUEST_TO_DISPOSE",
+        ].includes(status)
+      ) {
+        count.stored++;
+      }
+    } else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)) {
+      count.stored++;
+    }
+  });
+
+  return Array.from(stats.entries()).map(([id, counts]) => ({
+    mailroom_registration_id: id,
+    ...counts,
+  }));
 }
 
 export async function getAllMailRoomLocation() {
@@ -878,4 +956,132 @@ export async function getAllMailRoomLocation() {
 
   if (error) throw error;
   return data;
+}
+
+export async function getMailroomRegistrationsWithStats(userId: string) {
+  if (!userId) return { data: [], stats: null };
+
+  try {
+    // 1. Get Registrations
+    const registrations = (await getMailroomRegistrations(userId)) as Record<
+      string,
+      unknown
+    >[];
+
+    // 2. Get Overall Stats
+    let totals: Record<string, unknown> | null = null;
+    try {
+      totals = await getUserMailroomStats(userId);
+    } catch (e) {
+      console.error("Failed to get user mailroom stats:", e);
+    }
+
+    // 3. Get Per-Registration Stats
+    let regStatsRaw: Array<{
+      mailroom_registration_id: string;
+      stored: number;
+      pending: number;
+      released: number;
+    }> = [];
+    try {
+      regStatsRaw = await getUserMailroomRegistrationStats(userId);
+    } catch (e) {
+      console.error("Failed to get user mailroom registration stats:", e);
+    }
+
+    // 4. Merge Stats
+    const toStr = (v: unknown): string =>
+      v === undefined || v === null ? "" : String(v);
+    const regMap = new Map<string, RegCounts>();
+
+    if (Array.isArray(regStatsRaw) && regStatsRaw.length > 0) {
+      for (const s of regStatsRaw) {
+        const sRec = s as unknown as Record<string, unknown>; // Safety cast
+        const key = toStr(
+          sRec.mailroom_registration_id ?? sRec.id ?? sRec.registration_id,
+        ).toLowerCase();
+        if (!key) continue;
+        const stored = Number(sRec.stored ?? 0);
+        const pending = Number(sRec.pending ?? 0);
+        const released = Number(sRec.released ?? 0);
+        regMap.set(key, { stored, pending, released });
+      }
+    } else {
+      // Fallback: build counts from mailbox_item_table
+      const regIds = registrations
+        .map((r) =>
+          toStr(r.mailroom_registration_id ?? r.id ?? r.registration_id ?? ""),
+        )
+        .filter(Boolean);
+
+      if (regIds.length > 0) {
+        // Optimized query: filter by registration IDs using RPC
+        const { data: itemsData, error: itemsErr } = await supabaseAdmin.rpc(
+          "get_user_mailbox_items_by_registrations",
+          {
+            input_data: {
+              input_registration_ids: regIds,
+            },
+          },
+        );
+
+        if (!itemsErr && Array.isArray(itemsData)) {
+          for (const item of itemsData) {
+            const idKey = toStr(item.mailroom_registration_id).toLowerCase();
+            if (!idKey) continue;
+
+            const status = toStr(item.mailbox_item_status).toUpperCase();
+            const cur = regMap.get(idKey) ?? {
+              stored: 0,
+              pending: 0,
+              released: 0,
+            };
+
+            if (status === "RELEASED") cur.released += 1;
+            else if (status.includes("REQUEST")) {
+              cur.pending += 1;
+              // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
+              if (
+                [
+                  "REQUEST_TO_SCAN",
+                  "REQUEST_TO_RELEASE",
+                  "REQUEST_TO_DISPOSE",
+                ].includes(status)
+              ) {
+                cur.stored += 1;
+              }
+            } else if (
+              !["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)
+            ) {
+              cur.stored += 1;
+            }
+
+            regMap.set(idKey, cur);
+          }
+        } else {
+          console.error("mailbox_item_table query error:", itemsErr);
+        }
+      }
+    }
+
+    // 5. Map stats to registrations
+    const results = registrations.map((r) => {
+      const idKey = toStr(
+        r.mailroom_registration_id ?? r.id ?? r.registration_id ?? "",
+      ).toLowerCase();
+      const statsObj = regMap.get(idKey) ?? null;
+      return {
+        ...r,
+        _stats: statsObj,
+      };
+    });
+
+    return {
+      data: results,
+      stats: totals,
+    };
+  } catch (err) {
+    if (err instanceof Error) throw err;
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
 }
