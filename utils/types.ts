@@ -472,3 +472,27 @@ export type MailroomSidebarProps = {
   };
   expiry: string | null;
 };
+
+export type LocationsResponse = {
+  data: Array<{
+    id: string;
+    name: string;
+    region: string | null;
+    city: string | null;
+    barangay: string | null;
+    zip: string | null;
+  }>;
+};
+
+export type AvailabilityResponse = {
+  data: Record<string, number>;
+};
+
+export type Location = {
+  id: string;
+  name: string;
+  region?: string;
+  city?: string;
+  barangay?: string;
+  zip?: string;
+};

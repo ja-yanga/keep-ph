@@ -339,72 +339,25 @@ export async function createMailroomRegistration({
     // Generate unique mailroom code
     const mailroomCode = await generateMailroomCode();
 
-    // Create registration
-    const { data: registration, error: regError } = await supabase
-      .from("mailroom_registration_table")
-      .insert([
-        {
-          user_id: userId,
-          mailroom_location_id: locationId,
-          mailroom_plan_id: planId,
-          mailroom_registration_code: mailroomCode,
-          mailroom_registration_status: true,
-        },
-      ])
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc("create_mailroom_registration", {
+      input_data: {
+        user_id: userId,
+        location_id: locationId,
+        plan_id: planId,
+        locker_qty: lockerQty,
+        mailroom_code: mailroomCode,
+      },
+    });
 
-    if (regError || !registration) {
-      throw new Error(regError?.message || "Failed to create registration");
+    if (error) {
+      throw error;
     }
 
-    // Get available lockers
-    const { data: availableLockers, error: lockerError } = await supabase
-      .from("location_locker_table")
-      .select("location_locker_id")
-      .eq("mailroom_location_id", locationId)
-      .eq("location_locker_is_available", true)
-      .limit(lockerQty);
-
-    if (
-      lockerError ||
-      !availableLockers ||
-      availableLockers.length < lockerQty
-    ) {
-      throw new Error("Insufficient lockers available");
-    }
-
-    const lockerIds = availableLockers.map((l) => l.location_locker_id);
-
-    // Mark lockers as unavailable
-    const { error: updateError } = await supabase
-      .from("location_locker_table")
-      .update({ location_locker_is_available: false })
-      .in("location_locker_id", lockerIds);
-
-    if (updateError) {
-      console.error("Failed to update locker status:", updateError);
-      // Note: In production, you might want to rollback the registration here
-    }
-
-    // Create assignment records
-    const assignments = lockerIds.map((lockerId) => ({
-      mailroom_registration_id: registration.mailroom_registration_id,
-      location_locker_id: lockerId,
-      mailroom_assigned_locker_status: "Normal" as const,
-    }));
-
-    const { error: assignError } = await supabase
-      .from("mailroom_assigned_locker_table")
-      .insert(assignments);
-
-    if (assignError) {
-      console.error("Failed to assign lockers:", assignError);
-    }
+    const payload = typeof data === "string" ? JSON.parse(data) : data;
 
     return {
-      registration,
-      lockerIds,
+      registration: payload.registration,
+      lockerIds: payload.lockerIds,
     };
   } catch (err) {
     if (err instanceof Error) {
