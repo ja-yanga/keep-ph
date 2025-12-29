@@ -500,12 +500,9 @@ export async function getMailroomLocations(): Promise<
   }>
 > {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("mailroom_location_table")
-      .select(
-        "mailroom_location_id, mailroom_location_name, mailroom_location_region, mailroom_location_city, mailroom_location_barangay, mailroom_location_zip",
-      )
-      .order("mailroom_location_name", { ascending: true });
+    const { data, error } = await supabaseAdmin.rpc("get_mailroom_locations", {
+      input_data: {},
+    });
 
     if (error) {
       console.error("Error fetching mailroom locations:", {
@@ -518,16 +515,7 @@ export async function getMailroomLocations(): Promise<
       );
     }
 
-    return (
-      data?.map((loc) => ({
-        id: loc.mailroom_location_id,
-        name: loc.mailroom_location_name,
-        region: loc.mailroom_location_region,
-        city: loc.mailroom_location_city,
-        barangay: loc.mailroom_location_barangay,
-        zip: loc.mailroom_location_zip,
-      })) ?? []
-    );
+    return parseRpcArray(data);
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -548,10 +536,12 @@ export async function getLocationAvailability(): Promise<
   Record<string, number>
 > {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("location_locker_table")
-      .select("mailroom_location_id")
-      .eq("location_locker_is_available", true);
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_location_availability",
+      {
+        input_data: {},
+      },
+    );
 
     if (error) {
       console.error("Error fetching location availability:", {
@@ -564,18 +554,24 @@ export async function getLocationAvailability(): Promise<
       );
     }
 
-    // Count available lockers per location
-    const counts: Record<string, number> = {};
-    if (data) {
-      for (const row of data) {
-        const locId = row.mailroom_location_id;
-        if (locId) {
-          counts[locId] = (counts[locId] || 0) + 1;
-        }
-      }
+    // Handle null or undefined data
+    if (data === null || data === undefined) {
+      return {};
     }
 
-    return counts;
+    // Parse data if it's a string, otherwise use as is
+    let payload: Record<string, number>;
+    try {
+      payload = typeof data === "string" ? JSON.parse(data) : data;
+    } catch (parseError) {
+      console.error("Failed to parse RPC response:", {
+        data,
+        parseError,
+      });
+      throw new Error("Failed to parse location availability response");
+    }
+
+    return payload || {};
   } catch (err) {
     if (err instanceof Error) {
       throw err;
