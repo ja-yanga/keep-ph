@@ -11,6 +11,7 @@ import {
   AdminUserKyc,
   ClaimWithUrl,
   MailroomPlanRow,
+  RegCounts,
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
@@ -337,6 +338,56 @@ export async function getMailroomRegistrations(
     }
 
     return payload;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
+ * Gets a single mailroom registration by ID for a user.
+ * Fetches registration with deep relations and assigned lockers.
+ *
+ * Used in:
+ * - app/api/mailroom/registrations/[id]/route.ts
+ */
+export async function getMailroomRegistration(
+  userId: string,
+  registrationId: string,
+): Promise<{ registration: unknown; lockers: unknown[] } | null> {
+  try {
+    // 1. Fetch Registration with relations using RPC
+    const { data: registration, error } = await supabaseAdmin.rpc(
+      "get_user_mailroom_registration",
+      {
+        input_data: {
+          input_user_id: userId,
+          input_registration_id: registrationId,
+        },
+      },
+    );
+
+    if (error) {
+      console.error("Registration fetch error:", error);
+      return null;
+    }
+
+    // 2. Fetch Assigned Lockers using RPC
+    const { data: assignedLockers } = await supabaseAdmin.rpc(
+      "get_user_assigned_lockers",
+      {
+        input_data: {
+          input_registration_id: registrationId,
+        },
+      },
+    );
+
+    return {
+      registration,
+      lockers: assignedLockers ?? [],
+    };
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -789,17 +840,46 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
   }>
 > {
   if (!userId) return [];
-  const { data, error } = await supabaseAdmin.rpc(
-    "get_user_mailroom_registration_stats",
-    { input_user_id: userId },
-  );
-  if (error) throw error;
-  return parseRpcArray<{
-    mailroom_registration_id: string;
-    stored: number;
-    pending: number;
-    released: number;
-  }>(data);
+
+  // Get registration IDs for the user
+  const { data: registrations, error: regError } = await supabaseAdmin
+    .from("mailroom_registration_table")
+    .select("mailroom_registration_id")
+    .eq("user_id", userId);
+
+  if (regError) throw regError;
+
+  const regIds = registrations?.map((r) => r.mailroom_registration_id) || [];
+  if (regIds.length === 0) return [];
+
+  // Get mailbox items for these registrations
+  const { data: items, error: itemsError } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .select("mailroom_registration_id, mailbox_item_status")
+    .in("mailroom_registration_id", regIds);
+
+  if (itemsError) throw itemsError;
+
+  // Group and count stats
+  const stats = new Map<
+    string,
+    { stored: number; pending: number; released: number }
+  >();
+  items?.forEach((item) => {
+    const id = item.mailroom_registration_id;
+    if (!stats.has(id)) stats.set(id, { stored: 0, pending: 0, released: 0 });
+    const count = stats.get(id)!;
+    const status = item.mailbox_item_status.toUpperCase();
+    if (status === "RELEASED") count.released++;
+    else if (status.includes("REQUEST")) count.pending++;
+    else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status))
+      count.stored++;
+  });
+
+  return Array.from(stats.entries()).map(([id, counts]) => ({
+    mailroom_registration_id: id,
+    ...counts,
+  }));
 }
 
 export async function getAllMailRoomLocation() {
@@ -809,4 +889,118 @@ export async function getAllMailRoomLocation() {
 
   if (error) throw error;
   return data;
+}
+
+export async function getMailroomRegistrationsWithStats(userId: string) {
+  if (!userId) return { data: [], stats: null };
+
+  try {
+    // 1. Get Registrations
+    const registrations = (await getMailroomRegistrations(userId)) as Record<
+      string,
+      unknown
+    >[];
+
+    // 2. Get Overall Stats
+    let totals: Record<string, unknown> | null = null;
+    try {
+      totals = await getUserMailroomStats(userId);
+    } catch (e) {
+      console.error("Failed to get user mailroom stats:", e);
+    }
+
+    // 3. Get Per-Registration Stats
+    let regStatsRaw: Array<{
+      mailroom_registration_id: string;
+      stored: number;
+      pending: number;
+      released: number;
+    }> = [];
+    try {
+      regStatsRaw = await getUserMailroomRegistrationStats(userId);
+    } catch (e) {
+      console.error("Failed to get user mailroom registration stats:", e);
+    }
+
+    // 4. Merge Stats
+    const toStr = (v: unknown): string =>
+      v === undefined || v === null ? "" : String(v);
+    const regMap = new Map<string, RegCounts>();
+
+    if (Array.isArray(regStatsRaw) && regStatsRaw.length > 0) {
+      for (const s of regStatsRaw) {
+        const sRec = s as unknown as Record<string, unknown>; // Safety cast
+        const key = toStr(
+          sRec.mailroom_registration_id ?? sRec.id ?? sRec.registration_id,
+        ).toLowerCase();
+        if (!key) continue;
+        const stored = Number(sRec.stored ?? 0);
+        const pending = Number(sRec.pending ?? 0);
+        const released = Number(sRec.released ?? 0);
+        regMap.set(key, { stored, pending, released });
+      }
+    } else {
+      // Fallback: build counts from mailbox_item_table
+      const regIds = registrations
+        .map((r) =>
+          toStr(r.mailroom_registration_id ?? r.id ?? r.registration_id ?? ""),
+        )
+        .filter(Boolean);
+
+      if (regIds.length > 0) {
+        // Optimized query: filter by registration IDs using RPC
+        const { data: itemsData, error: itemsErr } = await supabaseAdmin.rpc(
+          "get_user_mailbox_items_by_registrations",
+          {
+            input_data: {
+              input_registration_ids: regIds,
+            },
+          },
+        );
+
+        if (!itemsErr && Array.isArray(itemsData)) {
+          for (const item of itemsData) {
+            const idKey = toStr(item.mailroom_registration_id).toLowerCase();
+            if (!idKey) continue;
+
+            const status = toStr(item.mailbox_item_status).toUpperCase();
+            const cur = regMap.get(idKey) ?? {
+              stored: 0,
+              pending: 0,
+              released: 0,
+            };
+
+            if (status === "RELEASED") cur.released += 1;
+            else if (status.includes("REQUEST")) cur.pending += 1;
+            else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status))
+              cur.stored += 1;
+
+            regMap.set(idKey, cur);
+          }
+        } else {
+          console.error("mailbox_item_table query error:", itemsErr);
+        }
+      }
+    }
+
+    // 5. Map stats to registrations
+    const results = registrations.map((r) => {
+      const idKey = toStr(
+        r.mailroom_registration_id ?? r.id ?? r.registration_id ?? "",
+      ).toLowerCase();
+      const statsObj = regMap.get(idKey) ?? null;
+      return {
+        ...r,
+        _stats: statsObj,
+      };
+    });
+
+    return {
+      data: results,
+      stats: totals,
+    };
+  } catch (err) {
+    if (err instanceof Error) throw err;
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
 }

@@ -173,3 +173,10 @@ export const fetcher = async (url: string) => {
   }
   return res.json().catch(() => ({}));
 };
+
+export const addMonths = (iso?: string | null, months = 0): string | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString();
+};

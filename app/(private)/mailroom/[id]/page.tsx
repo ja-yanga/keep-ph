@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import MailroomPackageView, {
-  type MailroomPackageViewItem,
-} from "@/components/MailroomPackageView";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { MailroomPackageViewItem } from "@/utils/types";
+import MailroomPackageView from "@/components/pages/customer/MailroomPage/MailroomPackageView";
 
 export default function MailroomPackagePage() {
   const params = useParams();
@@ -20,11 +20,14 @@ export default function MailroomPackagePage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/mailroom/registrations/${id}`, {
-          credentials: "include",
-        });
+        const response = await fetch(
+          API_ENDPOINTS.mailroom.registration(id as string),
+          {
+            credentials: "include",
+          },
+        );
         if (!response.ok) {
-          const listRes = await fetch("/api/mailroom/registrations", {
+          const listRes = await fetch(API_ENDPOINTS.mailroom.registrations, {
             credentials: "include",
           });
           if (!listRes.ok) throw new Error("Failed to load registrations");

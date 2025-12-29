@@ -386,3 +386,14 @@ export type Plan = {
   can_receive_parcels: boolean;
   can_digitize: boolean;
 };
+
+export type MailroomPackageViewItem = RawRow | null;
+
+export type MailroomPackageViewProps = {
+  item: MailroomPackageViewItem;
+  loading: boolean;
+  error: string | null;
+  onRefreshAction?: () => Promise<void> | void;
+};
+
+export type RegCounts = { stored: number; pending: number; released: number };

@@ -98,3 +98,25 @@ export const adminUpdateMailroomPlan = async ({
 
   return data as MailroomPlanRow;
 };
+
+export const cancelMailroomSubscription = async (
+  registrationId: string,
+): Promise<{ ok: boolean; success?: string; error?: string }> => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "cancel_user_mailroom_subscription",
+    {
+      input_registration_id: registrationId,
+    },
+  );
+
+  if (error) {
+    console.error("cancel subscription error:", error);
+    return { ok: false, error: error.message };
+  }
+
+  if (data) {
+    return { ok: true, success: "Subscription cancelled successfully" };
+  }
+
+  return { ok: false, error: "Subscription not found" };
+};

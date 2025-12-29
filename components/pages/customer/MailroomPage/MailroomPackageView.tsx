@@ -37,30 +37,14 @@ import { notifications } from "@mantine/notifications";
 import Link from "next/link";
 import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
-import UserPackages from "./UserPackages";
-import UserScans from "./UserScans";
-import type { RawRow } from "@/utils/types";
-
-function addMonths(iso?: string | null, months = 0): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString();
-}
-
-export type MailroomPackageViewItem = RawRow | null;
-
-type MailroomPackageViewProps = {
-  item: MailroomPackageViewItem;
-  loading: boolean;
-  error: string | null;
-  /**
-   * Rename to indicate a Server Action or atomic action prop.
-   * If you pass a client-side function from a parent, Next will error.
-   * Either pass a Server Action here or omit the prop.
-   */
-  onRefreshAction?: () => Promise<void> | void;
-};
+import UserPackages from "../../../UserPackages";
+import UserScans from "../../../UserScans";
+import type {
+  MailroomPackageViewItem,
+  MailroomPackageViewProps,
+} from "@/utils/types";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { addMonths } from "@/utils/helper";
 
 export default function MailroomPackageView({
   item,
@@ -151,12 +135,9 @@ export default function MailroomPackageView({
   ): Promise<MailroomPackageViewItem | null> => {
     if (!id) return null;
     try {
-      const res = await fetch(
-        `/api/mailroom/registrations/${encodeURIComponent(id)}`,
-        {
-          credentials: "include",
-        },
-      );
+      const res = await fetch(API_ENDPOINTS.mailroom.registration(id), {
+        credentials: "include",
+      });
       if (!res.ok) return null;
       const json = await res
         .json()
@@ -224,10 +205,13 @@ export default function MailroomPackageView({
     const checkStorage = async (): Promise<void> => {
       if (!src?.id || !Boolean(plan.can_digitize)) return;
       try {
-        const res = await fetch(`/api/user/scans?registrationId=${src.id}`, {
-          credentials: "include",
-          signal: controller.signal,
-        });
+        const res = await fetch(
+          `${API_ENDPOINTS.user.scans}?registrationId=${src.id}`,
+          {
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
         if (res.ok) {
           const data = await res.json();
           if (data?.usage) {
@@ -259,7 +243,7 @@ export default function MailroomPackageView({
     (async () => {
       try {
         const res = await fetch(
-          `/api/user/scans?registrationId=${encodeURIComponent(String(regId))}`,
+          `${API_ENDPOINTS.user.scans}?registrationId=${encodeURIComponent(String(regId))}`,
           {
             credentials: "include",
             signal: controller.signal,
@@ -1113,7 +1097,7 @@ export default function MailroomPackageView({
                                       src,
                                       "users_table",
                                     ) as Record<string, unknown>,
-                                    "mobile_number",
+                                    "users_phone",
                                   )
                                 : undefined) ??
                               "—",
