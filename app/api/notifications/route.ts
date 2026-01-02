@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getNotificationByUserId } from "@/app/actions/get";
 import { markAsReadNotification } from "@/app/actions/update";
-import { sendNotification } from "@/app/actions/post";
+import { sendNotification } from "@/lib/notifications";
+import { T_NotificationType } from "@/utils/types";
 
 export async function GET(request: Request) {
   try {
@@ -59,7 +60,13 @@ export async function POST(request: Request) {
       );
     }
 
-    await sendNotification(userId, title, message, type, link);
+    await sendNotification(
+      userId,
+      title,
+      message,
+      type as T_NotificationType,
+      link,
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Unexpected error in sendNotification route:", error);
