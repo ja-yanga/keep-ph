@@ -10,6 +10,7 @@
     "test": "jest --watch",
     "test:ci": "jest --ci",
     "test:integration": "jest __tests__/integration --runInBand",
+    "test:staged": "jest --findRelatedTests",
     "typecheck": "tsc --noEmit",
     "prepare": "husky"
   },
