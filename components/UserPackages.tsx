@@ -1222,6 +1222,7 @@ export default function UserPackages({
               alt="Package photo"
               fill
               style={{ objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
+              unoptimized
               onClick={() => {
                 setSelectedPackage(pkg);
                 setPreviewTitle("Package Photo");
@@ -1599,6 +1600,7 @@ export default function UserPackages({
                   alt={previewTitle ?? "Preview"}
                   fill
                   style={{ objectFit: "contain", borderRadius: 8 }}
+                  unoptimized
                 />
               </Box>
             )}
