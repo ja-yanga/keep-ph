@@ -35,11 +35,10 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import Link from "next/link";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import UserPackages from "./UserPackages";
 import UserScans from "./UserScans";
 import type { RawRow } from "@/utils/types";
+import PrivateMainLayout from "./Layout/PrivateMainLayout";
 
 function addMonths(iso?: string | null, months = 0): string | null {
   if (!iso) return null;
@@ -687,34 +686,17 @@ export default function MailroomPackageView({
 
   if (loading) {
     return (
-      <Box
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#F8F9FA",
-        }}
-      >
-        <DashboardNav />
+      <PrivateMainLayout>
         <Container py="xl" size="xl">
           <Loader />
         </Container>
-        <Footer />
-      </Box>
+      </PrivateMainLayout>
     );
   }
 
   if (error || !item) {
     return (
-      <Box
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#F8F9FA",
-        }}
-      >
-        <DashboardNav />
+      <PrivateMainLayout>
         <Container py="xl" size="xl">
           <Paper p="xl" radius="md" withBorder>
             <Stack align="center">
@@ -729,8 +711,7 @@ export default function MailroomPackageView({
             </Stack>
           </Paper>
         </Container>
-        <Footer />
-      </Box>
+      </PrivateMainLayout>
     );
   }
 
@@ -845,15 +826,7 @@ export default function MailroomPackageView({
   }
 
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "#F8F9FA",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Stack gap="lg" mb="xl">
@@ -1333,7 +1306,6 @@ export default function MailroomPackageView({
           </Grid>
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

@@ -6,6 +6,7 @@ import {
   CreateUserAddressArgs,
   RequestRewardClaimArgs,
   RpcClaimResponse,
+  T_NotificationType,
   UpdateUserAddressArgs,
   UserAddressRow,
 } from "@/utils/types";
@@ -408,5 +409,39 @@ export async function createMailroomRegistration({
       throw err;
     }
     throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
+ * Sends a notification to a user.
+ *
+ * @param userId - The UUID of the user getting the notification
+ * @param title - Title of the notification
+ * @param message - Body/message of the notification
+ * @param type - NotificationType ("info", "success", "warning", "error", etc)
+ * @param link - Optional link for notification
+ */
+export async function sendNotification(
+  userId: string,
+  title: string,
+  message: string,
+  type: T_NotificationType,
+  link?: string,
+) {
+  try {
+    const { error } = await supabase.from("notifications").insert({
+      user_id: userId,
+      title,
+      message,
+      type,
+      link,
+      is_read: false,
+    });
+
+    if (error) {
+      console.error("Failed to insert notification:", error);
+    }
+  } catch (err) {
+    console.error("Unexpected error sending notification:", err);
   }
 }

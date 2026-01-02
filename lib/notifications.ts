@@ -1,17 +1,9 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { T_NotificationType } from "@/utils/types";
 
 // Use Service Role Key to bypass RLS policies for inserts
 // This ensures the system can always send a notification regardless of who is logged in
 const supabaseAdmin = createSupabaseServiceClient();
-
-export type NotificationType =
-  | "PACKAGE_ARRIVED"
-  | "PACKAGE_RELEASED"
-  | "PACKAGE_DISPOSED"
-  | "SCAN_READY"
-  | "SYSTEM" // optional: reward-specific notification types for clearer UI handling
-  | "REWARD_PROCESSING"
-  | "REWARD_PAID";
 
 /**
  * Sends a notification to a specific user.
@@ -26,7 +18,7 @@ export async function sendNotification(
   userId: string,
   title: string,
   message: string,
-  type: NotificationType,
+  type: T_NotificationType,
   link?: string,
 ) {
   try {

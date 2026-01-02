@@ -71,3 +71,21 @@ export const adminUpdateUserKyc = async ({
 
   return data;
 };
+
+export const markAsReadNotification = async (userId: string) => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("notification_table")
+    .update({ notification_is_read: true })
+    .eq("user_id", userId)
+    .eq("notification_is_read", false);
+
+  if (error) {
+    throw error;
+  }
+
+  return { ok: true };
+};

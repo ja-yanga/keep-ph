@@ -772,3 +772,28 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
     released: number;
   }>(data);
 }
+
+/**
+ * Fetches notifications for a specific user.
+ * Returns an array of notifications, sorted by creation date (desc), limited to 10.
+ */
+export async function getNotificationByUserId(userId: string) {
+  if (!userId) return [];
+  // Adapted from Notifications.tsx (lines 47-52)
+  const { data, error } = await supabaseAdmin
+    .from("notification_table")
+    .select("*")
+    .eq("user_id", userId)
+    .order("notification_created_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error("Error fetching notifications:", error);
+    throw new Error(
+      `Database error: ${error.message || "Unknown error"}${
+        error.code ? ` (${error.code})` : ""
+      }`,
+    );
+  }
+  return data ?? [];
+}

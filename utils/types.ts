@@ -331,3 +331,12 @@ export type AdminDashboardStats = {
     } | null;
   }>;
 };
+
+export type T_NotificationType =
+  | "PACKAGE_ARRIVED"
+  | "PACKAGE_RELEASED"
+  | "PACKAGE_DISPOSED"
+  | "SCAN_READY"
+  | "SYSTEM" // optional: reward-specific notification types for clearer UI handling
+  | "REWARD_PROCESSING"
+  | "REWARD_PAID";

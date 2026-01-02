@@ -1,11 +1,10 @@
 "use client";
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Container, Title, Loader, Center } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
+import { Container, Title, Loader, Center } from "@mantine/core";
 import { useSession } from "@/components/SessionProvider";
 import MailroomPackages from "@/components/MailroomPackages";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function PackagesPage() {
   const { session, loading } = useSession();
@@ -30,15 +29,7 @@ export default function PackagesPage() {
   }
 
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F7FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
@@ -47,7 +38,6 @@ export default function PackagesPage() {
           <MailroomPackages />
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

@@ -1,6 +1,7 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { sendNotification, type NotificationType } from "@/lib/notifications";
+import { sendNotification } from "@/lib/notifications";
+import { T_NotificationType } from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -80,7 +81,7 @@ export async function PUT(
         let title = "Package Update";
         // CHANGED: Added Mailroom Code to messages
         let message = `Your package (${updatedPkg.package_name}) at Mailroom ${code} status is now: ${packageData.status}`;
-        let type: NotificationType = "SYSTEM";
+        let type: T_NotificationType = "SYSTEM";
 
         // Customize message based on status
         if (packageData.status === "RELEASED") {

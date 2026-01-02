@@ -569,7 +569,7 @@ export default function UserDashboard({
         </Group>
       </Group>
 
-      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+      <SimpleGrid cols={{ sm: 3 }}>
         <Paper
           p="md"
           radius="md"

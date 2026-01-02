@@ -21,8 +21,8 @@ import {
 } from "@tabler/icons-react";
 import { useSession } from "@/components/SessionProvider";
 import UserDashboard from "@/components/UserDashboard";
-import React, { useEffect } from "react";
-import { useRouter } from "next/navigation";
+// import React, { useEffect } from "react";
+// import { useRouter } from "next/navigation";
 
 export default function DashboardContent({
   initialRegistrations = [],
@@ -30,7 +30,7 @@ export default function DashboardContent({
   initialRegistrations?: unknown[];
 }) {
   const { session, loading } = useSession();
-  const router = useRouter();
+  // const router = useRouter();
   const firstName = session?.profile?.first_name ?? null;
   const displayName = firstName ?? session?.user?.email ?? "User";
 
@@ -38,12 +38,12 @@ export default function DashboardContent({
     ? initialRegistrations.length > 0
     : false;
 
-  // Redirect admins
-  useEffect(() => {
-    if (!loading && session?.role === "admin") {
-      router.push("/admin/dashboard");
-    }
-  }, [loading, session?.role, router]);
+  // // Redirect admins
+  // useEffect(() => {
+  //   if (!loading && session?.role === "admin") {
+  //     router.push("/admin/dashboard");
+  //   }
+  // }, [loading, session?.role, router]);
 
   return (
     <Box style={{ flex: 1, paddingTop: 32, paddingBottom: 32 }}>

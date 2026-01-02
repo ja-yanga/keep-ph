@@ -1,14 +1,13 @@
 "use client";
-import React, {useEffect} from "react";
-import {useRouter} from "next/navigation";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import MailroomPlans from "@/components/MailroomPlans";
-import {Box, Container, Title, Loader, Center} from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
-import {useSession} from "@/components/SessionProvider";
+import { Container, Title, Loader, Center } from "@mantine/core";
+import { useSession } from "@/components/SessionProvider";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function PlansPage() {
-  const {session, loading} = useSession();
+  const { session, loading } = useSession();
   const router = useRouter();
 
   useEffect(() => {
@@ -30,16 +29,8 @@ export default function PlansPage() {
   }
 
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F7FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
-      <main style={{flex: 1}}>
+    <PrivateMainLayout>
+      <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
             Manage Service Plans
@@ -47,7 +38,6 @@ export default function PlansPage() {
           <MailroomPlans />
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

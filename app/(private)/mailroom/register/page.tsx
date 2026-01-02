@@ -1,14 +1,13 @@
-import { Box, Container, Title } from "@mantine/core";
+import { Container, Title } from "@mantine/core";
 import { redirect } from "next/navigation";
 
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import RegisterForm from "@/components/RegisterForm";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import { getUserVerificationStatus } from "@/app/actions/get";
 import { fetchFromAPI } from "@/utils/fetcher";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import type { MailroomPlan } from "@/utils/types";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 type LocationsResponse = {
   data: Array<{
@@ -79,15 +78,7 @@ export default async function RegisterMailroomPage() {
   }));
 
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F7FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
@@ -100,7 +91,6 @@ export default async function RegisterMailroomPage() {
           />
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

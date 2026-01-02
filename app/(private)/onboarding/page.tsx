@@ -1,11 +1,11 @@
-import DashboardNav from "@/components/DashboardNav";
 import Footer from "@/components/Footer";
+import PrivateNavigationHeader from "@/components/Layout/PrivateNavigationHeader";
 // import OnboardingForm from "@/components/OnboardingForm";
 
 export default function OnboardingPage() {
   return (
     <>
-      <DashboardNav />
+      <PrivateNavigationHeader />
       {/* <OnboardingForm /> */}
       <Footer />
     </>

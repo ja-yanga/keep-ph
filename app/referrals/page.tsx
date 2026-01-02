@@ -1,21 +1,10 @@
-import { Box } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import ReferralsContent from "@/components/pages/customer/ReferralsPage/ReferralsContent";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function ReferralPage() {
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F8FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <ReferralsContent />
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

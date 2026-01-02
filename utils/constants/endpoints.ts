@@ -1,4 +1,7 @@
 export const API_ENDPOINTS = {
+  // Notifications endpoint
+  notifications: "/api/notifications",
+
   // User endpoints
   user: {
     verificationStatus: "/api/user/verification-status",
