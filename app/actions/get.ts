@@ -15,6 +15,7 @@ import {
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
+  RpcMailroomPlan,
   UserAddressRow,
 } from "@/utils/types";
 
@@ -397,12 +398,8 @@ export async function getMailroomRegistration(
 }
 
 /**
- * Gets all mailroom plans.
+ * Gets all mailroom plans via RPC.
  * Returns an array of mailroom plans with pricing and capabilities.
- *
- * Used in:
- * - app/api/plans/route.ts - API endpoint for plans
- * - app/mailroom/register/page.tsx - Server component to fetch plans (via API)
  */
 export async function getMailroomPlans(): Promise<
   Array<{
@@ -417,13 +414,10 @@ export async function getMailroomPlans(): Promise<
   }>
 > {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("mailroom_plan_table")
-      .select("*")
-      .order("mailroom_plan_price", { ascending: true });
+    const { data, error } = await supabaseAdmin.rpc("get_mailroom_plans");
 
     if (error) {
-      console.error("Error fetching mailroom plans:", {
+      console.error("Error fetching mailroom plans via RPC:", {
         error,
         code: error.code,
         message: error.message,
@@ -433,8 +427,10 @@ export async function getMailroomPlans(): Promise<
       );
     }
 
+    const payload = parseRpcArray<RpcMailroomPlan>(data);
+
     return (
-      data?.map((plan) => ({
+      payload?.map((plan) => ({
         id: plan.mailroom_plan_id,
         name: plan.mailroom_plan_name,
         price: Number(plan.mailroom_plan_price),
@@ -1094,26 +1090,26 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
 }
 
 /**
- * Fetches notifications for a specific user.
+ * Fetches notifications for a specific user via RPC.
  * Returns an array of notifications, sorted by creation date (desc), limited to 10.
  */
 export async function getNotificationByUserId(userId: string) {
   if (!userId) return [];
-  // Adapted from Notifications.tsx (lines 47-52)
-  const { data, error } = await supabaseAdmin
-    .from("notification_table")
-    .select("*")
-    .eq("user_id", userId)
-    .order("notification_created_at", { ascending: false })
-    .limit(10);
+
+  const { data, error } = await supabaseAdmin.rpc("get_user_notifications", {
+    input_user_id: userId,
+    input_limit: 10,
+  });
 
   if (error) {
-    console.error("Error fetching notifications:", error);
+    console.error("Error fetching notifications via RPC:", error);
     throw new Error(
       `Database error: ${error.message || "Unknown error"}${
         error.code ? ` (${error.code})` : ""
       }`,
     );
   }
+
+  // RPC returns JSONB which is already parsed
   return data ?? [];
 }

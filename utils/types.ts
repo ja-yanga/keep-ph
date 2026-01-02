@@ -278,6 +278,17 @@ export type UserAddressRow = {
   user_address_created_at: string | null;
 };
 
+export type RpcMailroomPlan = {
+  mailroom_plan_id: string;
+  mailroom_plan_name: string;
+  mailroom_plan_price: number;
+  mailroom_plan_description: string | null;
+  mailroom_plan_storage_limit: number | null;
+  mailroom_plan_can_receive_mail: boolean;
+  mailroom_plan_can_receive_parcels: boolean;
+  mailroom_plan_can_digitize: boolean;
+};
+
 export type CreateUserAddressArgs = {
   user_id: string;
   label?: string;
