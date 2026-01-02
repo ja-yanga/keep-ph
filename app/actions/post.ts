@@ -397,6 +397,7 @@ export async function createMailroomRegistration({
     }
 
     const payload = typeof data === "string" ? JSON.parse(data) : data;
+    const { registration, lockerIds } = payload;
 
     // Log activity
     const regData = registration as Record<string, unknown>;
@@ -417,8 +418,8 @@ export async function createMailroomRegistration({
     });
 
     return {
-      registration: payload.registration,
-      lockerIds: payload.lockerIds,
+      registration,
+      lockerIds,
     };
   } catch (err) {
     if (err instanceof Error) {
