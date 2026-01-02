@@ -1,13 +1,14 @@
 "use server";
 
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { sendNotification, type NotificationType } from "@/lib/notifications";
+import { sendNotification } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity-log";
 import type {
   AdminUpdateClaimResponse,
   AdminUpdateMailroomPlanArgs,
   MailroomPlanRow,
   RpcAdminClaim,
+  T_NotificationType,
   UpdateRewardClaimArgs,
   UpdateUserKycStatusArgs,
 } from "@/utils/types";
@@ -74,6 +75,23 @@ export const adminUpdateUserKyc = async ({
   }
 
   return data;
+};
+
+export const markAsReadNotification = async (userId: string) => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("notification_table")
+    .update({ notification_is_read: true })
+    .eq("user_id", userId)
+    .eq("notification_is_read", false);
+  if (error) {
+    throw error;
+  }
+
+  return { ok: true };
 };
 
 export const adminUpdateMailroomPlan = async ({
@@ -204,7 +222,7 @@ export async function adminUpdateMailroomPackage(args: {
 
       let title = "Package Update";
       let message = `Your package (${packageName}) at Mailroom ${code} status is now: ${args.status}`;
-      let type: NotificationType = "SYSTEM";
+      let type: T_NotificationType = "SYSTEM";
 
       if (args.status === "RELEASED") {
         title = "Package Released";

@@ -45,7 +45,7 @@ export default function RootLayout({
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
 
-        <MantineProvider>
+        <MantineProvider theme={{ fontFamily: "Inter, sans-serif" }}>
           <ServerSessionProvider>{children}</ServerSessionProvider>
         </MantineProvider>
       </body>

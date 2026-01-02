@@ -39,6 +39,17 @@ export async function POST(req: Request) {
       if (dbError) {
         console.error("Error creating public user record:", dbError);
       }
+
+      // Sync to auth metadata when successfully created public user record
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        data.user.id,
+        {
+          user_metadata: { role: "user" },
+        },
+      );
+      if (updateError) {
+        console.error("Error updating auth metadata:", error);
+      }
     }
 
     return NextResponse.json({

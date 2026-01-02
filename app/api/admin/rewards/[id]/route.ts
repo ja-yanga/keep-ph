@@ -1,13 +1,13 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications";
-import type { NotificationType } from "@/lib/notifications";
-import {
+import type {
   AdminUpdateClaimResponse,
   RewardDbRow,
   RpcAdminClaim,
-} from "@/utils/types/types";
+} from "@/utils/types";
 import { getRewardProofUrl } from "@/app/actions/get";
+import { T_NotificationType } from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -197,7 +197,7 @@ export async function PUT(
         const userId = oldClaim.user_id;
         let title = "Reward Update";
         let message = `Your reward request (${String(id).slice(0, 8)}) status is now: ${updated.status}`;
-        let typeStr: NotificationType = "SYSTEM";
+        let typeStr: T_NotificationType = "SYSTEM";
 
         if (updated.status === "PROCESSING") {
           title = "Reward Processing";

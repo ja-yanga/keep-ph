@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Box,
   Container,
@@ -11,16 +12,19 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { IconUser } from "@tabler/icons-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
-import Notifications from "./Notifications";
 import { NAV_ITMES } from "@/utils/constants/nav-items";
-import { useSignout } from "@/app/hooks/useSignout";
+import Notifications from "../Notifications";
 
-export default function DashboardNav() {
+export default function PrivateNavigationHeader() {
   const pathname = usePathname() ?? "/";
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
+  const supabase = createClient();
   const { session } = useSession();
 
   const role = session?.role;
@@ -35,7 +39,19 @@ export default function DashboardNav() {
     };
   };
 
-  const { handleSignOut, loading } = useSignout();
+  const handleSignOut = async () => {
+    setLoading(true);
+    try {
+      await fetch("/api/auth/signout", { method: "POST" });
+      await supabase.auth.signOut();
+      router.push("/signin");
+    } catch (err) {
+      console.error("signout error:", err);
+      alert("Could not sign out. See console for details.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Box

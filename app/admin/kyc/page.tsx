@@ -3,10 +3,9 @@
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AdminUserKyc from "@/components/pages/admin/KycPage/AdminUserKyc";
-import { Box, Container, Title, Loader, Center } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
+import { Container, Title, Loader, Center } from "@mantine/core";
 import { useSession } from "@/components/SessionProvider";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function AdminKycPage() {
   const { session, loading } = useSession();
@@ -26,15 +25,7 @@ export default function AdminKycPage() {
   }
 
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F7FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
@@ -43,7 +34,6 @@ export default function AdminKycPage() {
           <AdminUserKyc />
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

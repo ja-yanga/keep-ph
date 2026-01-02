@@ -119,7 +119,9 @@ export default function AccountContent() {
   useEffect(() => {
     if (session) {
       if (session.user?.email) setEmail(session.user.email);
-      if (session.profile?.avatar_url) setAvatarUrl(session.profile.avatar_url);
+      const avatarProfileUrl =
+        session.profile?.avatar_url || session.profile?.users_avatar_url;
+      if (avatarProfileUrl) setAvatarUrl(avatarProfileUrl);
 
       // load names from KYC instead of editable profile
       (async () => {

@@ -3,30 +3,18 @@ import {
   Stack,
   Title,
   Text,
-  Box,
   SimpleGrid,
   ThemeIcon,
   Paper,
 } from "@mantine/core";
 import { IconMail, IconTruck, IconBuilding } from "@tabler/icons-react";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
 import HeroSection from "@/components/HeroSection";
 import PricingSection from "@/components/PricingSection";
+import PublicMainLayout from "@/components/Layout/PublicMainLayout";
 
 export default function Home() {
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F8F9FA",
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "Manrope, sans-serif",
-      }}
-    >
-      <Nav />
-
+    <PublicMainLayout>
       <main style={{ flex: 1 }}>
         <HeroSection />
 
@@ -96,8 +84,6 @@ export default function Home() {
 
         <PricingSection />
       </main>
-
-      <Footer />
-    </Box>
+    </PublicMainLayout>
   );
 }

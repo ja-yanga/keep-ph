@@ -1,21 +1,10 @@
-import { Box } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import AccountContent from "@/components/AccountContent";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function AccountPage() {
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F8FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <AccountContent />
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

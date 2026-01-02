@@ -1,10 +1,8 @@
-import { Box } from "@mantine/core";
-import DashboardNav from "../../../components/DashboardNav";
-import Footer from "@/components/Footer";
 import DashboardContent from "@/components/DashboardContent";
-import { getAuthenticatedUser } from "@/lib/supabase/server";
+// import { getAuthenticatedUser } from "@/lib/supabase/server";
 import { fetchFromAPI } from "@/utils/fetcher";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 type RegistrationsResponse = {
   data: unknown[];
@@ -16,7 +14,7 @@ type RegistrationsResponse = {
 };
 
 export default async function DashboardPage() {
-  await getAuthenticatedUser();
+  // await getAuthenticatedUser();
 
   let registrations: unknown[] = [];
   try {
@@ -30,17 +28,8 @@ export default async function DashboardPage() {
   }
 
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#FFFFFF",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <DashboardContent initialRegistrations={registrations} />
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

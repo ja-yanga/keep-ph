@@ -1,11 +1,10 @@
 "use client";
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import MailroomRegistrations from "@/components/MailroomRegistrations";
-import { Box, Container, Title, Loader, Center } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
+import { Container, Title, Loader, Center } from "@mantine/core";
 import { useSession } from "@/components/SessionProvider";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function MailroomRegistrationsPage() {
   const { session, loading } = useSession();
@@ -28,15 +27,7 @@ export default function MailroomRegistrationsPage() {
       <Loader />
     </Center>
   ) : (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#F7FAFC",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
@@ -45,7 +36,6 @@ export default function MailroomRegistrationsPage() {
           <MailroomRegistrations />
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

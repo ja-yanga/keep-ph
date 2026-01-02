@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { Center, Loader, Box, Container, Title } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
+import { useEffect } from "react";
+import { Center, Loader, Container, Title } from "@mantine/core";
 import { useSession } from "@/components/SessionProvider";
 import { useRouter } from "next/navigation";
 import AdminRewards from "@/components/pages/admin/RewardsPage/AdminRewards";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function AdminRewardsPage() {
   const { session, loading } = useSession();
@@ -27,10 +26,7 @@ export default function AdminRewardsPage() {
   }
 
   return (
-    <Box
-      style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
@@ -40,7 +36,6 @@ export default function AdminRewardsPage() {
           <AdminRewards />
         </Container>
       </main>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }
