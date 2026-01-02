@@ -664,41 +664,17 @@ export async function getMailroomRegistrationByOrder(
       return null;
     }
 
-    // Look up by payment transaction order_id
-    // Use limit(1) to handle potential duplicates gracefully and avoid PGRST116
-    const { data: paymentData, error: paymentError } = await supabaseAdmin
-      .from("payment_transaction_table")
-      .select("mailroom_registration_id")
-      .eq("payment_transaction_order_id", orderId)
-      .order("payment_transaction_created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (paymentError) {
-      console.error(
-        "[getMailroomRegistrationByOrder] payment lookup error:",
-        paymentError,
-      );
-      throw new Error(
-        `Database error: ${paymentError.message || "Unknown error"}`,
-      );
-    }
-
-    if (!paymentData?.mailroom_registration_id) {
-      return null;
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("mailroom_registration_table")
-      .select("*")
-      .eq("mailroom_registration_id", paymentData.mailroom_registration_id)
-      .maybeSingle();
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_mailroom_registration_by_order",
+      {
+        input_data: {
+          order_id: orderId,
+        },
+      },
+    );
 
     if (error) {
-      console.error(
-        "[getMailroomRegistrationByOrder] registration lookup error:",
-        error,
-      );
+      console.error("[getMailroomRegistrationByOrder] RPC error:", error);
       throw new Error(`Database error: ${error.message || "Unknown error"}`);
     }
 
