@@ -3,6 +3,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 
+// Increase Jest timeout for this file: form/file uploads and network waits can be slow when run in the full suite.
+jest.setTimeout(20000);
+
 /*
   Integration tests for KycPage (mailroom KYC)
 
