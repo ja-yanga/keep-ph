@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { getPaymentTransactionByOrder } from "@/app/actions/get";
 
 export async function GET(req: Request) {
   try {
@@ -12,18 +12,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const sb = createSupabaseServiceClient();
-
-    // 1) Try DB first (recommended)
-    // Look up payment transaction by order_id
-    const { data: paymentTransaction } = await sb
-      .from("payment_transaction_table")
-      .select(
-        "payment_transaction_id, payment_transaction_amount, payment_transaction_status, payment_transaction_reference_id, payment_transaction_order_id, payment_transaction_created_at, mailroom_registration_id",
-      )
-      .eq("payment_transaction_order_id", order)
-      .limit(1)
-      .maybeSingle();
+    // 1) Try DB first (recommended) using RPC
+    const paymentTransaction = await getPaymentTransactionByOrder(order);
 
     if (paymentTransaction) {
       return NextResponse.json({

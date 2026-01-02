@@ -359,10 +359,44 @@ async function generateMailroomCode(): Promise<string> {
 }
 
 /**
+ * Finalizes mailroom registration from payment webhook.
+ * Uses the finalize_registration_from_payment RPC function.
+ */
+export async function finalizeRegistrationFromPayment(args: {
+  paymentId: string;
+  orderId: string;
+  userId: string;
+  locationId: string;
+  planId: string;
+  lockerQty: number;
+  months: number;
+  amount: number;
+}) {
+  const { data, error } = await supabase.rpc(
+    "finalize_registration_from_payment",
+    {
+      input_data: {
+        payment_id: args.paymentId,
+        order_id: args.orderId,
+        user_id: args.userId,
+        location_id: args.locationId,
+        plan_id: args.planId,
+        locker_qty: args.lockerQty,
+        months: args.months,
+        amount: args.amount,
+      },
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+
+/**
  * Creates a mailroom registration with locker assignments.
- *
- * Used in:
- * - app/api/mailroom/register/route.ts - API endpoint for registration
  */
 export async function createMailroomRegistration({
   userId,
@@ -400,7 +434,7 @@ export async function createMailroomRegistration({
     const { registration, lockerIds } = payload;
 
     // Log activity
-    const regData = registration as Record<string, unknown>;
+    const regData = payload.registration as Record<string, unknown>;
     await logActivity({
       userId,
       action: "CREATE",
@@ -413,13 +447,13 @@ export async function createMailroomRegistration({
         mailroom_location_id: locationId,
         mailroom_plan_id: planId,
         locker_count: lockerQty,
-        locker_ids: lockerIds,
+        locker_ids: payload.lockerIds,
       },
     });
 
     return {
-      registration: payload.registration,
-      lockerIds: payload.lockerIds,
+      registration,
+      lockerIds,
     };
   } catch (err) {
     if (err instanceof Error) {
@@ -574,4 +608,58 @@ export async function adminCreateMailroomPackage(args: {
   });
 
   return data;
+}
+
+export async function upsertPaymentResource(payRes: {
+  id?: string;
+  attributes?: {
+    source?: { id?: string };
+    status?: string;
+    amount?: number;
+    currency?: string;
+    metadata?: {
+      order_id?: string;
+      user_id?: string;
+      location_id?: string;
+      plan_id?: string;
+      locker_qty?: number;
+      months?: number;
+    };
+  };
+}) {
+  const payId = payRes?.id;
+  const attrs = payRes?.attributes ?? {};
+  const meta = attrs?.metadata ?? {};
+  const orderId = meta?.order_id ?? null;
+
+  if (!orderId) {
+    console.debug("[webhook] processing skipped: no order_id");
+    return { id: payId, orderId: null };
+  }
+
+  // Log payment for debugging
+  console.debug("[webhook] processing payment resource:", {
+    id: payId,
+    orderId,
+    status: attrs?.status,
+    amount: attrs?.amount,
+  });
+
+  try {
+    await finalizeRegistrationFromPayment({
+      paymentId: payId ?? "",
+      orderId: orderId,
+      userId: meta.user_id ?? "",
+      locationId: meta.location_id ?? "",
+      planId: meta.plan_id ?? "",
+      lockerQty: Math.max(1, Number(meta.locker_qty ?? 1)),
+      months: Math.max(1, Number(meta.months ?? 1)),
+      amount: Number(attrs?.amount ?? 0),
+    });
+  } catch (finalErr) {
+    console.error("[webhook] finalizeRegistrationFromPayment error:", finalErr);
+    throw finalErr;
+  }
+
+  return { id: payId, orderId };
 }

@@ -650,7 +650,42 @@ export async function getDashboardContent(): Promise<AdminDashboardStats | null>
 }
 
 /**
+ * Gets a payment transaction by order ID using RPC.
+ *
+ * Used in:
+ * - app/api/payments/lookup-by-order/route.ts
+ */
+export async function getPaymentTransactionByOrder(
+  orderId: string,
+): Promise<unknown | null> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_payment_transaction_by_order",
+      {
+        input_data: {
+          order_id: orderId,
+        },
+      },
+    );
+
+    if (error) {
+      console.error("Error fetching payment transaction by order:", {
+        error,
+        orderId,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (err) {
+    console.error("getPaymentTransactionByOrder unexpected error:", err);
+    return null;
+  }
+}
+
+/**
  * Gets mailroom registration by order ID.
+
  * Looks up the payment transaction first, then fetches the registration.
  *
  * Used in:

@@ -1,4 +1,6 @@
 "use client";
+import { fetchFromAPI } from "@/utils/fetcher";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { useEffect, useState } from "react";
 
 export default function PaymongoResultPage() {
@@ -55,18 +57,25 @@ export default function PaymongoResultPage() {
       setError(null);
       try {
         if (id) {
-          const q = new URLSearchParams({ id, type });
-          const r = await fetch(`/api/payments/verify?${q.toString()}`);
-          const j = await r.json();
+          const j = await fetchFromAPI<{
+            resource?: unknown;
+            status?: number;
+            ok?: boolean;
+            type?: string;
+          }>(`${API_ENDPOINTS.payments.verify}?id=${id}&type=${type}`);
           setResJson(j);
           return;
         }
 
         // no id: fallback to server-side lookup by order (uses your existing endpoint)
-        const q = new URLSearchParams({ order: order! });
-        const r = await fetch(`/api/payments/lookup-by-order?${q.toString()}`);
-        const j = await r.json();
-        if (r.ok && (j.resource || j.type)) {
+        const j = await fetchFromAPI<{
+          resource?: unknown;
+          type?: string;
+        }>(
+          `${API_ENDPOINTS.payments.lookupByOrder}?order=${encodeURIComponent(order!)}`,
+        );
+
+        if (j.resource || j.type) {
           // show found resource
           setResJson({
             status: 200,
