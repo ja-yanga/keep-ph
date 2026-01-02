@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
-
-const supabaseAdmin = createSupabaseServiceClient();
+import { validateReferralCode } from "@/app/actions/post";
 
 export async function POST(req: Request) {
   try {
@@ -11,32 +9,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ valid: false, message: "Code is required" });
     }
 
-    // 1. Check if code exists in updated users_table schema
-    const { data: referrer, error } = await supabaseAdmin
-      .from("users_table")
-      .select("users_id, users_referral_code")
-      .eq("users_referral_code", code)
-      .single();
+    const result = await validateReferralCode({
+      code,
+      currentUserId,
+    });
 
-    if (error || !referrer) {
-      return NextResponse.json({
-        valid: false,
-        message: "Invalid referral code",
-      });
-    }
-
-    // 2. Prevent self-referral
-    if (
-      currentUserId &&
-      String(referrer.users_id ?? referrer.users_id) === String(currentUserId)
-    ) {
-      return NextResponse.json({
-        valid: false,
-        message: "Cannot use your own code",
-      });
-    }
-
-    return NextResponse.json({ valid: true, message: "Code applied: 5% Off" });
+    return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("referrals.validate error:", message);

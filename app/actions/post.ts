@@ -464,9 +464,71 @@ export async function createMailroomRegistration({
 }
 
 /**
+ * Adds a new referral record using the referral_add RPC.
+ */
+export async function addReferral(args: {
+  userId?: string;
+  referralCode?: string;
+  referredEmail: string;
+  serviceType: string;
+}) {
+  const { data, error } = await supabase.rpc("referral_add", {
+    input_data: {
+      user_id: args.userId,
+      referral_code: args.referralCode,
+      referred_email: args.referredEmail,
+      service_type: args.serviceType,
+    },
+  });
+
+  if (error) throw error;
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+
+/**
+ * Generates or retrieves a referral code using the referral_generate RPC.
+ */
+export async function generateReferralCode(userId: string) {
+  const { data, error } = await supabase.rpc("referral_generate", {
+    input_data: { user_id: userId },
+  });
+
+  if (error) throw error;
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+
+/**
+ * Validates a referral code using the referral_validate RPC.
+ */
+export async function validateReferralCode(args: {
+  code: string;
+  currentUserId?: string;
+}) {
+  const { data, error } = await supabase.rpc("referral_validate", {
+    input_data: {
+      code: args.code,
+      current_user_id: args.currentUserId,
+    },
+  });
+
+  if (error) throw error;
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+
+/**
+ * Lists referrals for a user using the referral_list RPC.
+ */
+export async function listReferrals(userId: string) {
+  const { data, error } = await supabase.rpc("referral_list", {
+    input_data: { user_id: userId },
+  });
+
+  if (error) throw error;
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+
+/**
  * Creates a mailroom location for admin.
- * Used in:
- * - app/api/admin/mailroom/locations/route.ts - API endpoint for creating locations
  */
 export async function adminCreateMailroomLocation(
   args: AdminCreateMailroomLocationArgs & { userId?: string },
@@ -499,7 +561,7 @@ export async function adminCreateMailroomLocation(
       userId: args.userId,
       action: "CREATE",
       type: "ADMIN_ACTION",
-      entityType: undefined, // No specific entity type for locations in enum
+      entityType: undefined,
       entityId: (row as Record<string, unknown>).mailroom_location_id as string,
       details: {
         mailroom_location_id: (row as Record<string, unknown>)
