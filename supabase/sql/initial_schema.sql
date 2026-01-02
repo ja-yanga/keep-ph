@@ -8,7 +8,18 @@ DELETE FROM storage.buckets;
 
 -- Start storage
 INSERT INTO storage.buckets (id, name, public) VALUES
-('USER-KYC-DOCUMENTS', 'USER-KYC-DOCUMENTS', true);
+('USER-KYC-DOCUMENTS', 'USER-KYC-DOCUMENTS', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Create additional storage buckets
+INSERT INTO storage.buckets (id, name, public)
+VALUES 
+  ('PACKAGES-PHOTO', 'PACKAGES-PHOTO', true),
+  ('MAILROOM-SCANS', 'MAILROOM-SCANS', true),
+  ('MAILROOM-PROOFS', 'MAILROOM-PROOFS', true),
+  ('REWARD-PROOFS', 'REWARD-PROOFS', true),
+  ('AVATARS', 'AVATARS', true)
+ON CONFLICT (id) DO NOTHING;
 
 -- User KYC Status
 CREATE TYPE user_kyc_status AS ENUM ('SUBMITTED', 'VERIFIED', 'REJECTED');
@@ -331,6 +342,7 @@ CREATE TABLE mailbox_item_table (
   mailbox_item_photo TEXT,
   mailbox_item_created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   mailbox_item_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  mailbox_item_deleted_at TIMESTAMP WITH TIME ZONE,
   CONSTRAINT mailbox_item_table_pkey PRIMARY KEY (mailbox_item_id)
 );
 
@@ -490,6 +502,7 @@ CREATE INDEX idx_mailbox_item_status ON mailbox_item_table(mailbox_item_status);
 CREATE INDEX idx_mailbox_item_type ON mailbox_item_table(mailbox_item_type);
 CREATE INDEX idx_mailbox_item_location_locker_id ON mailbox_item_table(location_locker_id);
 CREATE INDEX idx_mailbox_item_received_at ON mailbox_item_table(mailbox_item_received_at);
+CREATE INDEX idx_mailbox_item_deleted_at ON mailbox_item_table(mailbox_item_deleted_at);
 
 -- Mail Action Requests
 CREATE INDEX idx_mail_action_request_item_id ON mail_action_request_table(mailbox_item_id);
@@ -1580,6 +1593,1130 @@ CREATE POLICY "Admins can manage all users"
 ON public.users_table
 FOR all
 USING (public.is_admin(auth.uid()));
+
+-- ============================================================================
+-- ADDITIONAL RPC FUNCTIONS FROM MIGRATIONS
+-- ============================================================================
+
+-- Dashboard Stats RPC
+CREATE OR REPLACE FUNCTION public.get_user_mailroom_stats(input_user_id UUID)
+RETURNS JSON
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+  SELECT json_build_object(
+    'stored', COALESCE(SUM(CASE WHEN UPPER(m.mailbox_item_status::text) NOT IN ('RELEASED','RETRIEVED','DISPOSED') THEN 1 ELSE 0 END), 0),
+    'pending', COALESCE(SUM(CASE WHEN UPPER(m.mailbox_item_status::text) LIKE 'REQUEST%' THEN 1 ELSE 0 END), 0),
+    'released', COALESCE(SUM(CASE WHEN UPPER(m.mailbox_item_status::text) = 'RELEASED' THEN 1 ELSE 0 END), 0)
+  )
+  FROM public.mailbox_item_table m
+  JOIN public.mailroom_registration_table r ON r.mailroom_registration_id = m.mailroom_registration_id
+  WHERE r.user_id = input_user_id;
+$$;
+
+-- Registration Stats RPC
+CREATE OR REPLACE FUNCTION public.get_user_mailroom_registration_stats(input_user_id UUID)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  result JSON;
+BEGIN
+  IF input_user_id IS NULL THEN
+    RETURN '[]'::JSON;
+  END IF;
+
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'mailroom_registration_id', r.mailroom_registration_id,
+        'stored', COALESCE(SUM(CASE WHEN UPPER(m.mailbox_item_status::text) NOT IN ('RELEASED','RETRIEVED','DISPOSED') THEN 1 ELSE 0 END), 0),
+        'pending', COALESCE(SUM(CASE WHEN UPPER(m.mailbox_item_status::text) LIKE 'REQUEST%' THEN 1 ELSE 0 END), 0),
+        'released', COALESCE(SUM(CASE WHEN UPPER(m.mailbox_item_status::text) = 'RELEASED' THEN 1 ELSE 0 END), 0)
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO result
+  FROM public.mailroom_registration_table r
+  LEFT JOIN public.mailbox_item_table m ON m.mailroom_registration_id = r.mailroom_registration_id
+  WHERE r.user_id = input_user_id
+  GROUP BY r.mailroom_registration_id;
+
+  RETURN COALESCE(result, '[]'::JSON);
+END;
+$$;
+
+-- Customer Mailroom Registration RPCs (from 20251229000013)
+CREATE OR REPLACE FUNCTION public.get_user_mailroom_registration(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+SECURITY DEFINER
+AS $$
+DECLARE
+  input_user_id UUID := (input_data->>'input_user_id')::UUID;
+  input_registration_id UUID := (input_data->>'input_registration_id')::UUID;
+  return_data JSON;
+BEGIN
+  SELECT row_to_json(t) INTO return_data
+  FROM (
+    SELECT
+      mrt.mailroom_registration_id,
+      mrt.user_id,
+      mrt.mailroom_location_id,
+      mrt.mailroom_plan_id,
+      mrt.mailroom_registration_code,
+      mrt.mailroom_registration_status,
+      mrt.mailroom_registration_created_at,
+      mrt.mailroom_registration_updated_at,
+      row_to_json(mpt) as mailroom_plan_table,
+      row_to_json(mlt) as mailroom_location_table,
+      json_build_object(
+        'users_id', ut.users_id,
+        'users_email', ut.users_email,
+        'users_phone', ut.mobile_number,
+        'users_referral_code', ut.users_referral_code,
+        'user_kyc_table', row_to_json(ukt)
+      ) as users_table,
+      COALESCE(json_agg(row_to_json(mit)) FILTER (WHERE mit.mailbox_item_id IS NOT NULL), '[]') as mailbox_item_table,
+      row_to_json(st) as subscription_table
+    FROM public.mailroom_registration_table mrt
+    LEFT JOIN public.mailroom_plan_table mpt ON mrt.mailroom_plan_id = mpt.mailroom_plan_id
+    LEFT JOIN public.mailroom_location_table mlt ON mrt.mailroom_location_id = mlt.mailroom_location_id
+    LEFT JOIN public.users_table ut ON mrt.user_id = ut.users_id
+    LEFT JOIN public.user_kyc_table ukt ON ut.users_id = ukt.user_id
+    LEFT JOIN public.mailbox_item_table mit ON mrt.mailroom_registration_id = mit.mailroom_registration_id
+    LEFT JOIN public.subscription_table st ON mrt.mailroom_registration_id = st.mailroom_registration_id
+    WHERE mrt.mailroom_registration_id = input_registration_id
+      AND mrt.user_id = input_user_id
+    GROUP BY 
+      mrt.mailroom_registration_id, 
+      mpt.mailroom_plan_id, 
+      mlt.mailroom_location_id, 
+      ut.users_id, 
+      ukt.user_kyc_id, 
+      st.subscription_id
+  ) t;
+  RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.get_user_assigned_lockers(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+SECURITY DEFINER
+AS $$
+DECLARE
+  input_registration_id UUID := (input_data->>'input_registration_id')::UUID;
+  return_data JSON;
+BEGIN
+  SELECT json_agg(row_to_json(t)) INTO return_data
+  FROM (
+    SELECT
+      malt.*,
+      row_to_json(llt) as location_locker_table
+    FROM public.mailroom_assigned_locker_table malt
+    LEFT JOIN public.location_locker_table llt ON malt.location_locker_id = llt.location_locker_id
+    WHERE malt.mailroom_registration_id = input_registration_id
+  ) t;
+  RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.get_user_mailbox_items_by_registrations(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+SECURITY DEFINER
+AS $$
+DECLARE
+  input_registration_ids UUID[] := (
+    SELECT array_agg(value::text::uuid)
+    FROM json_array_elements_text(input_data->'input_registration_ids') AS value
+  );
+  return_data JSON;
+BEGIN
+  SELECT json_agg(row_to_json(t)) INTO return_data
+  FROM (
+    SELECT
+      mit.mailroom_registration_id,
+      mit.mailbox_item_status
+    FROM public.mailbox_item_table mit
+    WHERE mit.mailroom_registration_id = ANY(input_registration_ids)
+  ) t;
+  RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.cancel_user_mailroom_subscription(input_registration_id UUID)
+RETURNS BOOLEAN
+SET search_path TO ''
+SECURITY DEFINER
+AS $$
+DECLARE
+  return_data BOOLEAN;
+BEGIN
+  UPDATE public.subscription_table
+  SET subscription_auto_renew = FALSE
+  WHERE mailroom_registration_id = input_registration_id;
+
+  IF FOUND THEN
+    return_data := TRUE;
+  ELSE
+    return_data := FALSE;
+  END IF;
+
+  RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Mailroom Registration RPCs (from 20251229000014)
+CREATE OR REPLACE FUNCTION check_locker_availability(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    input_location_id UUID := (input_data->>'location_id')::UUID;
+    input_locker_qty INTEGER := (input_data->>'locker_qty')::INTEGER;
+    var_available_count INTEGER;
+    return_data JSON;
+BEGIN
+    SELECT COUNT(*)::INTEGER
+    INTO var_available_count
+    FROM (
+        SELECT location_locker_id
+        FROM public.location_locker_table AS location_locker
+        WHERE location_locker.mailroom_location_id = input_location_id
+          AND location_locker.location_locker_is_available = TRUE
+        LIMIT input_locker_qty
+    ) AS subquery;
+
+    return_data := json_build_object(
+        'available', var_available_count >= input_locker_qty,
+        'count', var_available_count
+    );
+
+    RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION calculate_registration_amount(input_data JSON)
+RETURNS NUMERIC
+SET search_path TO ''
+AS $$
+DECLARE
+    input_plan_id UUID := (input_data->>'plan_id')::UUID;
+    input_locker_qty INTEGER := (input_data->>'locker_qty')::INTEGER;
+    input_months INTEGER := (input_data->>'months')::INTEGER;
+    input_referral_code TEXT := COALESCE((input_data->>'referral_code')::TEXT, NULL);
+    var_plan_price NUMERIC;
+    var_referrer_exists BOOLEAN := FALSE;
+    return_data NUMERIC;
+BEGIN
+    SELECT mailroom_plan_price
+    INTO var_plan_price
+    FROM public.mailroom_plan_table AS mailroom_plan
+    WHERE mailroom_plan.mailroom_plan_id = input_plan_id;
+
+    IF var_plan_price IS NULL THEN
+        RAISE EXCEPTION 'Invalid plan selected';
+    END IF;
+
+    return_data := var_plan_price * input_locker_qty * input_months;
+
+    IF input_months = 12 THEN
+        return_data := return_data * 0.8;
+    END IF;
+
+    IF input_referral_code IS NOT NULL THEN
+        SELECT EXISTS (
+            SELECT 1 
+            FROM public.users_table AS users
+            WHERE users.users_referral_code = input_referral_code
+        ) INTO var_referrer_exists;
+
+        IF var_referrer_exists THEN
+            return_data := return_data * 0.95;
+        END IF;
+    END IF;
+
+    RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION create_mailroom_registration(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    input_user_id UUID := (input_data->>'user_id')::UUID;
+    input_location_id UUID := (input_data->>'location_id')::UUID;
+    input_plan_id UUID := (input_data->>'plan_id')::UUID;
+    input_locker_qty INTEGER := (input_data->>'locker_qty')::INTEGER;
+    input_mailroom_code TEXT := (input_data->>'mailroom_code')::TEXT;
+    var_registration_id UUID;
+    var_locker_ids UUID[];
+    var_registration_record RECORD;
+    return_data JSON;
+BEGIN
+    INSERT INTO public.mailroom_registration_table (
+        user_id,
+        mailroom_location_id,
+        mailroom_plan_id,
+        mailroom_registration_code,
+        mailroom_registration_status
+    )
+    VALUES (
+        input_user_id,
+        input_location_id,
+        input_plan_id,
+        input_mailroom_code,
+        TRUE
+    )
+    RETURNING mailroom_registration_id INTO var_registration_id;
+
+    var_locker_ids := ARRAY(
+        SELECT location_locker_id
+        FROM public.location_locker_table AS location_locker
+        WHERE location_locker.mailroom_location_id = input_location_id
+          AND location_locker.location_locker_is_available = TRUE
+        LIMIT input_locker_qty
+        FOR UPDATE
+    );
+
+    IF array_length(var_locker_ids, 1) < input_locker_qty THEN
+        RAISE EXCEPTION 'Insufficient lockers available';
+    END IF;
+
+    UPDATE public.location_locker_table AS location_locker
+    SET location_locker_is_available = FALSE
+    WHERE location_locker.location_locker_id = ANY(var_locker_ids);
+
+    INSERT INTO public.mailroom_assigned_locker_table (
+        mailroom_registration_id,
+        location_locker_id,
+        mailroom_assigned_locker_status
+    )
+    SELECT 
+        var_registration_id,
+        locker_id,
+        'Normal'
+    FROM unnest(var_locker_ids) AS locker_id;
+
+    SELECT * INTO var_registration_record 
+    FROM public.mailroom_registration_table 
+    WHERE mailroom_registration_id = var_registration_id;
+
+    return_data := json_build_object(
+        'registration', row_to_json(var_registration_record),
+        'lockerIds', var_locker_ids
+    );
+
+    RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Mailroom Availability RPCs (from 20251229000016)
+CREATE OR REPLACE FUNCTION public.get_mailroom_locations(input_data JSON DEFAULT '{}'::JSON)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    return_data JSON;
+BEGIN
+    SELECT json_agg(
+        json_build_object(
+            'id', mailroom_location_id,
+            'name', mailroom_location_name,
+            'region', mailroom_location_region,
+            'city', mailroom_location_city,
+            'barangay', mailroom_location_barangay,
+            'zip', mailroom_location_zip
+        )
+    )
+    INTO return_data
+    FROM (
+        SELECT 
+            mailroom_location_id,
+            mailroom_location_name,
+            mailroom_location_region,
+            mailroom_location_city,
+            mailroom_location_barangay,
+            mailroom_location_zip
+        FROM public.mailroom_location_table
+        ORDER BY mailroom_location_name ASC
+    ) AS mailroom_location_table;
+
+    RETURN COALESCE(return_data, '[]'::JSON);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.get_location_availability(input_data JSON DEFAULT '{}'::JSON)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    return_data JSON;
+BEGIN
+    SELECT json_object_agg(mailroom_location_id, locker_count)
+    INTO return_data
+    FROM (
+        SELECT 
+            mailroom_location_id,
+            COUNT(*)::INTEGER as locker_count
+        FROM public.location_locker_table
+        WHERE location_locker_is_available = TRUE
+        GROUP BY mailroom_location_id
+    ) AS location_locker_counts;
+
+    RETURN COALESCE(return_data, '{}'::JSON);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Admin Mailroom Locations RPCs (from 20251226000011)
+CREATE OR REPLACE FUNCTION public.admin_list_mailroom_locations()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  return_data JSON := '[]'::JSON;
+BEGIN
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'mailroom_location_id', mailroom_location_id,
+        'mailroom_location_name', mailroom_location_name,
+        'mailroom_location_region', mailroom_location_region,
+        'mailroom_location_city', mailroom_location_city,
+        'mailroom_location_barangay', mailroom_location_barangay,
+        'mailroom_location_zip', mailroom_location_zip,
+        'mailroom_location_total_lockers', mailroom_location_total_lockers,
+        'mailroom_location_prefix', mailroom_location_prefix
+      )
+      ORDER BY mailroom_location_name ASC
+    ),
+    '[]'::JSON
+  )
+  INTO  return_data
+  FROM public.mailroom_location_table;
+
+  RETURN  return_data;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_create_mailroom_location(
+  input_name TEXT,
+  input_code TEXT DEFAULT NULL,
+  input_region TEXT DEFAULT NULL,
+  input_city TEXT DEFAULT NULL,
+  input_barangay TEXT DEFAULT NULL,
+  input_zip TEXT DEFAULT NULL,
+  input_total_lockers INTEGER DEFAULT 0
+)
+RETURNS public.mailroom_location_table
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  new_location public.mailroom_location_table%ROWTYPE;
+  locker_prefix TEXT;
+  total_lockers INTEGER := COALESCE(input_total_lockers, 0);
+BEGIN
+  IF COALESCE(TRIM(input_name), '') = '' THEN
+    RAISE EXCEPTION 'mailroom location name is required';
+  END IF;
+
+  INSERT INTO public.mailroom_location_table (
+    mailroom_location_name,
+    mailroom_location_prefix,
+    mailroom_location_region,
+    mailroom_location_city,
+    mailroom_location_barangay,
+    mailroom_location_zip,
+    mailroom_location_total_lockers
+  )
+  VALUES (
+    TRIM(input_name),
+    NULLIF(TRIM(input_code), ''),
+    NULLIF(TRIM(input_region), ''),
+    NULLIF(TRIM(input_city), ''),
+    NULLIF(TRIM(input_barangay), ''),
+    NULLIF(TRIM(input_zip), ''),
+    total_lockers
+  )
+  RETURNING * INTO new_location;
+
+  locker_prefix :=
+    COALESCE(new_location.mailroom_location_prefix, 'L');
+
+  IF total_lockers > 0 THEN
+    INSERT INTO public.location_locker_table (
+      mailroom_location_id,
+      location_locker_code,
+      location_locker_is_available
+    )
+    SELECT
+      new_location.mailroom_location_id,
+      FORMAT('%s-%s', locker_prefix, seq),
+      true
+    FROM generate_series(1, total_lockers) AS seq;
+  END IF;
+
+  RETURN new_location;
+END;
+$$;
+
+-- Admin Mailroom Plans RPCs (from 20251226000012)
+CREATE OR REPLACE FUNCTION public.admin_list_mailroom_plans()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  result JSON := '[]'::JSON;
+BEGIN
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'mailroom_plan_id', mailroom_plan_id,
+        'mailroom_plan_name', mailroom_plan_name,
+        'mailroom_plan_price', mailroom_plan_price,
+        'mailroom_plan_description', mailroom_plan_description,
+        'mailroom_plan_storage_limit', mailroom_plan_storage_limit,
+        'mailroom_plan_can_receive_mail', mailroom_plan_can_receive_mail,
+        'mailroom_plan_can_receive_parcels', mailroom_plan_can_receive_parcels,
+        'mailroom_plan_can_digitize', mailroom_plan_can_digitize
+      )
+      ORDER BY mailroom_plan_price ASC
+    ),
+    '[]'::JSON
+  )
+  INTO result
+  FROM public.mailroom_plan_table;
+
+  RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_update_mailroom_plan(
+  input_plan_id UUID,
+  input_updates JSONB
+)
+RETURNS public.mailroom_plan_table
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  updated_plan public.mailroom_plan_table%ROWTYPE;
+BEGIN
+  IF input_plan_id IS NULL THEN
+    RAISE EXCEPTION 'plan id is required';
+  END IF;
+
+  IF input_updates IS NULL OR jsonb_typeof(input_updates) <> 'object' THEN
+    RAISE EXCEPTION 'input_updates must be a JSON object';
+  END IF;
+
+  UPDATE public.mailroom_plan_table
+  SET
+    mailroom_plan_name = CASE
+      WHEN input_updates ? 'name'
+        THEN COALESCE(NULLIF(TRIM(input_updates->>'name'), ''), mailroom_plan_name)
+      ELSE mailroom_plan_name
+    END,
+    mailroom_plan_price = CASE
+      WHEN input_updates ? 'price'
+        THEN (input_updates->>'price')::NUMERIC
+      ELSE mailroom_plan_price
+    END,
+    mailroom_plan_description = CASE
+      WHEN input_updates ? 'description'
+        THEN input_updates->>'description'
+      ELSE mailroom_plan_description
+    END,
+    mailroom_plan_storage_limit = CASE
+      WHEN input_updates ? 'storage_limit'
+        THEN (input_updates->>'storage_limit')::NUMERIC
+      ELSE mailroom_plan_storage_limit
+    END,
+    mailroom_plan_can_receive_mail = CASE
+      WHEN input_updates ? 'can_receive_mail'
+        THEN COALESCE((input_updates->>'can_receive_mail')::BOOLEAN, mailroom_plan_can_receive_mail)
+      ELSE mailroom_plan_can_receive_mail
+    END,
+    mailroom_plan_can_receive_parcels = CASE
+      WHEN input_updates ? 'can_receive_parcels'
+        THEN COALESCE((input_updates->>'can_receive_parcels')::BOOLEAN, mailroom_plan_can_receive_parcels)
+      ELSE mailroom_plan_can_receive_parcels
+    END,
+    mailroom_plan_can_digitize = CASE
+      WHEN input_updates ? 'can_digitize'
+        THEN COALESCE((input_updates->>'can_digitize')::BOOLEAN, mailroom_plan_can_digitize)
+      ELSE mailroom_plan_can_digitize
+    END
+  WHERE mailroom_plan_id = input_plan_id
+  RETURNING *
+  INTO updated_plan;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'plan not found';
+  END IF;
+
+  RETURN updated_plan;
+END;
+$$;
+
+-- Admin Mailroom Packages RPC (from 20251227000013)
+CREATE OR REPLACE FUNCTION public.get_admin_mailroom_packages(
+  input_limit INTEGER DEFAULT 50,
+  input_offset INTEGER DEFAULT 0,
+  input_compact BOOLEAN DEFAULT false
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  result JSON;
+  packages_json JSON;
+  registrations_json JSON;
+  lockers_json JSON;
+  assigned_lockers_json JSON;
+  total_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO total_count
+  FROM public.mailbox_item_table
+  WHERE mailbox_item_deleted_at IS NULL;
+
+  WITH paginated_items AS (
+    SELECT 
+      mi.mailbox_item_id,
+      mi.mailbox_item_name,
+      mi.mailroom_registration_id,
+      mi.location_locker_id,
+      mi.mailbox_item_type,
+      mi.mailbox_item_status,
+      mi.mailbox_item_photo,
+      mi.mailbox_item_received_at,
+      mi.mailbox_item_created_at,
+      mi.mailbox_item_updated_at,
+      mr.mailroom_registration_id AS reg_id,
+      mr.mailroom_registration_code,
+      ll.location_locker_id AS locker_id,
+      ll.location_locker_code,
+      u.users_email,
+      u.mobile_number,
+      uk.user_kyc_first_name,
+      uk.user_kyc_last_name,
+      ml.mailroom_location_name,
+      p.mailroom_plan_id,
+      p.mailroom_plan_name,
+      p.mailroom_plan_can_receive_mail,
+      p.mailroom_plan_can_receive_parcels
+    FROM public.mailbox_item_table mi
+    LEFT JOIN public.mailroom_registration_table mr ON mr.mailroom_registration_id = mi.mailroom_registration_id
+    LEFT JOIN public.location_locker_table ll ON ll.location_locker_id = mi.location_locker_id
+    LEFT JOIN public.users_table u ON u.users_id = mr.user_id
+    LEFT JOIN public.user_kyc_table uk ON uk.user_id = u.users_id
+    LEFT JOIN public.mailroom_location_table ml ON ml.mailroom_location_id = mr.mailroom_location_id
+    LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = mr.mailroom_plan_id
+    WHERE mi.mailbox_item_deleted_at IS NULL
+    ORDER BY mi.mailbox_item_received_at DESC NULLS LAST
+    LIMIT input_limit
+    OFFSET input_offset
+  )
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'id', pi.mailbox_item_id,
+        'package_name', pi.mailbox_item_name,
+        'registration_id', pi.mailroom_registration_id,
+        'locker_id', pi.location_locker_id,
+        'package_type', pi.mailbox_item_type,
+        'status', pi.mailbox_item_status,
+        'package_photo', pi.mailbox_item_photo,
+        'received_at', pi.mailbox_item_received_at,
+        'mailbox_item_created_at', pi.mailbox_item_created_at,
+        'mailbox_item_updated_at', pi.mailbox_item_updated_at,
+        'registration', CASE
+          WHEN pi.reg_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'id', pi.reg_id,
+            'full_name', COALESCE(
+              CONCAT_WS(' ', pi.user_kyc_first_name, pi.user_kyc_last_name),
+              pi.mailroom_location_name,
+              'Unknown'
+            ),
+            'email', pi.users_email,
+            'mobile', pi.mobile_number,
+            'mailroom_code', pi.mailroom_registration_code,
+            'mailroom_plans', CASE
+              WHEN pi.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+                'name', pi.mailroom_plan_name,
+                'can_receive_mail', pi.mailroom_plan_can_receive_mail,
+                'can_receive_parcels', pi.mailroom_plan_can_receive_parcels
+              )
+              ELSE NULL
+            END
+          )
+          ELSE NULL
+        END,
+        'locker', CASE
+          WHEN pi.locker_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'id', pi.locker_id,
+            'locker_code', pi.location_locker_code
+          )
+          ELSE NULL
+        END
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO packages_json
+  FROM paginated_items pi;
+
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'id', mr.mailroom_registration_id,
+        'full_name', COALESCE(
+          CONCAT_WS(' ', uk.user_kyc_first_name, uk.user_kyc_last_name),
+          ml.mailroom_location_name,
+          'Unknown'
+        ),
+        'email', u.users_email,
+        'mobile', u.mobile_number,
+        'mailroom_code', mr.mailroom_registration_code,
+        'mailroom_plans', CASE
+          WHEN p.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'name', p.mailroom_plan_name,
+            'can_receive_mail', p.mailroom_plan_can_receive_mail,
+            'can_receive_parcels', p.mailroom_plan_can_receive_parcels
+          )
+          ELSE NULL
+        END
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO registrations_json
+  FROM public.mailroom_registration_table mr
+  LEFT JOIN public.users_table u ON u.users_id = mr.user_id
+  LEFT JOIN public.user_kyc_table uk ON uk.user_id = u.users_id
+  LEFT JOIN public.mailroom_location_table ml ON ml.mailroom_location_id = mr.mailroom_location_id
+  LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = mr.mailroom_plan_id;
+
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'id', ll.location_locker_id,
+        'locker_code', ll.location_locker_code,
+        'is_available', ll.location_locker_is_available
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO lockers_json
+  FROM public.location_locker_table ll;
+
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'id', mal.mailroom_assigned_locker_id,
+        'registration_id', mal.mailroom_registration_id,
+        'locker_id', mal.location_locker_id,
+        'status', mal.mailroom_assigned_locker_status,
+        'locker', CASE
+          WHEN ll.location_locker_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'id', ll.location_locker_id,
+            'locker_code', ll.location_locker_code
+          )
+          ELSE NULL
+        END
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO assigned_lockers_json
+  FROM public.mailroom_assigned_locker_table mal
+  LEFT JOIN public.location_locker_table ll ON ll.location_locker_id = mal.location_locker_id;
+
+  result := JSON_BUILD_OBJECT(
+    'packages', packages_json,
+    'registrations', registrations_json,
+    'lockers', lockers_json,
+    'assignedLockers', assigned_lockers_json,
+    'total_count', total_count
+  );
+
+  RETURN result;
+END;
+$$;
+
+-- Payment Transaction RPC (from 20260102000018)
+CREATE OR REPLACE FUNCTION public.get_payment_transaction_by_order(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    input_order_id TEXT := (input_data->>'order_id')::TEXT;
+    return_data JSON;
+BEGIN
+    SELECT json_build_object(
+        'payment_transaction_id', payment_transaction.payment_transaction_id,
+        'payment_transaction_amount', payment_transaction.payment_transaction_amount,
+        'payment_transaction_status', payment_transaction.payment_transaction_status,
+        'payment_transaction_reference_id', payment_transaction.payment_transaction_reference_id,
+        'payment_transaction_order_id', payment_transaction.payment_transaction_order_id,
+        'payment_transaction_created_at', payment_transaction.payment_transaction_created_at,
+        'mailroom_registration_id', payment_transaction.mailroom_registration_id
+    )
+    INTO return_data
+    FROM public.payment_transaction_table AS payment_transaction
+    WHERE payment_transaction.payment_transaction_order_id = input_order_id
+    ORDER BY payment_transaction.payment_transaction_created_at DESC
+    LIMIT 1;
+
+    RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Get Mailroom Registration by Order RPC (from 20260102000019)
+CREATE OR REPLACE FUNCTION public.get_mailroom_registration_by_order(input_data JSON)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    input_order_id TEXT := (input_data->>'order_id')::TEXT;
+    var_registration_id UUID;
+    return_data JSON;
+BEGIN
+    SELECT payment_transaction.mailroom_registration_id
+    INTO var_registration_id
+    FROM public.payment_transaction_table AS payment_transaction
+    WHERE payment_transaction.payment_transaction_order_id = input_order_id
+    ORDER BY payment_transaction.payment_transaction_created_at DESC
+    LIMIT 1;
+
+    IF var_registration_id IS NOT NULL THEN
+        SELECT row_to_json(mailroom_registration)
+        INTO return_data
+        FROM public.mailroom_registration_table AS mailroom_registration
+        WHERE mailroom_registration.mailroom_registration_id = var_registration_id;
+    END IF;
+
+    RETURN return_data;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Finalize Registration RPC (from 20260102000020)
+DROP FUNCTION IF EXISTS public.finalize_registration_from_payment(JSON);
+DROP FUNCTION IF EXISTS public.finalize_registration_from_payment(JSONB);
+
+CREATE OR REPLACE FUNCTION public.finalize_registration_from_payment(input_data JSONB)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+DECLARE
+    input_payment_id TEXT := (input_data->>'payment_id')::TEXT;
+    input_order_id TEXT := (input_data->>'order_id')::TEXT;
+    input_user_id UUID := (input_data->>'user_id')::UUID;
+    input_location_id UUID := (input_data->>'location_id')::UUID;
+    input_plan_id UUID := (input_data->>'plan_id')::UUID;
+    input_locker_qty INTEGER := COALESCE((input_data->>'locker_qty')::INTEGER, 1);
+    input_months INTEGER := COALESCE((input_data->>'months')::INTEGER, 1);
+    input_amount NUMERIC := COALESCE((input_data->>'amount')::NUMERIC, 0);
+    var_existing_registration_id UUID;
+    var_available_locker_ids UUID[];
+    var_mailroom_code TEXT;
+    var_is_unique BOOLEAN;
+    var_attempts INTEGER;
+    var_registration_id UUID;
+    var_expires_at TIMESTAMPTZ;
+    var_amount_decimal NUMERIC;
+BEGIN
+    SELECT mailroom_registration_id
+    INTO var_existing_registration_id
+    FROM public.payment_transaction_table
+    WHERE payment_transaction_order_id = input_order_id
+    ORDER BY payment_transaction_created_at DESC
+    LIMIT 1;
+
+    IF var_existing_registration_id IS NOT NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM public.mailroom_registration_table
+            WHERE mailroom_registration_id = var_existing_registration_id
+            AND mailroom_registration_status = TRUE
+        ) THEN
+            RETURN json_build_object(
+                'success', TRUE,
+                'message', 'Registration already finalized',
+                'registration_id', var_existing_registration_id
+            );
+        END IF;
+    END IF;
+
+    SELECT ARRAY(
+        SELECT location_locker_id
+        FROM public.location_locker_table
+        WHERE mailroom_location_id = input_location_id
+          AND location_locker_is_available = TRUE
+        LIMIT input_locker_qty
+    ) INTO var_available_locker_ids;
+
+    IF array_length(var_available_locker_ids, 1) IS NULL OR array_length(var_available_locker_ids, 1) < input_locker_qty THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'message', 'Insufficient lockers available',
+            'available_count', COALESCE(array_length(var_available_locker_ids, 1), 0),
+            'needed', input_locker_qty
+        );
+    END IF;
+
+    var_is_unique := FALSE;
+    var_attempts := 0;
+    WHILE var_is_unique = FALSE AND var_attempts < 10 LOOP
+        var_mailroom_code := 'KPH-' || UPPER(SUBSTRING(MD5(RANDOM()::TEXT), 1, 4));
+        SELECT NOT EXISTS (
+            SELECT 1 FROM public.mailroom_registration_table
+            WHERE mailroom_registration_code = var_mailroom_code
+        ) INTO var_is_unique;
+        var_attempts := var_attempts + 1;
+    END LOOP;
+
+    IF NOT var_is_unique THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'message', 'Failed to generate unique mailroom code'
+        );
+    END IF;
+
+    INSERT INTO public.mailroom_registration_table (
+        user_id,
+        mailroom_location_id,
+        mailroom_plan_id,
+        mailroom_registration_code,
+        mailroom_registration_status
+    ) VALUES (
+        input_user_id,
+        input_location_id,
+        input_plan_id,
+        var_mailroom_code,
+        TRUE
+    )
+    RETURNING mailroom_registration_id INTO var_registration_id;
+
+    var_expires_at := NOW() + (input_months || ' months')::INTERVAL;
+
+    INSERT INTO public.subscription_table (
+        mailroom_registration_id,
+        subscription_billing_cycle,
+        subscription_expires_at
+    ) VALUES (
+        var_registration_id,
+        (CASE WHEN input_months >= 12 THEN 'ANNUAL' ELSE 'MONTHLY' END)::public.billing_cycle,
+        var_expires_at
+    );
+
+    var_amount_decimal := input_amount / 100.0;
+
+    INSERT INTO public.payment_transaction_table (
+        mailroom_registration_id,
+        payment_transaction_amount,
+        payment_transaction_status,
+        payment_transaction_type,
+        payment_transaction_reference_id,
+        payment_transaction_order_id
+    ) VALUES (
+        var_registration_id,
+        var_amount_decimal,
+        'PAID'::public.payment_status,
+        'SUBSCRIPTION'::public.payment_type,
+        input_payment_id,
+        input_order_id
+    );
+
+    UPDATE public.location_locker_table
+    SET location_locker_is_available = FALSE
+    WHERE location_locker_id = ANY(var_available_locker_ids);
+
+    INSERT INTO public.mailroom_assigned_locker_table (
+        mailroom_registration_id,
+        location_locker_id,
+        mailroom_assigned_locker_status
+    )
+    SELECT var_registration_id, unnest(var_available_locker_ids), 'Normal'::public.mailroom_assigned_locker_status;
+
+    RETURN json_build_object(
+        'success', TRUE,
+        'message', 'Registration finalized successfully',
+        'registration_id', var_registration_id,
+        'mailroom_code', var_mailroom_code
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Referral RPCs (from 20260102000021)
+CREATE OR REPLACE FUNCTION public.referral_add(input_data JSONB)
+RETURNS JSONB
+SET search_path TO ''
+AS $$
+DECLARE
+    input_user_id UUID := (input_data->>'user_id')::UUID;
+    input_referral_code TEXT := (input_data->>'referral_code')::TEXT;
+    input_referred_email TEXT := (input_data->>'referred_email')::TEXT;
+    input_service_type TEXT := (input_data->>'service_type')::TEXT;
+    var_referrer_id UUID;
+    var_referred_id UUID;
+BEGIN
+    IF input_referral_code IS NOT NULL THEN
+        SELECT users_id INTO var_referrer_id
+        FROM public.users_table
+        WHERE users_referral_code = input_referral_code;
+        
+        IF var_referrer_id IS NULL THEN
+            RETURN jsonb_build_object('success', false, 'message', 'Invalid referral code');
+        END IF;
+    ELSE
+        var_referrer_id := input_user_id;
+    END IF;
+
+    IF var_referrer_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'message', 'Could not resolve referrer');
+    END IF;
+
+    SELECT users_id INTO var_referred_id
+    FROM public.users_table
+    WHERE users_email = input_referred_email;
+
+    INSERT INTO public.referral_table (
+        referral_referrer_user_id,
+        referral_referred_user_id,
+        referral_service_type
+    ) VALUES (
+        var_referrer_id,
+        var_referred_id,
+        input_service_type
+    );
+
+    RETURN jsonb_build_object('success', true, 'message', 'Referral added');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.referral_generate(input_data JSONB)
+RETURNS JSONB
+SET search_path TO ''
+AS $$
+DECLARE
+    input_user_id UUID := (input_data->>'user_id')::UUID;
+    var_existing_code TEXT;
+    var_new_code TEXT;
+BEGIN
+    SELECT users_referral_code INTO var_existing_code
+    FROM public.users_table
+    WHERE users_id = input_user_id;
+
+    IF var_existing_code IS NOT NULL THEN
+        RETURN jsonb_build_object('success', true, 'referral_code', var_existing_code);
+    END IF;
+
+    var_new_code := UPPER(SUBSTRING(MD5(RANDOM()::TEXT), 1, 8));
+
+    UPDATE public.users_table
+    SET users_referral_code = var_new_code
+    WHERE users_id = input_user_id;
+
+    RETURN jsonb_build_object('success', true, 'referral_code', var_new_code);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.referral_list(input_data JSONB)
+RETURNS JSONB
+SET search_path TO ''
+AS $$
+DECLARE
+    input_user_id UUID := (input_data->>'user_id')::UUID;
+    var_referrals JSONB;
+BEGIN
+    SELECT jsonb_agg(r.*) INTO var_referrals
+    FROM public.referral_table r
+    WHERE r.referral_referrer_user_id = input_user_id 
+       OR r.referral_referred_user_id = input_user_id;
+
+    RETURN jsonb_build_object('success', true, 'referrals', COALESCE(var_referrals, '[]'::jsonb));
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.referral_validate(input_data JSONB)
+RETURNS JSONB
+SET search_path TO ''
+AS $$
+DECLARE
+    input_code TEXT := (input_data->>'code')::TEXT;
+    input_current_user_id UUID := (input_data->>'current_user_id')::UUID;
+    var_referrer_id UUID;
+BEGIN
+    IF input_code IS NULL THEN
+        RETURN jsonb_build_object('valid', false, 'message', 'Code is required');
+    END IF;
+
+    SELECT users_id INTO var_referrer_id
+    FROM public.users_table
+    WHERE users_referral_code = input_code;
+
+    IF var_referrer_id IS NULL THEN
+        RETURN jsonb_build_object('valid', false, 'message', 'Invalid referral code');
+    END IF;
+
+    IF input_current_user_id IS NOT NULL AND var_referrer_id = input_current_user_id THEN
+        RETURN jsonb_build_object('valid', false, 'message', 'Cannot use your own code');
+    END IF;
+
+    RETURN jsonb_build_object('valid', true, 'message', 'Code applied: 5% Off');
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- STORAGE POLICIES (from 20251230000016)
+-- ============================================================================
+
+DROP POLICY IF EXISTS packages_photo_policy ON storage.objects;
+CREATE POLICY packages_photo_policy
+ON storage.objects
+FOR ALL
+USING (
+  bucket_id = 'PACKAGES-PHOTO' 
+  AND (
+    owner = auth.uid() 
+    OR split_part(name, '/', 1) = auth.uid()::text
+    OR EXISTS (
+      SELECT 1 
+      FROM public.users_table 
+      WHERE users_id = auth.uid() 
+      AND users_role = 'admin'
+    )
+  )
+);
+
+-- ============================================================================
+-- GRANT PERMISSIONS (from 20251230000017)
+-- ============================================================================
+
+GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registration(JSON) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registration(JSON) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_user_assigned_lockers(JSON) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_assigned_lockers(JSON) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_user_mailbox_items_by_registrations(JSON) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_mailbox_items_by_registrations(JSON) TO anon;
+GRANT EXECUTE ON FUNCTION public.cancel_user_mailroom_subscription(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.cancel_user_mailroom_subscription(UUID) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_admin_mailroom_packages(INTEGER, INTEGER, BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_mailroom_packages(INTEGER, INTEGER, BOOLEAN) TO anon;
 
 -- Add unique constraint to payment_transaction_order_id to prevent duplicate registrations
 ALTER TABLE public.payment_transaction_table 
