@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         },
       );
       if (updateError) {
-        console.error("Error updating auth metadata:", error);
+        console.error("Error updating auth metadata:", updateError);
       }
     }
 

@@ -46,6 +46,16 @@ export async function GET(request: Request) {
             console.error("Failed to insert user:", insertError);
             // Continue even if insert fails, as the auth session is valid
           }
+
+          // Sync to auth metadata when successfully created public user record
+          const { error: updateError } =
+            await supabase.auth.admin.updateUserById(session.user.id, {
+              user_metadata: { role: "user" },
+            });
+
+          if (updateError) {
+            console.error("Error updating auth metadata:", updateError);
+          }
         }
 
         return NextResponse.redirect(`${origin}${next}`);
