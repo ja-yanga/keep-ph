@@ -1,8 +1,9 @@
 import React from "react";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import MailroomRegisterSuccessPage from "@/app/(private)/mailroom/register/success/page";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
+import userEvent from "@testing-library/user-event";
 
 jest.setTimeout(20000);
 
@@ -63,13 +64,13 @@ describe("Mailroom register success page", () => {
       </SWRConfig>,
     );
 
-    // Wait until the component triggers router.push("/dashboard").
-    await waitFor(
-      () => {
-        const flatCalls = pushMock.mock.calls.flat();
-        expect(flatCalls).toContain("/dashboard");
-      },
-      { timeout: 10000 },
-    );
+    // Click the immediate "Go to Dashboard Now" button to trigger navigation
+    const goBtn = await screen.findByRole("button", {
+      name: /Go to Dashboard Now/i,
+    });
+    await userEvent.click(goBtn);
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/dashboard"), {
+      timeout: 5000,
+    });
   });
 });
