@@ -95,7 +95,7 @@ export async function POST(request: Request) {
         .join(", ");
     }
 
-    const BUCKET_NAME = "mailroom_proofs";
+    const BUCKET_NAME = "MAILROOM-PROOFS";
 
     // 0. Ensure bucket exists (Fix for Bucket not found)
     const { data: buckets } = await supabaseAdmin.storage.listBuckets();

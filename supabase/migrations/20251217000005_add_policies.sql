@@ -33,22 +33,22 @@ with check (true);
 CREATE POLICY mailroom_proofs_policy
 ON storage.objects
 FOR ALL
-USING (bucket_id = 'mailroom_proofs' AND owner = auth.uid());
+USING (bucket_id = 'MAILROOM-PROOFS' AND owner = auth.uid());
 
 CREATE POLICY mailroom_scans_policy
 ON storage.objects
 FOR ALL
-USING (bucket_id = 'mailroom_scans' AND owner = auth.uid());
+USING (bucket_id = 'MAILROOM-SCANS' AND owner = auth.uid());
 
 CREATE POLICY reward_proofs_policy
 ON storage.objects
 FOR ALL
-USING (bucket_id = 'reward_proofs' AND owner = auth.uid());
+USING (bucket_id = 'REWARD-PROOFS' AND owner = auth.uid());
 
 CREATE POLICY avatars_policy
 ON storage.objects
 FOR ALL
-USING (bucket_id = 'avatars' AND owner = auth.uid());
+USING (bucket_id = 'AVATARS' AND owner = auth.uid());
 
 -- Policy for USER-KYC-DOCUMENTS storage bucket: allow users to upload/access files in their own folder
 -- Files are stored as: {user_id}/front-{timestamp}-{filename}

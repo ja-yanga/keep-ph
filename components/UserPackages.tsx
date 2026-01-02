@@ -1146,10 +1146,34 @@ export default function UserPackages({
     else if (status === "DISPOSED") statusColor = "red";
     else if (String(status).includes("REQUEST")) statusColor = "orange";
 
+    // Helper to ensure image URL is always a full URL
+    const ensureFullUrl = (
+      urlOrPath: string | undefined | null,
+    ): string | undefined => {
+      if (!urlOrPath) return undefined;
+      const str = String(urlOrPath).trim();
+      if (!str) return undefined;
+
+      // If it's already a full URL (starts with http:// or https://), return as is
+      if (str.startsWith("http://") || str.startsWith("https://")) {
+        return str;
+      }
+
+      // Otherwise, it's a path - construct the full URL
+      const supabaseUrl =
+        process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
+      const bucket = "PACKAGES-PHOTO";
+      // Remove leading slash if present
+      const cleanPath = str.startsWith("/") ? str.slice(1) : str;
+      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${cleanPath}`;
+    };
+
     const smallImageSrc =
-      (pkg.mailbox_item_photo as string | undefined) ??
-      (pkg.package_photo as string | undefined) ??
-      ((pkg.package_files && pkg.package_files[0]?.url) as string | undefined);
+      ensureFullUrl(pkg.mailbox_item_photo as string | undefined) ??
+      ensureFullUrl(pkg.package_photo as string | undefined) ??
+      ensureFullUrl(
+        (pkg.package_files && pkg.package_files[0]?.url) as string | undefined,
+      );
 
     return (
       <Paper p="md" radius="md" withBorder shadow="xs" bg="white">

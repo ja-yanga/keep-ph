@@ -1,5 +1,5 @@
 -- Gets registration
-CREATE OR REPLACE FUNCTION get_user_mailroom_registration(input_data JSON)
+CREATE OR REPLACE FUNCTION public.get_user_mailroom_registration(input_data JSON)
 RETURNS JSON
 SET search_path TO ''
 SECURITY DEFINER
@@ -53,7 +53,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Gets assigned locker
-CREATE OR REPLACE FUNCTION get_user_assigned_lockers(input_data JSON)
+CREATE OR REPLACE FUNCTION public.get_user_assigned_lockers(input_data JSON)
 RETURNS JSON
 SET search_path TO ''
 SECURITY DEFINER
@@ -76,7 +76,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Gets mailbox items
-CREATE OR REPLACE FUNCTION get_user_mailbox_items_by_registrations(input_data JSON)
+CREATE OR REPLACE FUNCTION public.get_user_mailbox_items_by_registrations(input_data JSON)
 RETURNS JSON
 SET search_path TO ''
 SECURITY DEFINER
@@ -101,7 +101,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Cancel Renewal
-CREATE OR REPLACE FUNCTION cancel_user_mailroom_subscription(input_registration_id UUID)
+CREATE OR REPLACE FUNCTION public.cancel_user_mailroom_subscription(input_registration_id UUID)
 RETURNS BOOLEAN
 SET search_path TO ''
 SECURITY DEFINER
@@ -109,7 +109,7 @@ AS $$
 DECLARE
   return_data BOOLEAN;
 BEGIN
-  UPDATE subscription_table
+  UPDATE public.subscription_table
   SET subscription_auto_renew = FALSE
   WHERE mailroom_registration_id = input_registration_id;
 
@@ -122,3 +122,13 @@ BEGIN
   RETURN return_data;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registration(JSON) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registration(JSON) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_user_assigned_lockers(JSON) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_assigned_lockers(JSON) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_user_mailbox_items_by_registrations(JSON) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_mailbox_items_by_registrations(JSON) TO anon;
+GRANT EXECUTE ON FUNCTION public.cancel_user_mailroom_subscription(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.cancel_user_mailroom_subscription(UUID) TO anon;
