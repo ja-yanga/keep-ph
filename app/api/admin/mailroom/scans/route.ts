@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const filePath = `${fileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("mailroom-scans") // Ensure this bucket exists in Supabase
+      .from("MAILROOM-SCANS") // Ensure this bucket exists in Supabase
       .upload(filePath, file, {
         contentType: file.type,
         upsert: false,
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     // 2. Get Public URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from("mailroom-scans").getPublicUrl(filePath);
+    } = supabase.storage.from("MAILROOM-SCANS").getPublicUrl(filePath);
 
     // 3. Insert Record into mailroom_scans
     const fileSizeMb = file.size / (1024 * 1024); // Convert bytes to MB

@@ -340,3 +340,169 @@ export type T_NotificationType =
   | "SYSTEM" // optional: reward-specific notification types for clearer UI handling
   | "REWARD_PROCESSING"
   | "REWARD_PAID";
+
+export type LocationRow = {
+  mailroom_location_id: string;
+  mailroom_location_name: string;
+  mailroom_location_region?: string | null;
+  mailroom_location_city?: string | null;
+  mailroom_location_barangay?: string | null;
+  mailroom_location_zip?: string | null;
+  mailroom_location_total_lockers?: number | null;
+  mailroom_location_prefix?: string | null;
+};
+
+export type AdminCreateMailroomLocationArgs = {
+  name: string;
+  code?: string | null;
+  region?: string | null;
+  city?: string | null;
+  barangay?: string | null;
+  zip?: string | null;
+  total_lockers?: number | null;
+};
+
+export type MailroomPlanRow = {
+  mailroom_plan_id: string;
+  mailroom_plan_name: string;
+  mailroom_plan_price: number;
+  mailroom_plan_description?: string | null;
+  mailroom_plan_storage_limit?: number | null;
+  mailroom_plan_can_receive_mail: boolean;
+  mailroom_plan_can_receive_parcels: boolean;
+  mailroom_plan_can_digitize: boolean;
+};
+
+export type AdminUpdateMailroomPlanArgs = {
+  id: string;
+  updates: {
+    name?: string;
+    price?: number;
+    description?: string | null;
+    storage_limit?: number | null;
+    can_receive_mail?: boolean;
+    can_receive_parcels?: boolean;
+    can_digitize?: boolean;
+  };
+};
+
+export type Plan = {
+  id: string;
+  name: string;
+  price: number;
+  description?: string | null;
+  storage_limit?: number | null;
+  can_receive_mail: boolean;
+  can_receive_parcels: boolean;
+  can_digitize: boolean;
+};
+
+export type MailroomPackageViewItem = RawRow | null;
+
+export type MailroomPackageViewProps = {
+  item: MailroomPackageViewItem;
+  loading: boolean;
+  error: string | null;
+  onRefreshAction?: () => Promise<void> | void;
+};
+
+export type RegCounts = { stored: number; pending: number; released: number };
+
+export type MailroomMainContentProps = {
+  src: Record<string, unknown> | null;
+  expiry: string | null;
+  lockerCount: number;
+  normalizedLockers: Array<{
+    id: string;
+    code: string;
+    status: string;
+    raw: Record<string, unknown>;
+  }>;
+  selectedLockerId: string | null;
+  setSelectedLockerId: React.Dispatch<React.SetStateAction<string | null>>;
+  normalizedPackages: Array<{
+    id: string;
+    locker_id?: string;
+    received_at?: string;
+    created_at?: string;
+    updated_at?: string;
+    status?: string;
+    package_photo?: string;
+    package_files?: Array<{
+      id: string;
+      name: string;
+      url: string;
+      size_mb: number;
+      mime_type: string;
+      type: string;
+      uploaded_at: string;
+    }>;
+    [key: string]: unknown;
+  }>;
+  plan: {
+    can_receive_mail?: boolean;
+    can_receive_parcels?: boolean;
+    can_digitize?: boolean;
+    [key: string]: unknown;
+  };
+  isStorageFull: boolean;
+  handleRefresh: () => Promise<void>;
+  scanMap: Record<string, string>;
+  scans: Array<{ package_id?: string; file_url?: string }>;
+  refreshKey: number;
+  mergedScans: Array<{
+    id: string;
+    file_name: string;
+    file_url: string;
+    file_size_mb: number;
+    uploaded_at: string;
+    package?: { package_name: string };
+    mailbox_item_name?: string;
+    mailbox_item_table?: unknown;
+  }>;
+  scansUsage: {
+    used_mb?: number;
+    limit_mb?: number;
+    percentage?: number;
+  } | null;
+};
+
+export type ErrorProps = {
+  error: string | null;
+};
+
+export type MailroomSidebarProps = {
+  src: Record<string, unknown> | null;
+  fullNameValue: string | null;
+  locations: Record<string, unknown> | null;
+  plan: Record<string, unknown> & {
+    can_receive_mail?: boolean;
+    can_receive_parcels?: boolean;
+    can_digitize?: boolean;
+  };
+  expiry: string | null;
+};
+
+export type LocationsResponse = {
+  data: Array<{
+    id: string;
+    name: string;
+    region: string | null;
+    city: string | null;
+    barangay: string | null;
+    zip: string | null;
+  }>;
+};
+
+export type AvailabilityResponse = {
+  data: Record<string, number>;
+};
+
+export type Location = {
+  id: string;
+  name: string;
+  region?: string;
+  city?: string;
+  barangay?: string;
+  zip?: string;
+};

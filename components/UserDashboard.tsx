@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 import { notifications } from "@mantine/notifications";
 import type { RawRow, LocationObj } from "@/utils/types";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type Row = {
   id: string;
@@ -394,7 +395,7 @@ export default function UserDashboard({
     setCanceling(true);
     try {
       const res = await fetch(
-        `/api/mailroom/registrations/${selectedSubId}/cancel`,
+        `${API_ENDPOINTS.mailroom.registration(selectedSubId)}/cancel`,
         { method: "PATCH" },
       );
       if (!res.ok) throw new Error("Failed to cancel subscription");

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import MailroomPlans from "@/components/MailroomPlans";
+import MailroomPlans from "@/components/pages/admin/PlanPage/MailroomPlans";
 import { Container, Title, Loader, Center } from "@mantine/core";
 import { useSession } from "@/components/SessionProvider";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";

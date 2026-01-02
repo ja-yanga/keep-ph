@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import dayjs from "dayjs";
 
 export async function POST(req: Request) {
   const payload = await req.json().catch(() => null);
@@ -208,13 +209,12 @@ export async function POST(req: Request) {
       }
 
       // 5) Create subscription
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + months);
+      const expiresAt = dayjs().add(months, "month").toISOString();
       await sb.from("subscription_table").insert([
         {
           mailroom_registration_id: registration.mailroom_registration_id,
           subscription_billing_cycle: months === 12 ? "YEARLY" : "MONTHLY",
-          subscription_expires_at: expiresAt.toISOString(),
+          subscription_expires_at: expiresAt,
         },
       ]);
 

@@ -1,12 +1,15 @@
 "use server";
 
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { sendNotification } from "@/lib/notifications";
+import { logActivity } from "@/lib/activity-log";
 import { parseAddressRow } from "@/utils/helper";
 import {
+  AdminCreateMailroomLocationArgs,
   CreateUserAddressArgs,
+  LocationRow,
   RequestRewardClaimArgs,
   RpcClaimResponse,
-  T_NotificationType,
   UpdateUserAddressArgs,
   UserAddressRow,
 } from "@/utils/types";
@@ -192,6 +195,26 @@ export async function createAddress({
     .single();
 
   if (error) throw error;
+
+  // Log activity
+  const addressData = data as Record<string, unknown>;
+  await logActivity({
+    userId: user_id,
+    action: "CREATE",
+    type: "USER_UPDATE_PROFILE",
+    entityType: "USER_ADDRESS",
+    entityId: addressData.user_kyc_address_id as string,
+    details: {
+      user_kyc_address_id: addressData.user_kyc_address_id,
+      line1,
+      line2,
+      city,
+      region,
+      postal,
+      is_default,
+    },
+  });
+
   return { ok: true, address: data };
 }
 
@@ -220,7 +243,28 @@ export async function createUserAddress(
     throw error;
   }
 
-  return parseAddressRow(data);
+  const addressRow = parseAddressRow(data);
+
+  // Log activity
+  await logActivity({
+    userId: user_id,
+    action: "CREATE",
+    type: "USER_UPDATE_PROFILE",
+    entityType: "USER_ADDRESS",
+    entityId: addressRow.user_address_id,
+    details: {
+      user_address_id: addressRow.user_address_id,
+      label,
+      line1,
+      line2,
+      city,
+      region,
+      postal,
+      is_default,
+    },
+  });
+
+  return addressRow;
 }
 
 export async function updateUserAddress(
@@ -291,7 +335,8 @@ async function generateMailroomCode(): Promise<string> {
   let attempts = 0;
 
   while (!isUnique && attempts < 10) {
-    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+    // use hex (base16) instead of base36
+    const randomStr = Math.random().toString(16).substring(2, 8).toUpperCase(); // 6 hex chars
     mailroomCode = `KPH-${randomStr}`;
 
     const { data: existing } = await supabase
@@ -337,72 +382,44 @@ export async function createMailroomRegistration({
     // Generate unique mailroom code
     const mailroomCode = await generateMailroomCode();
 
-    // Create registration
-    const { data: registration, error: regError } = await supabase
-      .from("mailroom_registration_table")
-      .insert([
-        {
-          user_id: userId,
-          mailroom_location_id: locationId,
-          mailroom_plan_id: planId,
-          mailroom_registration_code: mailroomCode,
-          mailroom_registration_status: true,
-        },
-      ])
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc("create_mailroom_registration", {
+      input_data: {
+        user_id: userId,
+        location_id: locationId,
+        plan_id: planId,
+        locker_qty: lockerQty,
+        mailroom_code: mailroomCode,
+      },
+    });
 
-    if (regError || !registration) {
-      throw new Error(regError?.message || "Failed to create registration");
+    if (error) {
+      throw error;
     }
 
-    // Get available lockers
-    const { data: availableLockers, error: lockerError } = await supabase
-      .from("location_locker_table")
-      .select("location_locker_id")
-      .eq("mailroom_location_id", locationId)
-      .eq("location_locker_is_available", true)
-      .limit(lockerQty);
+    const payload = typeof data === "string" ? JSON.parse(data) : data;
+    const { registration, lockerIds } = payload;
 
-    if (
-      lockerError ||
-      !availableLockers ||
-      availableLockers.length < lockerQty
-    ) {
-      throw new Error("Insufficient lockers available");
-    }
-
-    const lockerIds = availableLockers.map((l) => l.location_locker_id);
-
-    // Mark lockers as unavailable
-    const { error: updateError } = await supabase
-      .from("location_locker_table")
-      .update({ location_locker_is_available: false })
-      .in("location_locker_id", lockerIds);
-
-    if (updateError) {
-      console.error("Failed to update locker status:", updateError);
-      // Note: In production, you might want to rollback the registration here
-    }
-
-    // Create assignment records
-    const assignments = lockerIds.map((lockerId) => ({
-      mailroom_registration_id: registration.mailroom_registration_id,
-      location_locker_id: lockerId,
-      mailroom_assigned_locker_status: "Normal" as const,
-    }));
-
-    const { error: assignError } = await supabase
-      .from("mailroom_assigned_locker_table")
-      .insert(assignments);
-
-    if (assignError) {
-      console.error("Failed to assign lockers:", assignError);
-    }
+    // Log activity
+    const regData = registration as Record<string, unknown>;
+    await logActivity({
+      userId,
+      action: "CREATE",
+      type: "USER_REQUEST_OTHERS",
+      entityType: "MAILROOM_REGISTRATION",
+      entityId: regData.mailroom_registration_id as string,
+      details: {
+        mailroom_registration_id: regData.mailroom_registration_id,
+        mailroom_registration_code: mailroomCode,
+        mailroom_location_id: locationId,
+        mailroom_plan_id: planId,
+        locker_count: lockerQty,
+        locker_ids: lockerIds,
+      },
+    });
 
     return {
-      registration,
-      lockerIds,
+      registration: payload.registration,
+      lockerIds: payload.lockerIds,
     };
   } catch (err) {
     if (err instanceof Error) {
@@ -413,35 +430,148 @@ export async function createMailroomRegistration({
 }
 
 /**
- * Sends a notification to a user.
- *
- * @param userId - The UUID of the user getting the notification
- * @param title - Title of the notification
- * @param message - Body/message of the notification
- * @param type - NotificationType ("info", "success", "warning", "error", etc)
- * @param link - Optional link for notification
+ * Creates a mailroom location for admin.
+ * Used in:
+ * - app/api/admin/mailroom/locations/route.ts - API endpoint for creating locations
  */
-export async function sendNotification(
-  userId: string,
-  title: string,
-  message: string,
-  type: T_NotificationType,
-  link?: string,
-) {
-  try {
-    const { error } = await supabase.from("notifications").insert({
-      user_id: userId,
-      title,
-      message,
-      type,
-      link,
-      is_read: false,
-    });
+export async function adminCreateMailroomLocation(
+  args: AdminCreateMailroomLocationArgs & { userId?: string },
+): Promise<LocationRow> {
+  const payload = {
+    input_name: args.name,
+    input_code: args.code ?? null,
+    input_region: args.region ?? null,
+    input_city: args.city ?? null,
+    input_barangay: args.barangay ?? null,
+    input_zip: args.zip ?? null,
+    input_total_lockers: args.total_lockers ?? 0,
+  };
 
-    if (error) {
-      console.error("Failed to insert notification:", error);
-    }
-  } catch (err) {
-    console.error("Unexpected error sending notification:", err);
+  const { data, error } = await supabase.rpc(
+    "admin_create_mailroom_location",
+    payload,
+  );
+
+  if (error) {
+    throw error;
   }
+
+  const row =
+    typeof data === "string" ? (JSON.parse(data) as LocationRow) : data;
+
+  // Log activity if userId provided
+  if (args.userId) {
+    await logActivity({
+      userId: args.userId,
+      action: "CREATE",
+      type: "ADMIN_ACTION",
+      entityType: undefined, // No specific entity type for locations in enum
+      entityId: (row as Record<string, unknown>).mailroom_location_id as string,
+      details: {
+        mailroom_location_id: (row as Record<string, unknown>)
+          .mailroom_location_id,
+        name: args.name,
+        code: args.code,
+        region: args.region,
+        city: args.city,
+        barangay: args.barangay,
+        zip: args.zip,
+        total_lockers: args.total_lockers,
+      },
+    });
+  }
+
+  return row as LocationRow;
+}
+
+/**
+ * Creates a mailroom package (mailbox item) for admin.
+ * Used in:
+ * - app/api/admin/mailroom/packages/route.ts - API endpoint for creating packages
+ */
+export async function adminCreateMailroomPackage(args: {
+  userId: string;
+  package_name: string;
+  registration_id: string;
+  locker_id?: string | null;
+  package_type: "Document" | "Parcel";
+  status: string;
+  notes?: string | null;
+  package_photo?: string | null;
+  locker_status?: string;
+}): Promise<unknown> {
+  const supabaseAdmin = createSupabaseServiceClient();
+
+  // Insert package into mailbox_item_table
+  const { data, error } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .insert({
+      mailbox_item_name: args.package_name,
+      mailroom_registration_id: args.registration_id,
+      location_locker_id: args.locker_id || null,
+      mailbox_item_type: args.package_type,
+      mailbox_item_status: args.status,
+      mailbox_item_photo: args.package_photo ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  // Update locker status if provided
+  if (args.locker_id && args.locker_status) {
+    const { error: lockerError } = await supabaseAdmin
+      .from("mailroom_assigned_locker_table")
+      .update({ mailroom_assigned_locker_status: args.locker_status })
+      .eq("location_locker_id", args.locker_id)
+      .eq("mailroom_registration_id", args.registration_id);
+
+    if (lockerError) {
+      console.error("Failed to update locker status:", lockerError);
+      // Don't throw - allow package creation to succeed even if locker update fails
+    }
+  }
+
+  // Send notification
+  const { data: registration } = await supabaseAdmin
+    .from("mailroom_registration_table")
+    .select("user_id, mailroom_registration_code")
+    .eq("mailroom_registration_id", args.registration_id)
+    .single();
+
+  if (registration) {
+    const regData = registration as Record<string, unknown>;
+    const userId = regData.user_id as string;
+    const code = (regData.mailroom_registration_code as string) || "Unknown";
+
+    await sendNotification(
+      userId,
+      "Package Arrived",
+      `A new ${args.package_type} (${args.package_name}) has arrived at Mailroom ${code}.`,
+      "PACKAGE_ARRIVED",
+      `/mailroom/${args.registration_id}`,
+    );
+  }
+
+  // Log activity
+  const packageData = data as Record<string, unknown>;
+  await logActivity({
+    userId: args.userId,
+    action: "CREATE",
+    type: "ADMIN_ACTION",
+    entityType: "MAILBOX_ITEM",
+    entityId: packageData.mailbox_item_id as string,
+    details: {
+      package_name: args.package_name,
+      registration_id: args.registration_id,
+      locker_id: args.locker_id,
+      package_type: args.package_type,
+      status: args.status,
+      mailbox_item_id: packageData.mailbox_item_id,
+    },
+  });
+
+  return data;
 }

@@ -10,6 +10,8 @@ import {
   AdminDashboardStats,
   AdminUserKyc,
   ClaimWithUrl,
+  MailroomPlanRow,
+  RegCounts,
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
@@ -345,6 +347,56 @@ export async function getMailroomRegistrations(
 }
 
 /**
+ * Gets a single mailroom registration by ID for a user.
+ * Fetches registration with deep relations and assigned lockers.
+ *
+ * Used in:
+ * - app/api/mailroom/registrations/[id]/route.ts
+ */
+export async function getMailroomRegistration(
+  userId: string,
+  registrationId: string,
+): Promise<{ registration: unknown; lockers: unknown[] } | null> {
+  try {
+    // 1. Fetch Registration with relations using RPC
+    const { data: registration, error } = await supabaseAdmin.rpc(
+      "get_user_mailroom_registration",
+      {
+        input_data: {
+          input_user_id: userId,
+          input_registration_id: registrationId,
+        },
+      },
+    );
+
+    if (error) {
+      console.error("Registration fetch error:", error);
+      return null;
+    }
+
+    // 2. Fetch Assigned Lockers using RPC
+    const { data: assignedLockers } = await supabaseAdmin.rpc(
+      "get_user_assigned_lockers",
+      {
+        input_data: {
+          input_registration_id: registrationId,
+        },
+      },
+    );
+
+    return {
+      registration,
+      lockers: assignedLockers ?? [],
+    };
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
  * Gets all mailroom plans.
  * Returns an array of mailroom plans with pricing and capabilities.
  *
@@ -401,6 +453,34 @@ export async function getMailroomPlans(): Promise<
   }
 }
 
+export async function adminListMailroomPlans(): Promise<MailroomPlanRow[]> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc(
+      "admin_list_mailroom_plans",
+    );
+
+    if (error) {
+      console.error("Error fetching admin mailroom plans:", {
+        error,
+        code: error.code,
+        message: error.message,
+      });
+      throw new Error(
+        `Database error: ${error.message || "Unknown error"}${
+          error.code ? ` (${error.code})` : ""
+        }`,
+      );
+    }
+
+    return parseRpcArray<MailroomPlanRow>(data);
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
 /**
  * Gets all mailroom locations.
  * Returns an array of mailroom locations with address information.
@@ -420,12 +500,9 @@ export async function getMailroomLocations(): Promise<
   }>
 > {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("mailroom_location_table")
-      .select(
-        "mailroom_location_id, mailroom_location_name, mailroom_location_region, mailroom_location_city, mailroom_location_barangay, mailroom_location_zip",
-      )
-      .order("mailroom_location_name", { ascending: true });
+    const { data, error } = await supabaseAdmin.rpc("get_mailroom_locations", {
+      input_data: {},
+    });
 
     if (error) {
       console.error("Error fetching mailroom locations:", {
@@ -438,16 +515,7 @@ export async function getMailroomLocations(): Promise<
       );
     }
 
-    return (
-      data?.map((loc) => ({
-        id: loc.mailroom_location_id,
-        name: loc.mailroom_location_name,
-        region: loc.mailroom_location_region,
-        city: loc.mailroom_location_city,
-        barangay: loc.mailroom_location_barangay,
-        zip: loc.mailroom_location_zip,
-      })) ?? []
-    );
+    return parseRpcArray(data);
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -468,10 +536,12 @@ export async function getLocationAvailability(): Promise<
   Record<string, number>
 > {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("location_locker_table")
-      .select("mailroom_location_id")
-      .eq("location_locker_is_available", true);
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_location_availability",
+      {
+        input_data: {},
+      },
+    );
 
     if (error) {
       console.error("Error fetching location availability:", {
@@ -484,18 +554,24 @@ export async function getLocationAvailability(): Promise<
       );
     }
 
-    // Count available lockers per location
-    const counts: Record<string, number> = {};
-    if (data) {
-      for (const row of data) {
-        const locId = row.mailroom_location_id;
-        if (locId) {
-          counts[locId] = (counts[locId] || 0) + 1;
-        }
-      }
+    // Handle null or undefined data
+    if (data === null || data === undefined) {
+      return {};
     }
 
-    return counts;
+    // Parse data if it's a string, otherwise use as is
+    let payload: Record<string, number>;
+    try {
+      payload = typeof data === "string" ? JSON.parse(data) : data;
+    } catch (parseError) {
+      console.error("Failed to parse RPC response:", {
+        data,
+        parseError,
+      });
+      throw new Error("Failed to parse location availability response");
+    }
+
+    return payload || {};
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -588,41 +664,17 @@ export async function getMailroomRegistrationByOrder(
       return null;
     }
 
-    // Look up by payment transaction order_id
-    // Use limit(1) to handle potential duplicates gracefully and avoid PGRST116
-    const { data: paymentData, error: paymentError } = await supabaseAdmin
-      .from("payment_transaction_table")
-      .select("mailroom_registration_id")
-      .eq("payment_transaction_order_id", orderId)
-      .order("payment_transaction_created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (paymentError) {
-      console.error(
-        "[getMailroomRegistrationByOrder] payment lookup error:",
-        paymentError,
-      );
-      throw new Error(
-        `Database error: ${paymentError.message || "Unknown error"}`,
-      );
-    }
-
-    if (!paymentData?.mailroom_registration_id) {
-      return null;
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("mailroom_registration_table")
-      .select("*")
-      .eq("mailroom_registration_id", paymentData.mailroom_registration_id)
-      .maybeSingle();
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_mailroom_registration_by_order",
+      {
+        input_data: {
+          order_id: orderId,
+        },
+      },
+    );
 
     if (error) {
-      console.error(
-        "[getMailroomRegistrationByOrder] registration lookup error:",
-        error,
-      );
+      console.error("[getMailroomRegistrationByOrder] RPC error:", error);
       throw new Error(`Database error: ${error.message || "Unknown error"}`);
     }
 
@@ -653,40 +705,23 @@ export async function calculateRegistrationAmount({
   referralCode?: string;
 }): Promise<number> {
   try {
-    // Fetch Plan Price
-    const { data: plan, error: planError } = await supabaseAdmin
-      .from("mailroom_plan_table")
-      .select("mailroom_plan_price")
-      .eq("mailroom_plan_id", planId)
-      .single();
+    const { data, error } = await supabaseAdmin.rpc(
+      "calculate_registration_amount",
+      {
+        input_data: {
+          plan_id: planId,
+          locker_qty: lockerQty,
+          months: months,
+          referral_code: referralCode,
+        },
+      },
+    );
 
-    if (planError || !plan) {
-      throw new Error("Invalid plan selected");
+    if (error) {
+      throw error;
     }
 
-    // Calculate base amount
-    let amountDue =
-      Number(plan.mailroom_plan_price) * Number(lockerQty) * Number(months);
-
-    // Apply yearly discount
-    if (Number(months) === 12) {
-      amountDue = amountDue * 0.8;
-    }
-
-    // Apply referral discount
-    if (referralCode) {
-      const { data: referrer } = await supabaseAdmin
-        .from("users_table")
-        .select("users_id")
-        .eq("users_referral_code", referralCode)
-        .single();
-
-      if (referrer) {
-        amountDue = amountDue * 0.95;
-      }
-    }
-
-    return amountDue;
+    return Number(data);
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -709,22 +744,25 @@ export async function checkLockerAvailability({
   lockerQty: number;
 }): Promise<{ available: boolean; count: number }> {
   try {
-    const { data: availableLockers, error: lockerCheckError } =
-      await supabaseAdmin
-        .from("location_locker_table")
-        .select("location_locker_id")
-        .eq("mailroom_location_id", locationId)
-        .eq("location_locker_is_available", true)
-        .limit(lockerQty);
+    const { data, error } = await supabaseAdmin.rpc(
+      "check_locker_availability",
+      {
+        input_data: {
+          location_id: locationId,
+          locker_qty: lockerQty,
+        },
+      },
+    );
 
-    if (lockerCheckError) {
-      throw new Error("Failed to check locker availability");
+    if (error) {
+      throw error;
     }
 
-    const count = availableLockers?.length ?? 0;
+    const payload = typeof data === "string" ? JSON.parse(data) : data;
+
     return {
-      available: count >= lockerQty,
-      count,
+      available: Boolean(payload.available),
+      count: Number(payload.count),
     };
   } catch (err) {
     if (err instanceof Error) {
@@ -751,6 +789,75 @@ export async function getUserMailroomStats(
   };
 }
 
+/**
+ * Gets all admin mailroom packages with related data (packages, registrations, lockers, assigned lockers).
+ * Returns an object with packages array, registrations array, lockers array, assignedLockers array, and total count.
+ *
+ * Used in:
+ * - app/api/admin/mailroom/packages/route.ts - API endpoint for admin packages
+ */
+export async function adminGetMailroomPackages(args: {
+  limit?: number;
+  offset?: number;
+  compact?: boolean;
+}): Promise<{
+  packages: unknown[];
+  registrations: unknown[];
+  lockers: unknown[];
+  assignedLockers: unknown[];
+  totalCount: number;
+}> {
+  const limit = Math.min(args.limit ?? 50, 200);
+  const offset = args.offset ?? 0;
+  const compact = args.compact ?? false;
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "get_admin_mailroom_packages",
+    {
+      input_limit: limit,
+      input_offset: offset,
+      input_compact: compact,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  // Parse data if it's a string, otherwise use as is
+  let rpcData: Record<string, unknown> = {};
+  try {
+    rpcData =
+      typeof data === "string"
+        ? JSON.parse(data)
+        : (data as Record<string, unknown>);
+  } catch (parseError) {
+    console.error("Failed to parse RPC response:", parseError);
+    throw new Error("Failed to parse response");
+  }
+
+  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
+  const registrations = Array.isArray(rpcData.registrations)
+    ? rpcData.registrations
+    : [];
+  const lockers = Array.isArray(rpcData.lockers) ? rpcData.lockers : [];
+  const assignedLockers = Array.isArray(rpcData.assignedLockers)
+    ? rpcData.assignedLockers
+    : [];
+  const totalCount =
+    typeof rpcData.total_count === "number"
+      ? rpcData.total_count
+      : packages.length;
+
+  return {
+    packages,
+    registrations,
+    lockers,
+    assignedLockers,
+    totalCount,
+  };
+}
+
 export async function getUserMailroomRegistrationStats(userId: string): Promise<
   Array<{
     mailroom_registration_id: string;
@@ -760,17 +867,195 @@ export async function getUserMailroomRegistrationStats(userId: string): Promise<
   }>
 > {
   if (!userId) return [];
+
+  // Get registration IDs for the user
+  const { data: registrations, error: regError } = await supabaseAdmin
+    .from("mailroom_registration_table")
+    .select("mailroom_registration_id")
+    .eq("user_id", userId);
+
+  if (regError) throw regError;
+
+  const regIds = registrations?.map((r) => r.mailroom_registration_id) || [];
+  if (regIds.length === 0) return [];
+
+  // Get mailbox items for these registrations
+  const { data: items, error: itemsError } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .select("mailroom_registration_id, mailbox_item_status")
+    .in("mailroom_registration_id", regIds);
+
+  if (itemsError) throw itemsError;
+
+  // Group and count stats
+  const stats = new Map<
+    string,
+    { stored: number; pending: number; released: number }
+  >();
+  items?.forEach((item) => {
+    const id = item.mailroom_registration_id;
+    if (!stats.has(id)) stats.set(id, { stored: 0, pending: 0, released: 0 });
+    const count = stats.get(id)!;
+    const status = item.mailbox_item_status.toUpperCase();
+    if (status === "RELEASED") count.released++;
+    else if (status.includes("REQUEST")) {
+      count.pending++;
+      // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
+      if (
+        [
+          "REQUEST_TO_SCAN",
+          "REQUEST_TO_RELEASE",
+          "REQUEST_TO_DISPOSE",
+        ].includes(status)
+      ) {
+        count.stored++;
+      }
+    } else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)) {
+      count.stored++;
+    }
+  });
+
+  return Array.from(stats.entries()).map(([id, counts]) => ({
+    mailroom_registration_id: id,
+    ...counts,
+  }));
+}
+
+export async function getAllMailRoomLocation() {
   const { data, error } = await supabaseAdmin.rpc(
-    "get_user_mailroom_registration_stats",
-    { input_user_id: userId },
+    "admin_list_mailroom_locations",
   );
+
   if (error) throw error;
-  return parseRpcArray<{
-    mailroom_registration_id: string;
-    stored: number;
-    pending: number;
-    released: number;
-  }>(data);
+  return data;
+}
+
+export async function getMailroomRegistrationsWithStats(userId: string) {
+  if (!userId) return { data: [], stats: null };
+
+  try {
+    // 1. Get Registrations
+    const registrations = (await getMailroomRegistrations(userId)) as Record<
+      string,
+      unknown
+    >[];
+
+    // 2. Get Overall Stats
+    let totals: Record<string, unknown> | null = null;
+    try {
+      totals = await getUserMailroomStats(userId);
+    } catch (e) {
+      console.error("Failed to get user mailroom stats:", e);
+    }
+
+    // 3. Get Per-Registration Stats
+    let regStatsRaw: Array<{
+      mailroom_registration_id: string;
+      stored: number;
+      pending: number;
+      released: number;
+    }> = [];
+    try {
+      regStatsRaw = await getUserMailroomRegistrationStats(userId);
+    } catch (e) {
+      console.error("Failed to get user mailroom registration stats:", e);
+    }
+
+    // 4. Merge Stats
+    const toStr = (v: unknown): string =>
+      v === undefined || v === null ? "" : String(v);
+    const regMap = new Map<string, RegCounts>();
+
+    if (Array.isArray(regStatsRaw) && regStatsRaw.length > 0) {
+      for (const s of regStatsRaw) {
+        const sRec = s as unknown as Record<string, unknown>; // Safety cast
+        const key = toStr(
+          sRec.mailroom_registration_id ?? sRec.id ?? sRec.registration_id,
+        ).toLowerCase();
+        if (!key) continue;
+        const stored = Number(sRec.stored ?? 0);
+        const pending = Number(sRec.pending ?? 0);
+        const released = Number(sRec.released ?? 0);
+        regMap.set(key, { stored, pending, released });
+      }
+    } else {
+      // Fallback: build counts from mailbox_item_table
+      const regIds = registrations
+        .map((r) =>
+          toStr(r.mailroom_registration_id ?? r.id ?? r.registration_id ?? ""),
+        )
+        .filter(Boolean);
+
+      if (regIds.length > 0) {
+        // Optimized query: filter by registration IDs using RPC
+        const { data: itemsData, error: itemsErr } = await supabaseAdmin.rpc(
+          "get_user_mailbox_items_by_registrations",
+          {
+            input_data: {
+              input_registration_ids: regIds,
+            },
+          },
+        );
+
+        if (!itemsErr && Array.isArray(itemsData)) {
+          for (const item of itemsData) {
+            const idKey = toStr(item.mailroom_registration_id).toLowerCase();
+            if (!idKey) continue;
+
+            const status = toStr(item.mailbox_item_status).toUpperCase();
+            const cur = regMap.get(idKey) ?? {
+              stored: 0,
+              pending: 0,
+              released: 0,
+            };
+
+            if (status === "RELEASED") cur.released += 1;
+            else if (status.includes("REQUEST")) {
+              cur.pending += 1;
+              // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
+              if (
+                [
+                  "REQUEST_TO_SCAN",
+                  "REQUEST_TO_RELEASE",
+                  "REQUEST_TO_DISPOSE",
+                ].includes(status)
+              ) {
+                cur.stored += 1;
+              }
+            } else if (
+              !["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)
+            ) {
+              cur.stored += 1;
+            }
+
+            regMap.set(idKey, cur);
+          }
+        } else {
+          console.error("mailbox_item_table query error:", itemsErr);
+        }
+      }
+    }
+
+    // 5. Map stats to registrations
+    const results = registrations.map((r) => {
+      const idKey = toStr(
+        r.mailroom_registration_id ?? r.id ?? r.registration_id ?? "",
+      ).toLowerCase();
+      const statsObj = regMap.get(idKey) ?? null;
+      return {
+        ...r,
+        _stats: statsObj,
+      };
+    });
+
+    return {
+      data: results,
+      stats: totals,
+    };
+  } catch (err) {
+    if (err instanceof Error) throw err;
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
 }
 
 /**

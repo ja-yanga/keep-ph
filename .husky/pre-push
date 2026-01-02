@@ -1,1 +1,15 @@
-#npm run test:ci
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Get staged JS/TS files
+staged_files=$(git diff --cached --name-only -- '*.js' '*.ts')
+
+# If no staged files, exit
+[ -z "$staged_files" ] && exit 0
+
+# Run your CI test script on staged files
+echo "Running CI tests on staged files..."
+npx npm run test:ci -- $staged_files
+
+# Exit with the test's exit code
+exit $?

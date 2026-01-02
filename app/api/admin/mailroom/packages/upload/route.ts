@@ -18,7 +18,7 @@ export async function POST(req: Request) {
         ? String(rawUserId).replace(/[^a-zA-Z0-9-_]/g, "")
         : null;
 
-    const bucket = "packages-photo"; // your new bucket
+    const bucket = "PACKAGES-PHOTO"; // your new bucket
     const fileName = `${Date.now()}-${file.name ?? "photo"}`;
     const path = userId ? `${userId}/${fileName}` : fileName;
 

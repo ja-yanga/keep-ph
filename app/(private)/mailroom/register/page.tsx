@@ -1,28 +1,17 @@
 import { Container, Title } from "@mantine/core";
 import { redirect } from "next/navigation";
 
-import RegisterForm from "@/components/RegisterForm";
+import RegisterForm from "@/components/pages/customer/MailroomRegistrationPage/RegisterForm";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import { getUserVerificationStatus } from "@/app/actions/get";
 import { fetchFromAPI } from "@/utils/fetcher";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import type { MailroomPlan } from "@/utils/types";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
-
-type LocationsResponse = {
-  data: Array<{
-    id: string;
-    name: string;
-    region: string | null;
-    city: string | null;
-    barangay: string | null;
-    zip: string | null;
-  }>;
-};
-
-type AvailabilityResponse = {
-  data: Record<string, number>;
-};
+import type {
+  AvailabilityResponse,
+  LocationsResponse,
+  MailroomPlan,
+} from "@/utils/types";
 
 export default async function RegisterMailroomPage() {
   const { user } = await getAuthenticatedUser();
