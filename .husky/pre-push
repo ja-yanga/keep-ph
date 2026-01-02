@@ -1,6 +1,3 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
 # Get staged JS/TS files
 staged_files=$(git diff --cached --name-only -- '*.js' '*.ts')
 
