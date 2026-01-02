@@ -112,7 +112,7 @@ export async function proxy(request: NextRequest) {
   const url = request.nextUrl.clone();
 
   // Get session data
-  const { supabaseResponse, user, supabase } = await updateSession(request);
+  const { supabaseResponse, user } = await updateSession(request);
 
   // Check if current path is auth or public
   const isAuthPage = (AUTH_PAGES as readonly string[]).includes(url.pathname);
@@ -137,8 +137,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // get role from session after signup
-  const session = await supabase.auth.getSession();
-  const role = session?.data.session?.user?.user_metadata?.role || null;
+  const role = user?.user_metadata?.role || null;
 
   // If logged in user tries to access auth pages, redirect to dashboard
   if (isAuthPage) {
