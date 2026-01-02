@@ -22,6 +22,7 @@ export default function MailroomRegisterSuccessPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(3);
   const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
@@ -50,9 +51,6 @@ export default function MailroomRegisterSuccessPage() {
             registration.paid)
         ) {
           setStatus("paid");
-          setTimeout(() => {
-            router.push("/dashboard");
-          }, 3000);
           return;
         }
 
@@ -73,6 +71,17 @@ export default function MailroomRegisterSuccessPage() {
       mounted = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (status === "paid" && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (status === "paid" && countdown === 0) {
+      router.push("/dashboard");
+    }
+  }, [status, countdown, router]);
 
   let content = null;
 
@@ -139,7 +148,8 @@ export default function MailroomRegisterSuccessPage() {
                 variant="light"
                 style={{ width: "100%" }}
               >
-                You will be redirected to your dashboard in 3 seconds...
+                You will be redirected to your dashboard in {countdown} second
+                {countdown !== 1 ? "s" : ""}...
               </Alert>
 
               <Button
