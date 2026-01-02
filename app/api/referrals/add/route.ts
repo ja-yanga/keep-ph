@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
-
-const supabase = createSupabaseServiceClient();
-
-type AddReferralBody = {
-  user_id?: string;
-  referral_code?: string;
-  referred_email: string;
-  service_type: string;
-};
+import { addReferral } from "@/app/actions/post";
 
 export async function POST(req: NextRequest) {
   try {
-    const body: AddReferralBody = await req.json();
+    const body = await req.json();
 
     if (
       (!body.user_id && !body.referral_code) ||
@@ -25,50 +16,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let referrerUserId = body.user_id;
+    const result = await addReferral({
+      userId: body.user_id,
+      referralCode: body.referral_code,
+      referredEmail: body.referred_email,
+      serviceType: body.service_type,
+    });
 
-    // Resolve referrer from referral_code if provided
-    if (body.referral_code) {
-      const { data: referrer } = await supabase
-        .from("users_table")
-        .select("users_id")
-        .eq("users_referral_code", body.referral_code)
-        .maybeSingle();
-
-      if (referrer?.users_id) {
-        referrerUserId = referrer.users_id;
-      } else {
-        return NextResponse.json({ message: "Invalid referral code, ignored" });
-      }
+    if (!result.success) {
+      return NextResponse.json({ message: result.message });
     }
 
-    if (!referrerUserId) {
-      return NextResponse.json(
-        { error: "Could not resolve referrer" },
-        { status: 400 },
-      );
-    }
-
-    // Try to resolve referred user by email (may be null for external emails)
-    const { data: referred } = await supabase
-      .from("users_table")
-      .select("users_id")
-      .eq("users_email", body.referred_email)
-      .maybeSingle();
-
-    const referredUserId = referred?.users_id ?? null;
-
-    const { error } = await supabase.from("referral_table").insert([
-      {
-        referral_referrer_user_id: referrerUserId,
-        referral_referred_user_id: referredUserId,
-        referral_service_type: body.service_type,
-      },
-    ]);
-
-    if (error) throw error;
-
-    return NextResponse.json({ message: "Referral added" });
+    return NextResponse.json({ message: result.message });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Referral API Error:", message);
