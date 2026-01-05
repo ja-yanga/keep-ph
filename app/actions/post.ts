@@ -607,6 +607,27 @@ export async function upsertPaymentResource(payRes: {
     return { id: payId, orderId: null };
   }
 
+  // Validate required metadata fields for mailroom registration
+  const userId = meta.user_id?.trim() || null;
+  const locationId = meta.location_id?.trim() || null;
+  const planId = meta.plan_id?.trim() || null;
+
+  // Check if this is a mailroom registration (has required fields)
+  const isMailroomRegistration = userId && locationId && planId;
+
+  if (!isMailroomRegistration) {
+    console.debug(
+      "[webhook] processing skipped: missing required registration metadata",
+      {
+        orderId,
+        hasUserId: !!userId,
+        hasLocationId: !!locationId,
+        hasPlanId: !!planId,
+      },
+    );
+    return { id: payId, orderId, skipped: true };
+  }
+
   // Log payment for debugging
   console.debug("[webhook] processing payment resource:", {
     id: payId,
@@ -619,9 +640,9 @@ export async function upsertPaymentResource(payRes: {
     await finalizeRegistrationFromPayment({
       paymentId: payId ?? "",
       orderId: orderId,
-      userId: meta.user_id ?? "",
-      locationId: meta.location_id ?? "",
-      planId: meta.plan_id ?? "",
+      userId: userId,
+      locationId: locationId,
+      planId: planId,
       lockerQty: Math.max(1, Number(meta.locker_qty ?? 1)),
       months: Math.max(1, Number(meta.months ?? 1)),
       amount: Number(attrs?.amount ?? 0),

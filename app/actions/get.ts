@@ -1087,3 +1087,125 @@ export const getUserSession = async (userId: string) => {
 
   return { sessionData, sessionErr };
 };
+
+/**
+ * Gets all scans (files) for a specific mailroom registration.
+ * Returns scans with related mailbox item data and storage usage information.
+ *
+ * Used in:
+ * - app/api/user/scans/route.ts - API endpoint for user scans
+ */
+export async function getUserScans(
+  registrationId: string,
+  userId: string,
+): Promise<{
+  scans: unknown[];
+  usage: {
+    used_mb: number;
+    limit_mb: number;
+    percentage: number;
+  };
+}> {
+  if (!registrationId) {
+    throw new Error("registrationId is required");
+  }
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  // Verify ownership and retrieve plan storage limit
+  const { data: registration, error: regError } = await supabaseAdmin
+    .from("mailroom_registration_table")
+    .select("user_id, mailroom_plan_table ( mailroom_plan_storage_limit )")
+    .eq("mailroom_registration_id", registrationId)
+    .single();
+
+  if (regError) {
+    throw new Error(regError.message ?? "Registration not found");
+  }
+
+  if (!registration || (registration.user_id as string) !== userId) {
+    throw new Error("You do not have permission to view these files");
+  }
+
+  // Get all mailbox items for this registration
+  const { data: mailboxItems, error: itemsError } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .select("mailbox_item_id")
+    .eq("mailroom_registration_id", registrationId);
+
+  if (itemsError) {
+    throw new Error(itemsError.message ?? "Failed to fetch mailbox items");
+  }
+
+  const mailboxItemIds =
+    Array.isArray(mailboxItems) && mailboxItems.length > 0
+      ? mailboxItems
+          .map((item) => item.mailbox_item_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+
+  // Fetch files (scans) attached to mailbox items for this registration
+  let scansData: unknown[] = [];
+  if (mailboxItemIds.length > 0) {
+    const { data, error: scansError } = await supabaseAdmin
+      .from("mailroom_file_table")
+      .select(
+        `
+        mailroom_file_id,
+        mailbox_item_id,
+        mailroom_file_name,
+        mailroom_file_url,
+        mailroom_file_size_mb,
+        mailroom_file_mime_type,
+        mailroom_file_uploaded_at,
+        mailroom_file_type,
+        mailbox_item_table (
+          mailbox_item_id,
+          mailbox_item_name,
+          mailroom_registration_id
+        )
+      `,
+      )
+      .in("mailbox_item_id", mailboxItemIds)
+      .order("mailroom_file_uploaded_at", { ascending: false });
+
+    if (scansError) {
+      throw new Error(scansError.message ?? "Failed to fetch scans");
+    }
+
+    scansData = Array.isArray(data) ? data : [];
+  }
+
+  // Calculate usage safely
+  const planObj =
+    (
+      registration as {
+        mailroom_plan_table?: { mailroom_plan_storage_limit?: number } | null;
+      }
+    )?.mailroom_plan_table ?? null;
+  const limitMb =
+    typeof planObj === "object" && planObj != null
+      ? Number(planObj.mailroom_plan_storage_limit ?? 0)
+      : 0 || 100;
+
+  const totalUsedMb = scansData.reduce((acc: number, s: unknown) => {
+    if (typeof s === "object" && s !== null) {
+      const rec = s as Record<string, unknown>;
+      const val = rec.mailroom_file_size_mb ?? rec.file_size_mb ?? 0;
+      const num = typeof val === "number" ? val : Number(val ?? 0);
+      return acc + (isFinite(num) ? num : 0);
+    }
+    return acc;
+  }, 0);
+
+  return {
+    scans: scansData,
+    usage: {
+      used_mb: totalUsedMb,
+      limit_mb: limitMb > 0 ? limitMb : 100,
+      percentage:
+        limitMb > 0 ? Math.min((totalUsedMb / limitMb) * 100, 100) : 0,
+    },
+  };
+}

@@ -39,16 +39,19 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = supabase.storage.from("MAILROOM-SCANS").getPublicUrl(filePath);
 
-    // 3. Insert Record into mailroom_scans
+    // 3. Insert Record into mailroom_file_table
     const fileSizeMb = file.size / (1024 * 1024); // Convert bytes to MB
 
-    const { error: dbError } = await supabase.from("mailroom_scans").insert({
-      package_id: packageId,
-      file_name: file.name,
-      file_url: publicUrl,
-      file_size_mb: fileSizeMb,
-      mime_type: file.type,
-    });
+    const { error: dbError } = await supabase
+      .from("mailroom_file_table")
+      .insert({
+        mailbox_item_id: packageId,
+        mailroom_file_name: file.name,
+        mailroom_file_url: publicUrl,
+        mailroom_file_size_mb: fileSizeMb,
+        mailroom_file_mime_type: file.type,
+        mailroom_file_type: "SCANNED",
+      });
 
     if (dbError) {
       return NextResponse.json({ error: dbError.message }, { status: 500 });
@@ -57,34 +60,33 @@ export async function POST(request: Request) {
     // 4. Update Package Status (Reset to STORED or mark as PROCESSED)
     // We reset to 'STORED' so the "Request" badge disappears, but the file is now linked.
     const { data: pkgData, error: updateError } = await supabase
-      .from("mailroom_packages")
-      .update({ status: "STORED" })
-      .eq("id", packageId)
-      // tracking_number was removed; use package_name instead
-      .select("registration_id, package_name")
+      .from("mailbox_item_table")
+      .update({ mailbox_item_status: "STORED" })
+      .eq("mailbox_item_id", packageId)
+      .select("mailroom_registration_id, mailbox_item_name")
       .single();
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    // 5. Fetch registration to get user_id and mailroom_code
+    // 5. Fetch registration to get user_id and mailroom_registration_code
     const { data: registration } = await supabase
-      .from("mailroom_registrations")
-      .select("user_id, mailroom_code")
-      .eq("id", pkgData.registration_id)
+      .from("mailroom_registration_table")
+      .select("user_id, mailroom_registration_code")
+      .eq("mailroom_registration_id", pkgData.mailroom_registration_id)
       .single();
 
     // 6. Send Notification
     if (registration?.user_id) {
       try {
-        const label = pkgData?.package_name ?? "Unknown";
+        const label = pkgData?.mailbox_item_name ?? "Unknown";
         await sendNotification(
           registration.user_id,
           "Document Scanned",
           `Your document (${label}) has been scanned and is ready to view.`,
           "SCAN_READY",
-          `/mailroom/${pkgData.registration_id}`,
+          `/mailroom/${pkgData.mailroom_registration_id}`,
         );
       } catch (notifyErr) {
         console.error("sendNotification failed:", notifyErr);
