@@ -1,0 +1,221 @@
+name: supabase-db-backup-test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backup-test:
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_ENABLED: ${{ vars.BACKUP_ENABLED || 'true' }} # Repository variable (defaults to 'true' if not set)
+
+    steps:
+      - name: Check if backups are enabled
+        run: |
+          if [ "$BACKUP_ENABLED" != "true" ]; then
+            echo "Backups are disabled. Exiting workflow."
+            exit 0
+          fi
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Set timestamp and filename
+        run: |
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          echo "FILENAME=supabase-backup-$TIMESTAMP.tar.gz" >> $GITHUB_ENV
+
+      - name: Create backup folder
+        run: mkdir -p backups
+
+      - name: Dump roles
+        run: |
+          supabase db dump \
+            --db-url "$SUPABASE_DB_URL" \
+            --role-only \
+            -f backups/roles.sql
+
+      - name: Dump schema
+        run: |
+          supabase db dump \
+            --db-url "$SUPABASE_DB_URL" \
+            -f backups/schema.sql
+
+      - name: Dump data
+        run: |
+          supabase db dump \
+            --db-url "$SUPABASE_DB_URL" \
+            --data-only \
+            --use-copy \
+            -f backups/data.sql
+
+      # -------------------------------
+      # Backup Storage Buckets
+      # -------------------------------
+      - name: Create storage backup folder
+        run: mkdir -p backups/storage
+
+      - name: Install jq for JSON parsing
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Backup storage buckets
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUCKETS_TO_BACKUP: ${{ vars.STORAGE_BUCKETS_TO_BACKUP || 'all' }}
+        run: |
+          # Function to download all files from a bucket
+          backup_bucket() {
+            local bucket_name=$1
+            local bucket_dir="backups/storage/$bucket_name"
+            mkdir -p "$bucket_dir"
+            
+            echo "Backing up bucket: $bucket_name"
+            
+            # List all files in the bucket (with pagination)
+            local offset=0
+            local limit=1000
+            local total_files=0
+            
+            while true; do
+              local response=$(curl -s -X POST \
+                "$SUPABASE_URL/storage/v1/object/list/$bucket_name" \
+                -H "Authorization: Bearer $SUPABASE_KEY" \
+                -H "Content-Type: application/json" \
+                -d "{\"limit\": $limit, \"offset\": $offset}")
+              
+              # Check if response is valid JSON array
+              if ! echo "$response" | jq -e 'type == "array"' > /dev/null 2>&1; then
+                break
+              fi
+              
+              # Get file count in this batch
+              local file_count=$(echo "$response" | jq 'length')
+              if [ "$file_count" -eq 0 ]; then
+                break
+              fi
+              
+              # Extract and download files
+              local files=$(echo "$response" | jq -r '.[]?.name // empty')
+              while IFS= read -r file_name; do
+                if [ -n "$file_name" ]; then
+                  total_files=$((total_files + 1))
+                  
+                  # Create directory structure for nested files
+                  local file_dir=$(dirname "$file_name")
+                  if [ "$file_dir" != "." ]; then
+                    mkdir -p "$bucket_dir/$file_dir"
+                  fi
+                  
+                  # Download the file
+                  echo "  Downloading: $file_name"
+                  if curl -s -f -X GET \
+                    "$SUPABASE_URL/storage/v1/object/$bucket_name/$file_name" \
+                    -H "Authorization: Bearer $SUPABASE_KEY" \
+                    -o "$bucket_dir/$file_name"; then
+                    echo "    ✓ Downloaded: $file_name"
+                  else
+                    echo "    ✗ Failed to download: $file_name"
+                  fi
+                fi
+              done <<< "$files"
+              
+              # If we got fewer files than the limit, we're done
+              if [ "$file_count" -lt "$limit" ]; then
+                break
+              fi
+              
+              offset=$((offset + limit))
+            done
+            
+            echo "Completed backup of bucket: $bucket_name (total files: $total_files)"
+          }
+
+          # Get list of buckets to backup
+          if [ "$BUCKETS_TO_BACKUP" = "all" ]; then
+            echo "Backing up all buckets..."
+            # List all buckets
+            buckets_response=$(curl -s -X GET \
+              "$SUPABASE_URL/storage/v1/bucket" \
+              -H "Authorization: Bearer $SUPABASE_KEY")
+            
+            # Extract bucket names using jq
+            echo "$buckets_response" | jq -r '.[]?.name // empty' | while IFS= read -r bucket_name; do
+              if [ -n "$bucket_name" ] && [ "$bucket_name" != "db-backups" ]; then
+                # Skip the db-backups bucket to avoid backing up backups
+                backup_bucket "$bucket_name"
+              fi
+            done
+          else
+            # Backup specific buckets (comma-separated)
+            echo "$BUCKETS_TO_BACKUP" | tr ',' '\n' | while IFS= read -r bucket_name; do
+              if [ -n "$bucket_name" ]; then
+                backup_bucket "$bucket_name"
+              fi
+            done
+          fi
+
+          # Create a manifest of backed up buckets
+          if [ -d "backups/storage" ] && [ "$(ls -A backups/storage 2>/dev/null)" ]; then
+            echo "Storage backup completed. Summary:"
+            du -sh backups/storage/*/ 2>/dev/null | sort -h || true
+            echo "Buckets backed up:"
+            ls -d backups/storage/*/ 2>/dev/null | sed 's|backups/storage/||' | sed 's|/$||' || echo "No buckets found"
+          else
+            echo "No storage buckets to backup or all buckets are empty"
+            touch backups/storage/.empty
+          fi
+
+      - name: Compress backup
+        run: |
+          tar -czf ${{ env.FILENAME }} backups
+
+      - name: Verify backup files
+        run: |
+          echo "Backup created: ${{ env.FILENAME }}"
+          ls -lh ${{ env.FILENAME }}
+          echo ""
+          echo "Backup size: $(du -h ${{ env.FILENAME }} | cut -f1)"
+          echo ""
+          echo "Contents of backup (first 30 entries):"
+          tar -tzf ${{ env.FILENAME }} | head -30
+          echo ""
+          echo "Backup structure:"
+          echo "- Database files:"
+          tar -tzf ${{ env.FILENAME }} | grep -E '^(backups/)?(roles|schema|data)\.sql$' || echo "  (none found)"
+          echo "- Storage buckets:"
+          tar -tzf ${{ env.FILENAME }} | grep '^backups/storage/' | cut -d'/' -f3 | sort -u | head -10 || echo "  (none found)"
+          echo ""
+          echo "Total files in backup: $(tar -tzf ${{ env.FILENAME }} | wc -l)"
+
+      - name: Test Supabase Storage upload (dry-run)
+        run: |
+          echo "Testing Supabase Storage upload..."
+          echo "Would upload: ${{ env.FILENAME }}"
+          echo "To: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/db-backups/${{ env.FILENAME }}"
+          # Uncomment below to actually test the upload
+          # curl -X POST \
+          #   "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/db-backups/${{ env.FILENAME }}" \
+          #   -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          #   -H "Content-Type: application/gzip" \
+          #   --data-binary "@${{ env.FILENAME }}"
+
+      - name: Test R2 upload (dry-run)
+        run: |
+          echo "Testing R2 upload..."
+          echo "Would upload: ${{ env.FILENAME }}"
+          echo "To: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
+          # Uncomment below to actually test the upload
+          # aws s3 cp \
+          #   ${{ env.FILENAME }} \
+          #   s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }} \
+          #   --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+          #   --dryrun
