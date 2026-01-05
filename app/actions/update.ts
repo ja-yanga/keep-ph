@@ -270,6 +270,43 @@ export async function adminUpdateMailroomPackage(args: {
   return updatedPkg;
 }
 
+export const updateMailboxItem = async (args: {
+  userId: string;
+  id: string;
+  status?: string;
+  selected_address_id?: string | null;
+  notes?: string | Record<string, unknown>;
+  release_to_name?: string;
+  forward_address?: string;
+  forward_tracking_number?: string;
+  forward_3pl_name?: string;
+  forward_tracking_url?: string;
+}) => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "user_request_mailbox_item_action",
+    {
+      input_data: {
+        user_id: args.userId,
+        mailbox_item_id: args.id,
+        status: args.status,
+        selected_address_id: args.selected_address_id,
+        notes: args.notes,
+        release_to_name: args.release_to_name,
+        forward_address: args.forward_address,
+        forward_tracking_number: args.forward_tracking_number,
+        forward_3pl_name: args.forward_3pl_name,
+        forward_tracking_url: args.forward_tracking_url,
+      },
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 export const cancelMailroomSubscription = async (
   registrationId: string,
 ): Promise<{ ok: boolean; success?: string; error?: string }> => {
