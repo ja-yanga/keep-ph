@@ -1089,6 +1089,26 @@ export const getUserSession = async (userId: string) => {
 };
 
 /**
+ * Gets user storage files and usage stats via RPC.
+ * Returns scans array and usage object.
+ */
+export async function getUserStorageFiles(userId: string) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("get_user_storage_files", {
+    input_user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
  * Gets all scans (files) for a specific mailroom registration.
  * Returns scans with related mailbox item data and storage usage information.
  *
