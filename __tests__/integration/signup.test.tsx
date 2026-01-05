@@ -4,10 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 
 /*
-  Mocks:
-  - mockSignInWithOAuth: spy for OAuth signup flow (Continue with Google)
-  - We mock createClient so tests don't call real Supabase.
+  Integration tests for SignUpForm component.
+
+  Tests cover:
+  - successful signup flow shows verification view
+  - server-side signup errors are displayed and form remains visible
+  - Google OAuth initiation for signup
+  - presence of "Log In" link target (href)
 */
+
+/* Mock for Supabase client used by SignUpForm (prevents network calls) */
 const mockSignInWithOAuth = jest.fn();
 
 jest.mock("@/lib/supabase/client", () => ({
@@ -20,10 +26,9 @@ describe("SignUpForm integration", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
 
   beforeEach(() => {
+    // reset mocks and stub network fetch for predictable behavior
     jest.clearAllMocks();
-    // preserve original fetch to restore after tests
     originalFetch = globalThis.fetch;
-    // default: simulate successful signup API response
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ message: "ok" }),
@@ -32,29 +37,29 @@ describe("SignUpForm integration", () => {
   });
 
   afterEach(() => {
-    // restore original fetch to avoid cross-test interference
+    // restore global fetch to avoid leaking test stubs
     if (originalFetch) globalThis.fetch = originalFetch;
   });
 
   it("submits signup form and shows verification view on success", async () => {
-    // Render inside MantineProvider so UI components function
+    // Render form inside MantineProvider so UI components behave correctly
     render(
       <MantineProvider>
         <SignUpForm />
       </MantineProvider>,
     );
 
-    // fill form
+    // Fill out form fields
     await userEvent.type(screen.getByLabelText(/Email/i), "test@example.com");
     const passwordFields = screen.getAllByLabelText(/Password/i);
     await userEvent.type(passwordFields[0], "password123");
     await userEvent.type(passwordFields[1], "password123");
 
-    // submit
+    // Submit the form
     const submitBtn = screen.getByRole("button", { name: /Sign Up/i });
     await userEvent.click(submitBtn);
 
-    // assert API called with POST to signup endpoint
+    // Expect a POST to the signup API
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/auth/signup",
@@ -62,7 +67,7 @@ describe("SignUpForm integration", () => {
       );
     });
 
-    // verification UI appears with email shown
+    // Verification UI should appear and show the submitted email
     await waitFor(() => {
       expect(screen.getByText(/Check Your Email/i)).toBeInTheDocument();
       expect(screen.getByText(/test@example.com/i)).toBeInTheDocument();
@@ -70,7 +75,7 @@ describe("SignUpForm integration", () => {
   });
 
   it("shows server error when signup fails and keeps form visible", async () => {
-    // simulate server error response for this test
+    // Simulate server returning an error response
     (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       json: async () => ({ error: "Email already registered" }),
@@ -82,6 +87,7 @@ describe("SignUpForm integration", () => {
       </MantineProvider>,
     );
 
+    // Fill and submit form with an already-registered email
     await userEvent.type(
       screen.getByLabelText(/Email/i),
       "existing@example.com",
@@ -93,14 +99,14 @@ describe("SignUpForm integration", () => {
     const submitBtn = screen.getByRole("button", { name: /Sign Up/i });
     await userEvent.click(submitBtn);
 
-    // expect server error message shown and still on form view
+    // Server error should be shown and verification view should NOT be present
     const errNode = await screen.findByText(/Email already registered/i);
     expect(errNode).toBeInTheDocument();
     expect(screen.queryByText(/Check Your Email/i)).not.toBeInTheDocument();
   });
 
   it("initiates Google OAuth when clicking Continue with Google", async () => {
-    // ensure the mock resolves like supabase would
+    // Ensure the OAuth mock resolves like Supabase would
     mockSignInWithOAuth.mockResolvedValue({ error: null });
 
     render(
@@ -109,12 +115,12 @@ describe("SignUpForm integration", () => {
       </MantineProvider>,
     );
 
+    // Click the Google OAuth button and assert the supabase method was called
     const googleBtn = screen.getByRole("button", {
       name: /Continue with Google/i,
     });
     await userEvent.click(googleBtn);
 
-    // assert signInWithOAuth was called with provider 'google' and signup callback redirect
     await waitFor(() => {
       expect(mockSignInWithOAuth).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -127,5 +133,17 @@ describe("SignUpForm integration", () => {
         }),
       );
     });
+  });
+
+  it("contains Log In link that navigates to Sign In (href check)", async () => {
+    // Render the signup form and assert the "Log In" anchor points to /signin
+    render(
+      <MantineProvider>
+        <SignUpForm />
+      </MantineProvider>,
+    );
+
+    const loginLink = screen.getByRole("link", { name: /Log In/i });
+    expect(loginLink).toHaveAttribute("href", "/signin");
   });
 });

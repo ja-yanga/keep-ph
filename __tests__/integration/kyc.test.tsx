@@ -15,7 +15,7 @@ jest.setTimeout(20000);
     form validation (fields/files required) and full submit flow.
 */
 
-// Mock session, next/navigation and supabase BEFORE importing KycPage
+/* Mock session, next/navigation and supabase BEFORE importing KycPage */
 jest.mock("@/components/SessionProvider", () => ({
   useSession: () => ({
     session: { user: { id: "user-123", email: "user@example.com" } },
@@ -23,8 +23,12 @@ jest.mock("@/components/SessionProvider", () => ({
   }),
 }));
 
+// add router spies so tests can assert .back() calls
+const pushMock = jest.fn();
+const backMock = jest.fn();
+
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
+  useRouter: () => ({ push: pushMock, back: backMock }),
   usePathname: () => "/",
 }));
 
@@ -39,6 +43,11 @@ jest.mock("@/lib/supabase/client", () => ({
 
 import KycPage from "@/app/(private)/mailroom/kyc/page";
 
+/*
+  KycPage tests:
+  - mock network responses with global.fetch to simulate server state
+  - mock URL.createObjectURL used by file preview logic in the page
+*/
 describe("KycPage — user kyc", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
 
@@ -89,6 +98,7 @@ describe("KycPage — user kyc", () => {
       id_document_number: "ABCD-1234-XYZ",
     };
 
+    // mock GET returning an already-verified KYC row
     globalThis.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ kyc: kycRow }),
@@ -100,6 +110,7 @@ describe("KycPage — user kyc", () => {
       </MantineProvider>,
     );
 
+    // assert verified UI shows expected headings/labels
     expect(
       await screen.findByText(/Verification Complete/i),
     ).toBeInTheDocument();
@@ -107,6 +118,7 @@ describe("KycPage — user kyc", () => {
   });
 
   it("shows form and keeps Submit disabled when no kyc exists", async () => {
+    // mock GET returning null KYC to render the submission form
     globalThis.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ kyc: null }),
@@ -121,6 +133,7 @@ describe("KycPage — user kyc", () => {
     const submitBtn = await screen.findByRole("button", {
       name: /Submit for Verification/i,
     });
+    // Submit should be disabled until required fields/files are provided
     expect(submitBtn).toBeDisabled();
   });
 
@@ -233,6 +246,27 @@ describe("KycPage — user kyc", () => {
         /\/api\/user\/kyc/,
       );
     });
+  });
+
+  it("back button calls router.back()", async () => {
+    // initial GET returns no kyc to render the form view with Back button
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ kyc: null }),
+    } as unknown as Response);
+
+    render(
+      <MantineProvider>
+        <KycPage />
+      </MantineProvider>,
+    );
+
+    // wait for the Back button to appear and click it
+    const backBtn = await screen.findByRole("button", { name: /Go back/i });
+    await userEvent.click(backBtn);
+
+    // assert router.back was invoked — this verifies the in-page navigation button
+    expect(backMock).toHaveBeenCalled();
   });
 });
 
