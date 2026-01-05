@@ -1076,3 +1076,14 @@ export async function getNotificationByUserId(userId: string) {
   // RPC returns JSONB which is already parsed
   return data ?? [];
 }
+
+export const getUserSession = async (userId: string) => {
+  const { data: sessionData, error: sessionErr } = await supabaseAdmin.rpc(
+    "get_user_session_data",
+    {
+      input_user_id: userId,
+    },
+  );
+
+  return { sessionData, sessionErr };
+};
