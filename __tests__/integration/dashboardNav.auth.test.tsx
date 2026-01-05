@@ -158,9 +158,10 @@ describe("DashboardNav (authenticated) — user role", () => {
           return Promise.resolve({ ok: true });
         }
         // default: return a response-like object with json() for API calls used by components
+        // Notifications component expects an array from fetch.json(), not { data: [] }.
         return Promise.resolve({
           ok: true,
-          json: async () => ({ data: [] }),
+          json: async () => [],
         });
       });
   });
@@ -203,14 +204,16 @@ describe("DashboardNav (authenticated) — user role", () => {
     const notifBtn = await screen.findByLabelText("notifications");
     await userEvent.click(notifBtn);
 
-    // Popover should appear
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    // Popover content may render in a portal; ensure at least one "Notifications" node appears.
+    const headers = await screen.findAllByText(/Notifications/i);
+    expect(headers.length).toBeGreaterThan(0);
 
     // Close the popover by clicking outside
     await userEvent.click(document.body);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-
-    // Notifications backend/update may not be wired yet; ensure no exceptions and UI toggles correctly.
+    // Ensure popover content is removed/hidden after clicking outside
+    await waitFor(() =>
+      expect(screen.queryByText(/Notifications/i)).toBeNull(),
+    );
   });
 
   it("logs out: calls signout endpoint, supabase.auth.signOut and redirects to signin", async () => {

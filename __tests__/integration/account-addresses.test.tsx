@@ -42,7 +42,7 @@ describe("AccountAddresses integration", () => {
   });
 
   afterEach(() => {
-    // Restore global.fetch to avoid leaking mocks between tests
+    // Restore global.fetch to avopsid leaking mocks between tests
     if (originalFetch) globalThis.fetch = originalFetch;
   });
 

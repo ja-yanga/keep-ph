@@ -6,9 +6,16 @@ DROP POLICY IF EXISTS buckets_policy ON storage.buckets;
 DELETE FROM storage.objects;
 DELETE FROM storage.buckets;
 
--- Start storage
-INSERT INTO storage.buckets (id, name, public) VALUES
-('USER-KYC-DOCUMENTS', 'USER-KYC-DOCUMENTS', true);
+-- Create storage buckets
+INSERT INTO storage.buckets (id, name, public)
+VALUES 
+  ('USER-KYC-DOCUMENTS', 'USER-KYC-DOCUMENTS', true),
+  ('PACKAGES-PHOTO', 'PACKAGES-PHOTO', true),
+  ('MAILROOM-SCANS', 'MAILROOM-SCANS', true),
+  ('MAILROOM-PROOFS', 'MAILROOM-PROOFS', true),
+  ('REWARD-PROOFS', 'REWARD-PROOFS', true),
+  ('AVATARS', 'AVATARS', true)
+ON CONFLICT (id) DO NOTHING;
 
 -- User KYC Status
 CREATE TYPE user_kyc_status AS ENUM ('SUBMITTED', 'VERIFIED', 'REJECTED');
