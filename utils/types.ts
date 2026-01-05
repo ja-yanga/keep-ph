@@ -517,3 +517,10 @@ export type Location = {
   barangay?: string;
   zip?: string;
 };
+
+export type MailroomRegistrationStats = {
+  mailroom_registration_id: string;
+  stored: number;
+  pending: number;
+  released: number;
+};

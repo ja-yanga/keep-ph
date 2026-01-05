@@ -104,118 +104,26 @@ export async function submitKYC(formData: FormData, userId: string) {
   const id_front_url = frontUrlData?.publicUrl ?? "";
   const id_back_url = backUrlData?.publicUrl ?? "";
 
-  const upsertPayload = {
-    user_id: userId,
-    user_kyc_status: "SUBMITTED",
-    user_kyc_id_document_type: document_type,
-    user_kyc_id_front_url: id_front_url,
-    user_kyc_id_back_url: id_back_url,
-    user_kyc_first_name: first_name,
-    user_kyc_last_name: last_name,
-    user_kyc_date_of_birth: birth_date || null,
-    user_kyc_agreements_accepted: true, // assume accepted on submit
-  };
-
-  const { data: kycData, error: upErr } = await supabase
-    .from("user_kyc_table")
-    .upsert(upsertPayload, { onConflict: "user_id" })
-    .select()
-    .single();
-  if (upErr) throw upErr;
-
-  // Insert address if provided
-  if (address_line1) {
-    const addressPayload = {
-      user_kyc_id: kycData.user_kyc_id,
-      user_kyc_address_line_one: address_line1,
-      user_kyc_address_line_two: address_line2 || null,
-      user_kyc_address_city: city || null,
-      user_kyc_address_region: region || null,
-      user_kyc_address_postal_code: postal ? parseInt(postal) : null,
-      user_kyc_address_is_default: true,
-    };
-    const { error: addrErr } = await supabase
-      .from("user_kyc_address_table")
-      .insert(addressPayload);
-    if (addrErr) throw addrErr;
-  }
-
-  return { ok: true, status: "SUBMITTED" };
-}
-
-export async function createAddress({
-  user_id,
-  line1,
-  line2,
-  city,
-  region,
-  postal,
-  is_default,
-}: {
-  user_id: string;
-  line1: string;
-  line2?: string;
-  city?: string;
-  region?: string;
-  postal?: string;
-  is_default?: boolean;
-}) {
-  // Get user_kyc_id from user_id
-  const { data: kycData, error: kycError } = await supabase
-    .from("user_kyc_table")
-    .select("user_kyc_id")
-    .eq("user_id", user_id)
-    .single();
-  if (kycError || !kycData) {
-    throw new Error("KYC not found for user");
-  }
-  const user_kyc_id = kycData.user_kyc_id;
-
-  if (is_default) {
-    await supabase
-      .from("user_kyc_address_table")
-      .update({ user_kyc_address_is_default: false })
-      .eq("user_kyc_id", user_kyc_id);
-  }
-
-  const { data, error } = await supabase
-    .from("user_kyc_address_table")
-    .insert([
-      {
-        user_kyc_id,
-        user_kyc_address_line_one: line1,
-        user_kyc_address_line_two: line2 || null,
-        user_kyc_address_city: city || null,
-        user_kyc_address_region: region || null,
-        user_kyc_address_postal_code: postal ? parseInt(postal) : null,
-        user_kyc_address_is_default: !!is_default,
-      },
-    ])
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  // Log activity
-  const addressData = data as Record<string, unknown>;
-  await logActivity({
-    userId: user_id,
-    action: "CREATE",
-    type: "USER_UPDATE_PROFILE",
-    entityType: "USER_ADDRESS",
-    entityId: addressData.user_kyc_address_id as string,
-    details: {
-      user_kyc_address_id: addressData.user_kyc_address_id,
-      line1,
-      line2,
-      city,
-      region,
-      postal,
-      is_default,
+  const { error: upErr } = await supabase.rpc("user_submit_kyc", {
+    input_data: {
+      user_id: userId,
+      document_type,
+      id_front_url,
+      id_back_url,
+      first_name,
+      last_name,
+      birth_date: birth_date || null,
+      address_line1: address_line1 || null,
+      address_line2: address_line2 || null,
+      city: city || null,
+      region: region || null,
+      postal: postal || null,
     },
   });
 
-  return { ok: true, address: data };
+  if (upErr) throw upErr;
+
+  return { ok: true, status: "SUBMITTED" };
 }
 
 export async function createUserAddress(

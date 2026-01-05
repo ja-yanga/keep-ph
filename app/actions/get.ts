@@ -11,6 +11,7 @@ import {
   AdminUserKyc,
   ClaimWithUrl,
   MailroomPlanRow,
+  MailroomRegistrationStats,
   RegCounts,
   RewardsStatusResult,
   RpcAdminClaim,
@@ -889,67 +890,29 @@ export async function adminGetMailroomPackages(args: {
   };
 }
 
-export async function getUserMailroomRegistrationStats(userId: string): Promise<
-  Array<{
-    mailroom_registration_id: string;
-    stored: number;
-    pending: number;
-    released: number;
-  }>
-> {
+export async function getUserMailroomRegistrationStats(
+  userId: string,
+): Promise<MailroomRegistrationStats[]> {
   if (!userId) return [];
 
-  // Get registration IDs for the user
-  const { data: registrations, error: regError } = await supabaseAdmin
-    .from("mailroom_registration_table")
-    .select("mailroom_registration_id")
-    .eq("user_id", userId);
+  try {
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_user_mailroom_registrations_stat",
+      {
+        input_user_id: userId,
+      },
+    );
 
-  if (regError) throw regError;
-
-  const regIds = registrations?.map((r) => r.mailroom_registration_id) || [];
-  if (regIds.length === 0) return [];
-
-  // Get mailbox items for these registrations
-  const { data: items, error: itemsError } = await supabaseAdmin
-    .from("mailbox_item_table")
-    .select("mailroom_registration_id, mailbox_item_status")
-    .in("mailroom_registration_id", regIds);
-
-  if (itemsError) throw itemsError;
-
-  // Group and count stats
-  const stats = new Map<
-    string,
-    { stored: number; pending: number; released: number }
-  >();
-  items?.forEach((item) => {
-    const id = item.mailroom_registration_id;
-    if (!stats.has(id)) stats.set(id, { stored: 0, pending: 0, released: 0 });
-    const count = stats.get(id)!;
-    const status = item.mailbox_item_status.toUpperCase();
-    if (status === "RELEASED") count.released++;
-    else if (status.includes("REQUEST")) {
-      count.pending++;
-      // REQUEST_TO_SCAN, REQUEST_TO_RELEASE, and REQUEST_TO_DISPOSE should still be counted as stored
-      if (
-        [
-          "REQUEST_TO_SCAN",
-          "REQUEST_TO_RELEASE",
-          "REQUEST_TO_DISPOSE",
-        ].includes(status)
-      ) {
-        count.stored++;
-      }
-    } else if (!["RELEASED", "RETRIEVED", "DISPOSED"].includes(status)) {
-      count.stored++;
+    if (error) {
+      console.error("Error fetching user mailroom registration stats:", error);
+      throw error;
     }
-  });
 
-  return Array.from(stats.entries()).map(([id, counts]) => ({
-    mailroom_registration_id: id,
-    ...counts,
-  }));
+    return (data as MailroomRegistrationStats[]) || [];
+  } catch (err) {
+    console.error("getUserMailroomRegistrationStats error:", err);
+    return [];
+  }
 }
 
 export async function getAllMailRoomLocation() {
@@ -1114,6 +1077,16 @@ export async function getNotificationByUserId(userId: string) {
   return data ?? [];
 }
 
+export const getUserSession = async (userId: string) => {
+  const { data: sessionData, error: sessionErr } = await supabaseAdmin.rpc(
+    "get_user_session_data",
+    {
+      input_user_id: userId,
+    },
+  );
+
+  return { sessionData, sessionErr };
+};
 /**
  * Gets all scans (files) for a specific mailroom registration.
  * Returns scans with related mailbox item data and storage usage information.

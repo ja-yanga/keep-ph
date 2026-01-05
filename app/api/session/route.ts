@@ -1,11 +1,8 @@
-import {
-  createClient,
-  createSupabaseServiceClient,
-} from "@/lib/supabase/server";
+import { getUserSession } from "@/app/actions/get";
+import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 // Admin client for fetching profile data (bypassing RLS if needed)
-const supabaseAdmin = createSupabaseServiceClient();
 
 export async function GET(_request: Request) {
   // reference unused param to satisfy ESLint
@@ -25,53 +22,29 @@ export async function GET(_request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // 3. Fetch profile data (updated schema: users_table)
-    let profile: Record<string, unknown> | null = null;
-    let resolvedRole: string | null = null;
+    // 3. Fetch profile and KYC data via RPC
+    const { sessionData, sessionErr } = await getUserSession(user.id);
 
-    try {
-      const { data: profileData, error: profileErr } = await supabaseAdmin
-        .from("users_table")
-        .select(
-          "users_id, users_email, users_role, users_avatar_url, users_referral_code, users_is_verified, mobile_number",
-        )
-        .eq("users_id", user.id)
-        .maybeSingle();
-
-      if (!profileErr && profileData) {
-        profile = profileData as Record<string, unknown>;
-        // prefer explicit users_role, fall back to older keys if present
-        resolvedRole =
-          ((profileData as Record<string, unknown>).users_role as string) ??
-          ((profileData as Record<string, unknown>).user_role as string) ??
-          null;
-      }
-    } catch (e: unknown) {
-      console.error("profile lookup error:", e);
+    if (sessionErr) {
+      console.error("session RPC error:", sessionErr);
+      throw sessionErr;
     }
 
-    // 4. Fetch KYC status for the user (only status needed)
-    // default to UNVERIFIED when no record exists
-    let kyc: Record<string, unknown> = { status: "UNVERIFIED" };
-    try {
-      const { data: kycData, error: kycErr } = await supabaseAdmin
-        .from("user_kyc")
-        .select("status")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (!kycErr && kycData) kyc = kycData as Record<string, unknown>;
-    } catch (e: unknown) {
-      console.error("kyc lookup error:", e);
-      // keep default UNVERIFIED on error
-    }
+    const { profile, kyc, role } =
+      sessionData ||
+      ({} as {
+        profile: Record<string, unknown> | null;
+        kyc: { status: string };
+        role: string | null;
+      });
 
     return NextResponse.json({
       ok: true,
       user,
       profile,
-      role: resolvedRole ?? null,
+      role,
       kyc,
-      isKycVerified: (kyc as Record<string, unknown>).status === "VERIFIED",
+      // isKycVerified: kyc.status === "VERIFIED",
       needs_onboarding: false,
     });
   } catch (err: unknown) {
