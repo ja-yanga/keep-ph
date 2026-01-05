@@ -1,6 +1,7 @@
 "use server";
 
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity-log";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -39,6 +40,49 @@ export async function deleteUserStorageFile(args: {
       // We continue since the DB row is already deleted by the RPC
     }
   }
+
+  return result;
+}
+
+/**
+ * Soft deletes a mailroom package (mailbox item) for admin via RPC.
+ */
+export async function adminDeleteMailroomPackage(args: {
+  userId: string;
+  id: string;
+}) {
+  const { data, error } = await supabaseAdmin.rpc("admin_delete_mailbox_item", {
+    input_data: {
+      user_id: args.userId,
+      id: args.id,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const result = data as {
+    success: boolean;
+    package_name: string;
+    registration_id: string;
+    deleted_at: string;
+  };
+
+  // Log activity
+  await logActivity({
+    userId: args.userId,
+    action: "DELETE",
+    type: "ADMIN_ACTION",
+    entityType: "MAILBOX_ITEM",
+    entityId: args.id,
+    details: {
+      mailbox_item_id: args.id,
+      package_name: result.package_name,
+      registration_id: result.registration_id,
+      deleted_at: result.deleted_at,
+    },
+  });
 
   return result;
 }

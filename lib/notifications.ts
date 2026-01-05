@@ -22,17 +22,18 @@ export async function sendNotification(
   link?: string,
 ) {
   try {
-    const { error } = await supabaseAdmin.from("notifications").insert({
-      user_id: userId,
-      title,
-      message,
-      type,
-      link,
-      is_read: false,
+    const { error } = await supabaseAdmin.rpc("create_notification", {
+      input_data: {
+        user_id: userId,
+        title,
+        message,
+        type,
+        link,
+      },
     });
 
     if (error) {
-      console.error("Failed to insert notification:", error);
+      console.error("Failed to create notification via RPC:", error);
     }
   } catch (err) {
     console.error("Unexpected error sending notification:", err);
