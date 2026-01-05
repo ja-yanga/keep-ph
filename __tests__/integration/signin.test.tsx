@@ -3,6 +3,23 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 
+/**
+ * Integration tests for SignInForm component.
+ *
+ * These tests exercise:
+ * - form submission and server-auth flow
+ * - session refresh behavior after successful signin
+ * - OAuth initiation (Google)
+ * - presence of navigation links (href checks)
+ *
+ * Tests mock:
+ * - next/navigation router hooks to observe navigation calls
+ * - supabase client factory for auth flows
+ * - SessionProvider to observe refresh() being called
+ *
+ * MantineProvider wraps rendering to ensure Mantine components render correctly in JSDOM.
+ */
+
 /*
   Mocks and spies:
   - pushMock / replaceMock: observe next/router navigation
@@ -18,6 +35,7 @@ const refreshMock = jest.fn();
 
 /*
   Mock next/navigation hooks used inside SignInForm.
+  Returning push/replace mocks allows assertions on navigation attempts.
 */
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
@@ -26,6 +44,7 @@ jest.mock("next/navigation", () => ({
 
 /*
   Mock the supabase client factory used by the component so tests don't call real supabase.
+  We expose auth.getSession and auth.signInWithOAuth spies for assertions.
 */
 jest.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
@@ -35,6 +54,7 @@ jest.mock("@/lib/supabase/client", () => ({
 
 /*
   Mock SessionProvider hook so we can assert refresh() was invoked after login.
+  This prevents needing the real provider in tests.
 */
 jest.mock("@/components/SessionProvider", () => ({
   useSession: () => ({ refresh: refreshMock }),
@@ -46,8 +66,10 @@ describe("SignInForm integration", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
 
   beforeEach(() => {
+    // reset spies and provide a default successful /api/auth/signin response
     jest.clearAllMocks();
     mockSignInWithOAuth.mockResolvedValue({ error: null });
+
     // preserve original fetch and stub network POST to /api/auth/signin -> success by default
     originalFetch = globalThis.fetch;
     const fetchMock = jest.fn().mockResolvedValue({
@@ -63,27 +85,27 @@ describe("SignInForm integration", () => {
   });
 
   it("submits credentials, calls session refresh and redirects to dashboard on success", async () => {
-    // Render the real SignInForm inside MantineProvider so Mantine components work.
+    // Render the form inside MantineProvider so UI elements render correctly.
     render(
       <MantineProvider>
         <SignInForm />
       </MantineProvider>,
     );
 
-    // user fills email & password
+    // Simulate user typing credentials into form controls.
     await userEvent.type(screen.getByLabelText(/Email/i), "test@example.com");
     await userEvent.type(screen.getByLabelText(/Password/i), "password123");
 
-    // pick submit button deterministically (there is also an OAuth button with same label)
+    // There may be multiple "Sign In" buttons (OAuth etc.) — pick the form submit button.
     const signInButtons = screen.getAllByRole("button", { name: /Sign In/i });
     const submitButton =
       signInButtons.find((b) => b.getAttribute("type") === "submit") ??
       signInButtons[0];
 
-    // click submit -> component should POST to /api/auth/signin
+    // Submit the form which should POST to our auth API.
     await userEvent.click(submitButton);
 
-    // assert network call occurred
+    // Wait for the network POST to be invoked with expected endpoint and method.
     await waitFor(() =>
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/auth/signin",
@@ -91,7 +113,8 @@ describe("SignInForm integration", () => {
       ),
     );
 
-    // after success the component should attempt to refresh session and navigate
+    // After successful signin we expect the component to call getSession, refresh session,
+    // and navigate the user to the dashboard.
     await waitFor(() => {
       expect(getSessionMock).toHaveBeenCalled();
       expect(refreshMock).toHaveBeenCalled();
@@ -100,7 +123,7 @@ describe("SignInForm integration", () => {
   });
 
   it("shows server error when signin fails and does not redirect", async () => {
-    // override fetch to simulate server-side auth failure
+    // Simulate server returning an error for signin attempt.
     (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       json: async () => ({ error: "Invalid credentials" }),
@@ -112,6 +135,7 @@ describe("SignInForm integration", () => {
       </MantineProvider>,
     );
 
+    // Fill and submit with bad credentials.
     await userEvent.type(screen.getByLabelText(/Email/i), "bad@example.com");
     await userEvent.type(screen.getByLabelText(/Password/i), "wrongpass");
 
@@ -122,7 +146,7 @@ describe("SignInForm integration", () => {
 
     await userEvent.click(submitButton);
 
-    // expect the server-provided error to appear and no redirect to occur
+    // Server error should be shown and no navigation or session refresh should occur.
     const errNode = await screen.findByText(/Invalid credentials/i);
     expect(errNode).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
@@ -130,7 +154,7 @@ describe("SignInForm integration", () => {
   });
 
   it("initiates Google OAuth when clicking the Google button", async () => {
-    // Render and click the OAuth button
+    // Render and click the OAuth button which should call signInWithOAuth.
     render(
       <MantineProvider>
         <SignInForm />
@@ -142,7 +166,7 @@ describe("SignInForm integration", () => {
     });
     await userEvent.click(googleBtn);
 
-    // assert signInWithOAuth was invoked with expected provider and redirect path
+    // signInWithOAuth should be invoked with provider 'google' and a redirect URL.
     await waitFor(() => {
       expect(mockSignInWithOAuth).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -153,5 +177,21 @@ describe("SignInForm integration", () => {
         }),
       );
     });
+  });
+
+  it("links to Forgot Password and Sign Up have correct hrefs (no router push)", async () => {
+    // Clicking anchors doesn't trigger next/router.push in JSDOM by default.
+    // Assert anchor hrefs to verify navigation targets are correct.
+    render(
+      <MantineProvider>
+        <SignInForm />
+      </MantineProvider>,
+    );
+
+    const forgot = screen.getByRole("link", { name: /Forgot Password\?/i });
+    expect(forgot).toHaveAttribute("href", "/forgot-password");
+
+    const signup = screen.getByRole("link", { name: /Sign Up/i });
+    expect(signup).toHaveAttribute("href", "/signup");
   });
 });
