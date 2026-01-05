@@ -135,90 +135,45 @@ export async function adminUpdateMailroomPackage(args: {
   package_photo?: string | null;
   locker_status?: string;
 }): Promise<unknown> {
-  // Fetch existing package
-  const { data: oldPkg, error: fetchError } = await supabaseAdmin
-    .from("mailbox_item_table")
-    .select(
-      "mailbox_item_id, mailroom_registration_id, mailbox_item_status, mailbox_item_name",
-    )
-    .eq("mailbox_item_id", args.id)
-    .single();
-
-  if (fetchError || !oldPkg) {
-    throw new Error("Package not found");
-  }
-
-  const oldPkgData = oldPkg as Record<string, unknown>;
-  const oldRegistrationId = oldPkgData.mailroom_registration_id as string;
-  const oldStatus = oldPkgData.mailbox_item_status as string;
-
-  // Build update payload - map frontend field names to database column names
-  const updatePayload: Record<string, unknown> = {};
-  if (args.package_name !== undefined) {
-    updatePayload.mailbox_item_name = args.package_name;
-  }
-  if (args.registration_id !== undefined) {
-    updatePayload.mailroom_registration_id = args.registration_id;
-  }
-  if (args.locker_id !== undefined) {
-    updatePayload.location_locker_id = args.locker_id;
-  }
-  if (args.package_type !== undefined) {
-    updatePayload.mailbox_item_type = args.package_type;
-  }
-  if (args.status !== undefined) {
-    updatePayload.mailbox_item_status = args.status;
-  }
-  if (Object.prototype.hasOwnProperty.call(args, "package_photo")) {
-    updatePayload.mailbox_item_photo = args.package_photo;
-  }
-  updatePayload.mailbox_item_updated_at = new Date().toISOString();
-
-  // Update the package
-  const { data: updatedPkg, error } = await supabaseAdmin
-    .from("mailbox_item_table")
-    .update(updatePayload)
-    .eq("mailbox_item_id", args.id)
-    .select()
-    .single();
+  const { data, error } = await supabaseAdmin.rpc("admin_update_mailbox_item", {
+    input_data: {
+      user_id: args.userId,
+      id: args.id,
+      package_name: args.package_name,
+      registration_id: args.registration_id,
+      locker_id: args.locker_id,
+      package_type: args.package_type,
+      status: args.status,
+      package_photo: args.package_photo,
+      locker_status: args.locker_status,
+    },
+  });
 
   if (error) {
     throw error;
   }
 
-  // Update locker status if provided
-  if (args.locker_status && oldRegistrationId) {
-    const { data: assignment } = await supabaseAdmin
-      .from("mailroom_assigned_locker_table")
-      .select("mailroom_assigned_locker_id")
-      .eq("mailroom_registration_id", oldRegistrationId)
-      .single();
-
-    if (assignment) {
-      await supabaseAdmin
-        .from("mailroom_assigned_locker_table")
-        .update({ mailroom_assigned_locker_status: args.locker_status })
-        .eq(
-          "mailroom_assigned_locker_id",
-          (assignment as Record<string, unknown>).mailroom_assigned_locker_id,
-        );
-    }
-  }
+  const result = data as {
+    ok: boolean;
+    item: Record<string, unknown>;
+    old_status: string;
+    old_registration_id: string;
+    old_item_name: string;
+  };
 
   // Send notification if status changed
-  if (args.status && oldStatus !== args.status) {
+  if (args.status && result.old_status !== args.status) {
     const { data: registration } = await supabaseAdmin
       .from("mailroom_registration_table")
       .select("user_id, mailroom_registration_code")
-      .eq("mailroom_registration_id", oldRegistrationId)
+      .eq("mailroom_registration_id", result.old_registration_id)
       .single();
 
     if (registration) {
       const regData = registration as Record<string, unknown>;
       const userId = regData.user_id as string;
       const code = (regData.mailroom_registration_code as string) || "Unknown";
-      const packageName = (updatedPkg as Record<string, unknown>)
-        .mailbox_item_name as string;
+      const packageName = result.item.mailbox_item_name as string;
 
       let title = "Package Update";
       let message = `Your package (${packageName}) at Mailroom ${code} status is now: ${args.status}`;
@@ -239,7 +194,7 @@ export async function adminUpdateMailroomPackage(args: {
         title,
         message,
         type,
-        `/mailroom/${oldRegistrationId}`,
+        `/mailroom/${result.old_registration_id}`,
       );
     }
   }
@@ -262,13 +217,50 @@ export async function adminUpdateMailroomPackage(args: {
         package_photo: args.package_photo !== undefined ? "updated" : undefined,
         locker_status: args.locker_status,
       },
-      old_status: oldStatus,
+      old_status: result.old_status,
       new_status: args.status,
     },
   });
 
-  return updatedPkg;
+  return result.item;
 }
+
+export const updateMailboxItem = async (args: {
+  userId: string;
+  id: string;
+  status?: string;
+  selected_address_id?: string | null;
+  notes?: string | Record<string, unknown>;
+  release_to_name?: string;
+  forward_address?: string;
+  forward_tracking_number?: string;
+  forward_3pl_name?: string;
+  forward_tracking_url?: string;
+}) => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "user_request_mailbox_item_action",
+    {
+      input_data: {
+        user_id: args.userId,
+        mailbox_item_id: args.id,
+        status: args.status,
+        selected_address_id: args.selected_address_id,
+        notes: args.notes,
+        release_to_name: args.release_to_name,
+        forward_address: args.forward_address,
+        forward_tracking_number: args.forward_tracking_number,
+        forward_3pl_name: args.forward_3pl_name,
+        forward_tracking_url: args.forward_tracking_url,
+      },
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
 
 export const cancelMailroomSubscription = async (
   registrationId: string,
