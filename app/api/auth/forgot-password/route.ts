@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
@@ -10,8 +10,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    // Standard client is fine here as we don't need to read user cookies
-    const supabase = createClient();
+    // Use server client for API routes
+    const supabase = await createClient();
     const origin = new URL(req.url).origin;
 
     // Send password reset email
