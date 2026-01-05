@@ -26,6 +26,17 @@ DECLARE
 BEGIN
   -- Get role from metadata (defaults to 'user' if not provided)
   v_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'user');
+
+  -- Update auth.users metadata if role is missing
+  IF NEW.raw_user_meta_data ->> 'role' IS NULL THEN
+    UPDATE auth.users
+    SET raw_user_meta_data = jsonb_set(
+      COALESCE(raw_user_meta_data, '{}'::jsonb),
+      '{role}',
+      '"user"'::jsonb
+    )
+    WHERE id = NEW.id;
+  END IF;
   
   -- Get mobile number from metadata if provided
   v_mobile_number := NEW.raw_user_meta_data ->> 'mobile_number';

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
-    // 1. Initialize Supabase Client (Handles Cookies Automatically for PKCE)
+    // 1. Initialize Supabase Client (Handles Cookies Automatically fo r PKCE)
     const supabase = await createClient();
 
     try {
@@ -48,7 +48,16 @@ export async function GET(request: Request) {
           }
         }
 
-        return NextResponse.redirect(`${origin}${next}`);
+        const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
+        const isLocalEnv = process.env.NODE_ENV === "development";
+        if (isLocalEnv) {
+          // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
+          return NextResponse.redirect(`${origin}${next}`);
+        } else if (forwardedHost) {
+          return NextResponse.redirect(`https://${forwardedHost}${next}`);
+        } else {
+          return NextResponse.redirect(`${origin}${next}`);
+        }
       }
     } catch (error) {
       console.error("Google OAuth error:", error);
