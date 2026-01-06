@@ -501,7 +501,12 @@ export async function adminCreateMailroomPackage(args: {
       mailbox_item_status: args.status,
       mailbox_item_photo: args.package_photo ?? null,
     })
-    .select()
+    .select(
+      `
+      *,
+      mailroom_file_table (*)
+    `,
+    )
     .single();
 
   if (error) {

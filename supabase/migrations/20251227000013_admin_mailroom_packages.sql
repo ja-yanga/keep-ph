@@ -1,4 +1,4 @@
--- RPC: Get admin mailroom packages with related data (packages, registrations, lockers, assigned lockers)
+-- Update get_admin_mailroom_packages to include mailroom_file_table
 CREATE OR REPLACE FUNCTION public.get_admin_mailroom_packages(
   input_limit INTEGER DEFAULT 50,
   input_offset INTEGER DEFAULT 0,
@@ -73,6 +73,11 @@ BEGIN
         'received_at', pi.mailbox_item_received_at,
         'mailbox_item_created_at', pi.mailbox_item_created_at,
         'mailbox_item_updated_at', pi.mailbox_item_updated_at,
+        'mailroom_file_table', (
+          SELECT JSON_AGG(ROW_TO_JSON(mft))
+          FROM public.mailroom_file_table mft
+          WHERE mft.mailbox_item_id = pi.mailbox_item_id
+        ),
         'registration', CASE
           WHEN pi.reg_id IS NOT NULL THEN JSON_BUILD_OBJECT(
             'id', pi.reg_id,
@@ -194,4 +199,3 @@ $$;
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION public.get_admin_mailroom_packages(INTEGER, INTEGER, BOOLEAN) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_admin_mailroom_packages(INTEGER, INTEGER, BOOLEAN) TO anon;
-

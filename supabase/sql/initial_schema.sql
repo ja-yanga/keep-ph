@@ -257,6 +257,7 @@ CREATE TABLE location_locker_table (
   location_locker_code TEXT NOT NULL,
   location_locker_is_available BOOLEAN DEFAULT true,
   location_locker_created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  location_locker_deleted_at TIMESTAMP WITH TIME ZONE,
   CONSTRAINT location_locker_table_pkey PRIMARY KEY (location_locker_id)
 );
 
@@ -1679,14 +1680,35 @@ BEGIN
         'users_referral_code', ut.users_referral_code,
         'user_kyc_table', row_to_json(ukt)
       ) as users_table,
-      COALESCE(json_agg(row_to_json(mit)) FILTER (WHERE mit.mailbox_item_id IS NOT NULL), '[]') as mailbox_item_table,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'mailbox_item_id', mit_inner.mailbox_item_id,
+              'mailbox_item_name', mit_inner.mailbox_item_name,
+              'mailbox_item_status', mit_inner.mailbox_item_status,
+              'mailbox_item_type', mit_inner.mailbox_item_type,
+              'mailbox_item_photo', mit_inner.mailbox_item_photo,
+              'mailbox_item_received_at', mit_inner.mailbox_item_received_at,
+              'mailroom_file_table', (
+                SELECT json_agg(row_to_json(mft))
+                FROM public.mailroom_file_table mft
+                WHERE mft.mailbox_item_id = mit_inner.mailbox_item_id
+              )
+            )
+          )
+          FROM public.mailbox_item_table mit_inner
+          WHERE mit_inner.mailroom_registration_id = mrt.mailroom_registration_id
+          AND mit_inner.mailbox_item_deleted_at IS NULL
+        ),
+        '[]'::json
+      ) as mailbox_item_table,
       row_to_json(st) as subscription_table
     FROM public.mailroom_registration_table mrt
     LEFT JOIN public.mailroom_plan_table mpt ON mrt.mailroom_plan_id = mpt.mailroom_plan_id
     LEFT JOIN public.mailroom_location_table mlt ON mrt.mailroom_location_id = mlt.mailroom_location_id
     LEFT JOIN public.users_table ut ON mrt.user_id = ut.users_id
     LEFT JOIN public.user_kyc_table ukt ON ut.users_id = ukt.user_id
-    LEFT JOIN public.mailbox_item_table mit ON mrt.mailroom_registration_id = mit.mailroom_registration_id
     LEFT JOIN public.subscription_table st ON mrt.mailroom_registration_id = st.mailroom_registration_id
     WHERE mrt.mailroom_registration_id = input_registration_id
       AND mrt.user_id = input_user_id
