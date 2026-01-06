@@ -39,6 +39,12 @@ BEGIN
               'mailbox_item_type', mit_inner.mailbox_item_type,
               'mailbox_item_photo', mit_inner.mailbox_item_photo,
               'mailbox_item_received_at', mit_inner.mailbox_item_received_at,
+              'location_locker_id', mit_inner.location_locker_id,
+              'location_locker_code', (
+                SELECT llt.location_locker_code 
+                FROM public.location_locker_table llt 
+                WHERE llt.location_locker_id = mit_inner.location_locker_id
+              ),
               'mailroom_file_table', (
                 SELECT json_agg(row_to_json(mft))
                 FROM public.mailroom_file_table mft
@@ -46,9 +52,13 @@ BEGIN
               )
             )
           )
-          FROM public.mailbox_item_table mit_inner
-          WHERE mit_inner.mailroom_registration_id = mrt.mailroom_registration_id
-          AND mit_inner.mailbox_item_deleted_at IS NULL
+          FROM (
+            SELECT mit_inner.*
+            FROM public.mailbox_item_table mit_inner
+            WHERE mit_inner.mailroom_registration_id = mrt.mailroom_registration_id
+            AND mit_inner.mailbox_item_deleted_at IS NULL
+            ORDER BY mit_inner.mailbox_item_received_at DESC
+          ) mit_inner
         ),
         '[]'::json
       ) as mailbox_item_table,
