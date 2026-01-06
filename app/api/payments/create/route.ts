@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}) as Record<string, unknown>);
-  const { orderId, amount, currency = "PHP", type, show_all, metadata } = body;
+  const {
+    orderId,
+    planName,
+    amount,
+    currency = "PHP",
+    type,
+    show_all,
+    metadata,
+  } = body;
 
   const secret = process.env.PAYMONGO_SECRET_KEY;
   if (!secret)
@@ -38,15 +46,14 @@ export async function POST(req: Request) {
     }
 
     const qty = body.quantity || 1;
+    const displayName = planName ?? orderId ?? "Order";
 
     const attrs: Record<string, unknown> = {
-      line_items: [
-        { currency, amount, name: orderId ?? "Order", quantity: qty },
-      ],
+      line_items: [{ currency, amount, name: displayName, quantity: qty }],
       send_email_receipt: false,
       show_description: true,
       show_line_items: true,
-      description: `Order ${orderId}`,
+      description: displayName,
       metadata: metadata ?? { order_id: orderId },
     };
 

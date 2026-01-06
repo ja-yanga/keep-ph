@@ -243,6 +243,7 @@ export default function RegisterForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId,
+          planName: selectedPlan?.name ?? "Mailroom Plan",
           amount: minor,
           quantity: qty,
           currency: "PHP",

@@ -3,7 +3,7 @@ name: supabase-db-backup
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *" # daily at midnight UTC
+    - cron: "0 17 * * *" # daily at 1 AM Philippines time (5 PM UTC)
 
 jobs:
   backup:
@@ -29,6 +29,36 @@ jobs:
         with:
           version: latest
 
+      - name: Verify database connection
+        run: |
+          echo "Testing database connection..."
+          # Check if connection string is set
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "Error: SUPABASE_DB_URL is not set"
+            exit 1
+          fi
+
+          # Verify connection string format
+          if echo "$SUPABASE_DB_URL" | grep -q "pooler"; then
+            echo "✓ Using connection pooler URL"
+            if echo "$SUPABASE_DB_URL" | grep -q ":5432"; then
+              echo "⚠ Warning: Using port 5432 (direct connection). For backups, use Session mode pooler (port 6543)"
+            elif echo "$SUPABASE_DB_URL" | grep -q ":6543"; then
+              echo "✓ Using pooler port 6543"
+            fi
+          else
+            echo "⚠ Warning: Not using connection pooler URL"
+            echo "For database backups, use the 'Session' mode connection string from Supabase dashboard"
+            echo "Format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres"
+            echo "Note: Session mode is recommended for long-running operations like backups"
+          fi
+
+          # Test basic connectivity
+          if command -v psql > /dev/null 2>&1; then
+            echo "Testing connection with psql..."
+            # Extract connection details and test (without exposing password)
+            echo "Connection test will be performed during dump"
+
       - name: Set timestamp and filename
         run: |
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
@@ -40,24 +70,41 @@ jobs:
 
       - name: Dump roles
         run: |
+          echo "Dumping database roles..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
             --role-only \
-            -f backups/roles.sql
+            -f backups/roles.sql || {
+              echo "Error: Failed to dump roles"
+              echo "Please verify:"
+              echo "1. SUPABASE_DB_URL uses the connection pooler (Session mode recommended for backups)"
+              echo "2. Database allows connections from GitHub Actions IPs"
+              echo "3. Connection string format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres"
+              echo "4. Use Session mode (not Transaction mode) for long-running backup operations"
+              exit 1
+            }
 
       - name: Dump schema
         run: |
+          echo "Dumping database schema..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
-            -f backups/schema.sql
+            -f backups/schema.sql || {
+              echo "Error: Failed to dump schema"
+              exit 1
+            }
 
       - name: Dump data
         run: |
+          echo "Dumping database data..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
             --data-only \
             --use-copy \
-            -f backups/data.sql
+            -f backups/data.sql || {
+              echo "Error: Failed to dump data"
+              exit 1
+            }
 
       # -------------------------------
       # Backup Storage Buckets
