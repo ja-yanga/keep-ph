@@ -160,6 +160,17 @@ export async function adminUpdateMailroomPackage(args: {
     old_item_name: string;
   };
 
+  // Ensure the returned item has the latest files
+  const { data: itemWithFiles } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .select("*, mailroom_file_table(*)")
+    .eq("mailbox_item_id", args.id)
+    .single();
+
+  if (itemWithFiles) {
+    result.item = itemWithFiles as Record<string, unknown>;
+  }
+
   // Send notification if status changed
   if (args.status && result.old_status !== args.status) {
     const { data: registration } = await supabaseAdmin

@@ -34,6 +34,29 @@ BEGIN
           )
           ELSE NULL
         END,
+        'mailbox_item_table', COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'mailbox_item_id', mit.mailbox_item_id,
+                'mailbox_item_name', mit.mailbox_item_name,
+                'mailbox_item_status', mit.mailbox_item_status,
+                'mailbox_item_type', mit.mailbox_item_type,
+                'mailbox_item_photo', mit.mailbox_item_photo,
+                'mailbox_item_received_at', mit.mailbox_item_received_at,
+                'mailroom_file_table', (
+                  SELECT json_agg(row_to_json(mft))
+                  FROM public.mailroom_file_table mft
+                  WHERE mft.mailbox_item_id = mit.mailbox_item_id
+                )
+              )
+            )
+            FROM public.mailbox_item_table mit
+            WHERE mit.mailroom_registration_id = r.mailroom_registration_id
+            AND mit.mailbox_item_deleted_at IS NULL
+          ),
+          '[]'::json
+        ),
         'mailroom_plan_table', CASE
           WHEN p.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
             'mailroom_plan_id', p.mailroom_plan_id,

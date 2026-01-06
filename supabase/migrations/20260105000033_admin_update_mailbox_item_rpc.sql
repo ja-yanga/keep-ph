@@ -68,7 +68,16 @@ BEGIN
         WHERE mailroom_registration_id = var_old_registration_id;
     END IF;
 
-    -- 4. Construct return data
+    -- 4. Construct return data with embedded files
+    SELECT 
+      var_updated_item || jsonb_build_object(
+        'mailroom_file_table', (
+          SELECT json_agg(row_to_json(mft))
+          FROM public.mailroom_file_table mft
+          WHERE mft.mailbox_item_id = var_item_id
+        )
+      ) INTO var_updated_item;
+
     var_return_data := JSONB_BUILD_OBJECT(
         'ok', TRUE,
         'item', var_updated_item,

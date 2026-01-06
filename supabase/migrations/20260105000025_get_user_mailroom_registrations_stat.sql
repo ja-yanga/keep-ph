@@ -32,6 +32,7 @@ BEGIN
         FROM mailbox_item_table mit
         JOIN mailroom_registration_table mrt ON mit.mailroom_registration_id = mrt.mailroom_registration_id
         WHERE mrt.user_id = input_user_id
+        AND mit.mailbox_item_deleted_at IS NULL
         GROUP BY mit.mailroom_registration_id
     ) stats;
 
