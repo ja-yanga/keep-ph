@@ -82,11 +82,10 @@ export const markAsReadNotification = async (userId: string) => {
     throw new Error("userId is required");
   }
 
-  const { error } = await supabaseAdmin
-    .from("notification_table")
-    .update({ notification_is_read: true })
-    .eq("user_id", userId)
-    .eq("notification_is_read", false);
+  const { error } = await supabaseAdmin.rpc("mark_notifications_as_read", {
+    input_user_id: userId,
+  });
+
   if (error) {
     throw error;
   }

@@ -1153,3 +1153,18 @@ export async function getUserScans(
     };
   };
 }
+
+/**
+ * Gets all assigned lockers for admin via RPC.
+ * Used in:
+ * - app/api/admin/mailroom/assigned-lockers/route.ts - API endpoint for admin assigned lockers
+ */
+export async function adminGetAssignedLockers() {
+  const { data, error } = await supabaseAdmin.rpc("admin_get_assigned_lockers");
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
