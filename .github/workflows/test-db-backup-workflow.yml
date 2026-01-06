@@ -211,8 +211,8 @@ jobs:
             
             # Extract bucket names using jq
             echo "$buckets_response" | jq -r '.[]?.name // empty' | while IFS= read -r bucket_name; do
-              if [ -n "$bucket_name" ] && [ "$bucket_name" != "db-backups" ]; then
-                # Skip the db-backups bucket to avoid backing up backups
+              if [ -n "$bucket_name" ] && [ "$bucket_name" != "DB-BACKUPS" ]; then
+                # Skip the DB-BACKUPS bucket to avoid backing up backups
                 backup_bucket "$bucket_name"
               fi
             done
@@ -279,59 +279,15 @@ jobs:
       # -------------------------------
       # Upload to Supabase Storage
       # -------------------------------
-      - name: Ensure db-backups bucket exists
-        env:
-          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          echo "Checking if db-backups bucket exists..."
-          
-          # Check if bucket exists
-          bucket_check=$(curl -s -w "\n%{http_code}" -X GET \
-            "$SUPABASE_URL/storage/v1/bucket/db-backups" \
-            -H "Authorization: Bearer $SUPABASE_KEY")
-          
-          http_code=$(echo "$bucket_check" | tail -n1)
-          
-          if [ "$http_code" -eq 200 ]; then
-            echo "✓ db-backups bucket already exists"
-          else
-            echo "Creating db-backups bucket..."
-            create_response=$(curl -s -w "\n%{http_code}" -X POST \
-              "$SUPABASE_URL/storage/v1/bucket" \
-              -H "Authorization: Bearer $SUPABASE_KEY" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "name": "db-backups",
-                "public": false,
-                "file_size_limit": 5368709120,
-                "allowed_mime_types": ["application/gzip", "application/x-gzip"]
-              }')
-            
-            create_code=$(echo "$create_response" | tail -n1)
-            create_body=$(echo "$create_response" | sed '$d')
-            
-            if [ "$create_code" -eq 200 ] || [ "$create_code" -eq 201 ]; then
-              echo "✓ Successfully created db-backups bucket"
-            else
-              echo "✗ Failed to create bucket (HTTP $create_code)"
-              echo "Response: $create_body"
-              exit 1
-            fi
-          fi
-
       - name: Upload to Supabase Storage
-        env:
-          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "Uploading backup to Supabase Storage..."
           echo "File: ${{ env.FILENAME }}"
-          echo "Destination: db-backups/${{ env.FILENAME }}"
+          echo "Destination: DB-BACKUPS/${{ env.FILENAME }}"
 
           response=$(curl -s -w "\n%{http_code}" -X POST \
-            "$SUPABASE_URL/storage/v1/object/db-backups/${{ env.FILENAME }}" \
-            -H "Authorization: Bearer $SUPABASE_KEY" \
+            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/DB-BACKUPS/${{ env.FILENAME }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/gzip" \
             --data-binary "@${{ env.FILENAME }}")
 
@@ -340,7 +296,7 @@ jobs:
 
           if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
             echo "✓ Successfully uploaded to Supabase Storage (HTTP $http_code)"
-            echo "Backup URL: $SUPABASE_URL/storage/v1/object/db-backups/${{ env.FILENAME }}"
+            echo "Backup URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/public/DB-BACKUPS/${{ env.FILENAME }}"
           else
             echo "✗ Failed to upload to Supabase Storage (HTTP $http_code)"
             echo "Response: $body"
@@ -384,9 +340,9 @@ jobs:
           echo "Backup size: $(du -h ${{ env.FILENAME }} | cut -f1)"
           echo ""
           echo "Uploaded to:"
-          echo "  ✓ Supabase Storage: db-backups/${{ env.FILENAME }}"
+          echo "  ✓ Supabase Storage: DB-BACKUPS/${{ env.FILENAME }}"
           echo "  ✓ Cloudflare R2: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
           echo ""
           echo "You can verify the backup by:"
-          echo "  1. Checking Supabase Storage dashboard for the 'db-backups' bucket"
+          echo "  1. Checking Supabase Storage dashboard for the 'DB-BACKUPS' bucket"
           echo "  2. Checking Cloudflare R2 dashboard for your bucket"
