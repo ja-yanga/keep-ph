@@ -81,7 +81,6 @@ export default function RegisterForm({
   );
   const [months, setMonths] = useState<number>(1);
 
-  const [notes, setNotes] = useState("");
   const [referralCode, setReferralCode] = useState("");
 
   // Referral State
@@ -233,7 +232,7 @@ export default function RegisterForm({
         plan_id: selectedPlanId ?? "",
         locker_qty: String(qty),
         months: String(months),
-        notes: notes || "",
+
         referral_code: referralValid ? referralCode : "",
       };
 
@@ -425,8 +424,6 @@ export default function RegisterForm({
                 setReferralMessage={setReferralMessage}
                 validatingCode={validatingCode}
                 validateReferral={validateReferral}
-                notes={notes}
-                setNotes={setNotes}
                 setActive={setActive}
               />
             </Stepper.Step>

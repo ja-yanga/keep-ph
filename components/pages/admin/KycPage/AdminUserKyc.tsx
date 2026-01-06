@@ -36,6 +36,7 @@ type KycRow = {
   user_id: string;
   status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
   id_document_type?: string | null;
+  id_number?: string | null;
   id_front_url?: string | null;
   id_back_url?: string | null;
   first_name?: string | null;
@@ -369,7 +370,13 @@ export default function AdminUserKyc() {
                   </Text>
                 </DetailStack>
 
-                <DetailStack label="Document">
+                <DetailStack label="Document ID Number">
+                  <Text size="sm" fw={500}>
+                    {selected.id_number ?? "—"}
+                  </Text>
+                </DetailStack>
+
+                <DetailStack label="Document Type">
                   <Text size="sm" fw={500}>
                     {selected.id_document_type ?? "—"}
                   </Text>

@@ -46,7 +46,7 @@ export async function submitKYC(formData: FormData, userId: string) {
   }
 
   const document_type = String(formData.get("document_type") ?? "");
-  const document_number = String(formData.get("document_number") ?? "");
+  const document_number = String(formData.get("user_kyc_id_number") ?? "");
   const first_name = String(formData.get("first_name") ?? "");
   const last_name = String(formData.get("last_name") ?? "");
   const address_line1 = String(formData.get("address_line1") ?? "");
@@ -110,6 +110,7 @@ export async function submitKYC(formData: FormData, userId: string) {
       document_type,
       id_front_url,
       id_back_url,
+      user_kyc_id_number: document_number,
       first_name,
       last_name,
       birth_date: birth_date || null,
@@ -120,6 +121,47 @@ export async function submitKYC(formData: FormData, userId: string) {
       postal: postal || null,
     },
   });
+
+  // also store the submitted address in user's saved addresses and mark it as default
+  // only attempt when address_line1 is present
+  if (!upErr && address_line1) {
+    try {
+      // check if user already has a default address
+      const { data: existingDefaults, error: defErr } = await supabase
+        .from("user_address_table")
+        .select("user_address_id")
+        .eq("user_id", userId)
+        .eq("user_address_is_default", true)
+        .limit(1);
+
+      let isDefault = true;
+      if (defErr) {
+        // don't block KYC flow on this check
+        console.warn("Failed to check existing default address:", defErr);
+      } else if (
+        Array.isArray(existingDefaults) &&
+        existingDefaults.length > 0
+      ) {
+        isDefault = false;
+      }
+
+      await supabase.from("user_address_table").insert([
+        {
+          user_id: userId,
+          user_address_label: "KYC address",
+          user_address_line1: address_line1,
+          user_address_line2: address_line2 || null,
+          user_address_city: city || null,
+          user_address_region: region || null,
+          user_address_postal: postal || null,
+          user_address_is_default: isDefault,
+        },
+      ]);
+    } catch (e) {
+      // non-fatal: log and continue (RPC already succeeded)
+      console.warn("Failed to save user address from KYC:", e);
+    }
+  }
 
   if (upErr) throw upErr;
 
