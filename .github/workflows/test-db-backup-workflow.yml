@@ -311,14 +311,17 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          aws-region: auto
+          aws-region: us-east-1
 
       - name: Upload to Cloudflare R2
         env:
+          # R2 endpoint format: https://{account_id}.r2.cloudflarestorage.com
+          # Account ID should be set in R2_ACCOUNT_ID secret (e.g., 2cb950ce770f7b7ed02396ece33cfe75)
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           echo "Uploading backup to Cloudflare R2..."
           echo "File: ${{ env.FILENAME }}"
+          echo "Endpoint: $R2_ENDPOINT"
           echo "Destination: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
 
           if aws s3 cp \
