@@ -41,11 +41,10 @@ import {
 } from "@tabler/icons-react";
 
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
-import Navbar from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import { getStatusFormat } from "@/utils/helper";
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -264,8 +263,7 @@ export default function KycPage() {
   const StatusIconComponent = getStatusIcon(status);
 
   return (
-    <>
-      <Navbar />
+    <PrivateMainLayout>
       {initialLoading ? (
         <Center h="90vh">
           <Loader />
@@ -781,8 +779,6 @@ export default function KycPage() {
         </Container>
       )}
 
-      <Footer />
-
       {/* MODAL FOR ENLARGED PHOTO PREVIEW */}
       <Modal
         opened={opened}
@@ -833,7 +829,7 @@ export default function KycPage() {
           </Button>
         </Group>
       </Modal>
-    </>
+    </PrivateMainLayout>
   );
 }
 

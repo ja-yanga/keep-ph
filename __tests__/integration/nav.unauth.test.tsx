@@ -1,8 +1,8 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import Nav from "@/components/Nav";
 import { MantineProvider } from "@mantine/core";
+import PublicNavigationHeader from "@/components/Layout/PublicNavigationHeader";
 
 jest.setTimeout(10000);
 
@@ -35,7 +35,7 @@ describe("Unauthenticated Nav", () => {
     usePathnameMock.mockReturnValue("/other");
     render(
       <MantineProvider>
-        <Nav />
+        <PublicNavigationHeader />
       </MantineProvider>,
     );
 
@@ -56,7 +56,7 @@ describe("Unauthenticated Nav", () => {
     usePathnameMock.mockReturnValue("/dashboard");
     render(
       <MantineProvider>
-        <Nav />
+        <PublicNavigationHeader />
       </MantineProvider>,
     );
 
@@ -77,7 +77,7 @@ describe("Unauthenticated Nav", () => {
 
     render(
       <MantineProvider>
-        <Nav />
+        <PublicNavigationHeader />
       </MantineProvider>,
     );
 
@@ -92,7 +92,7 @@ describe("Unauthenticated Nav", () => {
     usePathnameMock.mockReturnValue("/other");
     render(
       <MantineProvider>
-        <Nav />
+        <PublicNavigationHeader />
       </MantineProvider>,
     );
 
