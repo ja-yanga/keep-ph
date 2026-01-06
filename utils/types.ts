@@ -237,6 +237,7 @@ export type AdminUserKyc = {
   user_id: string;
   user_kyc_status: string | null;
   user_kyc_id_document_type: string | null;
+  user_kyc_id_number: string | null;
   user_kyc_id_front_url: string | null;
   user_kyc_id_back_url: string | null;
   user_kyc_first_name: string | null;

@@ -9,7 +9,6 @@ import {
   Group,
   Button,
   TextInput,
-  Textarea,
   Alert,
 } from "@mantine/core";
 import { IconCheck, IconCreditCard } from "@tabler/icons-react";
@@ -27,8 +26,7 @@ type ReviewStepProps = {
   setReferralMessage: (val: string) => void;
   validatingCode: boolean;
   validateReferral: () => void;
-  notes: string;
-  setNotes: (val: string) => void;
+
   setActive: (step: number) => void;
 };
 
@@ -45,8 +43,7 @@ export const ReviewStep = ({
   setReferralMessage,
   validatingCode,
   validateReferral,
-  notes,
-  setNotes,
+
   setActive,
 }: ReviewStepProps) => {
   return (
@@ -117,15 +114,6 @@ export const ReviewStep = ({
             {referralMessage}
           </Text>
         )}
-
-        <Textarea
-          mt="md"
-          label="Notes"
-          placeholder="Additional instructions..."
-          value={notes}
-          onChange={(e) => setNotes(e.currentTarget.value)}
-          minRows={3}
-        />
       </Paper>
 
       <Alert icon={<IconCreditCard size={16} />} color="blue" variant="light">
