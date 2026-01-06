@@ -279,15 +279,59 @@ jobs:
       # -------------------------------
       # Upload to Supabase Storage
       # -------------------------------
+      - name: Ensure db-backups bucket exists
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Checking if db-backups bucket exists..."
+          
+          # Check if bucket exists
+          bucket_check=$(curl -s -w "\n%{http_code}" -X GET \
+            "$SUPABASE_URL/storage/v1/bucket/db-backups" \
+            -H "Authorization: Bearer $SUPABASE_KEY")
+          
+          http_code=$(echo "$bucket_check" | tail -n1)
+          
+          if [ "$http_code" -eq 200 ]; then
+            echo "✓ db-backups bucket already exists"
+          else
+            echo "Creating db-backups bucket..."
+            create_response=$(curl -s -w "\n%{http_code}" -X POST \
+              "$SUPABASE_URL/storage/v1/bucket" \
+              -H "Authorization: Bearer $SUPABASE_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "db-backups",
+                "public": false,
+                "file_size_limit": 5368709120,
+                "allowed_mime_types": ["application/gzip", "application/x-gzip"]
+              }')
+            
+            create_code=$(echo "$create_response" | tail -n1)
+            create_body=$(echo "$create_response" | sed '$d')
+            
+            if [ "$create_code" -eq 200 ] || [ "$create_code" -eq 201 ]; then
+              echo "✓ Successfully created db-backups bucket"
+            else
+              echo "✗ Failed to create bucket (HTTP $create_code)"
+              echo "Response: $create_body"
+              exit 1
+            fi
+          fi
+
       - name: Upload to Supabase Storage
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "Uploading backup to Supabase Storage..."
           echo "File: ${{ env.FILENAME }}"
           echo "Destination: db-backups/${{ env.FILENAME }}"
 
           response=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/db-backups/${{ env.FILENAME }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            "$SUPABASE_URL/storage/v1/object/db-backups/${{ env.FILENAME }}" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
             -H "Content-Type: application/gzip" \
             --data-binary "@${{ env.FILENAME }}")
 
@@ -296,7 +340,7 @@ jobs:
 
           if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
             echo "✓ Successfully uploaded to Supabase Storage (HTTP $http_code)"
-            echo "Backup URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/public/db-backups/${{ env.FILENAME }}"
+            echo "Backup URL: $SUPABASE_URL/storage/v1/object/db-backups/${{ env.FILENAME }}"
           else
             echo "✗ Failed to upload to Supabase Storage (HTTP $http_code)"
             echo "Response: $body"
