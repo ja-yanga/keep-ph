@@ -708,3 +708,30 @@ export async function adminCreateAssignedLocker(args: {
 
   return data;
 }
+
+export async function adminRestoreMailboxItem(id: string) {
+  const { data, error } = await supabase.rpc("admin_restore_mailbox_item", {
+    input_data: { id },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+
+export async function adminPermanentDeleteMailboxItem(id: string) {
+  const { data, error } = await supabase.rpc(
+    "admin_permanent_delete_mailbox_item",
+    {
+      input_data: { id },
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
