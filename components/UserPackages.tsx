@@ -53,6 +53,8 @@ type PackageShape = {
     url?: string;
     mailbox_item_id?: string;
   }>;
+  mailbox_item_locker_code?: string;
+  location_locker_code?: string;
   locker_id?: string;
   locker?: { locker_code?: string };
   status?: string;
@@ -1112,7 +1114,10 @@ export default function UserPackages({
     const receivedDate = pkg.received_at;
     const isDocument = type === "Document";
 
-    let lockerCode = pkg.locker?.locker_code;
+    let lockerCode =
+      pkg.locker?.locker_code ??
+      pkg.location_locker_code ??
+      pkg.mailbox_item_locker_code;
     if (!lockerCode && pkg.locker_id && Array.isArray(lockers)) {
       const assigned = lockers.find((l) => l.id === pkg.locker_id);
       if (assigned) lockerCode = assigned.locker_code;
