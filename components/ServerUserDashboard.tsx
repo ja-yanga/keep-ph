@@ -2,7 +2,7 @@
 import React from "react";
 import { cookies } from "next/headers";
 import UserDashboard from "./UserDashboard";
-import type { RawRow } from "@/utils/types/types";
+import type { RawRow } from "@/utils/types";
 
 export default async function ServerUserDashboard() {
   // build cookie header to forward auth
