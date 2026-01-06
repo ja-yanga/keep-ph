@@ -150,45 +150,6 @@ BEGIN
 END;
 $$;
 
--- RPC to permanently delete package
-CREATE OR REPLACE FUNCTION public.admin_permanent_delete_mailbox_item(input_data JSONB)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO ''
-AS $$
-DECLARE
-  var_item_id UUID;
-  var_package_name TEXT;
-  var_return_data JSONB;
-BEGIN
-  var_item_id := (input_data->>'id')::UUID;
-
-  -- Delete from mailroom_file_table first (due to FK)
-  DELETE FROM public.mailroom_file_table WHERE mailbox_item_id = var_item_id;
-  
-  -- Delete from mail_action_request_table (due to FK)
-  DELETE FROM public.mail_action_request_table WHERE mailbox_item_id = var_item_id;
-
-  DELETE FROM public.mailbox_item_table
-  WHERE mailbox_item_id = var_item_id
-  RETURNING mailbox_item_name INTO var_package_name;
-
-  IF var_package_name IS NULL THEN
-    RAISE EXCEPTION 'Package not found';
-  END IF;
-
-  var_return_data := JSONB_BUILD_OBJECT(
-    'success', TRUE,
-    'package_name', var_package_name,
-    'deleted_forever_at', NOW()
-  );
-
-  RETURN var_return_data;
-END;
-$$;
-
 -- Grant permissions
 GRANT EXECUTE ON FUNCTION public.get_admin_archived_packages(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_restore_mailbox_item(JSONB) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_permanent_delete_mailbox_item(JSONB) TO authenticated;
