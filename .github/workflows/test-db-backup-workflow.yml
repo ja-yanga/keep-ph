@@ -38,24 +38,52 @@ jobs:
 
       - name: Dump roles
         run: |
+          echo "Dumping database roles..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
             --role-only \
-            -f backups/roles.sql
+            -f backups/roles.sql || {
+              echo "Error: Failed to dump roles"
+              exit 1
+            }
+          echo "✓ Roles dumped successfully"
+          ls -lh backups/roles.sql
 
       - name: Dump schema
         run: |
+          echo "Dumping database schema..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
-            -f backups/schema.sql
+            -f backups/schema.sql || {
+              echo "Error: Failed to dump schema"
+              exit 1
+            }
+          echo "✓ Schema dumped successfully"
+          ls -lh backups/schema.sql
 
       - name: Dump data
         run: |
+          echo "Dumping database data..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
             --data-only \
             --use-copy \
-            -f backups/data.sql
+            -f backups/data.sql || {
+              echo "Error: Failed to dump data"
+              echo "This might happen if:"
+              echo "1. Database connection failed"
+              echo "2. Database has no data"
+              echo "3. Connection pooler timeout (use Session mode)"
+              exit 1
+            }
+          echo "✓ Data dumped successfully"
+          ls -lh backups/data.sql
+          echo ""
+          echo "Data file size: $(du -h backups/data.sql | cut -f1)"
+          echo "Data file line count: $(wc -l < backups/data.sql)"
+          if [ ! -s backups/data.sql ]; then
+            echo "⚠ Warning: data.sql file is empty or doesn't exist"
+          fi
 
       # -------------------------------
       # Backup Storage Buckets
@@ -180,15 +208,33 @@ jobs:
 
       - name: Verify backup files
         run: |
+          echo "=== Backup Verification ==="
+          echo ""
           echo "Backup created: ${{ env.FILENAME }}"
           ls -lh ${{ env.FILENAME }}
           echo ""
           echo "Backup size: $(du -h ${{ env.FILENAME }} | cut -f1)"
           echo ""
-          echo "Contents of backup (first 30 entries):"
+          echo "=== Individual File Sizes (before compression) ==="
+          echo "Roles: $(du -h backups/roles.sql 2>/dev/null | cut -f1 || echo 'NOT FOUND')"
+          echo "Schema: $(du -h backups/schema.sql 2>/dev/null | cut -f1 || echo 'NOT FOUND')"
+          echo "Data: $(du -h backups/data.sql 2>/dev/null | cut -f1 || echo 'NOT FOUND')"
+          echo ""
+          echo "=== Data File Details ==="
+          if [ -f backups/data.sql ]; then
+            echo "Data file exists: ✓"
+            echo "Data file size: $(du -h backups/data.sql | cut -f1)"
+            echo "Data file lines: $(wc -l < backups/data.sql)"
+            echo "First 5 lines of data.sql:"
+            head -5 backups/data.sql || echo "  (file is empty or unreadable)"
+          else
+            echo "Data file exists: ✗ NOT FOUND"
+          fi
+          echo ""
+          echo "=== Backup Contents (first 30 entries) ==="
           tar -tzf ${{ env.FILENAME }} | head -30
           echo ""
-          echo "Backup structure:"
+          echo "=== Backup Structure ==="
           echo "- Database files:"
           tar -tzf ${{ env.FILENAME }} | grep -E '^(backups/)?(roles|schema|data)\.sql$' || echo "  (none found)"
           echo "- Storage buckets:"
