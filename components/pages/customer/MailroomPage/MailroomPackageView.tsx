@@ -17,8 +17,6 @@ import {
 } from "@mantine/core";
 import { IconArrowLeft, IconRefresh } from "@tabler/icons-react";
 import Link from "next/link";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import type {
   MailroomPackageViewItem,
   MailroomPackageViewProps,
@@ -36,6 +34,7 @@ import {
   getSubscriptionExpiry,
   isRecord,
 } from "./utils";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function MailroomPackageView({
   item,
@@ -641,15 +640,7 @@ export default function MailroomPackageView({
     if (error || !item) return <MailroomError error={error} />;
 
     return (
-      <Box
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#F8F9FA",
-        }}
-      >
-        <DashboardNav />
+      <PrivateMainLayout>
         <main style={{ flex: 1 }}>
           <Container size="xl" py="xl">
             <Stack gap="lg" mb="xl">
@@ -718,8 +709,7 @@ export default function MailroomPackageView({
             </Grid>
           </Container>
         </main>
-        <Footer />
-      </Box>
+      </PrivateMainLayout>
     );
   })();
 

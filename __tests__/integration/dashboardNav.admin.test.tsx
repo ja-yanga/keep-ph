@@ -1,8 +1,9 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
+import PrivateNavigationHeader from "@/components/Layout/PrivateNavigationHeader";
 
-// mock next/navigation and session BEFORE importing DashboardNav so client hooks don't run
+// mock next/navigation and session BEFORE importing PrivateNavigationHeader so client hooks don't run
 const pushMock = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
@@ -28,8 +29,6 @@ jest.mock("@/lib/supabase/client", () => ({
     }),
   }),
 }));
-
-import DashboardNav from "@/components/DashboardNav";
 
 // Minimal polyfills for Mantine in JSDOM
 class ResizeObserver {
@@ -57,7 +56,7 @@ if (typeof global.matchMedia === "undefined") {
   });
 }
 
-describe("DashboardNav (admin) — admin role", () => {
+describe("PrivateNavigationHeader (admin) — admin role", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -65,7 +64,7 @@ describe("DashboardNav (admin) — admin role", () => {
   it("renders admin navigation items", async () => {
     render(
       <MantineProvider>
-        <DashboardNav />
+        <PrivateNavigationHeader />
       </MantineProvider>,
     );
 
@@ -84,7 +83,7 @@ describe("DashboardNav (admin) — admin role", () => {
   it("admin nav links have expected hrefs (no router push from anchors)", async () => {
     render(
       <MantineProvider>
-        <DashboardNav />
+        <PrivateNavigationHeader />
       </MantineProvider>,
     );
 
@@ -108,7 +107,7 @@ describe("DashboardNav (admin) — admin role", () => {
   it("does not render user-only notifications control for admin role", async () => {
     render(
       <MantineProvider>
-        <DashboardNav />
+        <PrivateNavigationHeader />
       </MantineProvider>,
     );
 

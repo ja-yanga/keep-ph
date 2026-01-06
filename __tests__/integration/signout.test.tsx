@@ -1,8 +1,7 @@
-import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import DashboardNav from "@/components/DashboardNav";
 import { MantineProvider } from "@mantine/core";
+import PrivateNavigationHeader from "@/components/Layout/PrivateNavigationHeader";
 
 const pushMock = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -20,7 +19,7 @@ global.fetch = jest.fn().mockResolvedValue({
 test("logout calls signout endpoint, supabase signOut and redirects", async () => {
   render(
     <MantineProvider>
-      <DashboardNav />
+      <PrivateNavigationHeader />
     </MantineProvider>,
   );
   await userEvent.click(screen.getByRole("button", { name: /Logout/i }));

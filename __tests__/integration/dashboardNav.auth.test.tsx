@@ -1,11 +1,10 @@
-import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import DashboardNav from "@/components/DashboardNav";
 import { MantineProvider } from "@mantine/core";
+import PrivateNavigationHeader from "@/components/Layout/PrivateNavigationHeader";
 
 /**
- * Integration tests for DashboardNav (authenticated area).
+ * Integration tests for PrivateNavigationHeader (authenticated area).
  *
  * What it covers:
  * - Rendering of authenticated nav links (Dashboard, Register Mail Service, Referrals, Storage)
@@ -20,14 +19,14 @@ import { MantineProvider } from "@mantine/core";
 const pushMock = jest.fn();
 const usePathnameMock = jest.fn();
 
-// Mock next/navigation used by DashboardNav
+// Mock next/navigation used by PrivateNavigationHeader
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => usePathnameMock(),
 }));
 
 // Provide a stable "authenticated" session for tests
-// This stub makes DashboardNav behave as if a logged-in user is present.
+// This stub makes PrivateNavigationHeader behave as if a logged-in user is present.
 jest.mock("@/components/SessionProvider", () => ({
   useSession: () => ({
     session: {
@@ -131,7 +130,7 @@ if (typeof global.matchMedia === "undefined") {
 }
 
 /**
- * Test suite: DashboardNav (authenticated area)
+ * Test suite: PrivateNavigationHeader (authenticated area)
  *
  * Covers:
  * - rendering expected user links
@@ -140,7 +139,7 @@ if (typeof global.matchMedia === "undefined") {
  * - marking notifications read (calls update)
  * - logout flow (calls signout endpoint, supabase.auth.signOut, and redirects)
  */
-describe("DashboardNav (authenticated) — user role", () => {
+describe("PrivateNavigationHeader (authenticated) — user role", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     usePathnameMock.mockReturnValue("/dashboard");
@@ -174,7 +173,7 @@ describe("DashboardNav (authenticated) — user role", () => {
     // Render inside MantineProvider so Mantine hooks/components work in JSDOM
     render(
       <MantineProvider>
-        <DashboardNav />
+        <PrivateNavigationHeader />
       </MantineProvider>,
     );
 
@@ -193,33 +192,34 @@ describe("DashboardNav (authenticated) — user role", () => {
     expect(channelOnMock).toHaveBeenCalled();
   });
 
-  it("marks notifications as read when popover is closed and calls DB update", async () => {
-    render(
-      <MantineProvider>
-        <DashboardNav />
-      </MantineProvider>,
-    );
+  // HIDE THIS TEST SINCE WE SEPARATED THE COMPONENT FOR NOTIFICATIONS
+  // it("marks notifications as read when popover is closed and calls DB update", async () => {
+  //   render(
+  //     <MantineProvider>
+  //       <PrivateNavigationHeader />
+  //     </MantineProvider>,
+  //   );
 
-    // Open notifications popover (ActionIcon uses aria-label="notifications")
-    const notifBtn = await screen.findByLabelText("notifications");
-    await userEvent.click(notifBtn);
+  //   // Open notifications popover (ActionIcon uses aria-label="notifications")
+  //   const notifBtn = await screen.findByLabelText("notifications");
+  //   await userEvent.click(notifBtn);
 
-    // Popover content may render in a portal; ensure at least one "Notifications" node appears.
-    const headers = await screen.findAllByText(/Notifications/i);
-    expect(headers.length).toBeGreaterThan(0);
+  //   // Popover content may render in a portal; ensure at least one "Notifications" node appears.
+  //   const headers = await screen.findAllByText(/Notifications/i);
+  //   expect(headers.length).toBeGreaterThan(0);
 
-    // Close the popover by clicking outside
-    await userEvent.click(document.body);
-    // Ensure popover content is removed/hidden after clicking outside
-    await waitFor(() =>
-      expect(screen.queryByText(/Notifications/i)).toBeNull(),
-    );
-  });
+  //   // Close the popover by clicking outside
+  //   await userEvent.click(document.body);
+  //   // Ensure popover content is removed/hidden after clicking outside
+  //   await waitFor(() =>
+  //     expect(screen.queryByText(/Notifications/i)).toBeNull(),
+  //   );
+  // });
 
   it("logs out: calls signout endpoint, supabase.auth.signOut and redirects to signin", async () => {
     render(
       <MantineProvider>
-        <DashboardNav />
+        <PrivateNavigationHeader />
       </MantineProvider>,
     );
 
@@ -238,7 +238,7 @@ describe("DashboardNav (authenticated) — user role", () => {
   it("nav links point to expected routes (hrefs) or trigger router.push", async () => {
     render(
       <MantineProvider>
-        <DashboardNav />
+        <PrivateNavigationHeader />
       </MantineProvider>,
     );
 
