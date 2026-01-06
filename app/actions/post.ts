@@ -661,3 +661,198 @@ export async function adminCreateAssignedLocker(args: {
 
   return data;
 }
+
+/**
+ * Releases a mailroom package with proof of release.
+ * Used in:
+ * - app/api/admin/mailroom/release/route.ts - API endpoint for releasing packages
+ */
+export async function adminReleaseMailroomPackage(args: {
+  file: File;
+  packageId: string;
+  lockerStatus?: string | null;
+  notes?: string | null;
+  selectedAddressId?: string | null;
+  releaseToName?: string | null;
+}): Promise<{ success: boolean }> {
+  const supabaseAdmin = createSupabaseServiceClient();
+
+  const { packageId, file, lockerStatus, selectedAddressId, releaseToName } =
+    args;
+
+  if (!file || !packageId) {
+    throw new Error("File and package ID are required");
+  }
+
+  // Fetch package to get registration_id for address validation & notification
+  const { data: pkgRow, error: pkgRowErr } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .select("mailbox_item_id, mailroom_registration_id, mailbox_item_name")
+    .eq("mailbox_item_id", packageId.trim())
+    .single();
+
+  if (pkgRowErr || !pkgRow) {
+    console.error("[release] Package lookup failed:", {
+      packageId,
+      error: pkgRowErr,
+      found: !!pkgRow,
+    });
+    throw new Error(
+      `Package not found: ${pkgRowErr?.message || "Package does not exist"}`,
+    );
+  }
+
+  // Lookup registration to get the owning user_id
+  const { data: registrationRow, error: registrationErr } = await supabaseAdmin
+    .from("mailroom_registration_table")
+    .select("mailroom_registration_id, user_id")
+    .eq("mailroom_registration_id", pkgRow.mailroom_registration_id)
+    .single();
+
+  if (registrationErr || !registrationRow) {
+    console.warn(
+      "[release] registration not found for package",
+      pkgRow.mailbox_item_id,
+      pkgRow.mailroom_registration_id,
+    );
+  }
+
+  // If selectedAddressId was provided, validate ownership and prepare snapshot fields
+  let releaseAddressId: string | null = null;
+  let releaseAddressText: string | null = null;
+  let finalReleaseToName: string | null = releaseToName || null;
+
+  if (selectedAddressId) {
+    const { data: addr, error: addrErr } = await supabaseAdmin
+      .from("user_address_table")
+      .select(
+        "user_address_id, user_id, user_address_label, user_address_contact_name, user_address_line1, user_address_line2, user_address_city, user_address_region, user_address_postal, user_address_is_default",
+      )
+      .eq("user_address_id", selectedAddressId)
+      .single();
+
+    if (addrErr || !addr) {
+      throw new Error("Selected address not found");
+    }
+
+    // Ensure address belongs to the registration's user
+    const ownerUserId = registrationRow?.user_id ?? null;
+    if (ownerUserId && String(addr.user_id) !== String(ownerUserId)) {
+      throw new Error("Address does not belong to this registration's user");
+    }
+
+    releaseAddressId = addr.user_address_id;
+    if (!finalReleaseToName) {
+      finalReleaseToName = addr.user_address_contact_name ?? null;
+    }
+    releaseAddressText = [
+      addr.user_address_label ?? "",
+      addr.user_address_line1 ?? "",
+      addr.user_address_line2 ?? "",
+      addr.user_address_city ?? "",
+      addr.user_address_region ?? "",
+      addr.user_address_postal ?? "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  const BUCKET_NAME = "MAILROOM-PROOFS";
+
+  // Ensure bucket exists
+  const { data: buckets } = await supabaseAdmin.storage.listBuckets();
+  if (!buckets?.find((b) => b.name === BUCKET_NAME)) {
+    console.log(`Bucket ${BUCKET_NAME} not found, creating...`);
+    await supabaseAdmin.storage.createBucket(BUCKET_NAME, {
+      public: true,
+      fileSizeLimit: 10485760, // 10MB
+      allowedMimeTypes: ["image/png", "image/jpeg", "image/jpg"],
+    });
+  }
+
+  // Upload File
+  const fileExt = file.name.split(".").pop();
+  const fileName = `proof-${packageId}-${Date.now()}.${fileExt}`;
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(BUCKET_NAME)
+    .upload(fileName, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error(`File upload failed: ${uploadError.message}`);
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+
+  // Update Package Status and snapshot release address/name if provided
+  const updatePayload: Record<string, unknown> = {
+    mailbox_item_status: "RELEASED",
+    mailbox_item_photo: publicUrl,
+  };
+
+  if (releaseAddressId) {
+    updatePayload.user_address_id = releaseAddressId;
+    updatePayload.mailbox_item_release_address = releaseAddressText;
+  }
+
+  const { data: pkg, error: updateError } = await supabaseAdmin
+    .from("mailbox_item_table")
+    .update(updatePayload)
+    .eq("mailbox_item_id", packageId)
+    .select("mailbox_item_id, mailroom_registration_id, mailbox_item_name")
+    .single();
+
+  if (updateError) {
+    throw new Error(`Failed to update package: ${updateError.message}`);
+  }
+
+  // Update Locker Status
+  if (lockerStatus && pkg.mailroom_registration_id) {
+    const { error: lockerError } = await supabaseAdmin
+      .from("mailroom_assigned_locker_table")
+      .update({ mailroom_assigned_locker_status: lockerStatus })
+      .eq("mailroom_registration_id", pkg.mailroom_registration_id);
+
+    if (lockerError) {
+      console.error("Failed to update locker status:", lockerError);
+      // Don't throw - allow release to succeed even if locker update fails
+    }
+  }
+
+  // Notify user
+  if (pkg?.mailroom_registration_id) {
+    try {
+      const { data: registration, error: regErr } = await supabaseAdmin
+        .from("mailroom_registration_table")
+        .select("user_id, mailroom_registration_code")
+        .eq("mailroom_registration_id", pkg.mailroom_registration_id)
+        .single();
+
+      if (regErr) {
+        console.error("Failed to fetch registration for notification:", regErr);
+      } else if (registration?.user_id) {
+        try {
+          await sendNotification(
+            registration.user_id,
+            "Package Released",
+            `Your package (${
+              pkg.mailbox_item_name || "Unknown"
+            }) has been released and is ready for pickup.`,
+            "PACKAGE_RELEASED",
+            `/mailroom/${pkg.mailroom_registration_id}`,
+          );
+        } catch (notifyErr) {
+          console.error("sendNotification failed for release:", notifyErr);
+        }
+      }
+    } catch (e) {
+      console.error("Notification flow failed:", e);
+    }
+  }
+
+  return { success: true };
+}

@@ -466,7 +466,8 @@ export default function MailroomPackages() {
     }
 
     // Status is always STORED for new packages
-    const finalStatus = editingPackage ? formData.status : "STORED";
+    // When editing, preserve the original status (status cannot be changed via edit modal)
+    const finalStatus = editingPackage ? editingPackage.status : "STORED";
 
     // Photo is required (either newly selected or existing on editingPackage)
     if (
@@ -710,8 +711,17 @@ export default function MailroomPackages() {
   };
 
   const handleSubmitRelease = async () => {
-    if (!releaseFile || !packageToRelease) return;
-    // Determine final address id to send:
+    if (!releaseFile || !packageToRelease) {
+      setFormError("Missing file or package information");
+      return;
+    }
+
+    if (!packageToRelease.id) {
+      setFormError("Package ID is missing. Please try refreshing the page.");
+      return;
+    }
+
+    // Determine final address id to send (optional):
     // priority: selectedAddressId (if previously set) -> package snapshot -> user's default address
     const finalAddressId =
       selectedAddressId ??
@@ -719,34 +729,41 @@ export default function MailroomPackages() {
       addresses.find((a) => a.is_default)?.id ??
       null;
 
-    if (!finalAddressId) {
-      notifications.show({
-        title: "Address required",
-        message:
-          "No shipping address available for this package. Add a default address for the user or set a release address first.",
-        color: "red",
-      });
-      return;
-    }
-
     setIsReleasing(true);
     setFormError(null);
 
     try {
+      console.log("[release] Submitting release:", {
+        packageId: packageToRelease.id,
+        packageName: packageToRelease.package_name,
+        hasFile: !!releaseFile,
+        lockerStatus: lockerCapacity,
+      });
+
       const formData = new FormData();
       formData.append("file", releaseFile);
       formData.append("packageId", packageToRelease.id);
       formData.append("lockerStatus", lockerCapacity);
       if (releaseNote) formData.append("notes", releaseNote);
-      formData.append("selectedAddressId", finalAddressId);
-      // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
-      const sel = addresses.find((a) => a.id === finalAddressId);
-      const snapshotName =
-        packageToRelease.release_to_name ??
-        sel?.contact_name ??
-        packageToRelease?.registration?.full_name ??
-        "";
-      if (snapshotName) formData.append("release_to_name", snapshotName);
+      // Only append address if available (address is optional)
+      if (finalAddressId) {
+        formData.append("selectedAddressId", finalAddressId);
+        // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
+        const sel = addresses.find((a) => a.id === finalAddressId);
+        const snapshotName =
+          packageToRelease.release_to_name ??
+          sel?.contact_name ??
+          packageToRelease?.registration?.full_name ??
+          "";
+        if (snapshotName) formData.append("release_to_name", snapshotName);
+      } else {
+        // If no address, still try to send the name from package snapshot or registration
+        const snapshotName =
+          packageToRelease.release_to_name ??
+          packageToRelease?.registration?.full_name ??
+          "";
+        if (snapshotName) formData.append("release_to_name", snapshotName);
+      }
 
       const res = await fetch("/api/admin/mailroom/release", {
         method: "POST",
@@ -754,8 +771,15 @@ export default function MailroomPackages() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Release failed");
+        const err = await res.json().catch(() => ({}));
+        const errorMsg = err.error || err.message || "Release failed";
+        const errorDetails = err.details ? `: ${err.details}` : "";
+        console.error("[release] API error:", {
+          status: res.status,
+          error: err,
+          packageId: packageToRelease.id,
+        });
+        throw new Error(`${errorMsg}${errorDetails}`);
       }
 
       setGlobalSuccess("Package released and locker status updated");
@@ -1314,18 +1338,6 @@ export default function MailroomPackages() {
               setFormData({ ...formData, package_type: val || "" })
             }
           />
-          {/* Status field - only show when editing, not when adding */}
-          {editingPackage && (
-            <Select
-              label="Status"
-              required
-              data={STATUSES}
-              value={formData.status}
-              onChange={(val) =>
-                setFormData({ ...formData, status: val || "STORED" })
-              }
-            />
-          )}
 
           {/* Locker Capacity Control - Only show when ADDING a package */}
           {!editingPackage && (

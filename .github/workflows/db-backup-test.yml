@@ -30,6 +30,37 @@ jobs:
         with:
           version: latest
 
+      - name: Verify database connection
+        run: |
+          echo "Testing database connection..."
+          # Check if connection string is set
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "Error: SUPABASE_DB_URL is not set"
+            exit 1
+          fi
+
+          # Verify connection string format
+          if echo "$SUPABASE_DB_URL" | grep -q "pooler"; then
+            echo "✓ Using connection pooler URL"
+            if echo "$SUPABASE_DB_URL" | grep -q ":5432"; then
+              echo "⚠ Warning: Using port 5432 (direct connection). For backups, use Session mode pooler (port 6543)"
+            elif echo "$SUPABASE_DB_URL" | grep -q ":6543"; then
+              echo "✓ Using pooler port 6543"
+            fi
+          else
+            echo "⚠ Warning: Not using connection pooler URL"
+            echo "For database backups, use the 'Session' mode connection string from Supabase dashboard"
+            echo "Format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres"
+            echo "Note: Session mode is recommended for long-running operations like backups"
+          fi
+
+          # Test basic connectivity
+          if command -v psql > /dev/null 2>&1; then
+            echo "Testing connection with psql..."
+            # Extract connection details and test (without exposing password)
+            echo "Connection test will be performed during dump"
+          fi
+
       - name: Set timestamp and filename
         run: |
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
@@ -180,8 +211,8 @@ jobs:
             
             # Extract bucket names using jq
             echo "$buckets_response" | jq -r '.[]?.name // empty' | while IFS= read -r bucket_name; do
-              if [ -n "$bucket_name" ] && [ "$bucket_name" != "db-backups" ]; then
-                # Skip the db-backups bucket to avoid backing up backups
+              if [ -n "$bucket_name" ] && [ "$bucket_name" != "DB-BACKUPS" ]; then
+                # Skip the DB-BACKUPS bucket to avoid backing up backups
                 backup_bucket "$bucket_name"
               fi
             done
@@ -245,26 +276,85 @@ jobs:
           echo ""
           echo "Total files in backup: $(tar -tzf ${{ env.FILENAME }} | wc -l)"
 
-      - name: Test Supabase Storage upload (dry-run)
+      # -------------------------------
+      # Upload to Supabase Storage
+      # -------------------------------
+      - name: Upload to Supabase Storage
         run: |
-          echo "Testing Supabase Storage upload..."
-          echo "Would upload: ${{ env.FILENAME }}"
-          echo "To: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/db-backups/${{ env.FILENAME }}"
-          # Uncomment below to actually test the upload
-          # curl -X POST \
-          #   "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/db-backups/${{ env.FILENAME }}" \
-          #   -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-          #   -H "Content-Type: application/gzip" \
-          #   --data-binary "@${{ env.FILENAME }}"
+          echo "Uploading backup to Supabase Storage..."
+          echo "File: ${{ env.FILENAME }}"
+          echo "Destination: DB-BACKUPS/${{ env.FILENAME }}"
 
-      - name: Test R2 upload (dry-run)
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/DB-BACKUPS/${{ env.FILENAME }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/gzip" \
+            --data-binary "@${{ env.FILENAME }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+            echo "✓ Successfully uploaded to Supabase Storage (HTTP $http_code)"
+            echo "Backup URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/public/DB-BACKUPS/${{ env.FILENAME }}"
+          else
+            echo "✗ Failed to upload to Supabase Storage (HTTP $http_code)"
+            echo "Response: $body"
+            exit 1
+          fi
+
+      # -------------------------------
+      # Upload to Cloudflare R2
+      # -------------------------------
+      - name: Install AWS CLI
         run: |
-          echo "Testing R2 upload..."
-          echo "Would upload: ${{ env.FILENAME }}"
-          echo "To: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
-          # Uncomment below to actually test the upload
-          # aws s3 cp \
-          #   ${{ env.FILENAME }} \
-          #   s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }} \
-          #   --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
-          #   --dryrun
+          if ! command -v aws &> /dev/null; then
+            echo "Installing AWS CLI..."
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            aws --version
+          else
+            echo "AWS CLI already installed"
+            aws --version
+          fi
+
+      - name: Upload to Cloudflare R2
+        env:
+          # R2 endpoint format: https://{account_id}.r2.cloudflarestorage.com
+          # Account ID should be set in R2_ACCOUNT_ID secret (e.g., 2cb950ce770f7b7ed02396ece33cfe75)
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          echo "Uploading backup to Cloudflare R2..."
+          echo "File: ${{ env.FILENAME }}"
+          echo "Endpoint: $R2_ENDPOINT"
+          echo "Destination: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
+
+          if aws s3 cp \
+            ${{ env.FILENAME }} \
+            s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }} \
+            --endpoint-url $R2_ENDPOINT; then
+            echo "✓ Successfully uploaded to Cloudflare R2"
+            echo "Backup location: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
+          else
+            echo "✗ Failed to upload to Cloudflare R2"
+            exit 1
+          fi
+
+      - name: Backup completion summary
+        run: |
+          echo "=== Backup Test Completed Successfully ==="
+          echo ""
+          echo "Backup file: ${{ env.FILENAME }}"
+          echo "Backup size: $(du -h ${{ env.FILENAME }} | cut -f1)"
+          echo ""
+          echo "Uploaded to:"
+          echo "  ✓ Supabase Storage: DB-BACKUPS/${{ env.FILENAME }}"
+          echo "  ✓ Cloudflare R2: s3://${{ secrets.R2_BUCKET }}/${{ env.FILENAME }}"
+          echo ""
+          echo "You can verify the backup by:"
+          echo "  1. Checking Supabase Storage dashboard for the 'DB-BACKUPS' bucket"
+          echo "  2. Checking Cloudflare R2 dashboard for your bucket"
