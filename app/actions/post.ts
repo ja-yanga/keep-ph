@@ -638,3 +638,26 @@ export async function upsertPaymentResource(payRes: {
 
   return { id: payId, orderId };
 }
+
+/**
+ * Creates a new locker assignment for admin via RPC.
+ * Used in:
+ * - app/api/admin/mailroom/assigned-lockers/route.ts - API endpoint for admin assigned lockers
+ */
+export async function adminCreateAssignedLocker(args: {
+  registration_id: string;
+  locker_id: string;
+}) {
+  const { data, error } = await supabase.rpc("admin_create_assigned_locker", {
+    input_data: {
+      registration_id: args.registration_id,
+      locker_id: args.locker_id,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
