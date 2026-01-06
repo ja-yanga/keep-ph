@@ -1314,18 +1314,6 @@ export default function MailroomPackages() {
               setFormData({ ...formData, package_type: val || "" })
             }
           />
-          {/* Status field - only show when editing, not when adding */}
-          {editingPackage && (
-            <Select
-              label="Status"
-              required
-              data={STATUSES}
-              value={formData.status}
-              onChange={(val) =>
-                setFormData({ ...formData, status: val || "STORED" })
-              }
-            />
-          )}
 
           {/* Locker Capacity Control - Only show when ADDING a package */}
           {!editingPackage && (
