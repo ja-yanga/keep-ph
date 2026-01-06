@@ -131,6 +131,11 @@ export default function MailroomPackages() {
 
   // Modal state
   const [opened, { open, close }] = useDisclosure(false);
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false);
+  const [packageToDelete, setPackageToDelete] = useState<string | null>(null);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
     package_name: "",
@@ -566,13 +571,21 @@ export default function MailroomPackages() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this package?")) return;
+  const handleDelete = (id: string) => {
+    setPackageToDelete(id);
+    openDeleteModal();
+  };
+
+  const confirmDelete = async () => {
+    if (!packageToDelete) return;
 
     try {
-      const res = await fetch(`/api/admin/mailroom/packages/${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/admin/mailroom/packages/${packageToDelete}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       if (!res.ok) throw new Error("Failed to delete");
 
@@ -585,6 +598,9 @@ export default function MailroomPackages() {
         message: "Failed to delete package",
         color: "red",
       });
+    } finally {
+      closeDeleteModal();
+      setPackageToDelete(null);
     }
   };
 
@@ -1183,10 +1199,32 @@ export default function MailroomPackages() {
 
       {/* Modals (Keep existing modals) */}
       <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Confirm Deletion"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete this package? This action cannot be
+            undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={closeDeleteModal}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
         opened={opened}
         onClose={close}
         title={editingPackage ? "Edit Package" : "Add Package"}
-        centered
+        size="lg"
       >
         <Stack>
           {/* FORM ERROR ALERT */}
