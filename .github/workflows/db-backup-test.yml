@@ -21,6 +21,9 @@ jobs:
 
       - name: Checkout repo
         uses: actions/checkout@v4
+        # Note: This workflow can run from any branch, but the workflow file
+        # must exist in that branch for it to appear in GitHub Actions UI.
+        # If you don't see this workflow, merge it from master to your branch.
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
