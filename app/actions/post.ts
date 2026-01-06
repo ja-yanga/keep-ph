@@ -235,38 +235,6 @@ export const requestRewardClaim = async ({
 };
 
 /**
- * Generates a unique mailroom registration code.
- */
-async function generateMailroomCode(): Promise<string> {
-  let mailroomCode = "";
-  let isUnique = false;
-  let attempts = 0;
-
-  while (!isUnique && attempts < 10) {
-    // use hex (base16) instead of base36
-    const randomStr = Math.random().toString(16).substring(2, 8).toUpperCase(); // 6 hex chars
-    mailroomCode = `KPH-${randomStr}`;
-
-    const { data: existing } = await supabase
-      .from("mailroom_registration_table")
-      .select("mailroom_registration_id")
-      .eq("mailroom_registration_code", mailroomCode)
-      .maybeSingle();
-
-    if (!existing) {
-      isUnique = true;
-    }
-    attempts++;
-  }
-
-  if (!isUnique) {
-    throw new Error("Failed to generate unique mailroom code");
-  }
-
-  return mailroomCode;
-}
-
-/**
  * Finalizes mailroom registration from payment webhook.
  * Uses the finalize_registration_from_payment RPC function.
  */
@@ -489,7 +457,23 @@ export async function adminCreateMailroomLocation(
 }
 
 /**
- * Creates a mailroom package (mailbox item) for admin.
+ * Generates a unique mailroom registration code via RPC.
+ */
+async function generateMailroomCode(): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    "generate_mailroom_registration_code",
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const result = data as { code: string };
+  return result.code;
+}
+
+/**
+ * Creates a mailroom package (mailbox item) for admin via RPC.
  * Used in:
  * - app/api/admin/mailroom/packages/route.ts - API endpoint for creating packages
  */
@@ -653,4 +637,27 @@ export async function upsertPaymentResource(payRes: {
   }
 
   return { id: payId, orderId };
+}
+
+/**
+ * Creates a new locker assignment for admin via RPC.
+ * Used in:
+ * - app/api/admin/mailroom/assigned-lockers/route.ts - API endpoint for admin assigned lockers
+ */
+export async function adminCreateAssignedLocker(args: {
+  registration_id: string;
+  locker_id: string;
+}) {
+  const { data, error } = await supabase.rpc("admin_create_assigned_locker", {
+    input_data: {
+      registration_id: args.registration_id,
+      locker_id: args.locker_id,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }

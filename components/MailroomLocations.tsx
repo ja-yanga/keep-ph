@@ -240,7 +240,7 @@ export default function MailroomLocations() {
         zip: values.zip || null,
       };
       const res = await fetch(
-        `/api/admin/mailroom/locations/${editLocation.id}`,
+        API_ENDPOINTS.admin.mailroom.location(editLocation.id),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
