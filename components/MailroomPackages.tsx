@@ -224,12 +224,6 @@ export default function MailroomPackages() {
   );
   const [isRestoring, setIsRestoring] = useState(false);
 
-  const [permanentDeleteModalOpen, setPermanentDeleteModalOpen] =
-    useState(false);
-  const [packageToPermanentDelete, setPackageToPermanentDelete] =
-    useState<Package | null>(null);
-  const [isPermanentlyDeleting, setIsPermanentlyDeleting] = useState(false);
-
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -684,38 +678,6 @@ export default function MailroomPackages() {
       setFormError(errorMessage);
     } finally {
       setIsDisposing(false);
-    }
-  };
-
-  const handleOpenPermanentDelete = (pkg: Package) => {
-    setPackageToPermanentDelete(pkg);
-    setPermanentDeleteModalOpen(true);
-  };
-
-  const handleSubmitPermanentDelete = async () => {
-    if (!packageToPermanentDelete) return;
-    setIsPermanentlyDeleting(true);
-    try {
-      const res = await fetch(
-        API_ENDPOINTS.admin.mailroom.permanentDelete(
-          packageToPermanentDelete.id,
-        ),
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Failed to delete forever");
-      setGlobalSuccess("Package permanently deleted");
-      setPermanentDeleteModalOpen(false);
-      await refreshAll();
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to delete forever";
-      notifications.show({
-        title: "Error",
-        message: errorMessage,
-        color: "red",
-      });
-    } finally {
-      setIsPermanentlyDeleting(false);
     }
   };
 
@@ -1218,7 +1180,7 @@ export default function MailroomPackages() {
             },
             {
               accessor: "received_at",
-              title: "Received",
+              title: activeTab === "archive" ? "Deleted At" : "Received",
               width: 150,
               render: ({ received_at }: Package) =>
                 dayjs(received_at).format("MMM D, YYYY"),
@@ -1243,15 +1205,6 @@ export default function MailroomPackages() {
                         >
                           Restore
                         </Button>
-                      </Tooltip>
-                      <Tooltip label="Delete Forever">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => handleOpenPermanentDelete(pkg)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
                       </Tooltip>
                     </>
                   )}
@@ -1330,36 +1283,6 @@ export default function MailroomPackages() {
           }
         />
       </Paper>
-
-      <Modal
-        opened={permanentDeleteModalOpen}
-        onClose={() => setPermanentDeleteModalOpen(false)}
-        title="Permanent Delete"
-        centered
-      >
-        <Stack>
-          <Alert color="red" icon={<IconTrash size={16} />}>
-            Are you sure you want to <b>permanently delete</b>{" "}
-            <b>{packageToPermanentDelete?.package_name}</b>? This action is
-            irreversible and will remove all related files and records.
-          </Alert>
-          <Group justify="flex-end" mt="md">
-            <Button
-              variant="default"
-              onClick={() => setPermanentDeleteModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              color="red"
-              onClick={handleSubmitPermanentDelete}
-              loading={isPermanentlyDeleting}
-            >
-              Delete Forever
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
 
       <Modal
         opened={restoreModalOpen}
