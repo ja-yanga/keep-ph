@@ -102,9 +102,10 @@ export const REFERRALS_UI = {
     },
   },
   progressCard: {
-    unlockedTitle: "Reward Unlocked! 🏆",
+    unlockedTitle: "Reward Unlocked! - ",
     progressTitle: "Referral Progress",
-    unlockedDescription: "Click below to claim your cash reward now!",
+    unlockedDescription:
+      "Click the Claim Reward button to claim your cash reward now!",
     progressDescription:
       "You need {remaining} more referrals to claim your reward.",
     buttons: {

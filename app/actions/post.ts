@@ -21,9 +21,12 @@ export async function getUserKYC(userId: string) {
     throw new Error("userId is required");
   }
 
-  const { data, error } = await supabase.rpc("get_user_kyc_by_user_id", {
-    input_user_id: userId,
-  });
+  const { data, error } = await supabase.rpc(
+    "get_user_kyc_with_populated_user",
+    {
+      input_user_id: userId,
+    },
+  );
 
   if (error) {
     throw error;
@@ -289,6 +292,7 @@ export async function finalizeRegistrationFromPayment(args: {
   lockerQty: number;
   months: number;
   amount: number;
+  referral_code?: string;
 }) {
   const { data, error } = await supabase.rpc(
     "finalize_registration_from_payment",
@@ -302,6 +306,7 @@ export async function finalizeRegistrationFromPayment(args: {
         locker_qty: args.lockerQty,
         months: args.months,
         amount: args.amount,
+        referral_code: args.referral_code || null,
       },
     },
   );
@@ -437,12 +442,18 @@ export async function validateReferralCode(args: {
  * Lists referrals for a user using the referral_list RPC.
  */
 export async function listReferrals(userId: string) {
-  const { data, error } = await supabase.rpc("referral_list", {
-    input_data: { user_id: userId },
-  });
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data, error } = await supabase.rpc("referral_list", {
+      input_data: { user_id: userId },
+    });
 
-  if (error) throw error;
-  return typeof data === "string" ? JSON.parse(data) : data;
+    if (error) throw error;
+    return typeof data === "string" ? JSON.parse(data) : data;
+  } catch (err) {
+    console.error("[listReferrals] error:", err);
+    throw err;
+  }
 }
 
 /**
@@ -625,6 +636,7 @@ export async function upsertPaymentResource(payRes: {
       plan_id?: string;
       locker_qty?: number;
       months?: number;
+      referral_code?: string;
     };
   };
 }) {
@@ -677,6 +689,7 @@ export async function upsertPaymentResource(payRes: {
       lockerQty: Math.max(1, Number(meta.locker_qty ?? 1)),
       months: Math.max(1, Number(meta.months ?? 1)),
       amount: Number(attrs?.amount ?? 0),
+      referral_code: meta.referral_code?.trim() || undefined,
     });
   } catch (finalErr) {
     console.error("[webhook] finalizeRegistrationFromPayment error:", finalErr);
@@ -903,6 +916,40 @@ export async function adminReleaseMailroomPackage(args: {
 
   return { success: true };
 }
+export const claimReferralRewards = async (
+  userId: string,
+  paymentMethod: string,
+  accountDetails: string,
+): Promise<{
+  success: boolean;
+  message: string;
+  payout: number;
+  milestones_claimed?: number;
+  total_claimed_milestones?: number;
+}> => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { data, error } = await supabase.rpc("claim_referral_rewards", {
+    input_user_id: userId,
+    input_payment_method: paymentMethod,
+    input_account_details: accountDetails,
+  });
+
+  if (error) {
+    console.error("Supabase RPC error in claimReferralRewards:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+
+  return data as {
+    success: boolean;
+    message: string;
+    payout: number;
+    milestones_claimed?: number;
+    total_claimed_milestones?: number;
+  };
+};
 
 export async function adminRestoreMailboxItem(id: string) {
   const { data, error } = await supabase.rpc("admin_restore_mailbox_item", {

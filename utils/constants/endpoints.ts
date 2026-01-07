@@ -62,6 +62,11 @@ export const API_ENDPOINTS = {
     claim: "/api/rewards/claim",
   },
 
+  // uploads
+  uploads: {
+    avatar: "/api/uploads/avatar",
+  },
+
   // Admin endpoints
   admin: {
     analytics: "/api/admin/analytics",

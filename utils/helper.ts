@@ -120,6 +120,7 @@ export const normalizeClaim = (
     processed_at: toStringOrNull(record.processed_at),
     proof_path: toStringOrNull(record.proof_path),
     proof_url: toStringOrNull(record.proof_url),
+    total_referrals: toNumberOrNull(record.total_referrals),
   };
 };
 
