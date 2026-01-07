@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, ElementType } from "react"; // Added ElementType
+import React, { useState, useEffect, useMemo, ElementType } from "react";
+import Image from "next/image";
+import { useMediaQuery } from "@mantine/hooks";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   Badge,
@@ -12,7 +14,6 @@ import {
   Text,
   Title,
   ActionIcon,
-  Tooltip,
   Modal,
   Loader,
   Center,
@@ -23,6 +24,8 @@ import {
   ThemeIcon,
   TextInput,
   UnstyledButton,
+  Divider,
+  Pagination, // Added Pagination
 } from "@mantine/core";
 import {
   IconFileText,
@@ -37,11 +40,15 @@ import {
   IconSortAscendingLetters,
   IconSortDescendingLetters,
   IconTrash,
+  IconScale,
 } from "@tabler/icons-react";
-import type { IconProps } from "@tabler/icons-react"; // Import IconProps for correct typing
+import type { IconProps } from "@tabler/icons-react";
 import { useSession } from "@/components/SessionProvider";
 
-// --- Interfaces (No Change) ---
+// --- Configuration ---
+const ITEMS_PER_PAGE = 10;
+
+// --- Interfaces ---
 type Scan = {
   id: string;
   file_name: string;
@@ -53,7 +60,7 @@ type Scan = {
     id?: string;
   };
   package_id?: string;
-  mime_type?: string; // ADDED: allow optional mime_type
+  mime_type?: string;
 };
 
 // --- Custom Sort Control Component ---
@@ -75,14 +82,11 @@ const SortControl: React.FC<SortControlProps> = ({
   const isSorted = currentSort === sortKey;
   const isAsc = currentDir === "asc";
 
-  // FIX: Type the SortIcon using ElementType and IconProps
   const SortIcon = useMemo<ElementType<IconProps> | undefined>(() => {
     if (!isSorted) return undefined;
-
     if (sortKey === "file_name") {
       return isAsc ? IconSortAscendingLetters : IconSortDescendingLetters;
     }
-    // For date and size (numeric/date-like)
     return isAsc ? IconArrowUp : IconArrowDown;
   }, [isSorted, isAsc, sortKey]);
 
@@ -95,7 +99,6 @@ const SortControl: React.FC<SortControlProps> = ({
         <Text fw={isSorted ? 700 : 600} size="sm">
           {label}
         </Text>
-        {/* FIX: Check if SortIcon exists before trying to render it */}
         {SortIcon && (
           <ThemeIcon size="sm" variant="transparent" color="blue">
             <SortIcon style={{ width: rem(14), height: rem(14) }} />
@@ -117,7 +120,6 @@ const fetcher = async (url: string) => {
   return Array.isArray(scansArr) ? scansArr : [];
 };
 
-// --- Main Component ---
 export default function AllUserScans() {
   const { session } = useSession();
   const [scans, setScans] = useState<Scan[]>([]);
@@ -127,13 +129,15 @@ export default function AllUserScans() {
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // confirm delete modal state
+  // Pagination State
+  const [activePage, setActivePage] = useState(1);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState<{
     id: string;
     name?: string;
   } | null>(null);
-  // SWR key depends on session readiness
+
   const swrKey = session?.user?.id ? "/api/user/storage" : null;
   const {
     data: apiScans,
@@ -141,22 +145,25 @@ export default function AllUserScans() {
     isValidating,
   } = useSWR<Scan[] | undefined>(swrKey, fetcher, { revalidateOnFocus: true });
 
-  // Search & sort state
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<
     "uploaded_at" | "file_name" | "file_size_mb"
   >("uploaded_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  // sync SWR results into local state (keeps existing delete/optimistic flows)
   useEffect(() => {
-    setLoading(Boolean(isValidating));
+    setLoading(Boolean(isValidating && scans.length === 0));
     if (Array.isArray(apiScans)) setScans(apiScans);
     if (swrError) {
       console.error("scans fetch error:", swrError);
       setScans([]);
     }
-  }, [apiScans, swrError, isValidating]);
+  }, [apiScans, swrError, isValidating, scans.length]);
+
+  // Reset to Page 1 when searching or sorting
+  useEffect(() => {
+    setActivePage(1);
+  }, [search, sortBy, sortDir]);
 
   const handlePreview = (scan: Scan) => {
     setSelected(scan);
@@ -180,18 +187,16 @@ export default function AllUserScans() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortBy(key);
-      setSortDir("desc"); // Default to descending when switching column
+      setSortDir("desc");
     }
   };
 
-  // open confirm modal
   const handleDelete = (scan?: Scan) => {
     if (!scan?.id) return;
     setToDelete({ id: scan.id, name: scan.file_name });
     setConfirmOpen(true);
   };
 
-  // perform actual delete after confirmation
   const performDelete = async () => {
     if (!toDelete?.id) return;
     const scanId = toDelete.id;
@@ -205,20 +210,8 @@ export default function AllUserScans() {
         headers: { Accept: "application/json" },
       });
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        let body: { error?: string; message?: string; raw?: string } = {};
-        try {
-          body = text ? JSON.parse(text) : {};
-        } catch {
-          body = { raw: text };
-        }
-        throw new Error(
-          body?.error || body?.message || `Delete failed (${res.status})`,
-        );
-      }
+      if (!res.ok) throw new Error("Delete failed");
 
-      // optimistic update locally and update SWR cache without immediate revalidate
       setScans((prev) => prev.filter((s) => s.id !== scanId));
       if (swrKey) {
         swrMutate(
@@ -229,7 +222,6 @@ export default function AllUserScans() {
       }
     } catch (e: unknown) {
       console.error("delete failed", e);
-      // keep UI simple and non-blocking
     } finally {
       setDeletingId(null);
       setToDelete(null);
@@ -239,7 +231,7 @@ export default function AllUserScans() {
   const formatFileSize = (mb: number) =>
     mb < 1 ? `${(mb * 1024).toFixed(0)} KB` : `${mb.toFixed(2)} MB`;
 
-  // Filter + sort results
+  // --- Filtering & Sorting Logic ---
   const displayedScans = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = scans.slice();
@@ -247,7 +239,6 @@ export default function AllUserScans() {
     if (q) {
       list = list.filter((s) => {
         const name = (s.file_name || "").toLowerCase();
-
         const pkgName = (s.package?.package_name || "").toLowerCase();
         const pkgId = (s.package_id || "").toLowerCase();
         return name.includes(q) || pkgName.includes(q) || pkgId.includes(q);
@@ -256,16 +247,15 @@ export default function AllUserScans() {
 
     list.sort((a, b) => {
       if (sortBy === "file_name") {
-        const A = (a.file_name || "").toLowerCase();
-        const B = (b.file_name || "").toLowerCase();
-        return sortDir === "asc" ? A.localeCompare(B) : B.localeCompare(A);
+        return sortDir === "asc"
+          ? a.file_name.localeCompare(b.file_name)
+          : b.file_name.localeCompare(a.file_name);
       }
       if (sortBy === "file_size_mb") {
-        const A = Number(a.file_size_mb || 0);
-        const B = Number(b.file_size_mb || 0);
-        return sortDir === "asc" ? A - B : B - A;
+        return sortDir === "asc"
+          ? a.file_size_mb - b.file_size_mb
+          : b.file_size_mb - a.file_size_mb;
       }
-      // uploaded_at (default)
       const A = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
       const B = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
       return sortDir === "asc" ? A - B : B - A;
@@ -274,289 +264,366 @@ export default function AllUserScans() {
     return list;
   }, [scans, search, sortBy, sortDir]);
 
+  // --- Pagination Logic ---
+  const totalPages = Math.ceil(displayedScans.length / ITEMS_PER_PAGE);
+  const paginatedScans = useMemo(() => {
+    const start = (activePage - 1) * ITEMS_PER_PAGE;
+    return displayedScans.slice(start, start + ITEMS_PER_PAGE);
+  }, [displayedScans, activePage]);
+
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
+  // --- RENDERING MAIN CONTENT ---
+  let mainContent: React.ReactNode;
+  if (loading) {
+    mainContent = (
+      <Center py="xl" h={200}>
+        <Loader size="sm" />
+      </Center>
+    );
+  } else if (isMobile) {
+    mainContent = (
+      <Stack gap="md">
+        {paginatedScans.length > 0 ? (
+          paginatedScans.map((s) => (
+            <Paper key={s.id} p="md" radius="md" withBorder shadow="xs">
+              <Stack gap="xs">
+                <Group wrap="nowrap" align="flex-start" gap="sm">
+                  <Avatar size={42} radius="md" color="blue" variant="light">
+                    <IconFileText size={20} />
+                  </Avatar>
+                  <Box style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      fw={700}
+                      size="sm"
+                      style={{ wordBreak: "break-word", lineHeight: 1.2 }}
+                    >
+                      {s.file_name}
+                    </Text>
+                    <Text size="xs" c="dimmed" mt={2}>
+                      {s.package?.package_name ||
+                        (s.package_id
+                          ? `PKG-${s.package_id.slice(0, 8)}`
+                          : "No Package")}
+                    </Text>
+                  </Box>
+                </Group>
+                <Group justify="space-between" mt={4}>
+                  <Group gap={4}>
+                    <IconScale size={14} color="gray" />
+                    <Text size="xs" fw={500}>
+                      {formatFileSize(Number(s.file_size_mb ?? 0))}
+                    </Text>
+                  </Group>
+                  <Group gap={4}>
+                    <IconCalendar size={14} color="gray" />
+                    <Text size="xs" c="dimmed">
+                      {s.uploaded_at
+                        ? new Date(s.uploaded_at).toLocaleDateString()
+                        : "—"}
+                    </Text>
+                  </Group>
+                </Group>
+                <Divider variant="dashed" my={4} />
+                <Group gap="xs" grow>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconEye size={14} />}
+                    onClick={() => handlePreview(s)}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color="green"
+                    component="a"
+                    href={s.file_url}
+                    download={s.file_name}
+                    leftSection={<IconDownload size={14} />}
+                  >
+                    Get
+                  </Button>
+                  <ActionIcon
+                    size="lg"
+                    color="red"
+                    variant="light"
+                    onClick={() => handleDelete(s)}
+                    disabled={deletingId === s.id}
+                  >
+                    <IconTrash size={18} />
+                  </ActionIcon>
+                </Group>
+              </Stack>
+            </Paper>
+          ))
+        ) : (
+          <Center py="xl">
+            <Text c="dimmed">No files match your criteria.</Text>
+          </Center>
+        )}
+      </Stack>
+    );
+  } else {
+    mainContent = (
+      <Table
+        stickyHeader
+        striped
+        highlightOnHover
+        withTableBorder
+        verticalSpacing="sm"
+      >
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th style={{ minWidth: rem(300) }}>
+              <SortControl
+                label="File"
+                sortKey="file_name"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onClick={handleSortClick}
+              />
+            </Table.Th>
+            <Table.Th style={{ minWidth: rem(150) }}>Package / Source</Table.Th>
+            <Table.Th>
+              <SortControl
+                label="Size"
+                sortKey="file_size_mb"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onClick={handleSortClick}
+              />
+            </Table.Th>
+            <Table.Th style={{ minWidth: rem(180) }}>
+              <SortControl
+                label="Uploaded"
+                sortKey="uploaded_at"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onClick={handleSortClick}
+              />
+            </Table.Th>
+            <Table.Th>Actions</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {paginatedScans.map((s) => (
+            <Table.Tr key={s.id}>
+              <Table.Td>
+                <Group gap="sm" wrap="nowrap">
+                  <Avatar size={36} radius="sm" color="blue" variant="light">
+                    <IconFileText size={18} />
+                  </Avatar>
+                  <Box style={{ maxWidth: rem(250) }}>
+                    <Text fw={600} size="sm" truncate>
+                      {s.file_name}
+                    </Text>
+                  </Box>
+                </Group>
+              </Table.Td>
+              <Table.Td>
+                {s.package?.package_name ? (
+                  <Badge variant="outline" color="gray" size="sm">
+                    {s.package.package_name}
+                  </Badge>
+                ) : (
+                  <Text size="sm" c="dimmed">
+                    —
+                  </Text>
+                )}
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm" c="dimmed">
+                  {formatFileSize(Number(s.file_size_mb ?? 0))}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">
+                  {s.uploaded_at
+                    ? new Date(s.uploaded_at).toLocaleDateString()
+                    : "—"}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Group gap="xs" wrap="nowrap">
+                  <ActionIcon
+                    variant="light"
+                    color="blue"
+                    onClick={() => handlePreview(s)}
+                  >
+                    <IconEye size={18} />
+                  </ActionIcon>
+                  <ActionIcon
+                    component="a"
+                    href={s.file_url}
+                    download={s.file_name}
+                    variant="light"
+                    color="green"
+                  >
+                    <IconDownload size={18} />
+                  </ActionIcon>
+                  <ActionIcon
+                    color="red"
+                    variant="light"
+                    onClick={() => handleDelete(s)}
+                    disabled={deletingId === s.id}
+                  >
+                    <IconTrash size={18} />
+                  </ActionIcon>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+          {paginatedScans.length === 0 && (
+            <Table.Tr>
+              <Table.Td colSpan={5}>
+                <Center py={40}>
+                  <Text c="dimmed">No files found.</Text>
+                </Center>
+              </Table.Td>
+            </Table.Tr>
+          )}
+        </Table.Tbody>
+      </Table>
+    );
+  }
+
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        padding: "24px",
-      }}
-      bg="gray.0"
-    >
-      <Paper p="lg" radius="md" withBorder shadow="sm">
-        {/* Header */}
-        <Group justify="space-between" mb="md" align="center">
-          <Group gap="sm">
-            <ThemeIcon variant="light" color="gray" size="lg">
-              <IconDatabase style={{ width: rem(20), height: rem(20) }} />
-            </ThemeIcon>
-            <div>
-              <Title order={3}>Storage File Explorer</Title>
-              <Text c="dimmed" size="sm">
-                Easily view all uploaded documents and scans.
-              </Text>
-            </div>
+    <Box p={isMobile ? "xs" : "md"} bg="gray.0" style={{ minHeight: "100dvh" }}>
+      <Paper p={isMobile ? "sm" : "lg"} radius="md" withBorder shadow="sm">
+        <Stack gap="md">
+          <Group justify="space-between" align="center">
+            <Group gap="sm">
+              <ThemeIcon
+                variant="light"
+                color="blue"
+                size={isMobile ? "lg" : "xl"}
+              >
+                <IconDatabase size={isMobile ? 20 : 24} />
+              </ThemeIcon>
+              <Title order={isMobile ? 4 : 3}>Storage</Title>
+            </Group>
+            <Group gap={8}>
+              <ActionIcon
+                variant="default"
+                size="lg"
+                onClick={handleRefresh}
+                loading={refreshing}
+              >
+                <IconRefresh size={18} />
+              </ActionIcon>
+              <Badge variant="light" color="violet" size="md">
+                {scans.length} Total
+              </Badge>
+            </Group>
           </Group>
 
-          <Group gap="sm">
-            <Button
-              variant="default"
-              onClick={handleRefresh}
-              loading={refreshing}
-              leftSection={<IconRefresh size={16} />}
-            >
-              Refresh
-            </Button>
-            <Badge variant="light" color="violet" size="lg">
-              Total: {scans.length} files
-            </Badge>
-          </Group>
-        </Group>
-
-        {/* Controls: search */}
-        <Group gap="lg" align="center" mb="md">
           <TextInput
-            placeholder="Search files, package name"
-            size="sm"
+            placeholder="Search files..."
             leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flexGrow: 1, maxWidth: 400 }}
-            __clearable
+            size="sm"
           />
-        </Group>
 
-        {/* Table Area */}
-        <ScrollArea h={520}>
-          {loading ? (
-            <Center py="xl" h={200}>
-              <Loader size="sm" />
-            </Center>
-          ) : (
-            <Table
-              striped
-              highlightOnHover
-              withTableBorder
-              verticalSpacing="sm"
-            >
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th style={{ minWidth: rem(300) }}>
-                    <SortControl
-                      label="File"
-                      sortKey="file_name"
-                      currentSort={sortBy}
-                      currentDir={sortDir}
-                      onClick={handleSortClick}
-                    />
-                  </Table.Th>
-                  <Table.Th style={{ minWidth: rem(150) }}>
-                    Package / Source
-                  </Table.Th>
-                  <Table.Th>
-                    <SortControl
-                      label="Size"
-                      sortKey="file_size_mb"
-                      currentSort={sortBy}
-                      currentDir={sortDir}
-                      onClick={handleSortClick}
-                    />
-                  </Table.Th>
-                  <Table.Th style={{ minWidth: rem(180) }}>
-                    <SortControl
-                      label="Uploaded"
-                      sortKey="uploaded_at"
-                      currentSort={sortBy}
-                      currentDir={sortDir}
-                      onClick={handleSortClick}
-                    />
-                  </Table.Th>
-                  <Table.Th>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {displayedScans.length > 0 ? (
-                  displayedScans.map((s) => (
-                    <Table.Tr key={s.id}>
-                      <Table.Td>
-                        <Group gap="sm" wrap="nowrap">
-                          <Avatar
-                            size={36}
-                            radius="sm"
-                            color="blue"
-                            variant="light"
-                          >
-                            <IconFileText size={18} />
-                          </Avatar>
-                          <Box style={{ maxWidth: rem(250) }}>
-                            <Text fw={600} size="sm" truncate>
-                              {s.file_name}
-                            </Text>
-                          </Box>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        {s.package?.package_name ? (
-                          <Tooltip label="Package" withArrow>
-                            <Badge variant="outline" color="gray" size="sm">
-                              {s.package.package_name}
-                            </Badge>
-                          </Tooltip>
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            {s.package_id
-                              ? `PKG-${s.package_id.slice(0, 8)}`
-                              : "—"}
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" c="dimmed">
-                          {formatFileSize(Number(s.file_size_mb ?? 0))}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={6} wrap="nowrap">
-                          <IconCalendar size={14} color="gray" />
-                          <Text size="sm">
-                            {s.uploaded_at
-                              ? new Date(s.uploaded_at).toLocaleDateString()
-                              : "—"}
-                          </Text>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs" wrap="nowrap">
-                          <Tooltip label="Preview" withArrow>
-                            <ActionIcon
-                              variant="light"
-                              color="blue"
-                              onClick={() => handlePreview(s)}
-                            >
-                              <IconEye size={18} />
-                            </ActionIcon>
-                          </Tooltip>
-                          <Tooltip label="Download" withArrow>
-                            <ActionIcon
-                              component="a"
-                              href={s.file_url}
-                              target="_blank"
-                              download={s.file_name}
-                              variant="light"
-                              color="green"
-                            >
-                              <IconDownload size={18} />
-                            </ActionIcon>
-                          </Tooltip>
+          <ScrollArea
+            h={isMobile ? "calc(100vh - 300px)" : 550}
+            offsetScrollbars
+          >
+            {mainContent}
+          </ScrollArea>
 
-                          <Tooltip label="Delete" withArrow>
-                            <ActionIcon
-                              color="red"
-                              variant="light"
-                              onClick={() => handleDelete(s)}
-                              disabled={deletingId === s.id}
-                            >
-                              <IconTrash size={18} />
-                            </ActionIcon>
-                          </Tooltip>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
-                ) : (
-                  <Table.Tr>
-                    <Table.Td colSpan={5}>
-                      <Stack align="center" py={60} gap="xs">
-                        <IconFileText
-                          size={40}
-                          color="var(--mantine-color-gray-4)"
-                        />
-                        <Text c="dimmed">
-                          {search.length > 0
-                            ? "No results found for your search criteria."
-                            : "No files found in your storage."}
-                        </Text>
-                      </Stack>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
+          {/* PAGINATION CONTROLS */}
+          {totalPages > 1 && (
+            <Group justify="center" mt="md" pb="sm">
+              <Pagination
+                total={totalPages}
+                value={activePage}
+                onChange={setActivePage}
+                size={isMobile ? "sm" : "md"}
+                radius="md"
+                withEdges={!isMobile}
+              />
+            </Group>
           )}
-        </ScrollArea>
+        </Stack>
       </Paper>
 
+      {/* Preview Modal */}
       <Modal
         opened={previewOpen}
         onClose={() => setPreviewOpen(false)}
         title={selected?.file_name ?? "Preview"}
         size="xl"
         centered
-        overlayProps={{
-          backgroundOpacity: 0.55,
-          blur: 3,
-        }}
+        fullScreen={isMobile}
       >
         {selected ? (
-          // Images: show inline
-          (() => {
-            const isImage =
-              selected.mime_type?.startsWith("image") ||
-              (selected.file_url &&
-                /\.(jpe?g|png|gif|webp)$/i.test(selected.file_url));
-            return isImage ? (
-              // eslint-disable-next-line @next/next/no-img-element -- Dynamic image URLs from storage, not suitable for Next.js Image optimization
-              <img
-                src={selected.file_url}
-                alt={selected.file_name}
-                style={{
-                  width: "100%",
-                  maxHeight: "70vh",
-                  objectFit: "contain",
-                  borderRadius: "var(--mantine-radius-md)",
-                }}
-              />
+          <Box>
+            {selected.mime_type?.startsWith("image") ||
+            /\.(jpe?g|png|gif|webp)$/i.test(selected.file_url) ? (
+              <Box
+                pos="relative"
+                w="100%"
+                h={{ base: "60vh", sm: "70vh" }}
+                style={{ overflow: "hidden", borderRadius: rem(8) }}
+              >
+                <Image
+                  src={selected.file_url}
+                  alt={selected.file_name}
+                  fill
+                  unoptimized
+                  style={{ objectFit: "contain" }}
+                  priority
+                />
+              </Box>
             ) : (
-              // PDFs and other documents: iframe preview
-              <div style={{ width: "100%" }}>
+              <Box w="100%" h={isMobile ? "80vh" : "70vh"}>
                 <iframe
                   src={selected.file_url}
                   title={selected.file_name}
-                  style={{ width: "100%", height: "70vh", border: "none" }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    borderRadius: rem(8),
+                  }}
                 />
-              </div>
-            );
-          })()
+              </Box>
+            )}
+          </Box>
         ) : (
-          <Center style={{ height: 220 }}>
+          <Center h={200}>
             <Text c="dimmed">No file selected</Text>
           </Center>
         )}
       </Modal>
 
-      {/* Delete confirmation modal */}
+      {/* Delete Confirmation */}
       <Modal
         opened={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        title="Confirm delete"
+        title="Confirm Delete"
         centered
         size="sm"
       >
-        <Stack gap="sm">
-          <Text>
-            Are you sure you want to permanently delete{" "}
+        <Stack gap="md">
+          <Text size="sm">
+            Permanently delete{" "}
             <Text component="span" fw={700}>
-              {toDelete?.name ?? toDelete?.id}
+              {toDelete?.name}
             </Text>
             ?
           </Text>
-          <Group justify="right" gap="xs">
+          <Group justify="flex-end" gap="xs">
             <Button variant="default" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
             <Button
               color="red"
               onClick={() => void performDelete()}
-              loading={!!deletingId && deletingId === toDelete?.id}
+              loading={!!deletingId}
             >
               Delete
             </Button>
