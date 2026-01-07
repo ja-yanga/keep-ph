@@ -46,6 +46,31 @@ type RegisterFormProps = {
   initialLocationAvailability?: Record<string, number>;
 };
 
+type UserMetadata = Record<string, unknown> | null;
+type SessionWithProfile = {
+  user?: {
+    id?: string;
+    email?: string | null;
+    user_metadata?: UserMetadata;
+    phone?: string | null;
+    phone_number?: string | null;
+    name?: string | null;
+  } | null;
+  profile?: Record<string, unknown> | null;
+} | null;
+
+const getString = (
+  obj: Record<string, unknown> | undefined,
+  ...keys: string[]
+): string => {
+  if (!obj) return "";
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+};
+
 export default function RegisterForm({
   initialPlans = [],
   initialLocations = [],
@@ -53,6 +78,7 @@ export default function RegisterForm({
 }: RegisterFormProps) {
   const router = useRouter();
   const { session } = useSession();
+  const sess = session as SessionWithProfile;
   const [payButtonIsDisabled, setPayButtonIsDisabled] = useState(false);
 
   // Modal state
@@ -63,6 +89,75 @@ export default function RegisterForm({
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
+  const [mobileDisabled, setMobileDisabled] = useState(false);
+  const [firstNameDisabled, setFirstNameDisabled] = useState(false);
+  const [lastNameDisabled, setLastNameDisabled] = useState(false);
+  const [emailDisabled, setEmailDisabled] = useState(false);
+
+  // if logged-in user already has a mobile, use it and lock the input
+  useEffect(() => {
+    const userId = sess?.user?.id;
+    if (!userId) return;
+
+    const profile = sess?.profile ?? {};
+    const profileRec = profile as Record<string, unknown> | undefined;
+
+    // immediate: populate mobile from profile/session (show this first)
+    const mobileFromProfile =
+      getString(profileRec, "users_phone", "mobile_number") ||
+      (typeof sess?.user?.phone === "string" ? sess.user.phone : "") ||
+      (typeof sess?.user?.phone_number === "string"
+        ? sess.user.phone_number
+        : "");
+    if (mobileFromProfile) {
+      setMobile(mobileFromProfile);
+      setMobileDisabled(true);
+    }
+
+    // fetch KYC RPC for authoritative first/last name (keep mobile from profile)
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/user/kyc?userId=${encodeURIComponent(userId)}`,
+        );
+        const json = await res.json().catch(() => null);
+        const payload =
+          (json && (json as Record<string, unknown>).data) || json || {};
+        const payloadRec = payload as Record<string, unknown>;
+        const kycContainer =
+          (payloadRec && (payloadRec["kyc"] as Record<string, unknown>)) ||
+          payloadRec;
+        const kycRec = kycContainer as Record<string, unknown> | undefined;
+
+        const first = getString(kycRec, "user_kyc_first_name", "first_name");
+
+        const last = getString(kycRec, "user_kyc_last_name", "last_name");
+        const userEmail =
+          (sess?.user?.email ?? "") || getString(profileRec, "users_email");
+
+        if (first) {
+          setFirstName(first);
+          setFirstNameDisabled(true);
+        }
+        if (last) {
+          setLastName(last);
+          setLastNameDisabled(true);
+        }
+        if (userEmail) {
+          setEmail(userEmail);
+          setEmailDisabled(true);
+        }
+        // do not overwrite mobileFromProfile with KYC result here
+      } catch {
+        // fallback: ensure email from session shows
+        const userEmail = sess?.user?.email ?? "";
+        if (userEmail) {
+          setEmail(userEmail);
+          setEmailDisabled(true);
+        }
+      }
+    })();
+  }, [sess]);
 
   const [locations] = useState<Location[]>(initialLocations);
   const [plans] = useState<Plan[]>(initialPlans);
@@ -136,13 +231,15 @@ export default function RegisterForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: referralCode.trim(),
-          currentUserId: session?.user?.id,
+          currentUserId: sess?.user?.id,
         }),
       });
 
       const data = await res.json();
-      setReferralValid(data.valid);
-      setReferralMessage(data.message);
+      setReferralValid(Boolean((data as Record<string, unknown>)?.valid));
+      setReferralMessage(
+        String(((data as Record<string, unknown>) || {}).message || ""),
+      );
     } catch {
       setReferralMessage("Error validating code");
     } finally {
@@ -204,11 +301,11 @@ export default function RegisterForm({
   };
 
   const handleConfirm = async () => {
-    if (!session?.user?.id) {
+    if (!sess?.user?.id) {
       router.push("/signin");
       return;
     }
-    const profile = session?.profile as { referral_code?: string };
+    const profile = sess?.profile as { referral_code?: string } | undefined;
     if (referralCode.trim() && profile?.referral_code === referralCode.trim()) {
       setError("You cannot use your own referral code.");
       return;
@@ -221,10 +318,23 @@ export default function RegisterForm({
     setLoading(true);
     setError(null);
     try {
-      const orderId = `reg_${session?.user?.id ?? "anon"}_${Date.now()}`;
+      // persist mobile to users_table before creating registration (non-blocking)
+      // skip update if mobile already came from profile
+      if (!mobileDisabled) {
+        try {
+          await fetch(API_ENDPOINTS.auth.updateProfile, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mobile }),
+          });
+        } catch {
+          // non-fatal — continue with registration flow
+        }
+      }
+      const orderId = `reg_${sess?.user?.id ?? "anon"}_${Date.now()}`;
       const registrationMetadata = {
         order_id: orderId,
-        user_id: session?.user?.id ?? "",
+        user_id: sess?.user?.id ?? "",
         full_name: `${firstName} ${lastName}`.trim() || "",
         email,
         mobile,
@@ -232,7 +342,6 @@ export default function RegisterForm({
         plan_id: selectedPlanId ?? "",
         locker_qty: String(qty),
         months: String(months),
-
         referral_code: referralValid ? referralCode : "",
       };
 
@@ -253,25 +362,61 @@ export default function RegisterForm({
         }),
       });
 
-      const payJson = await payRes.json().catch(() => null);
-      const checkoutUrl =
-        payJson?.data?.attributes?.checkout_url ||
-        payJson?.data?.attributes?.redirect?.checkout_url ||
-        payJson?.data?.attributes?.redirect?.url ||
-        null;
+      // parse response without `any` and safely extract checkout URL / error message
+      const payJson: unknown = await payRes.json().catch(() => null);
+
+      const getStringProp = (obj: unknown, key: string): string | null => {
+        if (!obj || typeof obj !== "object") return null;
+        const v = (obj as Record<string, unknown>)[key];
+        return typeof v === "string" && v.trim() ? v : null;
+      };
+
+      let checkoutUrl: string | null = null;
+      if (payJson && typeof payJson === "object") {
+        const top = payJson as Record<string, unknown>;
+        const data = top["data"];
+        const attrs =
+          data && typeof data === "object"
+            ? ((data as Record<string, unknown>)["attributes"] ?? data)
+            : (top["attributes"] ?? top);
+
+        if (attrs && typeof attrs === "object") {
+          checkoutUrl = getStringProp(attrs, "checkout_url");
+          if (!checkoutUrl) {
+            const redirect = (attrs as Record<string, unknown>)["redirect"];
+            if (redirect && typeof redirect === "object") {
+              checkoutUrl =
+                getStringProp(redirect, "checkout_url") ||
+                getStringProp(redirect, "url");
+            }
+          }
+        }
+      }
 
       if (!checkoutUrl) {
-        setError(
-          payJson?.errors?.[0]?.detail ||
-            payJson?.error ||
-            "Failed to create payment session",
-        );
+        let errMsg: string | null = null;
+        if (payJson && typeof payJson === "object") {
+          const top = payJson as Record<string, unknown>;
+          const errors = top["errors"];
+          if (
+            Array.isArray(errors) &&
+            errors.length > 0 &&
+            typeof errors[0] === "object"
+          ) {
+            const e0 = errors[0] as Record<string, unknown>;
+            if (typeof e0["detail"] === "string") errMsg = e0["detail"];
+          }
+          if (!errMsg && typeof top["error"] === "string")
+            errMsg = top["error"] as string;
+        }
+        setError(errMsg ?? "Failed to create payment session");
         close();
         return;
       }
 
       window.location.href = checkoutUrl;
     } catch (err) {
+      // keep generic logging minimal
       console.error(err);
       setError("An unexpected error occurred");
       close();
@@ -397,13 +542,17 @@ export default function RegisterForm({
             >
               <DetailsStep
                 firstName={firstName}
-                setFirstName={setFirstName}
+                setFirstNameAction={setFirstName}
                 lastName={lastName}
-                setLastName={setLastName}
+                setLastNameAction={setLastName}
                 email={email}
-                setEmail={setEmail}
+                setEmailAction={setEmail}
                 mobile={mobile}
-                setMobile={setMobile}
+                setMobileAction={setMobile}
+                mobileDisabled={mobileDisabled}
+                firstNameDisabled={firstNameDisabled}
+                lastNameDisabled={lastNameDisabled}
+                emailDisabled={emailDisabled}
               />
             </Stepper.Step>
 
