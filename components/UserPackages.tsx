@@ -1159,29 +1159,29 @@ export default function UserPackages({
       scanMap[String(pkg.package_id)] ??
       null;
 
-    // prefer current schema fields for release proof; fallback to legacy props
+    // prefer current schema fields for release proof; fallback removed
     const getString = (v: unknown): string | null =>
       typeof v === "string" && v.trim() ? v : null;
 
-    const mailroomFiles = (pkg as Record<string, unknown>).mailroom_files;
-    let mailroomFirstUrl: unknown = undefined;
-    if (Array.isArray(mailroomFiles) && mailroomFiles.length > 0) {
-      const mf0 = mailroomFiles[0];
-      if (mf0 && typeof mf0 === "object" && !Array.isArray(mf0)) {
-        const mf0Rec = mf0 as Record<string, unknown>;
-        if (typeof mf0Rec["mailroom_file_url"] === "string") {
-          mailroomFirstUrl = mf0Rec["mailroom_file_url"];
-        }
+    // only use mailroom files that are explicitly marked RELEASED
+    const rawMailroomFiles =
+      (pkg as Record<string, unknown>).mailroom_file_table ??
+      (pkg as Record<string, unknown>).mailroom_files;
+    let mailroomReleaseUrl: string | null = null;
+    if (Array.isArray(rawMailroomFiles) && rawMailroomFiles.length > 0) {
+      const recs = rawMailroomFiles
+        .filter((r) => r && typeof r === "object")
+        .map((r) => r as Record<string, unknown>);
+      const released = recs.find(
+        (r) => String(r.mailroom_file_type ?? "").toUpperCase() === "RELEASED",
+      );
+      if (released) {
+        mailroomReleaseUrl = getString(released.mailroom_file_url);
       }
     }
 
-    const releaseProofUrl: string | null =
-      getString((pkg as Record<string, unknown>).release_proof_url) ??
-      getString((pkg as Record<string, unknown>).image_url) ??
-      getString((pkg as Record<string, unknown>).mailroom_file_url) ??
-      getString(mailroomFirstUrl) ??
-      getString(pkg.package_files?.[0]?.url) ??
-      null;
+    // show proof only when there's an explicit RELEASED mailroom file
+    const releaseProofUrl: string | null = mailroomReleaseUrl;
 
     let statusColor = "blue";
     if (["RELEASED", "RETRIEVED"].includes(status)) {
