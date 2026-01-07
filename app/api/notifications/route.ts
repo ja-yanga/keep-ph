@@ -8,7 +8,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
-
+    const limit = parseInt(searchParams.get("limit") || "20");
+    const offset = parseInt(searchParams.get("offset") || "0");
     if (!userId) {
       return NextResponse.json(
         { error: "Missing userId parameter" },
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
       );
     }
 
-    const notifications = await getNotificationByUserId(userId);
+    const notifications = await getNotificationByUserId(userId, limit, offset);
+
     return NextResponse.json(notifications);
   } catch (error) {
     console.error("Unexpected error in notifications route:", error);
