@@ -1,22 +1,12 @@
-import { Box, Container, Loader } from "@mantine/core";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
+import { Container, Loader } from "@mantine/core";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function MailroomLoading() {
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "#F8F9FA",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <Container py="xl" size="xl">
         <Loader />
       </Container>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }

@@ -53,6 +53,8 @@ type PackageShape = {
     url?: string;
     mailbox_item_id?: string;
   }>;
+  mailbox_item_locker_code?: string;
+  location_locker_code?: string;
   locker_id?: string;
   locker?: { locker_code?: string };
   status?: string;
@@ -318,18 +320,32 @@ export default function UserPackages({
     }
     if (providedScans) {
       const map: Record<string, string> = {};
+      const latestUploadedAt: Record<string, string> = {};
+
       providedScans.forEach((s) => {
-        const mailboxItemId = (s as Record<string, unknown>)[
-          "mailbox_item_id"
-        ] as string | undefined;
-        const packageId = (s as Record<string, unknown>)["package_id"] as
+        const item = s as Record<string, unknown>;
+        const mailboxItemId = item["mailbox_item_id"] as string | undefined;
+        const packageId = item["package_id"] as string | undefined;
+        const url = (item["mailroom_file_url"] ?? item["file_url"]) as
           | string
           | undefined;
-        const url =
-          ((s as Record<string, unknown>)["file_url"] as string | undefined) ??
-          "";
-        if (mailboxItemId && url) map[mailboxItemId] = url;
-        if (packageId && url) map[packageId] = url;
+        const uploadedAt = item["mailroom_file_uploaded_at"] as
+          | string
+          | undefined;
+
+        if (!url) return;
+
+        const ids = [mailboxItemId, packageId].filter(Boolean) as string[];
+        ids.forEach((id) => {
+          if (
+            !map[id] ||
+            (uploadedAt &&
+              (!latestUploadedAt[id] || uploadedAt > latestUploadedAt[id]))
+          ) {
+            map[id] = url;
+            if (uploadedAt) latestUploadedAt[id] = uploadedAt;
+          }
+        });
       });
       setScanMap(map);
     }
@@ -1098,13 +1114,39 @@ export default function UserPackages({
     const receivedDate = pkg.received_at;
     const isDocument = type === "Document";
 
-    let lockerCode = pkg.locker?.locker_code;
+    let lockerCode =
+      pkg.locker?.locker_code ??
+      pkg.location_locker_code ??
+      pkg.mailbox_item_locker_code;
     if (!lockerCode && pkg.locker_id && Array.isArray(lockers)) {
       const assigned = lockers.find((l) => l.id === pkg.locker_id);
       if (assigned) lockerCode = assigned.locker_code;
     }
 
+    // Check for scans in mailroom_file_table if embedded in the package
+    const embeddedFiles = (pkg as Record<string, unknown>).mailroom_file_table;
+    let embeddedScanUrl: string | null = null;
+    if (Array.isArray(embeddedFiles)) {
+      type MailroomFile = {
+        mailroom_file_type: string;
+        mailroom_file_url: string;
+        mailroom_file_uploaded_at: string;
+      };
+      // Find the latest SCANNED file
+      const scannedFiles = (embeddedFiles as MailroomFile[])
+        .filter((f) => f?.mailroom_file_type === "SCANNED")
+        .sort(
+          (a, b) =>
+            new Date(b.mailroom_file_uploaded_at).getTime() -
+            new Date(a.mailroom_file_uploaded_at).getTime(),
+        );
+      if (scannedFiles.length > 0) {
+        embeddedScanUrl = scannedFiles[0].mailroom_file_url;
+      }
+    }
+
     const scanUrl =
+      embeddedScanUrl ??
       ((pkg as Record<string, unknown>).scan_url as string | undefined) ??
       ((pkg as Record<string, unknown>).digital_scan_url as
         | string
@@ -1142,9 +1184,17 @@ export default function UserPackages({
       null;
 
     let statusColor = "blue";
-    if (["RELEASED", "RETRIEVED"].includes(status)) statusColor = "green";
-    else if (status === "DISPOSED") statusColor = "red";
-    else if (String(status).includes("REQUEST")) statusColor = "orange";
+    if (["RELEASED", "RETRIEVED"].includes(status)) {
+      statusColor = "green";
+    } else if (status === "DISPOSED") {
+      statusColor = "red";
+    } else if (String(status).includes("REQUEST")) {
+      const s = String(status).toUpperCase();
+      if (s.includes("DISPOSE")) statusColor = "red";
+      else if (s.includes("RELEASE")) statusColor = "green";
+      else if (s.includes("SCAN")) statusColor = "blue";
+      else statusColor = "orange";
+    }
 
     // Helper to ensure image URL is always a full URL
     const ensureFullUrl = (
@@ -1291,9 +1341,9 @@ export default function UserPackages({
               </Text>
             )}
 
-            {isDocument && planCapabilities.can_digitize && !isPending && (
-              <>
-                {scanUrl ? (
+            {isDocument && planCapabilities.can_digitize && (
+              <Stack gap="xs">
+                {scanUrl && (
                   <Button
                     variant="default"
                     color="violet"
@@ -1310,7 +1360,8 @@ export default function UserPackages({
                   >
                     View Scan
                   </Button>
-                ) : (
+                )}
+                {!isPending && (
                   <Button
                     variant="light"
                     color="violet"
@@ -1323,7 +1374,7 @@ export default function UserPackages({
                     Request Scan
                   </Button>
                 )}
-              </>
+              </Stack>
             )}
           </Stack>
         )}

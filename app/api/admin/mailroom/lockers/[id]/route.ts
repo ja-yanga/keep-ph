@@ -168,10 +168,10 @@ export async function DELETE(
       (lockerData as { mailroom_location_id?: string | null } | null)
         ?.mailroom_location_id ?? null;
 
-    // delete locker
+    // soft delete locker
     const { error: delErr } = await supabase
       .from("location_locker_table")
-      .delete()
+      .update({ location_locker_deleted_at: new Date() })
       .eq("location_locker_id", id);
 
     if (delErr) {

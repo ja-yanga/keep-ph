@@ -189,6 +189,7 @@ CREATE TABLE user_kyc_table (
   user_kyc_status user_kyc_status NOT NULL DEFAULT 'SUBMITTED',
   user_kyc_id_front_url TEXT NOT NULL,
   user_kyc_id_back_url TEXT NOT NULL,
+  user_kyc_id_number VARCHAR(64),
   user_kyc_submitted_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   user_kyc_verified_at TIMESTAMP WITH TIME ZONE,
   user_kyc_created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
@@ -459,6 +460,7 @@ CREATE INDEX idx_users_created_at ON users_table(users_created_at);
 -- User KYC
 CREATE INDEX idx_user_kyc_user_id ON user_kyc_table(user_id);
 CREATE INDEX idx_user_kyc_status ON user_kyc_table(user_kyc_status);
+CREATE INDEX IF NOT EXISTS idx_user_kyc_id_number ON user_kyc_table(user_kyc_id_number);
 
 -- User Addresses
 CREATE INDEX idx_user_address_user_id ON user_address_table(user_id);

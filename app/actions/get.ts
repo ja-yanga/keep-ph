@@ -890,6 +890,51 @@ export async function adminGetMailroomPackages(args: {
   };
 }
 
+export async function adminGetArchivedPackages(args: {
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  packages: unknown[];
+  totalCount: number;
+}> {
+  const limit = Math.min(args.limit ?? 50, 200);
+  const offset = args.offset ?? 0;
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "get_admin_archived_packages",
+    {
+      input_limit: limit,
+      input_offset: offset,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  let rpcData: Record<string, unknown> = {};
+  try {
+    rpcData =
+      typeof data === "string"
+        ? JSON.parse(data)
+        : (data as Record<string, unknown>);
+  } catch (parseError) {
+    console.error("Failed to parse RPC response:", parseError);
+    throw new Error("Failed to parse response");
+  }
+
+  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
+  const totalCount =
+    typeof rpcData.total_count === "number"
+      ? rpcData.total_count
+      : packages.length;
+
+  return {
+    packages,
+    totalCount,
+  };
+}
+
 export async function getUserMailroomRegistrationStats(
   userId: string,
 ): Promise<MailroomRegistrationStats[]> {
@@ -1167,4 +1212,28 @@ export async function adminGetAssignedLockers() {
   }
 
   return data;
+}
+
+export async function checkEmailExistsAction(email: string): Promise<boolean> {
+  if (!email) {
+    throw new Error("Email is required");
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc("check_email_exists", {
+      p_email: email,
+    });
+
+    if (error) {
+      console.error("Supabase RPC error in checkEmailExistsAction:", error);
+      throw new Error(`Database error: ${error.message}`);
+    }
+
+    return !!data;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
 }

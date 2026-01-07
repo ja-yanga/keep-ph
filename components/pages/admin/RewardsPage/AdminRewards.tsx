@@ -32,11 +32,11 @@ import {
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
 import Image from "next/image";
-import {
+import type {
   AdminClaimApprove,
   ClaimStatusTab,
   ConfirmTarget,
-} from "@/utils/types/types";
+} from "@/utils/types";
 import { getStatusFormat, maskAccount } from "@/utils/helper";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());

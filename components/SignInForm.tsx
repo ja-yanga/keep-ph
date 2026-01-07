@@ -28,6 +28,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@/components/SessionProvider";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 function SignInContent() {
   const router = useRouter();
@@ -40,6 +41,16 @@ function SignInContent() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-hide error alert
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   // NEW: State for verification alert
   const [verified, setVerified] = useState(false);
@@ -68,7 +79,7 @@ function SignInContent() {
     setError(null);
 
     try {
-      const res = await fetch("/api/auth/signin", {
+      const res = await fetch(API_ENDPOINTS.auth.signin, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -195,7 +206,7 @@ function SignInContent() {
                   <Alert
                     variant="light"
                     color="red"
-                    title="Authentication Error"
+                    title="Account Issue"
                     icon={<IconAlertCircle size={16} />}
                     radius="md"
                   >
@@ -266,6 +277,7 @@ function SignInContent() {
                   size="md"
                   radius="md"
                   loading={oauthLoading}
+                  disabled={loading}
                   leftSection={<IconBrandGoogle size={18} />}
                   onClick={handleGoogleLogin}
                   type="button"

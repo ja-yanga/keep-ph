@@ -35,6 +35,7 @@ export async function GET(req: Request) {
         user_id: row.user_id,
         status: row.user_kyc_status ?? "SUBMITTED",
         id_document_type: row.user_kyc_id_document_type,
+        id_number: row.user_kyc_id_number,
         id_front_url: row.user_kyc_id_front_url,
         id_back_url: row.user_kyc_id_back_url,
         first_name: row.user_kyc_first_name,

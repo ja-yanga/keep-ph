@@ -36,6 +36,7 @@ import { useSession } from "@/components/SessionProvider";
 import { notifications } from "@mantine/notifications";
 import type { RawRow, LocationObj } from "@/utils/types";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { useMediaQuery } from "@mantine/hooks";
 
 type Row = {
   id: string;
@@ -220,6 +221,13 @@ export default function UserDashboard({
   const [totals, setTotals] = useState<Totals>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMobile = useMediaQuery("(max-width: 48em)");
+  // avoid nested ternary expressions for status color
+  const getStatusColor = (status?: string | null) => {
+    if (status === "ACTIVE") return "green";
+    if (status === "EXPIRING") return "yellow";
+    return "red";
+  };
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
@@ -544,14 +552,19 @@ export default function UserDashboard({
 
   return (
     <Stack gap="xl">
-      <Group justify="space-between" align="flex-end">
-        <Box>
+      <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
+        <Box w={{ base: "100%", sm: "auto" }}>
           <Title order={2} c="dark.8">
             Hello, {firstName ?? "User"}
           </Title>
           <Text c="dimmed">Here is what&apos;s happening with your mail.</Text>
         </Box>
-        <Group gap="sm" align="center">
+        <Group
+          gap="sm"
+          align="center"
+          w={{ base: "100%", sm: "auto" }}
+          style={{ flexWrap: "nowrap" }}
+        >
           <TextInput
             placeholder="Search mailrooms"
             value={search}
@@ -562,15 +575,20 @@ export default function UserDashboard({
             leftSection={<IconSearch size={16} />}
             size="md"
             __clearable
-            style={{ maxWidth: 420, minWidth: 240 }}
+            style={{ flex: 1 }}
           />
-          <Button component={Link} href="/mailroom/register" variant="outline">
-            Add New Mailroom
+          <Button
+            component={Link}
+            href="/mailroom/register"
+            variant="outline"
+            style={{ whiteSpace: "nowrap" }}
+          >
+            Add New
           </Button>
         </Group>
       </Group>
 
-      <SimpleGrid cols={{ sm: 3 }}>
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
         <Paper
           p="md"
           radius="md"
@@ -635,7 +653,7 @@ export default function UserDashboard({
         const pageItems = list.slice(start, start + perPage);
         return (
           <>
-            <SimpleGrid cols={{ base: 1, md: 2 }}>
+            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
               {pageItems.map((row) => (
                 <Card
                   key={row.id}
@@ -643,31 +661,34 @@ export default function UserDashboard({
                   padding="lg"
                   radius="md"
                   withBorder
+                  style={{ display: "flex", flexDirection: "column" }}
                 >
+                  {/* HEADER SECTION - Responsive Stack */}
                   <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
-                    <Group justify="space-between">
-                      <Group gap="xs" align="center">
-                        <ThemeIcon color="violet" variant="light">
-                          <IconMapPin size={16} />
+                    <Group justify="space-between" align="center">
+                      <Group
+                        gap="xs"
+                        align="center"
+                        style={{ flex: 1, minWidth: 0 }}
+                      >
+                        <ThemeIcon color="violet" variant="light" size="sm">
+                          <IconMapPin size={14} />
                         </ThemeIcon>
-                        <Text fw={600} size="sm">
+                        <Text fw={600} size="sm" truncate style={{ flex: 1 }}>
                           {row.location ?? "Unknown Location"}
                         </Text>
                         <ActionIcon
                           variant="light"
+                          size="sm"
                           onClick={() => copyFullShippingAddress(row)}
                           title="Copy full shipping address"
                         >
-                          <IconCopy size={16} />
+                          <IconCopy size={14} />
                         </ActionIcon>
                       </Group>
                       <Badge
-                        color={(() => {
-                          if (row.mailroom_status === "ACTIVE") return "green";
-                          if (row.mailroom_status === "EXPIRING")
-                            return "yellow";
-                          return "red";
-                        })()}
+                        size="sm"
+                        color={getStatusColor(row.mailroom_status)}
                         variant="dot"
                       >
                         {row.mailroom_status}
@@ -675,33 +696,31 @@ export default function UserDashboard({
                     </Group>
                   </Card.Section>
 
-                  <Stack mt="md" gap="sm">
+                  <Stack mt="md" gap="sm" style={{ flex: 1 }}>
+                    {/* CODE AND PLAN - Responsive Grid */}
                     <Group justify="space-between" align="flex-start">
                       <Box>
-                        <Group align="center" gap="xs">
-                          <div>
-                            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                              Mailroom Code
-                            </Text>
-                            <Text
-                              size="xl"
-                              fw={800}
-                              ff="monospace"
-                              c="violet.9"
-                            >
-                              {row.mailroom_code ?? "PENDING"}
-                            </Text>
-                          </div>
-                        </Group>
-                        <Text size="xs" c="dimmed" mt={6}>
-                          {row.location ?? "Address not set"}
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                          Mailroom Code
+                        </Text>
+                        <Text
+                          size="xl"
+                          fw={800}
+                          ff="monospace"
+                          c="violet.9"
+                          style={{ lineHeight: 1.2 }}
+                        >
+                          {row.mailroom_code ?? "PENDING"}
                         </Text>
                       </Box>
-                      <Box ta="right">
+
+                      <Box style={{ textAlign: isMobile ? "left" : "right" }}>
                         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                           Plan
                         </Text>
-                        <Text fw={600}>{row.plan}</Text>
+                        <Text fw={600} size="sm">
+                          {row.plan}
+                        </Text>
                       </Box>
                     </Group>
 
@@ -712,14 +731,15 @@ export default function UserDashboard({
                       <Text fw={600} size="sm" lh={1.2}>
                         {row.name}
                       </Text>
-                      <Text size="xs" c="dimmed">
+                      <Text size="xs" c="dimmed" truncate>
                         {row.email}
                       </Text>
                     </Box>
 
                     <Divider my="xs" variant="dashed" />
 
-                    <Group grow>
+                    {/* INVENTORY AND EXPIRY - Responsive Grid */}
+                    <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="sm">
                       <Box>
                         <Group gap={6} mb={4}>
                           <IconPackage size={14} color="gray" />
@@ -729,18 +749,13 @@ export default function UserDashboard({
                         </Group>
                         <Text fw={700} size="lg">
                           {row.stats.stored}{" "}
-                          <span
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 400,
-                              color: "#868e96",
-                            }}
-                          >
+                          <small style={{ fontWeight: 400, color: "#868e96" }}>
                             items
-                          </span>
+                          </small>
                         </Text>
                       </Box>
-                      <Box style={{ textAlign: "right" }}>
+
+                      <Box style={{ textAlign: isMobile ? "left" : "right" }}>
                         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                           {row.auto_renew ? "Renews On" : "Expires On"}
                         </Text>
@@ -754,13 +769,14 @@ export default function UserDashboard({
                             : "N/A"}
                         </Text>
                       </Box>
-                    </Group>
+                    </SimpleGrid>
 
-                    <Group mt="sm" style={{ gap: 8 }}>
-                      <Badge color="teal" variant="light">
+                    <Group mt="xs" gap={8}>
+                      <Badge color="teal" variant="light" size="sm">
                         Released: {row.stats.released}
                       </Badge>
                       <Badge
+                        size="sm"
                         color={row.stats.pending > 0 ? "orange" : "gray"}
                         variant={row.stats.pending > 0 ? "filled" : "light"}
                       >
@@ -770,20 +786,25 @@ export default function UserDashboard({
                     </Group>
                   </Stack>
 
-                  <Group mt="md" grow>
+                  {/* BUTTONS - Stacks on mobile */}
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" mt="xl">
                     <Button
                       component={Link}
                       href={`/mailroom/${row.id}`}
                       radius="md"
+                      fullWidth
                       rightSection={<IconChevronRight size={16} />}
                     >
                       Manage Mailbox
                     </Button>
+
                     {row.auto_renew && row.mailroom_status === "ACTIVE" && (
                       <Button
-                        variant="light"
+                        variant="filled"
                         color="red"
                         radius="md"
+                        fullWidth
+                        size="sm"
                         onClick={() => {
                           setSelectedSubId(row.id);
                           setCancelModalOpen(true);
@@ -792,41 +813,53 @@ export default function UserDashboard({
                         Cancel Renewal
                       </Button>
                     )}
-                  </Group>
+                  </SimpleGrid>
                 </Card>
               ))}
             </SimpleGrid>
 
             {total > perPage && (
-              <Group
-                justify="space-between"
-                mt="md"
-                align="center"
-                style={{ width: "100%" }}
-              >
-                <Text size="sm" c="dimmed">
-                  Showing {Math.min(start + 1, total)}–
-                  {Math.min(start + pageItems.length, total)} of {total}
-                </Text>
-                <Group>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={start + perPage >= total}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </Button>
+              <Stack gap="sm" mt="md" w="100%">
+                <Group justify="center" display={{ base: "flex", sm: "none" }}>
+                  <Text size="sm" c="dimmed">
+                    {Math.min(start + 1, total)}–
+                    {Math.min(start + pageItems.length, total)} of {total}
+                  </Text>
                 </Group>
-              </Group>
+                <Group justify="space-between" align="center" w="100%">
+                  <Text
+                    size="sm"
+                    c="dimmed"
+                    display={{ base: "none", sm: "block" }}
+                  >
+                    Showing {Math.min(start + 1, total)}–
+                    {Math.min(start + pageItems.length, total)} of {total}
+                  </Text>
+                  <Group
+                    w={{ base: "100%", sm: "auto" }}
+                    justify="space-between"
+                  >
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={page === 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      flex={{ base: 1, sm: 0 }}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={start + perPage >= total}
+                      onClick={() => setPage((p) => p + 1)}
+                      flex={{ base: 1, sm: 0 }}
+                    >
+                      Next
+                    </Button>
+                  </Group>
+                </Group>
+              </Stack>
             )}
           </>
         );

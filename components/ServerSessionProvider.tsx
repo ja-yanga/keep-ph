@@ -29,8 +29,9 @@ export default async function ServerSessionProvider({
   }
 
   // pass the fetched session to the client provider to hydrate initial state
-  // @ts-expect-error server -> client prop
   return (
-    <SessionProvider initialSession={sessionData}>{children}</SessionProvider>
+    <SessionProvider initialSession={sessionData ?? null}>
+      {children}
+    </SessionProvider>
   );
 }

@@ -197,6 +197,19 @@ export default function MailroomSidebar({
             </Text>
             <Text fw={500}>
               {(() => {
+                // prefer explicit subscription billing cycle if available
+                const sub = getProp<Record<string, unknown> | null>(
+                  src,
+                  "subscription_table",
+                );
+                const cycle = sub
+                  ? (sub["subscription_billing_cycle"] as string | undefined)
+                  : undefined;
+                if (cycle) {
+                  return String(cycle).toUpperCase().includes("MONTH")
+                    ? "Monthly"
+                    : "Annual";
+                }
                 const monthsVal = getProp<string | number>(src, "months");
                 if (!monthsVal) return "—";
                 return Number(monthsVal) >= 12 ? "Annual" : "Monthly";

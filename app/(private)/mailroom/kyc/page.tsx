@@ -41,11 +41,10 @@ import {
 } from "@tabler/icons-react";
 
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
-import Navbar from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import { getStatusFormat } from "@/utils/helper";
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -117,7 +116,7 @@ export default function KycPage() {
 
         // Populate form fields from the data
         setDocType(row.user_kyc_id_document_type ?? "Government ID");
-        setDocNumber(row.id_document_number ?? ""); // Note: schema doesn't have this, but keeping for now
+        setDocNumber(row.user_kyc_id_number ?? "");
         setFirstName(row.user_kyc_first_name ?? "");
         setLastName(row.user_kyc_last_name ?? "");
         setBirthDate(row.user_kyc_date_of_birth ?? "");
@@ -164,7 +163,7 @@ export default function KycPage() {
     try {
       const fd = new FormData();
       fd.append("document_type", docType);
-      fd.append("document_number", docNumber);
+      fd.append("user_kyc_id_number", docNumber);
       // append name/address snapshot
       fd.append("first_name", firstName);
       fd.append("last_name", lastName);
@@ -264,8 +263,7 @@ export default function KycPage() {
   const StatusIconComponent = getStatusIcon(status);
 
   return (
-    <>
-      <Navbar />
+    <PrivateMainLayout>
       {initialLoading ? (
         <Center h="90vh">
           <Loader />
@@ -461,7 +459,11 @@ export default function KycPage() {
                           label={FORM_NAME.postal}
                           placeholder={FORM_NAME.postal}
                           value={postal}
-                          onChange={(e) => setPostal(e.currentTarget.value)}
+                          onChange={(e) =>
+                            setPostal(e.currentTarget.value.replace(/\D/g, ""))
+                          }
+                          inputMode="numeric"
+                          pattern="\d*"
                           required
                           disabled={isLocked}
                         />
@@ -504,29 +506,14 @@ export default function KycPage() {
                           />
                         </Grid.Col>
                       </Grid>
+
                       <Text size="xs" c="dimmed">
                         Supported formats: JPG, PNG. Max file size: 5MB. Clear,
                         well-lit images are required.
                       </Text>
-                    </Stack>
-                  </Paper>
 
-                  {/* 4. PHOTO PREVIEWS (Full Width, at the bottom) */}
-                  <Paper
-                    withBorder
-                    p="md"
-                    radius="md"
-                    bg="var(--mantine-color-gray-0)"
-                  >
-                    <Stack gap="md">
-                      <Title order={4} fw={600}>
-                        {
-                          IDENTITY_VERIFICATION_KYC.section_form
-                            .section_form_title.previews
-                        }
-                      </Title>
-
-                      {/* Previews are now laid out horizontally if space allows */}
+                      {/* Inline previews inside upload section */}
+                      <Divider my="sm" label="Previews" labelPosition="left" />
                       <Group grow wrap="nowrap" align="flex-start">
                         {frontPreview ? (
                           <Paper
@@ -541,7 +528,7 @@ export default function KycPage() {
                                 src={frontPreview}
                                 alt="front preview"
                                 fit="contain"
-                                mah={120} // Adjusted size for a better preview box
+                                mah={120}
                                 w="100%"
                                 radius="sm"
                               />
@@ -580,7 +567,7 @@ export default function KycPage() {
                                 src={backPreview}
                                 alt="back preview"
                                 fit="contain"
-                                mah={120} // Adjusted size for a better preview box
+                                mah={120}
                                 w="100%"
                                 radius="sm"
                               />
@@ -781,8 +768,6 @@ export default function KycPage() {
         </Container>
       )}
 
-      <Footer />
-
       {/* MODAL FOR ENLARGED PHOTO PREVIEW */}
       <Modal
         opened={opened}
@@ -833,7 +818,7 @@ export default function KycPage() {
           </Button>
         </Group>
       </Modal>
-    </>
+    </PrivateMainLayout>
   );
 }
 

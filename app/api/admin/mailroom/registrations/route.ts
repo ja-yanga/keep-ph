@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import dayjs from "dayjs";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { createClient } from "@/lib/supabase/client";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 
 export async function GET() {
   try {
-    const supabase = await createSupabaseServiceClient();
+    const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -13,7 +15,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabaseAdmin = createClient();
+    const supabaseAdmin = createSupabaseServiceClient();
 
     const [
       regsRes,

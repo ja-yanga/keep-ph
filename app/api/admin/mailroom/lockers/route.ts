@@ -23,7 +23,8 @@ export async function GET() {
       .select(
         "location_locker_id, mailroom_location_id, location_locker_code, location_locker_is_available, location_locker_created_at, mailroom_location_table(mailroom_location_id, mailroom_location_name)",
       )
-      .order("location_locker_created_at", { ascending: false });
+      .order("location_locker_created_at", { ascending: false })
+      .is("location_locker_deleted_at", null);
 
     if (lockersErr) {
       return NextResponse.json(

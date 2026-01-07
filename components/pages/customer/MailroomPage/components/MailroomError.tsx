@@ -1,21 +1,12 @@
-import { Box, Container, Paper, Stack, Text, Button } from "@mantine/core";
+import { Container, Paper, Stack, Text, Button } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import Link from "next/link";
-import DashboardNav from "@/components/DashboardNav";
-import Footer from "@/components/Footer";
 import { ErrorProps } from "@/utils/types";
+import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function MailroomError({ error }: ErrorProps) {
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "#F8F9FA",
-      }}
-    >
-      <DashboardNav />
+    <PrivateMainLayout>
       <Container py="xl" size="xl">
         <Paper p="xl" radius="md" withBorder>
           <Stack align="center">
@@ -30,7 +21,6 @@ export default function MailroomError({ error }: ErrorProps) {
           </Stack>
         </Paper>
       </Container>
-      <Footer />
-    </Box>
+    </PrivateMainLayout>
   );
 }
