@@ -1213,3 +1213,27 @@ export async function adminGetAssignedLockers() {
 
   return data;
 }
+
+export async function checkEmailExistsAction(email: string): Promise<boolean> {
+  if (!email) {
+    throw new Error("Email is required");
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc("check_email_exists", {
+      p_email: email,
+    });
+
+    if (error) {
+      console.error("Supabase RPC error in checkEmailExistsAction:", error);
+      throw new Error(`Database error: ${error.message}`);
+    }
+
+    return !!data;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
