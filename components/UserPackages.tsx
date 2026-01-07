@@ -1184,9 +1184,17 @@ export default function UserPackages({
       null;
 
     let statusColor = "blue";
-    if (["RELEASED", "RETRIEVED"].includes(status)) statusColor = "green";
-    else if (status === "DISPOSED") statusColor = "red";
-    else if (String(status).includes("REQUEST")) statusColor = "orange";
+    if (["RELEASED", "RETRIEVED"].includes(status)) {
+      statusColor = "green";
+    } else if (status === "DISPOSED") {
+      statusColor = "red";
+    } else if (String(status).includes("REQUEST")) {
+      const s = String(status).toUpperCase();
+      if (s.includes("DISPOSE")) statusColor = "red";
+      else if (s.includes("RELEASE")) statusColor = "green";
+      else if (s.includes("SCAN")) statusColor = "blue";
+      else statusColor = "orange";
+    }
 
     // Helper to ensure image URL is always a full URL
     const ensureFullUrl = (

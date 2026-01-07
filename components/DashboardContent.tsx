@@ -66,9 +66,11 @@ export default function DashboardContent({
           <Container size="lg" py={60}>
             <Stack align="center" gap="xl">
               {/* Hero Section */}
-              <Box style={{ textAlign: "center", maxWidth: 800 }}>
+              <Box
+                style={{ textAlign: "center", maxWidth: "min(800px, 94vw)" }}
+              >
                 <ThemeIcon
-                  size={80}
+                  size={64}
                   radius={80}
                   variant="light"
                   color="blue"
@@ -77,11 +79,21 @@ export default function DashboardContent({
                   <IconMail size={40} />
                 </ThemeIcon>
 
-                <Title order={1} size={42} fw={800} c="#1A202C" mb="md">
+                <Title
+                  order={1}
+                  fw={800}
+                  c="#1A202C"
+                  mb="md"
+                  style={{ fontSize: "clamp(1.5rem, 5vw, 2.5rem)" }}
+                >
                   Welcome, {loading ? "Loading…" : displayName}!
                 </Title>
 
-                <Text size="xl" c="dimmed" mb="xl">
+                <Text
+                  c="dimmed"
+                  mb="xl"
+                  style={{ fontSize: "clamp(1rem, 3.2vw, 1.125rem)" }}
+                >
                   Your digital mailroom awaits. Get a prestigious address,
                   manage packages remotely, and digitize your physical mail—all
                   in one secure platform.
@@ -94,7 +106,13 @@ export default function DashboardContent({
                   radius="md"
                   bg="#26316D"
                   leftSection={<IconPackage size={20} />}
-                  style={{ transition: "transform 0.2s" }}
+                  style={{
+                    transition: "transform 0.2s",
+                    maxWidth: 420,
+                    margin: "0 auto",
+                    display: "block",
+                  }}
+                  fullWidth
                 >
                   Get Your Mailroom Address
                 </Button>
@@ -102,7 +120,7 @@ export default function DashboardContent({
 
               {/* Features Grid */}
               <SimpleGrid
-                cols={{ base: 1, sm: 3 }}
+                cols={{ base: 1, sm: 2, md: 3 }}
                 spacing={30}
                 mt={40}
                 w="100%"

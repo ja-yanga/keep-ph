@@ -10,7 +10,11 @@ import {
   Button,
   ActionIcon,
   Tooltip,
+  Burger,
+  Drawer,
+  Stack,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { IconUser } from "@tabler/icons-react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -23,6 +27,7 @@ export default function PrivateNavigationHeader() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [opened, { toggle, close }] = useDisclosure(false); // Mobile drawer state
 
   const supabase = createClient();
   const { session } = useSession();
@@ -36,6 +41,7 @@ export default function PrivateNavigationHeader() {
     return {
       color: "#1A237E",
       fontWeight: active ? 700 : 500,
+      fontSize: "1rem",
     };
   };
 
@@ -53,11 +59,25 @@ export default function PrivateNavigationHeader() {
     }
   };
 
+  const navLinks = ((role && NAV_ITMES[role]) || []).map((nav, key) => (
+    <Anchor
+      key={key}
+      component={Link}
+      href={nav.path}
+      style={linkColor(nav.path)}
+      underline="hover"
+      onClick={close} // Close drawer when link is clicked
+    >
+      {nav.title}
+    </Anchor>
+  ));
+
   return (
     <Box
       component="header"
       style={{
         position: "sticky",
+        top: 0,
         zIndex: 50,
         width: "100%",
         borderBottom: "1px solid #e5e7eb",
@@ -67,42 +87,39 @@ export default function PrivateNavigationHeader() {
       py="md"
     >
       <Container size="xl">
-        <Group justify="space-between" align="center" w="100%">
-          {/* LEFT SIDE NAV BRAND*/}
-          <Link
-            href={isAdmin ? "/admin/dashboard" : "/dashboard"}
-            style={{ textDecoration: "none" }}
-          >
-            <Title order={3} fw={800} c="#1A237E">
-              Keep PH
-            </Title>
-          </Link>
+        <Group justify="space-between" align="center" w="100%" wrap="nowrap">
+          <Group>
+            {/* BURGER FOR MOBILE */}
+            {showLinks && (
+              <Burger
+                opened={opened}
+                onClick={toggle}
+                hiddenFrom="sm"
+                size="sm"
+              />
+            )}
 
-          {/* Nav links - hidden on onboarding, wait for session */}
+            <Link
+              href={isAdmin ? "/admin/dashboard" : "/dashboard"}
+              style={{ textDecoration: "none" }}
+            >
+              <Title order={3} fw={800} c="#1A237E">
+                Keep PH
+              </Title>
+            </Link>
+          </Group>
+
+          {/* DESKTOP NAV LINKS - Hidden on Mobile */}
           {showLinks && session && (
             <Group gap="lg" visibleFrom="sm">
-              {((role && NAV_ITMES[role]) || []).map((nav, key) => {
-                return (
-                  <Anchor
-                    key={key}
-                    component={Link}
-                    href={nav.path}
-                    style={linkColor(nav.path)}
-                    underline="hover"
-                  >
-                    {nav.title}
-                  </Anchor>
-                );
-              })}
+              {navLinks}
             </Group>
           )}
 
-          {/* RIGHT SIDE NAV*/}
-          <Group gap="sm">
-            {/* NOTIFICATION BELL */}
+          {/* RIGHT SIDE NAV */}
+          <Group gap="sm" wrap="nowrap">
             {showLinks && role === "user" && <Notifications />}
 
-            {/* PROFILE */}
             <Tooltip label="Account">
               <ActionIcon
                 component={Link}
@@ -117,9 +134,7 @@ export default function PrivateNavigationHeader() {
               </ActionIcon>
             </Tooltip>
 
-            {/* LOGOUT */}
             <Button
-              component="button"
               onClick={handleSignOut}
               loading={loading}
               variant="outline"
@@ -128,12 +143,36 @@ export default function PrivateNavigationHeader() {
               fw={600}
               c="#26316D"
               px={18}
+              visibleFrom="xs" // Hide text button on very small screens if needed
             >
               Logout
             </Button>
           </Group>
         </Group>
       </Container>
+
+      {/* MOBILE DRAWER */}
+      <Drawer
+        opened={opened}
+        onClose={close}
+        title="Navigation"
+        size="xs"
+        hiddenFrom="sm"
+      >
+        <Stack gap="md" mt="xl">
+          {navLinks}
+          <Button
+            onClick={handleSignOut}
+            loading={loading}
+            variant="light"
+            color="red"
+            fullWidth
+            mt="xl"
+          >
+            Logout
+          </Button>
+        </Stack>
+      </Drawer>
     </Box>
   );
 }
