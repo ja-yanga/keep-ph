@@ -1,11 +1,15 @@
 -- Migration to add referral_reward_milestone_claimed to users_table
 -- and implement the recurring claim_referral_rewards RPC function.
 
--- 1. Add the column to track claimed milestones
+-- 1. Add the columns to track claimed milestones and total referral history
 DO $$ 
 BEGIN 
     IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users_table' AND COLUMN_NAME = 'referral_reward_milestone_claimed') THEN
         ALTER TABLE users_table ADD COLUMN referral_reward_milestone_claimed INT DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'rewards_claim_table' AND COLUMN_NAME = 'rewards_claim_total_referrals') THEN
+        ALTER TABLE rewards_claim_table ADD COLUMN rewards_claim_total_referrals INT;
     END IF;
 END $$;
 
@@ -66,14 +70,16 @@ BEGIN
         rewards_claim_account_details,
         rewards_claim_amount,
         rewards_claim_status,
-        rewards_claim_referral_count
+        rewards_claim_referral_count,
+        rewards_claim_total_referrals
     ) VALUES (
         input_user_id,
         input_payment_method, -- Use actual payment method
         input_account_details, -- Use actual account details
         v_reward_amount,
         'PENDING', -- Set to PENDING so admin can process it
-        v_total_referrals
+        v_claimable_count * 10, -- Referrals for this specific claim
+        v_total_referrals -- Snapshot of total referrals at time of claim
     );
 
     RETURN jsonb_build_object(

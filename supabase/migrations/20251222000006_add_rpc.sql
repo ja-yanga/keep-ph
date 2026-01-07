@@ -164,6 +164,7 @@ BEGIN
         'amount', r.rewards_claim_amount,
         'status', r.rewards_claim_status,
         'referral_count', r.rewards_claim_referral_count,
+        'total_referrals', COALESCE(r.rewards_claim_total_referrals, r.rewards_claim_referral_count),
         'created_at', r.rewards_claim_created_at,
         'processed_at', r.rewards_claim_processed_at,
         'proof_path', r.rewards_claim_proof_path,

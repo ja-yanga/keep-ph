@@ -56,6 +56,7 @@ export type ClaimWithUrl = {
   processed_at: string | null;
   proof_path: string | null;
   proof_url: string | null;
+  total_referrals: number | null;
 };
 
 export type RewardsStatusResult = {
@@ -122,6 +123,7 @@ export type RpcAdminClaim = {
   processed_at: string | null;
   proof_path: string | null;
   user?: AdminRewardUser | null;
+  total_referrals: number | null;
 };
 
 export type AdminClaim = ClaimWithUrl & {
@@ -153,6 +155,7 @@ export type AdminClaimApprove = {
   created_at?: string | null;
   proof_url?: string | null;
   proof_path?: string | null;
+  total_referrals?: number | null;
 };
 
 export type ConfirmTarget = {
