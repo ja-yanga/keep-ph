@@ -709,6 +709,41 @@ export async function adminCreateAssignedLocker(args: {
   return data;
 }
 
+export const claimReferralRewards = async (
+  userId: string,
+  paymentMethod: string,
+  accountDetails: string,
+): Promise<{
+  success: boolean;
+  message: string;
+  payout: number;
+  milestones_claimed?: number;
+  total_claimed_milestones?: number;
+}> => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  const { data, error } = await supabase.rpc("claim_referral_rewards", {
+    input_user_id: userId,
+    input_payment_method: paymentMethod,
+    input_account_details: accountDetails,
+  });
+
+  if (error) {
+    console.error("Supabase RPC error in claimReferralRewards:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+
+  return data as {
+    success: boolean;
+    message: string;
+    payout: number;
+    milestones_claimed?: number;
+    total_claimed_milestones?: number;
+  };
+};
+
 export async function adminRestoreMailboxItem(id: string) {
   const { data, error } = await supabase.rpc("admin_restore_mailbox_item", {
     input_data: { id },

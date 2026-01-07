@@ -59,12 +59,15 @@ export type ClaimWithUrl = {
 };
 
 export type RewardsStatusResult = {
-  threshold: number;
-  amount: number;
+  eligibleMilestones: number;
+  claimedMilestones: number;
+  claimableCount: number;
+  amountPerMilestone: number;
   referralCount: number;
   eligible: boolean;
   hasClaim: boolean;
   claims: ClaimWithUrl[];
+  threshold: number; // Restored for backward compatibility in some views
 };
 
 export type RewardClaimModalProps = {

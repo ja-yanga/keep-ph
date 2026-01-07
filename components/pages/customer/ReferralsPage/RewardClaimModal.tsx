@@ -26,22 +26,18 @@ export default function RewardClaimModal({
   userId,
   onSuccessAction,
   isLoading = false,
-}: RewardClaimModalProps) {
+  claimableAmount = 0,
+}: RewardClaimModalProps & { claimableAmount?: number }) {
   const [paymentMethod, setPaymentMethod] = useState<"gcash" | "maya">("gcash");
   const [accountDetails, setAccountDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const theme = useMantineTheme();
-  const {
-    modal,
-    notifications: noticeCopy,
-    paymentMethods,
-    rewardAmount,
-  } = REFERRALS_UI;
+  const { modal, notifications: noticeCopy, paymentMethods } = REFERRALS_UI;
   const methodLabel = paymentMethods[paymentMethod];
   const rewardLabel = modal.rewardLabel.replace(
     "{amount}",
-    rewardAmount.toString(),
+    (claimableAmount || REFERRALS_UI.rewardAmount).toString(),
   );
   const fieldLabel = modal.fieldLabelTemplate.replace("{method}", methodLabel);
 
