@@ -181,7 +181,6 @@ export default function PackageActionModal({
   };
 
   const addressesAvailable = localAddresses.length > 0;
-  const userName = getUsername(safeGetUser(selectedPackage));
 
   // open add form only when there are no addresses; update when `addresses` changes
   const [showAddAddress, setShowAddAddress] = React.useState(
@@ -287,13 +286,7 @@ export default function PackageActionModal({
   };
 
   const releaseMissingRecipient =
-    actionType === "RELEASE" &&
-    !pickupOnBehalf &&
-    addressesAvailable &&
-    !selectedAddressId &&
-    !releaseToName &&
-    !selectedPackage?.release_to_name &&
-    !userName;
+    actionType === "RELEASE" && !pickupOnBehalf && !releaseToName.trim();
 
   const pickupInvalid =
     actionType === "RELEASE" &&
@@ -557,6 +550,23 @@ export default function PackageActionModal({
             </Box>
 
             <Box mt="md">{renderAddressPreview()}</Box>
+
+            {!pickupOnBehalf && (
+              <TextInput
+                label="Recipient Name (required)"
+                placeholder="Full name of recipient"
+                value={releaseToName}
+                onChange={(e) => setReleaseToName(e.currentTarget.value)}
+                required
+                error={
+                  actionType === "RELEASE" &&
+                  !pickupOnBehalf &&
+                  !releaseToName.trim()
+                    ? "Recipient name is required"
+                    : undefined
+                }
+              />
+            )}
 
             <Group align="center" mt="sm" mb="sm" gap="sm">
               <Checkbox
