@@ -87,3 +87,54 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const mobile = typeof body?.mobile === "string" ? body.mobile.trim() : "";
+
+    if (!mobile) {
+      return NextResponse.json(
+        { error: "mobile is required" },
+        { status: 400 },
+      );
+    }
+
+    // basic mobile validation (09XXXXXXXXX)
+    if (!/^09\d{9}$/.test(mobile)) {
+      return NextResponse.json(
+        { error: "Invalid mobile format" },
+        { status: 400 },
+      );
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("users_table")
+      .update({ mobile_number: mobile })
+      .eq("users_id", user.id);
+
+    if (updateError) {
+      console.error("Update profile (mobile) error:", updateError);
+      return NextResponse.json(
+        { error: "Failed to update profile" },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ message: "Mobile updated" });
+  } catch (err: unknown) {
+    console.error("Update profile (mobile) exception:", err);
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
+}

@@ -844,7 +844,8 @@ export default function UserDashboard({
                       variant="outline"
                       disabled={page === 1}
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      flex={{ base: 1, sm: 0 }}
+                      // use inline style for responsive flex instead of invalid `flex` prop
+                      style={isMobile ? { flex: 1 } : undefined}
                     >
                       Previous
                     </Button>
@@ -853,7 +854,7 @@ export default function UserDashboard({
                       variant="outline"
                       disabled={start + perPage >= total}
                       onClick={() => setPage((p) => p + 1)}
-                      flex={{ base: 1, sm: 0 }}
+                      style={isMobile ? { flex: 1 } : undefined}
                     >
                       Next
                     </Button>
