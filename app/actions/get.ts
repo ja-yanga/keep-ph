@@ -890,6 +890,51 @@ export async function adminGetMailroomPackages(args: {
   };
 }
 
+export async function adminGetArchivedPackages(args: {
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  packages: unknown[];
+  totalCount: number;
+}> {
+  const limit = Math.min(args.limit ?? 50, 200);
+  const offset = args.offset ?? 0;
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "get_admin_archived_packages",
+    {
+      input_limit: limit,
+      input_offset: offset,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  let rpcData: Record<string, unknown> = {};
+  try {
+    rpcData =
+      typeof data === "string"
+        ? JSON.parse(data)
+        : (data as Record<string, unknown>);
+  } catch (parseError) {
+    console.error("Failed to parse RPC response:", parseError);
+    throw new Error("Failed to parse response");
+  }
+
+  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
+  const totalCount =
+    typeof rpcData.total_count === "number"
+      ? rpcData.total_count
+      : packages.length;
+
+  return {
+    packages,
+    totalCount,
+  };
+}
+
 export async function getUserMailroomRegistrationStats(
   userId: string,
 ): Promise<MailroomRegistrationStats[]> {
