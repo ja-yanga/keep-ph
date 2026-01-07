@@ -117,12 +117,15 @@ export async function getRewardStatus(
     // Handle null or undefined data
     if (data === null || data === undefined) {
       return {
-        threshold: 10,
-        amount: 500,
+        eligibleMilestones: 0,
+        claimedMilestones: 0,
+        claimableCount: 0,
+        amountPerMilestone: 500,
         referralCount: 0,
         eligible: false,
         hasClaim: false,
         claims: [],
+        threshold: 10,
       };
     }
 
@@ -174,12 +177,15 @@ export async function getRewardStatus(
     );
 
     return {
-      threshold: toNumber(payloadRecord.threshold, 10),
-      amount: toNumber(payloadRecord.amount, 500),
+      eligibleMilestones: toNumber(payloadRecord.eligibleMilestones, 0),
+      claimedMilestones: toNumber(payloadRecord.claimedMilestones, 0),
+      claimableCount: toNumber(payloadRecord.claimableCount, 0),
+      amountPerMilestone: toNumber(payloadRecord.amount_per_milestone, 500),
       referralCount: toNumber(payloadRecord.referralCount, 0),
       eligible: toBoolean(payloadRecord.eligible),
-      hasClaim: toBoolean(payloadRecord.hasClaim),
+      hasClaim: toNumber(payloadRecord.claimedMilestones, 0) > 0,
       claims: claimsWithUrls,
+      threshold: toNumber(payloadRecord.threshold, 10),
     };
   } catch (err) {
     if (err instanceof Error) {

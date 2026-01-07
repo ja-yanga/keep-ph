@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requestRewardClaim } from "@/app/actions/post";
+import { claimReferralRewards } from "@/app/actions/post";
 
 export async function POST(req: Request) {
   try {
@@ -8,19 +8,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const payload = await requestRewardClaim({
+    const payload = await claimReferralRewards(
       userId,
       paymentMethod,
       accountDetails,
-    });
+    );
 
-    if (!payload?.ok) {
-      const status = payload?.status ?? 400;
-      const message = payload?.error ?? "Unable to submit claim";
-      return NextResponse.json({ error: message }, { status });
+    if (!payload?.success) {
+      return NextResponse.json(
+        { error: payload?.message ?? "Unable to submit claim" },
+        { status: 400 },
+      );
     }
 
-    return NextResponse.json({ ok: true, claim: payload.claim });
+    return NextResponse.json({
+      ok: true,
+      message: payload.message,
+      payout: payload.payout,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("rewards.claim:", message);

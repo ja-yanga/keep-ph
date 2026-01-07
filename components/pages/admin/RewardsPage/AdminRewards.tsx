@@ -450,10 +450,18 @@ export default function AdminRewards() {
             },
             {
               accessor: "referral_count",
-              title: "Referrals",
-              width: 100,
+              title: "Claim Referrals",
+              width: 130,
               render: (row: AdminClaimApprove) => (
                 <Text>{row.referral_count ?? "—"}</Text>
+              ),
+            },
+            {
+              accessor: "total_referrals",
+              title: "Total Referrals",
+              width: 130,
+              render: (row: AdminClaimApprove) => (
+                <Text>{row.total_referrals ?? "—"}</Text>
               ),
             },
             {
