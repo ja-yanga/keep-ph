@@ -28,7 +28,7 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { useSession } from "@/components/SessionProvider";
 import ClaimStatusModal from "@/components/ClaimStatusModal";
-import { ClaimRow, ReferralRow } from "@/utils/types";
+import { ClaimRow, ReferralRow, RewardsStatusResult } from "@/utils/types";
 import { maskAccount, pickNumber, pickString } from "@/utils/helper";
 import { REFERRALS_UI } from "@/utils/constants";
 import RewardClaimModal from "./RewardClaimModal";
@@ -42,15 +42,28 @@ export default function ReferralsContent() {
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [rewardStatus, setRewardStatus] = useState<RewardsStatusResult | null>(
+    null,
+  );
+
   // State for reward logic
   const REWARD_THRESHOLD = REFERRALS_UI.threshold;
   const referralCount = referrals.length;
-  const isRewardReady = referralCount >= REWARD_THRESHOLD;
+  const isRewardReady = rewardStatus?.eligible || false;
+  const claimableAmount =
+    (rewardStatus?.claimableCount || 0) *
+    (rewardStatus?.amountPerMilestone || 500);
+
   const progressDescription =
-    REFERRALS_UI.progressCard.progressDescription.replace(
-      "{remaining}",
-      Math.max(REWARD_THRESHOLD - referralCount, 0).toString(),
-    );
+    (rewardStatus?.claimableCount || 0) > 0
+      ? `You have PHP ${claimableAmount} ready to claim!`
+      : REFERRALS_UI.progressCard.progressDescription.replace(
+          "{remaining}",
+          Math.max(
+            REWARD_THRESHOLD - (referralCount % REWARD_THRESHOLD),
+            0,
+          ).toString(),
+        );
   const heroDescription = REFERRALS_UI.hero.description.replace(
     "{threshold}",
     REWARD_THRESHOLD.toString(),
@@ -120,7 +133,8 @@ export default function ReferralsContent() {
       }
 
       // fetch rewards status in background (non-blocking)
-      void fetchRewardsStatus();
+      const status = await fetchRewardsStatus();
+      setRewardStatus(status);
     } catch (err: unknown) {
       if (!(err instanceof Error && err.name === "AbortError")) {
         console.error("Error loading referrals:", err);
@@ -132,7 +146,7 @@ export default function ReferralsContent() {
   };
 
   const fetchRewardsStatus = async () => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id) return null;
     setClaimLoading(true);
     try {
       const res = await fetch(
@@ -144,7 +158,7 @@ export default function ReferralsContent() {
           res.status,
           res.statusText,
         );
-        return;
+        return null;
       }
       const json = await res.json();
       console.log("Rewards status response:", json);
@@ -202,8 +216,10 @@ export default function ReferralsContent() {
         });
         setClaims(mapped);
       }
+      return json;
     } catch (err: unknown) {
       console.error("fetchRewardsStatus", err);
+      return null;
     } finally {
       setClaimLoading(false);
     }
@@ -214,27 +230,30 @@ export default function ReferralsContent() {
   }, [session]);
 
   // tolerate both old (referrals_*) and new (referral_*) column names
-  const progressValue = Math.min((referralCount / REWARD_THRESHOLD) * 100, 100);
+  const progressValue = Math.min(
+    ((referralCount % REWARD_THRESHOLD) / REWARD_THRESHOLD) * 100,
+    100,
+  );
 
   // compute button color and label without nested ternaries
   let buttonColor = "gray";
   if (hasPending) {
     buttonColor = "orange";
-  } else if (latestClaim?.status === "PAID") {
-    buttonColor = "green";
   } else if (isRewardReady) {
+    buttonColor = "green";
+  } else if (latestClaim?.status === "PAID") {
     buttonColor = "green";
   }
 
   let buttonLabel = REFERRALS_UI.progressCard.buttons.keepReferring;
   if (hasPending) {
     buttonLabel = REFERRALS_UI.summaryCard.buttons.viewProcessing;
+  } else if (isRewardReady) {
+    buttonLabel = REFERRALS_UI.progressCard.buttons.claim;
   } else if (latestClaim?.status === "PAID") {
     buttonLabel = REFERRALS_UI.summaryCard.buttons.viewPaid;
   } else if (hasAnyClaim) {
     buttonLabel = REFERRALS_UI.summaryCard.buttons.viewClaim;
-  } else if (isRewardReady) {
-    buttonLabel = REFERRALS_UI.progressCard.buttons.claim;
   }
 
   return (
@@ -247,6 +266,7 @@ export default function ReferralsContent() {
           userId={session?.user?.id}
           onSuccessAction={fetchReferralData}
           isLoading={false}
+          claimableAmount={claimableAmount}
         />
         <ClaimStatusModal
           opened={statusOpened}
@@ -364,9 +384,20 @@ export default function ReferralsContent() {
                   <Stack gap={4}>
                     <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
                       {isRewardReady
-                        ? REFERRALS_UI.progressCard.unlockedTitle
-                        : `${REFERRALS_UI.progressCard.progressTitle} (${referralCount}/${REWARD_THRESHOLD})`}
+                        ? `${REFERRALS_UI.progressCard.unlockedTitle} (${rewardStatus?.claimableCount} Reward${(rewardStatus?.claimableCount || 0) > 1 ? "s" : ""} ready!)`
+                        : `${REFERRALS_UI.progressCard.progressTitle} (${referralCount % REWARD_THRESHOLD}/${REWARD_THRESHOLD})`}
                     </Title>
+                    <Group gap="xs">
+                      <Badge color="indigo" variant="light">
+                        Lifetime Referrals: {referralCount}
+                      </Badge>
+                      {rewardStatus?.claimedMilestones ? (
+                        <Badge color="green" variant="light">
+                          Total Rewards Claimed:{" "}
+                          {rewardStatus.claimedMilestones}
+                        </Badge>
+                      ) : null}
+                    </Group>
                     <Text c="dimmed" size="sm">
                       {isRewardReady
                         ? REFERRALS_UI.progressCard.unlockedDescription
@@ -479,7 +510,7 @@ export default function ReferralsContent() {
                 >
                   {REFERRALS_UI.table.heading}
                 </Title>
-                <Badge variant="light" color="gray" size="lg" circle>
+                <Badge variant="light" color="gray" size="lg">
                   {referralCount}
                 </Badge>
               </Group>

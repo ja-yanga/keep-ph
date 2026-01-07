@@ -17,6 +17,7 @@ import {
   rem,
   Badge,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import Link from "next/link";
 import { LANDING_PAGE } from "@/utils/constants";
@@ -29,6 +30,17 @@ const DISCOUNT_RATE = PRICING_COPY.segmentedControl.annualDiscountRate;
 
 type BillingCadence = (typeof BILLING_OPTIONS)[number]["value"];
 
+const FREE_PLAN: MailroomPlan = {
+  id: "free-plan",
+  name: "Free",
+  price: 0,
+  description: "Earn cash reward after 10 referrals",
+  storageLimit: null,
+  canReceiveMail: false,
+  canReceiveParcels: false,
+  canDigitize: false,
+};
+
 export default function PricingSection() {
   const [billing, setBilling] = useState<BillingCadence>(
     BILLING_DEFAULT as BillingCadence,
@@ -37,43 +49,34 @@ export default function PricingSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Hook to detect mobile for specific logic (like the transform scale)
+  const isMobile = useMediaQuery("(max-width: 48em)");
+
   useEffect(() => {
     const controller = new AbortController();
-
     const fetchPlans = async () => {
       try {
         setLoading(true);
         setError(null);
-
         const response = await fetch("/api/plans", {
           signal: controller.signal,
         });
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch plans");
-        }
-
+        if (!response.ok) throw new Error("Failed to fetch plans");
         const data = (await response.json()) as MailroomPlan[];
         setPlans(data);
       } catch (fetchError) {
-        if ((fetchError as Error).name === "AbortError") {
-          return;
-        }
+        if ((fetchError as Error).name === "AbortError") return;
         setError(PRICING_COPY.fallback.error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchPlans();
-
     return () => controller.abort();
   }, []);
 
   const formatPrice = (price: number) =>
-    `₱${price.toLocaleString(undefined, {
-      maximumFractionDigits: 0,
-    })}`;
+    `₱${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
   const getDisplayPrice = (price: number) =>
     billing === "monthly" ? price : Math.round(price * (1 - DISCOUNT_RATE));
@@ -82,19 +85,18 @@ export default function PricingSection() {
     Math.round(price * 12 * (1 - DISCOUNT_RATE)).toLocaleString();
 
   const getFeatureIconColor = (available: boolean, featured: boolean) => {
-    if (!available) {
-      return "red";
-    }
-
+    if (!available) return "red";
     return featured ? "blue" : "teal";
   };
 
   const renderPlanCard = (plan: MailroomPlan) => {
     const isFeatured = plan.name === PRICING_COPY.featuredPlanName;
+
+    // Only apply scale and extra shadow on Desktop
     const featuredStyles = isFeatured
       ? {
           border: "2px solid #1A237E",
-          transform: "scale(1.02)",
+          transform: isMobile ? "none" : "scale(1.02)",
           boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
           zIndex: 1,
         }
@@ -118,10 +120,7 @@ export default function PricingSection() {
         label: PRICING_COPY.features.canReceiveParcels,
         available: plan.canReceiveParcels,
       },
-      {
-        label: PRICING_COPY.features.canDigitize,
-        available: plan.canDigitize,
-      },
+      { label: PRICING_COPY.features.canDigitize, available: plan.canDigitize },
     ];
 
     return (
@@ -129,30 +128,33 @@ export default function PricingSection() {
         key={plan.id}
         radius="lg"
         withBorder={!isFeatured}
-        padding="xl"
+        padding={isMobile ? "lg" : "xl"}
         style={featuredStyles}
       >
         <Stack justify="space-between" h="100%">
           <Box>
-            <Group justify="space-between" mb="xs">
-              <Title order={4} c={isFeatured ? "#1A237E" : undefined}>
+            <Group justify="space-between" mb="xs" wrap="nowrap">
+              <Title order={4} c={isFeatured ? "#1A237E" : undefined} size="h4">
                 {plan.name}
               </Title>
               {isFeatured && (
-                <Badge color="blue" variant="filled">
+                <Badge color="blue" variant="filled" size="sm">
                   {PRICING_COPY.featuredPlanName}
                 </Badge>
               )}
             </Group>
+
             <Group align="baseline" gap={4}>
               <Text
-                size={rem(32)}
+                size={isMobile ? rem(28) : rem(32)}
                 fw={800}
                 c={isFeatured ? "#1A237E" : undefined}
               >
                 {formatPrice(getDisplayPrice(plan.price))}
               </Text>
-              <Text c="dimmed">{PRICING_COPY.priceSuffix}</Text>
+              <Text c="dimmed" size="sm">
+                {PRICING_COPY.priceSuffix}
+              </Text>
             </Group>
 
             {billing === "annual" && (
@@ -197,6 +199,7 @@ export default function PricingSection() {
             fullWidth
             radius="md"
             mt="xl"
+            size={isMobile ? "md" : "sm"}
           >
             {PRICING_COPY.button.label}
           </Button>
@@ -205,22 +208,98 @@ export default function PricingSection() {
     );
   };
 
-  let pricingContent: ReactNode;
+  const renderFreePlanCard = (plan: MailroomPlan) => {
+    return (
+      <Card
+        key={plan.id}
+        radius="lg"
+        withBorder
+        padding={isMobile ? "lg" : "xl"}
+      >
+        <Stack justify="space-between" h="100%">
+          <Box>
+            <Group justify="space-between" mb="xs" wrap="nowrap">
+              <Title order={4} size="h4">
+                {plan.name}
+              </Title>
+              <Badge color="gray" variant="light" size="sm">
+                Free
+              </Badge>
+            </Group>
 
+            <Group align="baseline" gap={4}>
+              <Text size={isMobile ? rem(28) : rem(32)} fw={800}>
+                ₱0
+              </Text>
+              <Text c="dimmed" size="sm">
+                /month
+              </Text>
+            </Group>
+
+            <Text size="sm" c="dimmed" mt="xs">
+              {plan.description}
+            </Text>
+
+            <List spacing="sm" mt="xl" size="sm">
+              {[
+                "Affiliate link access",
+                "Earn cash reward after 10 referrals",
+                "Track your referrals",
+              ].map((f) => (
+                <List.Item
+                  key={f}
+                  icon={
+                    <ThemeIcon color="teal" size={20} radius="xl">
+                      <IconCheck size={12} />
+                    </ThemeIcon>
+                  }
+                >
+                  {f}
+                </List.Item>
+              ))}
+              <List.Item
+                icon={
+                  <ThemeIcon color="red" size={20} radius="xl">
+                    <IconX size={12} />
+                  </ThemeIcon>
+                }
+              >
+                No mail services
+              </List.Item>
+            </List>
+          </Box>
+          <Button
+            component={Link}
+            href={PRICING_COPY.button.href}
+            variant="outline"
+            fullWidth
+            radius="md"
+            mt="xl"
+            size={isMobile ? "md" : "sm"}
+          >
+            {PRICING_COPY.button.label}
+          </Button>
+        </Stack>
+      </Card>
+    );
+  };
+
+  // prepare main content to avoid nested ternary expressions (ESLint)
+  let mainContent: ReactNode;
   if (loading) {
-    pricingContent = (
+    mainContent = (
       <Text ta="center" c="dimmed">
         {PRICING_COPY.fallback.loading}
       </Text>
     );
   } else if (error) {
-    pricingContent = (
+    mainContent = (
       <Text ta="center" c="red">
         {error}
       </Text>
     );
   } else if (!plans.length) {
-    pricingContent = (
+    mainContent = (
       <Stack align="center" gap="xs">
         <Title order={4}>{PRICING_COPY.fallback.emptyTitle}</Title>
         <Text c="dimmed" ta="center">
@@ -229,37 +308,45 @@ export default function PricingSection() {
       </Stack>
     );
   } else {
-    pricingContent = (
+    mainContent = (
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
-        {plans.map(renderPlanCard)}
+        {[FREE_PLAN, ...plans].map((p) =>
+          p.id === FREE_PLAN.id ? renderFreePlanCard(p) : renderPlanCard(p),
+        )}
       </SimpleGrid>
     );
   }
 
   return (
-    <Box bg={PRICING_COPY.background} py={80} id={PRICING_COPY.sectionId}>
+    <Box
+      bg={PRICING_COPY.background}
+      py={{ base: 40, md: 80 }}
+      id={PRICING_COPY.sectionId}
+    >
       <Container size="xl">
-        <Stack align="center" gap="sm" mb={50}>
-          <Title order={2} size={36} c="#1A237E">
+        <Stack align="center" gap="sm" mb={{ base: 30, md: 50 }}>
+          <Title order={2} size={isMobile ? 28 : 36} c="#1A237E" ta="center">
             {PRICING_COPY.heading}
           </Title>
-          <Text c="dimmed" ta="center" size="lg" maw={600}>
+          <Text c="dimmed" ta="center" size={isMobile ? "md" : "lg"} maw={600}>
             {PRICING_COPY.subheading}
           </Text>
 
-          <Group mt="md">
+          <Box mt="md" w={{ base: "100%", sm: "auto" }}>
             <SegmentedControl
               value={billing}
               onChange={(value) => setBilling(value as BillingCadence)}
               data={BILLING_OPTIONS}
-              size="md"
+              size={isMobile ? "sm" : "md"}
               radius="xl"
               color="blue"
               bg="white"
+              fullWidth={isMobile}
             />
-          </Group>
+          </Box>
         </Stack>
-        {pricingContent}
+
+        {mainContent}
       </Container>
     </Box>
   );

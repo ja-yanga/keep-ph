@@ -16,6 +16,7 @@ DECLARE
     input_locker_qty INTEGER := COALESCE((input_data->>'locker_qty')::INTEGER, 1);
     input_months INTEGER := COALESCE((input_data->>'months')::INTEGER, 1);
     input_amount NUMERIC := COALESCE((input_data->>'amount')::NUMERIC, 0);
+    input_referral_code TEXT := (input_data->>'referral_code')::TEXT;
     
     -- Function variables
     var_existing_registration_id UUID;
@@ -150,6 +151,18 @@ BEGIN
         mailroom_assigned_locker_status
     )
     SELECT var_registration_id, unnest(var_available_locker_ids), 'Normal'::public.mailroom_assigned_locker_status;
+
+    -- 8) Handle Referral (New)
+    IF input_referral_code IS NOT NULL AND input_referral_code != '' THEN
+        PERFORM public.referral_add(
+            jsonb_build_object(
+                'user_id', input_user_id,
+                'referral_code', input_referral_code,
+                'referred_email', (SELECT users_email FROM public.users_table WHERE users_id = input_user_id),
+                'service_type', 'MAILROOM'
+            )
+        );
+    END IF;
 
     RETURN json_build_object(
         'success', TRUE,

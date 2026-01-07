@@ -117,12 +117,15 @@ export async function getRewardStatus(
     // Handle null or undefined data
     if (data === null || data === undefined) {
       return {
-        threshold: 10,
-        amount: 500,
+        eligibleMilestones: 0,
+        claimedMilestones: 0,
+        claimableCount: 0,
+        amountPerMilestone: 500,
         referralCount: 0,
         eligible: false,
         hasClaim: false,
         claims: [],
+        threshold: 10,
       };
     }
 
@@ -174,12 +177,15 @@ export async function getRewardStatus(
     );
 
     return {
-      threshold: toNumber(payloadRecord.threshold, 10),
-      amount: toNumber(payloadRecord.amount, 500),
+      eligibleMilestones: toNumber(payloadRecord.eligibleMilestones, 0),
+      claimedMilestones: toNumber(payloadRecord.claimedMilestones, 0),
+      claimableCount: toNumber(payloadRecord.claimableCount, 0),
+      amountPerMilestone: toNumber(payloadRecord.amount_per_milestone, 500),
       referralCount: toNumber(payloadRecord.referralCount, 0),
       eligible: toBoolean(payloadRecord.eligible),
-      hasClaim: toBoolean(payloadRecord.hasClaim),
+      hasClaim: toNumber(payloadRecord.claimedMilestones, 0) > 0,
       claims: claimsWithUrls,
+      threshold: toNumber(payloadRecord.threshold, 10),
     };
   } catch (err) {
     if (err instanceof Error) {
@@ -890,6 +896,51 @@ export async function adminGetMailroomPackages(args: {
   };
 }
 
+export async function adminGetArchivedPackages(args: {
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  packages: unknown[];
+  totalCount: number;
+}> {
+  const limit = Math.min(args.limit ?? 50, 200);
+  const offset = args.offset ?? 0;
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "get_admin_archived_packages",
+    {
+      input_limit: limit,
+      input_offset: offset,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  let rpcData: Record<string, unknown> = {};
+  try {
+    rpcData =
+      typeof data === "string"
+        ? JSON.parse(data)
+        : (data as Record<string, unknown>);
+  } catch (parseError) {
+    console.error("Failed to parse RPC response:", parseError);
+    throw new Error("Failed to parse response");
+  }
+
+  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
+  const totalCount =
+    typeof rpcData.total_count === "number"
+      ? rpcData.total_count
+      : packages.length;
+
+  return {
+    packages,
+    totalCount,
+  };
+}
+
 export async function getUserMailroomRegistrationStats(
   userId: string,
 ): Promise<MailroomRegistrationStats[]> {
@@ -1167,4 +1218,28 @@ export async function adminGetAssignedLockers() {
   }
 
   return data;
+}
+
+export async function checkEmailExistsAction(email: string): Promise<boolean> {
+  if (!email) {
+    throw new Error("Email is required");
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc("check_email_exists", {
+      p_email: email,
+    });
+
+    if (error) {
+      console.error("Supabase RPC error in checkEmailExistsAction:", error);
+      throw new Error(`Database error: ${error.message}`);
+    }
+
+    return !!data;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
 }

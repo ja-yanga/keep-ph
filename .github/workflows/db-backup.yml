@@ -3,7 +3,7 @@ name: supabase-db-backup
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *" # daily at midnight UTC
+    - cron: "0 17 * * *" # daily at 1 AM Philippines time (5 PM UTC)
 
 jobs:
   backup:
@@ -29,6 +29,36 @@ jobs:
         with:
           version: latest
 
+      - name: Verify database connection
+        run: |
+          echo "Testing database connection..."
+          # Check if connection string is set
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "Error: SUPABASE_DB_URL is not set"
+            exit 1
+          fi
+
+          # Verify connection string format
+          if echo "$SUPABASE_DB_URL" | grep -q "pooler"; then
+            echo "✓ Using connection pooler URL"
+            if echo "$SUPABASE_DB_URL" | grep -q ":5432"; then
+              echo "⚠ Warning: Using port 5432 (direct connection). For backups, use Session mode pooler (port 6543)"
+            elif echo "$SUPABASE_DB_URL" | grep -q ":6543"; then
+              echo "✓ Using pooler port 6543"
+            fi
+          else
+            echo "⚠ Warning: Not using connection pooler URL"
+            echo "For database backups, use the 'Session' mode connection string from Supabase dashboard"
+            echo "Format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres"
+            echo "Note: Session mode is recommended for long-running operations like backups"
+          fi
+
+          # Test basic connectivity
+          if command -v psql > /dev/null 2>&1; then
+            echo "Testing connection with psql..."
+            # Extract connection details and test (without exposing password)
+            echo "Connection test will be performed during dump"
+
       - name: Set timestamp and filename
         run: |
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
@@ -40,24 +70,41 @@ jobs:
 
       - name: Dump roles
         run: |
+          echo "Dumping database roles..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
             --role-only \
-            -f backups/roles.sql
+            -f backups/roles.sql || {
+              echo "Error: Failed to dump roles"
+              echo "Please verify:"
+              echo "1. SUPABASE_DB_URL uses the connection pooler (Session mode recommended for backups)"
+              echo "2. Database allows connections from GitHub Actions IPs"
+              echo "3. Connection string format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres"
+              echo "4. Use Session mode (not Transaction mode) for long-running backup operations"
+              exit 1
+            }
 
       - name: Dump schema
         run: |
+          echo "Dumping database schema..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
-            -f backups/schema.sql
+            -f backups/schema.sql || {
+              echo "Error: Failed to dump schema"
+              exit 1
+            }
 
       - name: Dump data
         run: |
+          echo "Dumping database data..."
           supabase db dump \
             --db-url "$SUPABASE_DB_URL" \
             --data-only \
             --use-copy \
-            -f backups/data.sql
+            -f backups/data.sql || {
+              echo "Error: Failed to dump data"
+              exit 1
+            }
 
       # -------------------------------
       # Backup Storage Buckets
@@ -151,8 +198,8 @@ jobs:
             
             # Extract bucket names using jq
             echo "$buckets_response" | jq -r '.[]?.name // empty' | while IFS= read -r bucket_name; do
-              if [ -n "$bucket_name" ] && [ "$bucket_name" != "db-backups" ]; then
-                # Skip the db-backups bucket to avoid backing up backups
+              if [ -n "$bucket_name" ] && [ "$bucket_name" != "DB-BACKUPS" ]; then
+                # Skip the DB-BACKUPS bucket to avoid backing up backups
                 backup_bucket "$bucket_name"
               fi
             done
@@ -186,7 +233,7 @@ jobs:
       - name: Upload to Supabase Storage
         run: |
           curl -X POST \
-            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/db-backups/${{ env.FILENAME }}" \
+            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/storage/v1/object/DB-BACKUPS/${{ env.FILENAME }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/gzip" \
             --data-binary "@${{ env.FILENAME }}"
@@ -194,16 +241,27 @@ jobs:
       # -------------------------------
       # Upload to Cloudflare R2
       # -------------------------------
-      - name: Configure AWS CLI for R2
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          aws-region: auto
+      - name: Install AWS CLI
+        run: |
+          if ! command -v aws &> /dev/null; then
+            echo "Installing AWS CLI..."
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            aws --version
+          else
+            echo "AWS CLI already installed"
+            aws --version
+          fi
 
       - name: Upload to Cloudflare R2
         env:
+          # R2 endpoint format: https://{account_id}.r2.cloudflarestorage.com
+          # Account ID should be set in R2_ACCOUNT_ID secret (e.g., 2cb950ce770f7b7ed02396ece33cfe75)
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
         run: |
           aws s3 cp \
             ${{ env.FILENAME }} \

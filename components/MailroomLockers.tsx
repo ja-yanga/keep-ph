@@ -243,6 +243,11 @@ export default function MailroomLockers() {
   const [pageSize, setPageSize] = useState(10);
 
   const [opened, { open, close }] = useDisclosure(false);
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false);
+  const [lockerToDelete, setLockerToDelete] = useState<string | null>(null);
   const [editingLocker, setEditingLocker] = useState<Locker | null>(null);
   const [formData, setFormData] = useState({
     locker_code: "",
@@ -545,11 +550,16 @@ export default function MailroomLockers() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this locker?")) return;
+  const handleDelete = (id: string) => {
+    setLockerToDelete(id);
+    openDeleteModal();
+  };
+
+  const confirmDelete = async () => {
+    if (!lockerToDelete) return;
 
     try {
-      const res = await fetch(`/api/admin/mailroom/lockers/${id}`, {
+      const res = await fetch(`/api/admin/mailroom/lockers/${lockerToDelete}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -565,6 +575,9 @@ export default function MailroomLockers() {
         message: msg || "Failed to delete locker",
         color: "red",
       });
+    } finally {
+      closeDeleteModal();
+      setLockerToDelete(null);
     }
   };
 
@@ -802,6 +815,28 @@ export default function MailroomLockers() {
           noRecordsText="No lockers found"
         />
       </Paper>
+
+      <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Confirm Deletion"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete this locker? This action cannot be
+            undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={closeDeleteModal}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Modal
         opened={opened}

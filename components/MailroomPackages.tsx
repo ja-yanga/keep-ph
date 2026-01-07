@@ -40,6 +40,8 @@ import {
   IconUpload,
   IconTruckDelivery,
   IconCheck,
+  IconArchive,
+  IconRestore,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { DataTable } from "mantine-datatable";
@@ -110,6 +112,8 @@ export default function MailroomPackages() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
   const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]);
+  const [archivedPackages, setArchivedPackages] = useState<Package[]>([]);
+  const [archivedTotalCount, setArchivedTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -131,6 +135,11 @@ export default function MailroomPackages() {
 
   // Modal state
   const [opened, { open, close }] = useDisclosure(false);
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false);
+  const [packageToDelete, setPackageToDelete] = useState<string | null>(null);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
     package_name: "",
@@ -209,6 +218,12 @@ export default function MailroomPackages() {
   // Tab State
   const [activeTab, setActiveTab] = useState<string | null>("active");
 
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [packageToRestore, setPackageToRestore] = useState<Package | null>(
+    null,
+  );
+  const [isRestoring, setIsRestoring] = useState(false);
+
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -242,9 +257,19 @@ export default function MailroomPackages() {
     revalidateOnFocus: true,
   });
 
+  const archivedKey =
+    activeTab === "archive"
+      ? `${API_ENDPOINTS.admin.mailroom.archive}?limit=${pageSize}&offset=${(page - 1) * pageSize}`
+      : null;
+
+  const { data: archivedData, isValidating: isArchivedValidating } = useSWR(
+    archivedKey,
+    fetcher,
+  );
+
   // sync SWR combined response into local state
   useEffect(() => {
-    setLoading(!!isValidating);
+    setLoading(!!isValidating || !!isArchivedValidating);
     const payload = combinedData ?? {};
     let pkgs: Package[];
     if (Array.isArray(payload.packages)) {
@@ -266,13 +291,21 @@ export default function MailroomPackages() {
     setRegistrations(regs);
     setLockers(lks);
     setAssignedLockers(assigned);
-  }, [combinedData, isValidating]);
+
+    if (archivedData) {
+      setArchivedPackages(archivedData.packages || []);
+      setArchivedTotalCount(archivedData.total_count || 0);
+    }
+  }, [combinedData, isValidating, archivedData, isArchivedValidating]);
 
   // helper to refresh combined data (used after mutations)
   const refreshAll = async () => {
     setLoading(true);
     try {
-      await swrMutate(packagesKey);
+      await Promise.all([
+        swrMutate(packagesKey),
+        archivedKey ? swrMutate(archivedKey) : Promise.resolve(),
+      ]);
     } finally {
       setLoading(false);
     }
@@ -466,7 +499,8 @@ export default function MailroomPackages() {
     }
 
     // Status is always STORED for new packages
-    const finalStatus = editingPackage ? formData.status : "STORED";
+    // When editing, preserve the original status (status cannot be changed via edit modal)
+    const finalStatus = editingPackage ? editingPackage.status : "STORED";
 
     // Photo is required (either newly selected or existing on editingPackage)
     if (
@@ -566,13 +600,21 @@ export default function MailroomPackages() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this package?")) return;
+  const handleDelete = (id: string) => {
+    setPackageToDelete(id);
+    openDeleteModal();
+  };
+
+  const confirmDelete = async () => {
+    if (!packageToDelete) return;
 
     try {
-      const res = await fetch(`/api/admin/mailroom/packages/${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/admin/mailroom/packages/${packageToDelete}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       if (!res.ok) throw new Error("Failed to delete");
 
@@ -585,6 +627,9 @@ export default function MailroomPackages() {
         message: "Failed to delete package",
         color: "red",
       });
+    } finally {
+      closeDeleteModal();
+      setPackageToDelete(null);
     }
   };
 
@@ -634,6 +679,36 @@ export default function MailroomPackages() {
       setFormError(errorMessage);
     } finally {
       setIsDisposing(false);
+    }
+  };
+
+  const handleOpenRestore = (pkg: Package) => {
+    setPackageToRestore(pkg);
+    setRestoreModalOpen(true);
+  };
+
+  const handleSubmitRestore = async () => {
+    if (!packageToRestore) return;
+    setIsRestoring(true);
+    try {
+      const res = await fetch(
+        API_ENDPOINTS.admin.mailroom.restore(packageToRestore.id),
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error("Failed to restore package");
+      setGlobalSuccess("Package restored successfully");
+      setRestoreModalOpen(false);
+      await refreshAll();
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to restore package";
+      notifications.show({
+        title: "Error",
+        message: errorMessage,
+        color: "red",
+      });
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -710,8 +785,17 @@ export default function MailroomPackages() {
   };
 
   const handleSubmitRelease = async () => {
-    if (!releaseFile || !packageToRelease) return;
-    // Determine final address id to send:
+    if (!releaseFile || !packageToRelease) {
+      setFormError("Missing file or package information");
+      return;
+    }
+
+    if (!packageToRelease.id) {
+      setFormError("Package ID is missing. Please try refreshing the page.");
+      return;
+    }
+
+    // Determine final address id to send (optional):
     // priority: selectedAddressId (if previously set) -> package snapshot -> user's default address
     const finalAddressId =
       selectedAddressId ??
@@ -719,34 +803,41 @@ export default function MailroomPackages() {
       addresses.find((a) => a.is_default)?.id ??
       null;
 
-    if (!finalAddressId) {
-      notifications.show({
-        title: "Address required",
-        message:
-          "No shipping address available for this package. Add a default address for the user or set a release address first.",
-        color: "red",
-      });
-      return;
-    }
-
     setIsReleasing(true);
     setFormError(null);
 
     try {
+      console.log("[release] Submitting release:", {
+        packageId: packageToRelease.id,
+        packageName: packageToRelease.package_name,
+        hasFile: !!releaseFile,
+        lockerStatus: lockerCapacity,
+      });
+
       const formData = new FormData();
       formData.append("file", releaseFile);
       formData.append("packageId", packageToRelease.id);
       formData.append("lockerStatus", lockerCapacity);
       if (releaseNote) formData.append("notes", releaseNote);
-      formData.append("selectedAddressId", finalAddressId);
-      // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
-      const sel = addresses.find((a) => a.id === finalAddressId);
-      const snapshotName =
-        packageToRelease.release_to_name ??
-        sel?.contact_name ??
-        packageToRelease?.registration?.full_name ??
-        "";
-      if (snapshotName) formData.append("release_to_name", snapshotName);
+      // Only append address if available (address is optional)
+      if (finalAddressId) {
+        formData.append("selectedAddressId", finalAddressId);
+        // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
+        const sel = addresses.find((a) => a.id === finalAddressId);
+        const snapshotName =
+          packageToRelease.release_to_name ??
+          sel?.contact_name ??
+          packageToRelease?.registration?.full_name ??
+          "";
+        if (snapshotName) formData.append("release_to_name", snapshotName);
+      } else {
+        // If no address, still try to send the name from package snapshot or registration
+        const snapshotName =
+          packageToRelease.release_to_name ??
+          packageToRelease?.registration?.full_name ??
+          "";
+        if (snapshotName) formData.append("release_to_name", snapshotName);
+      }
 
       const res = await fetch("/api/admin/mailroom/release", {
         method: "POST",
@@ -754,8 +845,15 @@ export default function MailroomPackages() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Release failed");
+        const err = await res.json().catch(() => ({}));
+        const errorMsg = err.error || err.message || "Release failed";
+        const errorDetails = err.details ? `: ${err.details}` : "";
+        console.error("[release] API error:", {
+          status: res.status,
+          error: err,
+          packageId: packageToRelease.id,
+        });
+        throw new Error(`${errorMsg}${errorDetails}`);
       }
 
       setGlobalSuccess("Package released and locker status updated");
@@ -804,14 +902,20 @@ export default function MailroomPackages() {
     if (activeTab === "disposed") {
       return (p.status ?? "") === "DISPOSED";
     }
+    if (activeTab === "archive") {
+      return false; // Archived packages are managed by archivedPackages state
+    }
 
     return matchesSearch && matchesStatus && matchesType;
   });
 
-  const paginatedPackages = filteredPackages.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  );
+  const paginatedPackages =
+    activeTab === "archive"
+      ? archivedPackages
+      : filteredPackages.slice((page - 1) * pageSize, page * pageSize);
+
+  const totalRecords =
+    activeTab === "archive" ? archivedTotalCount : filteredPackages.length;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1003,6 +1107,9 @@ export default function MailroomPackages() {
             <Tabs.Tab value="disposed" leftSection={<IconTrash size={16} />}>
               Disposed
             </Tabs.Tab>
+            <Tabs.Tab value="archive" leftSection={<IconArchive size={16} />}>
+              Archive
+            </Tabs.Tab>
           </Tabs.List>
         </Tabs>
 
@@ -1015,7 +1122,7 @@ export default function MailroomPackages() {
           records={paginatedPackages}
           fetching={loading}
           minHeight={200}
-          totalRecords={filteredPackages.length}
+          totalRecords={totalRecords}
           recordsPerPage={pageSize}
           page={page}
           onPageChange={(p) => setPage(p)}
@@ -1097,7 +1204,7 @@ export default function MailroomPackages() {
             },
             {
               accessor: "received_at",
-              title: "Received",
+              title: activeTab === "archive" ? "Deleted At" : "Received",
               width: 150,
               render: ({ received_at }: Package) =>
                 dayjs(received_at).format("MMM D, YYYY"),
@@ -1109,66 +1216,86 @@ export default function MailroomPackages() {
               textAlign: "right",
               render: (pkg: Package) => (
                 <Group gap="xs" justify="flex-end">
-                  {/* Action Buttons based on Status (Requests Only) */}
-                  {pkg.status === "REQUEST_TO_SCAN" && (
-                    <Tooltip label="Upload Scanned PDF">
-                      <Button
-                        size="compact-xs"
-                        color="violet"
-                        leftSection={<IconScan size={14} />}
-                        onClick={() => handleOpenScan(pkg)}
-                      >
-                        Scan
-                      </Button>
-                    </Tooltip>
-                  )}
-                  {pkg.status === "REQUEST_TO_RELEASE" && (
-                    <Tooltip label="Confirm Release">
-                      <Button
-                        size="compact-xs"
-                        color="teal"
-                        leftSection={<IconTruckDelivery size={14} />}
-                        onClick={() => handleOpenRelease(pkg)}
-                      >
-                        Release
-                      </Button>
-                    </Tooltip>
-                  )}
-                  {pkg.status === "REQUEST_TO_DISPOSE" && (
-                    <Tooltip label="Confirm Disposal">
-                      <Button
-                        size="compact-xs"
-                        color="red"
-                        variant="light"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => handleConfirmDisposal(pkg)}
-                      >
-                        Dispose
-                      </Button>
-                    </Tooltip>
+                  {/* Archive Actions */}
+                  {activeTab === "archive" && (
+                    <>
+                      <Tooltip label="Restore">
+                        <Button
+                          size="compact-xs"
+                          color="green"
+                          variant="light"
+                          leftSection={<IconRestore size={14} />}
+                          onClick={() => handleOpenRestore(pkg)}
+                        >
+                          Restore
+                        </Button>
+                      </Tooltip>
+                    </>
                   )}
 
-                  {/* REMOVED: Manual Release/Dispose for "STORED" status */}
+                  {/* Standard Actions (Non-Archive) */}
+                  {activeTab !== "archive" && (
+                    <>
+                      {/* Action Buttons based on Status (Requests Only) */}
+                      {pkg.status === "REQUEST_TO_SCAN" && (
+                        <Tooltip label="Upload Scanned PDF">
+                          <Button
+                            size="compact-xs"
+                            color="violet"
+                            leftSection={<IconScan size={14} />}
+                            onClick={() => handleOpenScan(pkg)}
+                          >
+                            Scan
+                          </Button>
+                        </Tooltip>
+                      )}
+                      {pkg.status === "REQUEST_TO_RELEASE" && (
+                        <Tooltip label="Confirm Release">
+                          <Button
+                            size="compact-xs"
+                            color="teal"
+                            leftSection={<IconTruckDelivery size={14} />}
+                            onClick={() => handleOpenRelease(pkg)}
+                          >
+                            Release
+                          </Button>
+                        </Tooltip>
+                      )}
+                      {pkg.status === "REQUEST_TO_DISPOSE" && (
+                        <Tooltip label="Confirm Disposal">
+                          <Button
+                            size="compact-xs"
+                            color="red"
+                            variant="light"
+                            leftSection={<IconTrash size={14} />}
+                            onClick={() => handleConfirmDisposal(pkg)}
+                          >
+                            Dispose
+                          </Button>
+                        </Tooltip>
+                      )}
 
-                  {/* Standard Edit/Delete */}
-                  <Tooltip label="Edit">
-                    <ActionIcon
-                      variant="subtle"
-                      color="blue"
-                      onClick={() => handleOpenModal(pkg)}
-                    >
-                      <IconEdit size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Delete">
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => handleDelete(pkg.id)}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Tooltip>
+                      {/* Standard Edit/Delete */}
+                      <Tooltip label="Edit">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => handleOpenModal(pkg)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Delete">
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() => handleDelete(pkg.id)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </>
+                  )}
                 </Group>
               ),
             },
@@ -1181,12 +1308,64 @@ export default function MailroomPackages() {
         />
       </Paper>
 
+      <Modal
+        opened={restoreModalOpen}
+        onClose={() => setRestoreModalOpen(false)}
+        title="Restore Package"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to restore{" "}
+            <b>{packageToRestore?.package_name}</b>? It will be returned to its
+            previous state (Active or Disposed).
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="default"
+              onClick={() => setRestoreModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="green"
+              onClick={handleSubmitRestore}
+              loading={isRestoring}
+            >
+              Restore
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       {/* Modals (Keep existing modals) */}
+      <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Confirm Deletion"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete this package? This action cannot be
+            undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={closeDeleteModal}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Modal
         opened={opened}
         onClose={close}
         title={editingPackage ? "Edit Package" : "Add Package"}
-        centered
+        size="lg"
       >
         <Stack>
           {/* FORM ERROR ALERT */}

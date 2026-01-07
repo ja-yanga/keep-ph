@@ -56,15 +56,19 @@ export type ClaimWithUrl = {
   processed_at: string | null;
   proof_path: string | null;
   proof_url: string | null;
+  total_referrals: number | null;
 };
 
 export type RewardsStatusResult = {
-  threshold: number;
-  amount: number;
+  eligibleMilestones: number;
+  claimedMilestones: number;
+  claimableCount: number;
+  amountPerMilestone: number;
   referralCount: number;
   eligible: boolean;
   hasClaim: boolean;
   claims: ClaimWithUrl[];
+  threshold: number; // Restored for backward compatibility in some views
 };
 
 export type RewardClaimModalProps = {
@@ -119,6 +123,7 @@ export type RpcAdminClaim = {
   processed_at: string | null;
   proof_path: string | null;
   user?: AdminRewardUser | null;
+  total_referrals: number | null;
 };
 
 export type AdminClaim = ClaimWithUrl & {
@@ -150,6 +155,7 @@ export type AdminClaimApprove = {
   created_at?: string | null;
   proof_url?: string | null;
   proof_path?: string | null;
+  total_referrals?: number | null;
 };
 
 export type ConfirmTarget = {
