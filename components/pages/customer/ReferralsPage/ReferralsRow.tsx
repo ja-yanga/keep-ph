@@ -74,16 +74,27 @@ const normalizeReferrals = (records: ReferralRow[]): NormalizedReferral[] =>
         "service_type",
       ]) ?? tableCopy.defaultService;
 
-    const email =
+    const rawEmail =
       pickStringValue(item, [
+        "referred_email",
         "referrals_referred_email",
         "referral_referred_email",
         "referral_referred_user_email",
-        "referred_email",
       ]) ??
       (item.referral_referred_user_id
         ? `${tableCopy.userPrefix}${item.referral_referred_user_id}`
         : tableCopy.fallbackEmail);
+
+    // Mask email: e***@email.com
+    let email = rawEmail;
+    if (rawEmail.includes("@")) {
+      const [localPart, domain] = rawEmail.split("@");
+      if (localPart.length > 1) {
+        email = `${localPart[0]}***@${domain}`;
+      } else {
+        email = `${localPart}***@${domain}`;
+      }
+    }
 
     const dateValue =
       pickStringValue(item, [

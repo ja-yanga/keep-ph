@@ -510,7 +510,7 @@ export default function ReferralsContent() {
                 >
                   {REFERRALS_UI.table.heading}
                 </Title>
-                <Badge variant="light" color="gray" size="lg" circle>
+                <Badge variant="light" color="gray" size="lg">
                   {referralCount}
                 </Badge>
               </Group>

@@ -90,8 +90,18 @@ DECLARE
     input_user_id UUID := (input_data->>'user_id')::UUID;
     var_referrals JSONB;
 BEGIN
-    SELECT jsonb_agg(r.*) INTO var_referrals
+    SELECT jsonb_agg(
+        jsonb_build_object(
+            'referral_id', r.referral_id,
+            'referral_referrer_user_id', r.referral_referrer_user_id,
+            'referral_referred_user_id', r.referral_referred_user_id,
+            'referral_service_type', r.referral_service_type,
+            'referral_date_created', r.referral_date_created,
+            'referred_email', u.users_email
+        )
+    ) INTO var_referrals
     FROM public.referral_table r
+    LEFT JOIN public.users_table u ON r.referral_referred_user_id = u.users_id
     WHERE r.referral_referrer_user_id = input_user_id 
        OR r.referral_referred_user_id = input_user_id;
 
