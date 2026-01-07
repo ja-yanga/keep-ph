@@ -1107,12 +1107,17 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
  * Fetches notifications for a specific user via RPC.
  * Returns an array of notifications, sorted by creation date (desc), limited to 10.
  */
-export async function getNotificationByUserId(userId: string) {
+export async function getNotificationByUserId(
+  userId: string,
+  limit: number = 10,
+  offset: number = 2,
+) {
   if (!userId) return [];
 
   const { data, error } = await supabaseAdmin.rpc("get_user_notifications", {
     input_user_id: userId,
-    input_limit: 10,
+    input_limit: limit,
+    input_offset: offset,
   });
 
   if (error) {

@@ -2,7 +2,7 @@ export async function fetchFromAPI<T>(
   url: string,
   options?: {
     forwardCookies?: boolean;
-    method?: "GET" | "POST" | "PUT";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     cache?: RequestCache;
   },
@@ -19,7 +19,7 @@ export async function fetchFromAPI<T>(
     "Content-Type": "application/json",
   };
 
-  if (forwardCookies) {
+  if (forwardCookies && typeof window === "undefined") {
     const { cookies } = await import("next/headers");
     const cookieStore = await cookies();
     headers.cookie = cookieStore

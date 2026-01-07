@@ -34,6 +34,8 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useSession } from "@/components/SessionProvider";
+import { fetchFromAPI } from "@/utils/fetcher";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import PackageActionModal from "./PackageActionModal";
 
 type PackageShape = {
@@ -259,14 +261,9 @@ export default function UserPackages({
   ): Promise<{ first: string; last: string } | null> => {
     if (!regId) return null;
     try {
-      const res = await fetch(
-        `/api/mailroom/registrations/${encodeURIComponent(regId)}`,
-        {
-          credentials: "include",
-        },
+      const json = await fetchFromAPI<Record<string, unknown>>(
+        API_ENDPOINTS.mailroom.registration(regId),
       );
-      if (!res.ok) return null;
-      const json = await res.json().catch(() => null);
       const payload = (json?.data ?? json) as unknown;
 
       let reg: Record<string, unknown> | null = null;
@@ -584,17 +581,8 @@ export default function UserPackages({
           return;
         }
 
-        const res = await fetch(
-          `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
-          { credentials: "include" },
-        );
-        if (!res.ok) {
-          setAddresses([]);
-          setActionModalOpen(true);
-          return;
-        }
-
-        const json = await res.json().catch(() => null);
+        const addressUrl = API_ENDPOINTS.user.addresses();
+        const json = await fetchFromAPI<Record<string, unknown>>(addressUrl);
 
         let rawArr: unknown[] = [];
         if (Array.isArray(json?.data)) rawArr = json.data;
@@ -852,8 +840,7 @@ export default function UserPackages({
         body.notes = notes || null;
       }
 
-      const url = `/api/user/packages/${encodeURIComponent(pkgId)}`;
-      const bodyStr = JSON.stringify(body);
+      const url = API_ENDPOINTS.user.packages(pkgId);
 
       // optimistic local update and mark pending
       setLocalPackages((current) =>
@@ -876,15 +863,10 @@ export default function UserPackages({
         ),
       );
 
-      const res = await fetch(url, {
+      const serverJson = await fetchFromAPI<Record<string, unknown>>(url, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: bodyStr,
+        body,
       });
-      if (!res.ok) throw new Error("Failed to update package");
-
-      const serverJson = await res.json().catch(() => null);
       const updatedFromServer =
         serverJson?.mailbox_item ?? serverJson?.data ?? serverJson ?? null;
 
@@ -972,19 +954,10 @@ export default function UserPackages({
           await tryRefreshParent();
           // fetch fresh list as a fallback if parent didn't refresh
           try {
-            const r = await fetch("/api/user/packages", {
-              credentials: "include",
-            });
-            if (!r.ok) {
-              await new Promise((res) => setTimeout(res, intervalMs));
-              continue;
-            }
-            const j = await r.json().catch(() => null);
-
-            let arr: unknown[] = [];
-            if (Array.isArray(j?.data)) arr = j.data;
-            else if (Array.isArray(j)) arr = j;
-            else arr = [];
+            const j = await fetchFromAPI<Record<string, unknown>>(
+              API_ENDPOINTS.user.packages(),
+            );
+            const arr = (j?.data || j) as PackageShape[];
 
             if (Array.isArray(arr)) {
               const normalized = normalizeIncomingPackages(
@@ -1038,13 +1011,10 @@ export default function UserPackages({
     if (!selectedPackage) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/user/packages/${selectedPackage.id}`, {
+      await fetchFromAPI(API_ENDPOINTS.user.packages(selectedPackage.id), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ status: "REQUEST_TO_SCAN" }),
+        body: { status: "REQUEST_TO_SCAN" },
       });
-      if (!res.ok) throw new Error("Failed to request rescan");
 
       setLocalPackages((current) =>
         current.map((p) =>
