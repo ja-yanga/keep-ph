@@ -384,16 +384,17 @@ export default function ReferralsContent() {
                   <Stack gap={4}>
                     <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
                       {isRewardReady
-                        ? REFERRALS_UI.progressCard.unlockedTitle
+                        ? `${REFERRALS_UI.progressCard.unlockedTitle} (${rewardStatus?.claimableCount} Reward${(rewardStatus?.claimableCount || 0) > 1 ? "s" : ""} ready!)`
                         : `${REFERRALS_UI.progressCard.progressTitle} (${referralCount % REWARD_THRESHOLD}/${REWARD_THRESHOLD})`}
                     </Title>
                     <Group gap="xs">
                       <Badge color="indigo" variant="light">
-                        Total Referrals: {referralCount}
+                        Lifetime Referrals: {referralCount}
                       </Badge>
                       {rewardStatus?.claimedMilestones ? (
                         <Badge color="green" variant="light">
-                          Milestones Claimed: {rewardStatus.claimedMilestones}
+                          Total Rewards Claimed:{" "}
+                          {rewardStatus.claimedMilestones}
                         </Badge>
                       ) : null}
                     </Group>
