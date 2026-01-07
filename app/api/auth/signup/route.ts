@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { checkEmailExistsAction } from "@/app/actions/get";
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +15,24 @@ export async function POST(req: Request) {
     }
 
     const supabase = createSupabaseServiceClient();
+
+    // Check if user already exists in public table using Action
+    try {
+      const emailExists = await checkEmailExistsAction(email);
+      if (emailExists) {
+        return NextResponse.json(
+          {
+            error:
+              "Something went wrong with this email. Please use another one or sign in.",
+          },
+          { status: 400 },
+        );
+      }
+    } catch (rpcError) {
+      console.error("Error checking email existence:", rpcError);
+      // We continue if the check fails, or we could return an error.
+      // Given the requirement, we should probably handle it gracefully or return a generic error.
+    }
 
     const origin = new URL(req.url).origin;
 

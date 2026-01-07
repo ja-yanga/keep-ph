@@ -16,6 +16,9 @@ import {
   rem,
   ThemeIcon,
   Divider,
+  Popover,
+  Progress,
+  Group,
 } from "@mantine/core";
 import {
   IconAlertCircle,
@@ -24,8 +27,10 @@ import {
   IconMail,
   IconCheck,
   IconBrandGoogle,
+  IconX,
 } from "@tabler/icons-react";
 import { createClient } from "@/lib/supabase/client";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 export default function SignUpForm() {
   const [email, setEmail] = useState("");
@@ -34,6 +39,37 @@ export default function SignUpForm() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [popoverOpened, setPopoverOpened] = useState(false);
+
+  // Auto-hide error alert
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // Password Strength Logic
+  const checks = [
+    { label: "Includes at least 6 characters", meets: password.length > 5 },
+    { label: "Includes number", meets: /[0-9]/.test(password) },
+    { label: "Includes lowercase letter", meets: /[a-z]/.test(password) },
+    { label: "Includes uppercase letter", meets: /[A-Z]/.test(password) },
+  ];
+  const strength = checks.reduce(
+    (acc, requirement) => (!requirement.meets ? acc : acc + 1),
+    0,
+  );
+  let color: string;
+  if (strength === 4) {
+    color = "teal";
+  } else if (strength > 2) {
+    color = "yellow";
+  } else {
+    color = "red";
+  }
 
   // New state to toggle between Form and Verification View
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -63,8 +99,12 @@ export default function SignUpForm() {
       setError("Please enter a valid email address");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long");
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
+    if (strength < 4) {
+      setError("Password is too weak");
       return;
     }
     if (password !== confirmPassword) {
@@ -74,7 +114,7 @@ export default function SignUpForm() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/signup", {
+      const res = await fetch(API_ENDPOINTS.auth.signup, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -94,9 +134,11 @@ export default function SignUpForm() {
       // Instead of redirecting, show the verification UI
       setIsSubmitted(true);
       setTimer(60); // Start cooldown immediately after signup
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      setError("An unexpected error occurred");
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -131,7 +173,7 @@ export default function SignUpForm() {
     setResendLoading(true);
     setResendSuccess(false);
     try {
-      const res = await fetch("/api/auth/resend", {
+      const res = await fetch(API_ENDPOINTS.auth.resend, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -293,7 +335,7 @@ export default function SignUpForm() {
                   <Alert
                     variant="light"
                     color="red"
-                    title="Registration Error"
+                    title="Registration Issue"
                     icon={<IconAlertCircle size={16} />}
                     radius="md"
                   >
@@ -312,17 +354,57 @@ export default function SignUpForm() {
                   radius="md"
                   leftSection={<IconAt size={16} color="#868e96" />}
                 />
-                <PasswordInput
-                  label="Password"
-                  placeholder="••••••••"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  error={!!error && error.includes("Password")}
-                  size="md"
-                  radius="md"
-                  leftSection={<IconLock size={16} color="#868e96" />}
-                />
+                <Popover
+                  opened={popoverOpened}
+                  position="bottom"
+                  width="target"
+                  transitionProps={{ transition: "pop" }}
+                >
+                  <Popover.Target>
+                    <div
+                      onFocusCapture={() => setPopoverOpened(true)}
+                      onBlurCapture={() => setPopoverOpened(false)}
+                    >
+                      <PasswordInput
+                        label="Password"
+                        placeholder="••••••••"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        error={!!error && error.includes("Password")}
+                        size="md"
+                        radius="md"
+                        leftSection={<IconLock size={16} color="#868e96" />}
+                      />
+                    </div>
+                  </Popover.Target>
+                  <Popover.Dropdown>
+                    <Progress
+                      color={color}
+                      value={(strength * 100) / 4}
+                      mb={10}
+                      size={7}
+                    />
+                    {checks.map((requirement, index) => (
+                      <Group key={index} gap={10} mt={7}>
+                        {requirement.meets ? (
+                          <IconCheck
+                            style={{ width: rem(14), height: rem(14) }}
+                            color="var(--mantine-color-teal-filled)"
+                          />
+                        ) : (
+                          <IconX
+                            style={{ width: rem(14), height: rem(14) }}
+                            color="var(--mantine-color-red-filled)"
+                          />
+                        )}
+                        <Text size="sm" c={requirement.meets ? "teal" : "red"}>
+                          {requirement.label}
+                        </Text>
+                      </Group>
+                    ))}
+                  </Popover.Dropdown>
+                </Popover>
                 <PasswordInput
                   label="Confirm Password"
                   placeholder="••••••••"
@@ -360,6 +442,7 @@ export default function SignUpForm() {
                   size="md"
                   radius="md"
                   loading={oauthLoading}
+                  disabled={loading}
                   leftSection={<IconBrandGoogle size={18} />}
                   onClick={handleGoogleSignUp}
                   type="button"
