@@ -3,9 +3,21 @@
 -- Used by GitHub Actions workflows to store automated database backups
 
 -- Create DB-BACKUPS bucket as PRIVATE (public = false)
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('DB-BACKUPS', 'DB-BACKUPS', false)
-ON CONFLICT (id) DO UPDATE SET public = false;
+-- Using idempotent approach: check if bucket exists first
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM storage.buckets WHERE id = 'DB-BACKUPS'
+  ) THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('DB-BACKUPS', 'DB-BACKUPS', false);
+  ELSE
+    -- Update existing bucket to ensure it's private
+    UPDATE storage.buckets 
+    SET public = false 
+    WHERE id = 'DB-BACKUPS';
+  END IF;
+END $$;
 
 -- Policy: Only admins can access DB-BACKUPS bucket
 -- Service role (used by GitHub Actions) bypasses RLS, so it can always access
