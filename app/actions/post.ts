@@ -21,9 +21,12 @@ export async function getUserKYC(userId: string) {
     throw new Error("userId is required");
   }
 
-  const { data, error } = await supabase.rpc("get_user_kyc_by_user_id", {
-    input_user_id: userId,
-  });
+  const { data, error } = await supabase.rpc(
+    "get_user_kyc_with_populated_user",
+    {
+      input_user_id: userId,
+    },
+  );
 
   if (error) {
     throw error;
