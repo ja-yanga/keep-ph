@@ -184,6 +184,7 @@ CREATE TABLE users_table (
   users_is_verified BOOLEAN DEFAULT false,
   users_referral_code TEXT,
   mobile_number TEXT,
+  referral_reward_milestone_claimed INT DEFAULT 0,
   CONSTRAINT users_table_pkey PRIMARY KEY (users_id)
 );
 
@@ -414,6 +415,7 @@ CREATE TABLE rewards_claim_table (
   rewards_claim_created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   rewards_claim_processed_at TIMESTAMP WITH TIME ZONE,
   rewards_claim_proof_path TEXT,
+  rewards_claim_total_referrals INTEGER,
   CONSTRAINT rewards_claim_table_pkey PRIMARY KEY (rewards_claim_id)
 );
 
