@@ -11,7 +11,7 @@ export const getStatusFormat = (status: string = ""): string => {
   const colorGroups = {
     green: ["VERIFIED", "PAID", "NORMAL"],
     blue: [],
-    yellow: ["SUBMITTED", "PENDING"],
+    indigo: ["SUBMITTED", "PENDING"],
     red: ["REJECTED", "FULL"],
     orange: ["NEAR FULL"],
   };

@@ -12,7 +12,7 @@ export default function Footer() {
       style={{ borderTop: `1px solid ${theme.colors.gray[3]}` }}
     >
       <Center>
-        <Text size="sm" c="dimmed">
+        <Text size="sm" c="gray.8">
           © {new Date().getFullYear()} Keep PH. All rights reserved.
         </Text>
       </Center>

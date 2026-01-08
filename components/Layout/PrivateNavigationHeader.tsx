@@ -96,6 +96,7 @@ export default function PrivateNavigationHeader() {
                 onClick={toggle}
                 hiddenFrom="sm"
                 size="sm"
+                aria-label="Toggle navigation menu"
               />
             )}
 
@@ -103,7 +104,7 @@ export default function PrivateNavigationHeader() {
               href={isAdmin ? "/admin/dashboard" : "/dashboard"}
               style={{ textDecoration: "none" }}
             >
-              <Title order={3} fw={800} c="#1A237E">
+              <Title order={2} fw={800} size="h3" c="#1A237E">
                 Keep PH
               </Title>
             </Link>

@@ -59,7 +59,14 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ data: processed });
+    return NextResponse.json(
+      { data: processed },
+      {
+        headers: {
+          "Cache-Control": "no-cache, must-revalidate",
+        },
+      },
+    );
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("admin KYC list error:", err);

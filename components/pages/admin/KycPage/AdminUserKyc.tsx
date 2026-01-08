@@ -16,9 +16,22 @@ import {
   Center,
   Avatar,
   Grid,
-  Image,
+  UnstyledButton,
 } from "@mantine/core";
-import { DataTable } from "mantine-datatable";
+import Image from "next/image";
+import dynamic from "next/dynamic";
+import { type DataTableProps } from "mantine-datatable";
+const DataTable = dynamic(
+  () => import("mantine-datatable").then((m) => m.DataTable),
+  {
+    ssr: false,
+    loading: () => (
+      <Center py="xl">
+        <Loader />
+      </Center>
+    ),
+  },
+) as <T>(props: DataTableProps<T>) => React.ReactElement;
 import {
   IconSearch,
   IconUserCheck,
@@ -83,7 +96,7 @@ const DetailStack = ({
 
 // Helper function to format the address object into readable lines
 function formatAddress(address?: KycRow["address"]): React.ReactNode {
-  if (!address) return <Text c="dimmed">—</Text>;
+  if (!address) return <Text c="gray.8">—</Text>;
 
   const parts = [];
   if (address.line1) parts.push(address.line1);
@@ -95,7 +108,7 @@ function formatAddress(address?: KycRow["address"]): React.ReactNode {
 
   if (cityRegionPostal) parts.push(cityRegionPostal);
 
-  if (parts.length === 0) return <Text c="dimmed">—</Text>;
+  if (parts.length === 0) return <Text c="gray.9">—</Text>;
 
   return (
     <Stack gap={0}>
@@ -221,6 +234,7 @@ export default function AdminUserKyc() {
           <Group>
             <TextInput
               placeholder="Search by name or user id..."
+              aria-label="Search by name or user id"
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => {
@@ -231,7 +245,7 @@ export default function AdminUserKyc() {
             />
           </Group>
 
-          <Badge size="lg" variant="light">
+          <Badge size="lg" variant="filled" color="indigo.9">
             {rows.length} KYC records
           </Badge>
         </Group>
@@ -245,6 +259,7 @@ export default function AdminUserKyc() {
           records={paginated}
           idAccessor="id"
           fetching={isValidating}
+          aria-label="KYC Submissions Table"
           minHeight={250}
           page={page}
           onPageChange={(p: number) => setPage(p)}
@@ -264,12 +279,18 @@ export default function AdminUserKyc() {
                   r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`;
                 return (
                   <Group>
-                    <Avatar radius="xl">{String(name || "U").charAt(0)}</Avatar>
+                    <Avatar
+                      radius="xl"
+                      alt={name || "User Avatar"}
+                      aria-label={name || "User Avatar"}
+                    >
+                      {String(name || "U").charAt(0)}
+                    </Avatar>
                     <div>
                       <Text fw={500} size="sm">
                         {name || "Unknown"}
                       </Text>
-                      <Text size="xs" c="dimmed">
+                      <Text size="xs" c="gray.9">
                         {String(r.user_id ?? "")}
                       </Text>
                     </div>
@@ -292,7 +313,10 @@ export default function AdminUserKyc() {
               width: 130,
               render: (r: KycRow) => {
                 return (
-                  <Badge color={getStatusFormat(r.status)} variant="light">
+                  <Badge
+                    color={`${getStatusFormat(r.status)}.9`}
+                    variant="filled"
+                  >
                     {r.status}
                   </Badge>
                 );
@@ -317,10 +341,10 @@ export default function AdminUserKyc() {
                 }
                 return (
                   <div>
-                    <Text size="xs" c="dimmed">
+                    <Text size="xs" c="gray.9">
                       Submitted: {submitted}
                     </Text>
-                    <Text size="xs" c="dimmed">
+                    <Text size="xs" c="gray.9">
                       Verified: {verified}
                     </Text>
                   </div>
@@ -336,7 +360,9 @@ export default function AdminUserKyc() {
                 <Group justify="right">
                   <Button
                     size="xs"
-                    variant="light"
+                    variant="filled"
+                    color="indigo.9"
+                    aria-label={`Manage KYC for ${r.full_name || r.user_id}`}
                     leftSection={<IconInfoCircle size={14} />}
                     onClick={() => openDetails(r)}
                   >
@@ -418,7 +444,7 @@ export default function AdminUserKyc() {
                 <DetailStack label="ID Front">
                   {selected.id_front_url && (
                     <div>
-                      <Text size="xs" c="dimmed">
+                      <Text size="xs" c="gray.9">
                         Front
                       </Text>
                       {(() => {
@@ -426,21 +452,32 @@ export default function AdminUserKyc() {
                           resolvedFront ??
                           normalizeImageUrl(selected.id_front_url);
                         return src ? (
-                          <Image
-                            src={src}
-                            alt="ID front"
-                            width={240}
-                            height={160}
-                            fit="cover"
-                            radius="sm"
-                            style={{ cursor: "zoom-in" }}
+                          <UnstyledButton
+                            aria-label="Enlarge front ID image"
+                            style={{
+                              position: "relative",
+                              width: 240,
+                              height: 160,
+                              cursor: "zoom-in",
+                              display: "block",
+                            }}
                             onClick={() => {
                               setModalImageSrc(src);
                               openZoom();
                             }}
-                          />
+                          >
+                            <Image
+                              src={src}
+                              alt="ID card front view"
+                              fill
+                              style={{
+                                objectFit: "cover",
+                                borderRadius: "8px",
+                              }}
+                            />
+                          </UnstyledButton>
                         ) : (
-                          <Text size="xs" c="dimmed">
+                          <Text size="xs" c="gray.8">
                             Image unavailable
                           </Text>
                         );
@@ -454,7 +491,7 @@ export default function AdminUserKyc() {
                 <DetailStack label="ID Back">
                   {selected.id_back_url && (
                     <div>
-                      <Text size="xs" c="dimmed">
+                      <Text size="xs" c="gray.9">
                         Back
                       </Text>
                       {(() => {
@@ -462,21 +499,32 @@ export default function AdminUserKyc() {
                           resolvedBack ??
                           normalizeImageUrl(selected.id_back_url);
                         return src ? (
-                          <Image
-                            src={src}
-                            alt="ID back"
-                            width={240}
-                            height={160}
-                            fit="cover"
-                            radius="sm"
-                            style={{ cursor: "zoom-in" }}
+                          <UnstyledButton
+                            aria-label="Enlarge back ID image"
+                            style={{
+                              position: "relative",
+                              width: 240,
+                              height: 160,
+                              cursor: "zoom-in",
+                              display: "block",
+                            }}
                             onClick={() => {
                               setModalImageSrc(src);
                               openZoom();
                             }}
-                          />
+                          >
+                            <Image
+                              src={src}
+                              alt="ID card back view"
+                              fill
+                              style={{
+                                objectFit: "cover",
+                                borderRadius: "8px",
+                              }}
+                            />
+                          </UnstyledButton>
                         ) : (
-                          <Text size="xs" c="dimmed">
+                          <Text size="xs" c="gray.9">
                             Image unavailable
                           </Text>
                         );
@@ -494,8 +542,8 @@ export default function AdminUserKyc() {
 
               {selected.status === "SUBMITTED" && (
                 <Button
-                  color="red"
-                  variant="outline"
+                  color="red.9"
+                  variant="filled"
                   onClick={() => actionVerify(selected, "REJECTED")}
                   loading={processing}
                   leftSection={<IconX size={16} />}
@@ -506,7 +554,8 @@ export default function AdminUserKyc() {
 
               {selected.status !== "VERIFIED" && (
                 <Button
-                  color="green"
+                  color="green.9"
+                  variant="filled"
                   onClick={() => actionVerify(selected, "VERIFIED")}
                   loading={processing}
                   leftSection={<IconUserCheck size={16} />}
@@ -519,13 +568,20 @@ export default function AdminUserKyc() {
             {/* Zoom modal for clicked ID image */}
             <Modal opened={zoomOpen} onClose={closeZoom} size="lg" centered>
               {modalImageSrc && (
-                <Image
-                  src={modalImageSrc}
-                  alt="ID preview"
-                  fit="contain"
-                  mah="80vh"
-                  w="100%"
-                />
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    height: "70vh",
+                  }}
+                >
+                  <Image
+                    src={modalImageSrc}
+                    alt="Enlarged ID card preview"
+                    fill
+                    style={{ objectFit: "contain" }}
+                  />
+                </div>
               )}
             </Modal>
           </Stack>
