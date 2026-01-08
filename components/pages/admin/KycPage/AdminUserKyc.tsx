@@ -1,20 +1,19 @@
 "use client";
 
 import "mantine-datatable/styles.layer.css";
-import React, { useState, useMemo, useCallback } from "react";
+
+import React, { useState, useMemo, useCallback, memo, useEffect } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   Paper,
   Group,
   TextInput,
-  Button,
   Stack,
-  Badge,
   Modal,
   Text,
   Center,
-  Avatar,
-  Skeleton,
+  ActionIcon,
+  Badge,
 } from "@mantine/core";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
@@ -23,25 +22,49 @@ const DataTable = dynamic(
   {
     ssr: false,
     loading: () => (
-      <Stack gap="xs">
-        <Group grow>
-          <Skeleton height={40} />
-          <Skeleton height={40} />
-          <Skeleton height={40} />
-          <Skeleton height={40} />
-          <Skeleton height={40} />
-        </Group>
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "10px" }}>
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: 40,
+                flex: 1,
+                backgroundColor: "#f1f3f5",
+                borderRadius: "4px",
+                animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              }}
+            />
+          ))}
+        </div>
         {[...Array(10)].map((_, i) => (
-          <Skeleton key={i} height={52} radius="sm" />
+          <div
+            key={i}
+            style={{
+              height: 52,
+              backgroundColor: "#f8f9fa",
+              borderRadius: "4px",
+              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            }}
+          />
         ))}
-      </Stack>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+          }
+        `,
+          }}
+        />
+      </div>
     ),
   },
 ) as <T>(props: DataTableProps<T>) => React.ReactElement;
-import { IconSearch } from "@tabler/icons-react";
+import { IconSearch, IconArrowRight, IconX } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
-import { useDebouncedValue } from "@mantine/hooks";
 import { getStatusFormat, fetcher } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { FormattedKycRow, KycRow } from "@/utils/types";
@@ -50,25 +73,167 @@ const KycDetails = dynamic(() => import("./KycDetails"), {
   ssr: false,
   loading: () => (
     <Center mih={300}>
-      <Skeleton height={200} width="100%" radius="md" />
+      <div
+        style={{
+          height: 200,
+          width: "100%",
+          borderRadius: "8px",
+          backgroundColor: "#e9ecef",
+          animation: "pulse 2s infinite",
+        }}
+      />
     </Center>
   ),
 });
 
+const SearchInput = memo(
+  ({ onSearch }: { onSearch: (value: string) => void }) => {
+    const [value, setValue] = useState("");
+
+    const handleSearch = () => {
+      onSearch(value);
+    };
+
+    const handleClear = () => {
+      setValue("");
+      onSearch("");
+    };
+
+    return (
+      <TextInput
+        placeholder="Search by name or user id..."
+        aria-label="Search users"
+        leftSection={<IconSearch size={16} />}
+        rightSectionWidth={value ? 70 : 42}
+        rightSection={
+          value ? (
+            <Group gap={4}>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="gray.5"
+                onClick={handleClear}
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                <IconX size={16} />
+              </ActionIcon>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="indigo"
+                onClick={handleSearch}
+                aria-label="Submit search"
+                title="Submit search"
+              >
+                <IconArrowRight size={16} />
+              </ActionIcon>
+            </Group>
+          ) : (
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              c="gray.5"
+              onClick={handleSearch}
+              aria-label="Submit search"
+              title="Submit search"
+            >
+              <IconArrowRight size={16} />
+            </ActionIcon>
+          )
+        }
+        value={value}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSearch();
+          }
+        }}
+        style={{ width: 300 }}
+      />
+    );
+  },
+);
+SearchInput.displayName = "SearchInput";
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+
+const KycTable = memo(
+  ({
+    rows,
+    columns,
+    page,
+    onPageChange,
+    pageSize,
+    onPageSizeChange,
+    totalRecords,
+    isValidating,
+    isSearching,
+  }: {
+    rows: FormattedKycRow[];
+    columns: DataTableColumn<FormattedKycRow>[];
+    page: number;
+    onPageChange: (p: number) => void;
+    pageSize: number;
+    onPageSizeChange: (s: number) => void;
+    totalRecords: number;
+    isValidating: boolean;
+    isSearching: boolean;
+  }) => {
+    return (
+      <DataTable
+        withTableBorder
+        borderRadius="sm"
+        striped
+        highlightOnHover
+        records={isSearching ? [] : rows}
+        idAccessor="id"
+        fetching={isValidating || isSearching}
+        minHeight={minTableHeight(pageSize)}
+        page={page}
+        onPageChange={onPageChange}
+        totalRecords={totalRecords}
+        recordsPerPage={pageSize}
+        recordsPerPageOptions={PAGE_SIZE_OPTIONS}
+        onRecordsPerPageChange={onPageSizeChange}
+        columns={columns}
+        noRecordsText="No records found"
+      />
+    );
+  },
+);
+KycTable.displayName = "KycTable";
+
 export default function AdminUserKyc() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch] = useDebouncedValue(search, 500);
+  const [query, setQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleSearchSubmit = useCallback(
+    (val: string) => {
+      if (val === query && page === 1) return;
+      setIsSearching(true);
+      setQuery(val);
+      setPage(1);
+    },
+    [query, page],
+  );
 
   const { data, error, isValidating } = useSWR(
-    `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${pageSize}`,
+    `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
     fetcher,
     {
       revalidateOnFocus: false,
       keepPreviousData: true,
     },
   );
+
+  useEffect(() => {
+    if (!isValidating) {
+      setIsSearching(false);
+    }
+  }, [isValidating]);
 
   const rows = useMemo<FormattedKycRow[]>(() => {
     const rawData = data?.data || [];
@@ -112,7 +277,7 @@ export default function AdminUserKyc() {
           color: "green",
         });
         await swrMutate(
-          `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${pageSize}`,
+          `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
         );
         setModalOpen(false);
       } catch (e) {
@@ -126,7 +291,7 @@ export default function AdminUserKyc() {
         setProcessing(false);
       }
     },
-    [debouncedSearch, page, pageSize],
+    [query, page, pageSize],
   );
 
   const columns = useMemo<DataTableColumn<FormattedKycRow>[]>(
@@ -137,16 +302,46 @@ export default function AdminUserKyc() {
         render: (r: FormattedKycRow) => {
           return (
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <Avatar radius="xl" size="sm" alt={r._formattedName}>
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  backgroundColor: "#f1f3f5",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#495057",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  overflow: "hidden",
+                }}
+              >
                 {r._formattedName.charAt(0)}
-              </Avatar>
+              </div>
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <Text fw={500} size="sm" lineClamp={1}>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    fontSize: "14px",
+                    lineHeight: "1.55",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "150px",
+                  }}
+                >
                   {r._formattedName}
-                </Text>
-                <Text size="xs" c="dimmed">
+                </span>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#868e96",
+                    lineHeight: "1",
+                  }}
+                >
                   {r.user_id}
-                </Text>
+                </span>
               </div>
             </div>
           );
@@ -156,7 +351,9 @@ export default function AdminUserKyc() {
         accessor: "doc",
         title: "Document",
         render: (r: FormattedKycRow) => (
-          <Text size="sm">{(r.id_document_type ?? "—").replace("_", " ")}</Text>
+          <span style={{ fontSize: "14px" }}>
+            {(r.id_document_type ?? "—").replace("_", " ")}
+          </span>
         ),
       },
       {
@@ -175,12 +372,12 @@ export default function AdminUserKyc() {
         width: 180,
         render: (r: FormattedKycRow) => (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <Text size="xs" c="dimmed">
+            <span style={{ fontSize: "12px", color: "#868e96" }}>
               Sub: {r._formattedSub}
-            </Text>
-            <Text size="xs" c="dimmed">
+            </span>
+            <span style={{ fontSize: "12px", color: "#868e96" }}>
               Ver: {r._formattedVer}
-            </Text>
+            </span>
           </div>
         ),
       },
@@ -190,19 +387,40 @@ export default function AdminUserKyc() {
         textAlign: "right",
         width: 100,
         render: (r: FormattedKycRow) => (
-          <Button
-            size="compact-xs"
-            variant="light"
-            color="indigo"
+          <button
             onClick={() => openDetails(r)}
+            aria-label={`Manage user ${r._formattedName}`}
+            title={`Manage user ${r._formattedName}`}
+            style={{
+              padding: "4px 8px",
+              fontSize: "12px",
+              fontWeight: 500,
+              color: "#4c6ef5",
+              backgroundColor: "#edf2ff",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              transition: "background-color 0.2s",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.backgroundColor = "#DBE4FF")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.backgroundColor = "#edf2ff")
+            }
           >
             Manage
-          </Button>
+          </button>
         ),
       },
     ],
     [openDetails],
   );
+
+  const handlePageSizeChange = useCallback((n: number) => {
+    setPageSize(n);
+    setPage(1);
+  }, []);
 
   if (error) {
     return (
@@ -216,39 +434,36 @@ export default function AdminUserKyc() {
     <Stack align="center" gap="lg" w="100%">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
-          <TextInput
-            placeholder="Search by name or user id..."
-            leftSection={<IconSearch size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ width: 300 }}
-          />
+          <SearchInput onSearch={handleSearchSubmit} />
 
-          <Badge size="lg" variant="filled" color="indigo">
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "4px 12px",
+              borderRadius: "4px",
+              backgroundColor: "#4c6ef5",
+              color: "white",
+              fontSize: "14px",
+              fontWeight: 600,
+              height: "30px", // Approximate Badge size="lg"
+            }}
+          >
             {totalRecords} Records
-          </Badge>
+          </span>
         </Group>
 
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          striped
-          highlightOnHover
-          records={rows}
-          idAccessor="id"
-          fetching={isValidating}
-          minHeight={minTableHeight(pageSize)}
+        <KycTable
+          rows={rows}
+          columns={columns}
           page={page}
           onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={handlePageSizeChange}
           totalRecords={totalRecords}
-          recordsPerPage={pageSize}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={(n) => {
-            setPageSize(n);
-            setPage(1);
-          }}
-          columns={columns}
-          noRecordsText="No records found"
+          isValidating={isValidating}
+          isSearching={isSearching}
         />
       </Paper>
 
