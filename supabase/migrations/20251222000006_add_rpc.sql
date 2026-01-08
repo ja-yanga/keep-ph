@@ -230,7 +230,8 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.admin_list_user_kyc(
   input_search TEXT DEFAULT '',
-  input_limit INTEGER DEFAULT 500
+  input_limit INTEGER DEFAULT 500,
+  input_offset INTEGER DEFAULT 0
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -239,9 +240,21 @@ SET search_path TO ''
 AS $$
 DECLARE
   sanitized_limit INTEGER := LEAST(GREATEST(COALESCE(input_limit, 1), 1), 1000);
+  sanitized_offset INTEGER := GREATEST(COALESCE(input_offset, 0), 0);
   search_term TEXT := COALESCE(input_search, '');
-  result JSON := '[]'::JSON;
+  final_data JSON := '[]'::JSON;
+  total_count INTEGER := 0;
 BEGIN
+  -- Count total matches for pagination
+  SELECT COUNT(*)
+  INTO total_count
+  FROM public.user_kyc_table uk
+  WHERE
+    search_term = ''
+    OR uk.user_kyc_first_name ILIKE '%' || search_term || '%'
+    OR uk.user_kyc_last_name ILIKE '%' || search_term || '%';
+
+  -- Fetch paginated data
   WITH base AS (
     SELECT
       uk.user_kyc_id,
@@ -277,6 +290,7 @@ BEGIN
       OR uk.user_kyc_last_name ILIKE '%' || search_term || '%'
     ORDER BY uk.user_kyc_submitted_at DESC NULLS LAST
     LIMIT sanitized_limit
+    OFFSET sanitized_offset
   )
   SELECT COALESCE(
     JSON_AGG(
@@ -313,10 +327,13 @@ BEGIN
     ),
     '[]'::JSON
   )
-  INTO result
+  INTO final_data
   FROM base;
 
-  RETURN result;
+  RETURN JSON_BUILD_OBJECT(
+    'data', final_data,
+    'total_count', total_count
+  );
 END;
 $$;
 

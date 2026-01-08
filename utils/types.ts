@@ -531,3 +531,33 @@ export type MailroomRegistrationStats = {
   pending: number;
   released: number;
 };
+
+export type KycRow = {
+  id: string;
+  user_id: string;
+  status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
+  id_document_type?: string | null;
+  id_number?: string | null;
+  id_front_url?: string | null;
+  id_back_url?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+  address?: {
+    line1?: string;
+    line2?: string | null;
+    city?: string;
+    region?: string;
+    postal?: string;
+  } | null;
+  submitted_at?: string | null;
+  verified_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type FormattedKycRow = KycRow & {
+  _formattedName: string;
+  _formattedSub: string;
+  _formattedVer: string;
+};

@@ -604,26 +604,36 @@ export async function getUserAddresses(
 export async function adminListUserKyc(
   search = "",
   limit = 500,
-): Promise<AdminUserKyc[]> {
+  offset = 0,
+): Promise<{ data: AdminUserKyc[]; total_count: number }> {
   const { data, error } = await supabaseAdmin.rpc("admin_list_user_kyc", {
     input_search: search,
     input_limit: limit,
+    input_offset: offset,
   });
 
   if (error) {
     throw error;
   }
 
-  const parsed =
-    typeof data === "string"
-      ? (JSON.parse(data) as unknown[])
-      : ((data as unknown[]) ?? []);
+  const payload =
+    typeof data === "string" ? JSON.parse(data) : (data as unknown);
 
-  if (!Array.isArray(parsed)) {
-    return [];
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !("total_count" in payload)
+  ) {
+    return { data: [], total_count: 0 };
   }
 
-  return parsed as AdminUserKyc[];
+  const result = payload as { data: AdminUserKyc[]; total_count: number };
+
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    total_count: Number(result.total_count) || 0,
+  };
 }
 
 export async function getUserRole(userId: string) {
