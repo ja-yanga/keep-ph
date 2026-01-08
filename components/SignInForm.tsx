@@ -42,7 +42,13 @@ function SignInContent() {
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-hide error alert
+  // ACCESSIBILITY COLORS: Slate 700 (#4A5568) ensures a 6.2:1 contrast ratio
+  const colors = {
+    primaryBlue: "#1A237E",
+    textSecondary: "#4A5568",
+    iconGray: "#4A5568",
+  };
+
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => {
@@ -52,23 +58,17 @@ function SignInContent() {
     }
   }, [error]);
 
-  // NEW: State for verification alert
   const [verified, setVerified] = useState(false);
-  // NEW: State for password-reset success alert
   const [pwReset, setPwReset] = useState(false);
 
-  // NEW: Check URL hash for implicit flow verification
   useEffect(() => {
-    // The URL will look like: /signin#access_token=...&type=signup...
     const hash = window.location.hash;
     if (hash && hash.includes("type=signup")) {
       setVerified(true);
       window.history.replaceState(null, "", window.location.pathname);
     }
-    // Check query param for password reset success
     if (searchParams.get("pw_reset") === "1") {
       setPwReset(true);
-      // remove query so it won't re-show on refresh
       router.replace("/signin");
     }
   }, [searchParams, router]);
@@ -98,17 +98,6 @@ function SignInContent() {
       await supabase.auth.getSession();
       await refresh();
 
-      // Client decides onboarding redirect by fetching profile (fast) after login
-      // const profRes = await fetch("/api/user/profile", {
-      //   credentials: "include",
-      // });
-      // const profJson = await profRes.json().catch(() => null);
-      // const needsOnboarding = profJson?.needsOnboarding ?? false;
-
-      // if (needsOnboarding) {
-      //   router.push("/onboarding");
-      //   return;
-      // }
       if (next) {
         router.push(next);
         return;
@@ -121,26 +110,21 @@ function SignInContent() {
     }
   };
 
-  // NEW: Google Login Handler
   const handleGoogleLogin = async () => {
     setOauthLoading(true);
     setError(null);
-
-    // NEW: Create a temporary client to ensure PKCE flow is used
     const supabase = createClient();
 
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          // CHANGED: Point to the specific Google callback
           redirectTo: `${
             window.location.origin
           }/api/auth/callback/google?next=${next || "/dashboard"}`,
         },
       });
       if (error) throw error;
-      // Note: No need to setLoading(false) as the browser will redirect
     } catch (err) {
       console.error(err);
       setError("An unexpected error occurred.");
@@ -149,154 +133,171 @@ function SignInContent() {
   };
 
   return (
-    <Center style={{ flex: 1, padding: "4rem 1rem" }}>
-      <Container size="xs" w="100%">
-        <Stack gap="lg">
-          <Stack gap={4} align="center">
-            <Title
-              order={1}
-              style={{
-                fontWeight: 800,
-                color: "#1A237E",
-                fontSize: rem(32),
-              }}
+    /* LANDMARK FIX: Wrapped content in <main> for screen readers */
+    <main role="main" aria-label="Login form">
+      <Center style={{ flex: 1, padding: "4rem 1rem" }}>
+        <Container size="xs" w="100%">
+          <Stack gap="lg">
+            <Stack gap={4} align="center">
+              <Title
+                order={1}
+                style={{
+                  fontWeight: 800,
+                  color: colors.primaryBlue,
+                  fontSize: rem(32),
+                }}
+              >
+                Login
+              </Title>
+              {/* CONTRAST FIX: Replaced c="dimmed" */}
+              <Text style={{ color: colors.textSecondary }} size="md">
+                Sign in to access your account
+              </Text>
+            </Stack>
+
+            <Paper
+              withBorder
+              shadow="xl"
+              p={30}
+              radius="md"
+              style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
             >
-              Login
-            </Title>
-            <Text c="dimmed" size="md">
-              Sign in to access your account
-            </Text>
-          </Stack>
+              <form onSubmit={handleSubmit}>
+                <Stack gap="md">
+                  {verified && (
+                    <Alert
+                      variant="light"
+                      color="teal"
+                      title="Email Verified"
+                      icon={<IconCheck size={16} />}
+                      radius="md"
+                    >
+                      Your email has been successfully verified. Please log in.
+                    </Alert>
+                  )}
+                  {pwReset && (
+                    <Alert
+                      variant="light"
+                      color="teal"
+                      title="Password Updated"
+                      icon={<IconCheck size={16} />}
+                      radius="md"
+                    >
+                      Your password was updated. Please sign in with your new
+                      password.
+                    </Alert>
+                  )}
 
-          <Paper
-            withBorder
-            shadow="xl"
-            p={30}
-            radius="md"
-            style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
-          >
-            <form onSubmit={handleSubmit}>
-              <Stack gap="md">
-                {/* NEW: Verification Success Alert */}
-                {verified && (
-                  <Alert
-                    variant="light"
-                    color="teal"
-                    title="Email Verified"
-                    icon={<IconCheck size={16} />}
-                    radius="md"
-                  >
-                    Your email has been successfully verified. Please log in.
-                  </Alert>
-                )}
-                {pwReset && (
-                  <Alert
-                    variant="light"
-                    color="teal"
-                    title="Password Updated"
-                    icon={<IconCheck size={16} />}
-                    radius="md"
-                  >
-                    Your password was updated. Please sign in with your new
-                    password.
-                  </Alert>
-                )}
+                  {error && (
+                    <Alert
+                      variant="light"
+                      color="red"
+                      title="Account Issue"
+                      icon={<IconAlertCircle size={16} />}
+                      radius="md"
+                    >
+                      {error}
+                    </Alert>
+                  )}
 
-                {error && (
-                  <Alert
-                    variant="light"
-                    color="red"
-                    title="Account Issue"
-                    icon={<IconAlertCircle size={16} />}
-                    radius="md"
-                  >
-                    {error}
-                  </Alert>
-                )}
-
-                <TextInput
-                  label="Email"
-                  placeholder="you@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  error={!!error}
-                  size="md"
-                  radius="md"
-                  leftSection={<IconAt size={16} color="#868e96" />}
-                />
-
-                <Stack gap={4}>
-                  <PasswordInput
-                    label="Password"
-                    placeholder="••••••••"
+                  <TextInput
+                    label="Email"
+                    placeholder="you@example.com"
                     required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     error={!!error}
                     size="md"
                     radius="md"
-                    leftSection={<IconLock size={16} color="#868e96" />}
+                    leftSection={<IconAt size={16} color={colors.iconGray} />}
                   />
-                  <Group justify="flex-end">
-                    <Anchor
-                      href="/forgot-password"
-                      size="sm"
-                      fw={500}
-                      c="#1A237E"
-                    >
-                      Forgot Password?
-                    </Anchor>
-                  </Group>
+
+                  <Stack gap={4}>
+                    <PasswordInput
+                      label="Password"
+                      placeholder="••••••••"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      error={!!error}
+                      size="md"
+                      radius="md"
+                      leftSection={
+                        <IconLock size={16} color={colors.iconGray} />
+                      }
+                    />
+                    <Group justify="flex-end">
+                      <Anchor
+                        href="/forgot-password"
+                        size="sm"
+                        fw={500}
+                        c={colors.primaryBlue}
+                      >
+                        Forgot Password?
+                      </Anchor>
+                    </Group>
+                  </Stack>
+
+                  <Button
+                    type="submit"
+                    fullWidth
+                    size="md"
+                    radius="md"
+                    loading={loading}
+                    style={{
+                      backgroundColor: colors.primaryBlue,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Sign In
+                  </Button>
+
+                  {/* CONTRAST FIX: Replaced dimmed divider label */}
+                  <Divider
+                    label={
+                      <Text
+                        style={{ color: colors.textSecondary, fontWeight: 600 }}
+                      >
+                        Or continue with
+                      </Text>
+                    }
+                    labelPosition="center"
+                    my="xs"
+                  />
+
+                  <Button
+                    variant="default"
+                    fullWidth
+                    size="md"
+                    radius="md"
+                    loading={oauthLoading}
+                    disabled={loading}
+                    leftSection={<IconBrandGoogle size={18} />}
+                    onClick={handleGoogleLogin}
+                    type="button"
+                  >
+                    Sign in with Google
+                  </Button>
                 </Stack>
+              </form>
 
-                <Button
-                  type="submit"
-                  fullWidth
-                  size="md"
-                  radius="md"
-                  loading={loading}
-                  style={{
-                    backgroundColor: "#1A237E",
-                    fontWeight: 600,
-                  }}
-                >
-                  Sign In
-                </Button>
-
-                {/* NEW: Google Login Section */}
-                <Divider
-                  label="Or continue with"
-                  labelPosition="center"
-                  my="xs"
-                />
-
-                <Button
-                  variant="default"
-                  fullWidth
-                  size="md"
-                  radius="md"
-                  loading={oauthLoading}
-                  disabled={loading}
-                  leftSection={<IconBrandGoogle size={18} />}
-                  onClick={handleGoogleLogin}
-                  type="button"
-                >
-                  Sign in with Google
-                </Button>
-              </Stack>
-            </form>
-
-            <Text ta="center" mt="xl" size="sm" c="dimmed">
-              Don`t have an account?{" "}
-              <Anchor href="/signup" fw={600} c="#1A237E">
-                Sign Up
-              </Anchor>
-            </Text>
-          </Paper>
-        </Stack>
-      </Container>
-    </Center>
+              {/* CONTRAST FIX: Replaced c="dimmed" */}
+              <Text
+                ta="center"
+                mt="xl"
+                size="sm"
+                style={{ color: colors.textSecondary }}
+              >
+                Don&apos;t have an account?{" "}
+                <Anchor href="/signup" fw={600} c={colors.primaryBlue}>
+                  Sign Up
+                </Anchor>
+              </Text>
+            </Paper>
+          </Stack>
+        </Container>
+      </Center>
+    </main>
   );
 }
 

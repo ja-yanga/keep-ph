@@ -93,6 +93,9 @@ export default function PublicNavigationHeader() {
               hiddenFrom="sm"
               size="sm"
               color="#1A237E"
+              aria-label={
+                opened ? "Close navigation menu" : "Open navigation menu"
+              }
             />
 
             <Link href="/" style={{ textDecoration: "none" }}>
