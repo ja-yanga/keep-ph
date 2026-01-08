@@ -156,7 +156,7 @@ export default function AdminUserKyc() {
         accessor: "doc",
         title: "Document",
         render: (r: FormattedKycRow) => (
-          <Text size="sm">{r.id_document_type ?? "—"}</Text>
+          <Text size="sm">{(r.id_document_type ?? "—").replace("_", " ")}</Text>
         ),
       },
       {
