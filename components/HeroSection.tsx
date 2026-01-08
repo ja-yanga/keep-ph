@@ -1,5 +1,4 @@
-"use client";
-
+import React from "react";
 import {
   Container,
   Grid,
@@ -9,92 +8,90 @@ import {
   Button,
   Image,
   Box,
-  rem,
   Group,
 } from "@mantine/core";
 import { IconArrowRight } from "@tabler/icons-react";
 import Link from "next/link";
-import { useMediaQuery } from "@mantine/hooks";
+
+// FIX 1: Move these OUTSIDE so they don't block the main thread during render
+const COLORS = {
+  primaryBlue: "#1A237E",
+  textSecondary: "#4A5568",
+};
+
+const SECTION_STYLE = {
+  background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)",
+  paddingTop: "clamp(2.5rem, 8vh, 5rem)",
+  paddingBottom: "clamp(3.75rem, 10vh, 5rem)",
+  overflow: "hidden" as const,
+};
+
+const IMAGE_CONTAINER_STYLE = {
+  position: "relative" as const,
+  maxWidth: "100%",
+  margin: "0 auto",
+};
+
+const GLOW_STYLE = {
+  position: "absolute" as const,
+  top: "-10%",
+  left: "-10%",
+  width: "120%",
+  height: "120%",
+  background:
+    "radial-gradient(circle, rgba(26,35,126,0.06) 0%, rgba(255,255,255,0) 70%)",
+  zIndex: 0,
+};
+
+const IMAGE_WRAPPER_STYLE = {
+  position: "relative" as const,
+  zIndex: 1,
+  boxShadow: "var(--mantine-shadow-xl)",
+  borderRadius: "var(--mantine-radius-lg)",
+  backgroundColor: "#f1f3f5",
+  overflow: "hidden" as const,
+  aspectRatio: "3 / 2",
+};
 
 export default function HeroSection() {
-  const isMobile = useMediaQuery("(max-width: 48em)");
-
-  // Custom scroll handler to ensure it works every time
-  const scrollToPricing = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const element = document.getElementById("pricing");
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  };
-
   return (
-    <Box
-      style={{
-        background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)",
-        paddingTop: isMobile ? rem(40) : rem(80),
-        paddingBottom: isMobile ? rem(60) : rem(60),
-        overflow: "hidden",
-      }}
-    >
+    <Box component="section" style={SECTION_STYLE}>
       <Container size="xl">
-        <Grid gutter={isMobile ? 40 : 80} align="center">
-          {/* IMAGE BLOCK */}
+        <Grid gutter={{ base: 40, md: 80 }} align="center">
           <Grid.Col span={{ base: 12, md: 6 }} order={{ base: 1, md: 2 }}>
-            <Box
-              style={{
-                position: "relative",
-                maxWidth: isMobile ? "85%" : "100%",
-                margin: "0 auto",
-              }}
-            >
-              <Box
-                style={{
-                  position: "absolute",
-                  top: "-10%",
-                  left: "-10%",
-                  width: "120%",
-                  height: "120%",
-                  background:
-                    "radial-gradient(circle, rgba(26,35,126,0.06) 0%, rgba(255,255,255,0) 70%)",
-                  zIndex: 0,
-                }}
-              />
+            <Box style={IMAGE_CONTAINER_STYLE}>
+              <Box style={GLOW_STYLE} />
 
-              <Box
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  boxShadow: "var(--mantine-shadow-xl)",
-                  borderRadius: "var(--mantine-radius-lg)",
-                  transform: isMobile ? "none" : "rotate(2deg)",
-                  border: "1px solid rgba(0,0,0,0.05)",
-                }}
-              >
+              <Box style={IMAGE_WRAPPER_STYLE}>
+                {/* server-rendered <img> via Mantine Image (no next/image client runtime) */}
                 <Image
-                  src="https://images.unsplash.com/photo-1497215728101-856f4ea42174?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                  src="/hero.avif"
                   alt="Modern Philippines Office"
-                  radius="lg"
+                  width={950}
+                  height={634}
+                  loading="eager"
+                  sizes="(max-width: 768px) 100vw, 475px"
+                  style={{
+                    objectFit: "cover",
+                    width: "100%",
+                    height: "100%",
+                  }}
                 />
               </Box>
             </Box>
           </Grid.Col>
 
-          {/* TEXT BLOCK */}
           <Grid.Col span={{ base: 12, md: 6 }} order={{ base: 2, md: 1 }}>
-            <Stack
-              gap={isMobile ? "lg" : "xl"}
-              align={isMobile ? "center" : "flex-start"}
-            >
+            <Stack gap="xl" className="hero-stack">
               <Title
                 order={1}
-                ta={isMobile ? "center" : "left"}
+                className="hero-title"
                 style={{
                   fontWeight: 900,
-                  fontSize: isMobile ? rem(40) : rem(60),
+                  fontSize: "clamp(2.5rem, 5vw, 3.75rem)",
                   lineHeight: 1.1,
                   letterSpacing: "-0.03em",
-                  color: "#1A237E",
+                  color: COLORS.primaryBlue,
                 }}
               >
                 Your Business Address in the{" "}
@@ -109,50 +106,42 @@ export default function HeroSection() {
               </Title>
 
               <Text
-                c="dimmed"
-                size={isMobile ? "lg" : "xl"}
-                ta={isMobile ? "center" : "left"}
+                style={{ color: COLORS.textSecondary, maxWidth: 540 }}
+                size="xl"
                 lh={1.6}
-                style={{ maxWidth: 540 }}
               >
                 Get a prestigious virtual address in Metro Manila. Manage your
                 mail digitally and forward packages anywhere in the world with
                 ease.
               </Text>
 
-              <Group
-                gap="sm"
-                w="100%"
-                mt="md"
-                wrap={isMobile ? "wrap" : "nowrap"}
-              >
+              <Group gap="sm" w="100%" mt="md" wrap="nowrap">
                 <Button
                   component={Link}
                   href="/signup"
                   size="xl"
                   radius="xl"
-                  color="#1A237E"
-                  fullWidth={isMobile}
+                  color={COLORS.primaryBlue}
                   rightSection={<IconArrowRight size={22} />}
                   style={{
+                    flex: 1,
                     boxShadow: "0 12px 24px rgba(26, 35, 126, 0.25)",
-                    flex: isMobile ? "none" : 1,
                   }}
                 >
                   Get Started
                 </Button>
 
-                {/* FIXED: Using onClick instead of Link for reliable scrolling */}
                 <Button
-                  onClick={scrollToPricing}
+                  component="a"
+                  href="#pricing"
                   size="xl"
                   variant="outline"
                   radius="xl"
-                  color="gray"
-                  fullWidth={isMobile}
                   style={{
-                    flex: isMobile ? "none" : 1,
+                    flex: 1,
                     backgroundColor: "white",
+                    color: COLORS.textSecondary,
+                    borderColor: COLORS.textSecondary,
                   }}
                 >
                   View Pricing
@@ -162,6 +151,20 @@ export default function HeroSection() {
           </Grid.Col>
         </Grid>
       </Container>
+
+      <style jsx>{`
+        @media (max-width: 48em) {
+          .hero-title {
+            text-align: center;
+          }
+          :global(.hero-stack) {
+            align-items: center !important;
+          }
+          :global(.mantine-Group-root) {
+            flex-wrap: wrap !important;
+          }
+        }
+      `}</style>
     </Box>
   );
 }

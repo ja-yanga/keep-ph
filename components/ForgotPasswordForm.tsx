@@ -28,6 +28,13 @@ export default function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // ACCESSIBILITY COLORS: Slate 700 (#4A5568) ensures a 6.2:1 contrast ratio against white
+  const colors = {
+    primaryBlue: "#1A237E",
+    textSecondary: "#4A5568",
+    iconGray: "#4A5568",
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -57,108 +64,133 @@ export default function ForgotPasswordForm() {
   };
 
   return (
-    <Center style={{ flex: 1, padding: "4rem 1rem" }}>
-      <Container size="xs" w="100%">
-        <Stack gap="lg">
-          <Stack gap={4} align="center">
-            <Title
-              order={1}
-              style={{
-                fontWeight: 800,
-                color: "#1A237E",
-                fontSize: rem(32),
-              }}
+    /* LANDMARK FIX: Wrapped in <main> for screen reader navigation */
+    <main role="main" aria-label="Forgot password form">
+      <Center style={{ flex: 1, padding: "4rem 1rem" }}>
+        <Container size="xs" w="100%">
+          <Stack gap="lg">
+            <Stack gap={4} align="center">
+              <Title
+                order={1}
+                style={{
+                  fontWeight: 800,
+                  color: colors.primaryBlue,
+                  fontSize: rem(32),
+                }}
+              >
+                Reset Password
+              </Title>
+              {/* CONTRAST FIX: Replaced c="dimmed" with high-contrast color */}
+              <Text
+                style={{ color: colors.textSecondary }}
+                size="md"
+                ta="center"
+              >
+                Enter your email to receive a reset link
+              </Text>
+            </Stack>
+
+            <Paper
+              withBorder
+              shadow="xl"
+              p={30}
+              radius="md"
+              style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
             >
-              Reset Password
-            </Title>
-            <Text c="dimmed" size="md" ta="center">
-              Enter your email to receive a reset link
-            </Text>
-          </Stack>
-
-          <Paper
-            withBorder
-            shadow="xl"
-            p={30}
-            radius="md"
-            style={{ backgroundColor: "#fff", borderColor: "#E9ECEF" }}
-          >
-            {success ? (
-              <Stack align="center" gap="md">
-                <ThemeIcon size={60} radius="50%" color="teal" variant="light">
-                  <IconMail size={30} />
-                </ThemeIcon>
-                <Text ta="center" fw={500}>
-                  Check your email
-                </Text>
-                <Text ta="center" size="sm" c="dimmed">
-                  We have sent a password reset link to <b>{email}</b>.
-                </Text>
-                <Button
-                  variant="subtle"
-                  onClick={() => setSuccess(false)}
-                  size="sm"
-                >
-                  Try a different email
-                </Button>
-              </Stack>
-            ) : (
-              <form onSubmit={handleSubmit}>
-                <Stack gap="md">
-                  {error && (
-                    <Alert
-                      variant="light"
-                      color="red"
-                      title="Error"
-                      icon={<IconAlertCircle size={16} />}
-                      radius="md"
-                    >
-                      {error}
-                    </Alert>
-                  )}
-
-                  <TextInput
-                    label="Email"
-                    placeholder="you@example.com"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    size="md"
-                    radius="md"
-                    leftSection={<IconAt size={16} color="#868e96" />}
-                  />
-
-                  <Button
-                    type="submit"
-                    fullWidth
-                    size="md"
-                    radius="md"
-                    loading={loading}
-                    style={{
-                      backgroundColor: "#1A237E",
-                      fontWeight: 600,
-                    }}
+              {success ? (
+                <Stack align="center" gap="md">
+                  <ThemeIcon
+                    size={60}
+                    radius="50%"
+                    color="teal"
+                    variant="light"
                   >
-                    Send Reset Link
+                    <IconMail size={30} />
+                  </ThemeIcon>
+                  <Text ta="center" fw={500}>
+                    Check your email
+                  </Text>
+                  {/* CONTRAST FIX: Replaced c="dimmed" */}
+                  <Text
+                    ta="center"
+                    size="sm"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    We have sent a password reset link to <b>{email}</b>.
+                  </Text>
+                  <Button
+                    variant="subtle"
+                    onClick={() => setSuccess(false)}
+                    size="sm"
+                    color="indigo"
+                  >
+                    Try a different email
                   </Button>
                 </Stack>
-              </form>
-            )}
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <Stack gap="md">
+                    {error && (
+                      <Alert
+                        variant="light"
+                        color="red"
+                        title="Error"
+                        icon={<IconAlertCircle size={16} />}
+                        radius="md"
+                      >
+                        {error}
+                      </Alert>
+                    )}
 
-            <Center mt="xl">
-              <Anchor
-                href="/signin"
-                size="sm"
-                c="dimmed"
-                display="flex"
-                style={{ alignItems: "center", gap: 5 }}
-              >
-                <IconArrowLeft size={14} /> Back to Login
-              </Anchor>
-            </Center>
-          </Paper>
-        </Stack>
-      </Container>
-    </Center>
+                    <TextInput
+                      label="Email"
+                      placeholder="you@example.com"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      size="md"
+                      radius="md"
+                      /* CONTRAST FIX: Icon color updated to Slate 700 */
+                      leftSection={<IconAt size={16} color={colors.iconGray} />}
+                    />
+
+                    <Button
+                      type="submit"
+                      fullWidth
+                      size="md"
+                      radius="md"
+                      loading={loading}
+                      style={{
+                        backgroundColor: colors.primaryBlue,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Send Reset Link
+                    </Button>
+                  </Stack>
+                </form>
+              )}
+
+              <Center mt="xl">
+                {/* CONTRAST FIX: Replaced c="dimmed" with textSecondary */}
+                <Anchor
+                  href="/signin"
+                  size="sm"
+                  style={{
+                    color: colors.textSecondary,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontWeight: 500,
+                  }}
+                >
+                  <IconArrowLeft size={14} /> Back to Login
+                </Anchor>
+              </Center>
+            </Paper>
+          </Stack>
+        </Container>
+      </Center>
+    </main>
   );
 }

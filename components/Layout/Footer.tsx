@@ -4,6 +4,7 @@ import { Box, Center, Text, useMantineTheme } from "@mantine/core";
 
 export default function Footer() {
   const theme = useMantineTheme();
+
   return (
     <Box
       component="footer"
