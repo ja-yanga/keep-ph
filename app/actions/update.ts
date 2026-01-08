@@ -293,3 +293,68 @@ export const cancelMailroomSubscription = async (
 
   return { ok: false, error: "Subscription not found" };
 };
+
+export const updateMailroomAssignedLockerStatus = async (args: {
+  id: string;
+  status: string;
+}) => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "update_mailroom_assigned_locker_status",
+    {
+      input_id: args.id,
+      input_status: args.status,
+    },
+  );
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * Updates a mailroom location and generates new lockers if needed.
+ * Used in:
+ * - app/api/admin/mailroom/locations/[id]/route.ts - API endpoint for updating locations
+ */
+export const adminUpdateMailroomLocation = async (args: {
+  id: string;
+  name?: string;
+  code?: string | null;
+  region?: string | null;
+  city?: string | null;
+  barangay?: string | null;
+  zip?: string | null;
+  total_lockers?: number;
+}) => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_update_mailroom_location",
+    {
+      input_data: args,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+/**
+ * Updates an existing mailroom locker.
+ * Used in:
+ * - app/api/admin/mailroom/lockers/[id]/route.ts
+ */
+export const adminUpdateMailroomLocker = async (args: {
+  id: string;
+  locker_code?: string;
+  is_available?: boolean;
+  location_id?: string;
+}) => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_update_mailroom_locker",
+    {
+      input_data: args,
+    },
+  );
+  if (error) throw error;
+  return data;
+};

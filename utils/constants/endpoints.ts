@@ -84,8 +84,12 @@ export const API_ENDPOINTS = {
       scans: "/api/admin/mailroom/scans",
       release: "/api/admin/mailroom/release",
       assignedLockers: "/api/admin/mailroom/assigned-lockers",
+      assignedLocker: (id: string) =>
+        `/api/admin/mailroom/assigned-lockers/${id}`,
+
       cron: "/api/admin/mailroom/cron",
       registrations: "/api/admin/mailroom/registrations",
+      searchRegistrations: "/api/admin/mailroom/registrations/search",
       archive: "/api/admin/mailroom/archive",
       restore: (id: string) => `/api/admin/mailroom/archive/${id}/restore`,
       permanentDelete: (id: string) =>

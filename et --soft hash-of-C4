@@ -1,0 +1,76 @@
+[33m4d6bdf5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mjeff/plpgsql-convertion[m[33m)[m HEAD@{0}: reset: moving to HEAD~2
+[33m0acf6ff[m HEAD@{1}: reset: moving to HEAD~1
+[33mb948261[m HEAD@{2}: reset: moving to HEAD~3
+[33ma16fa72[m[33m ([m[1;32mjeff/fetch-mobile-number[m[33m)[m HEAD@{3}: reset: moving to HEAD~4
+[33me8dabea[m HEAD@{4}: reset: moving to HEAD~5
+[33m8368bde[m HEAD@{5}: reset: moving to HEAD~4
+[33m1e2fd0a[m HEAD@{6}: reset: moving to HEAD~3
+[33m2c4b2ac[m HEAD@{7}: checkout: moving from dev to jeff/plpgsql-convertion
+[33md2f4226[m[33m ([m[1;31morigin/dev[m[33m, [m[1;32mjeff/recurring-referral-rewards[m[33m, [m[1;32mdev[m[33m)[m HEAD@{8}: checkout: moving from jeff/plpgsql-convertion to dev
+[33m2c4b2ac[m HEAD@{9}: checkout: moving from dev to jeff/plpgsql-convertion
+[33md2f4226[m[33m ([m[1;31morigin/dev[m[33m, [m[1;32mjeff/recurring-referral-rewards[m[33m, [m[1;32mdev[m[33m)[m HEAD@{10}: pull: Fast-forward
+[33ma16fa72[m[33m ([m[1;32mjeff/fetch-mobile-number[m[33m)[m HEAD@{11}: checkout: moving from jeff/plpgsql-convertion to dev
+[33m2c4b2ac[m HEAD@{12}: commit (merge): refactor: convert SQL Queries to RPC Functions in /api/admin/mailroom/scans
+[33m8c7d6ce[m HEAD@{13}: commit: refactor: convert SQL Queries to RPC Functions in /api/admin/mailroom/registrations/search
+[33m93c4bd1[m HEAD@{14}: commit: refactor: convert SQL Queries to RPC Functions in /api/admin/mailroom/lockers/generate
+[33m1e2fd0a[m HEAD@{15}: commit: refactor: convert SQL Queries to RPC Functions in /api/admin/mailroom/**
+[33mf4596e2[m HEAD@{16}: commit: refactor: convert SQL Queries to RPC Functions in /api/admin/mailroom/cron
+[33m87ed913[m HEAD@{17}: commit: refactor: convert SQL Queries to RPC Functions in /api/admin/mailroom/assigned-lockers/[id]
+[33md2f4226[m[33m ([m[1;31morigin/dev[m[33m, [m[1;32mjeff/recurring-referral-rewards[m[33m, [m[1;32mdev[m[33m)[m HEAD@{18}: merge origin/dev: Fast-forward
+[33m5e74073[m[33m ([m[1;31morigin/jeff/plpgsql-convertion[m[33m)[m HEAD@{19}: checkout: moving from jeff/recurring-referral-rewards to jeff/plpgsql-convertion
+[33md2f4226[m[33m ([m[1;31morigin/dev[m[33m, [m[1;32mjeff/recurring-referral-rewards[m[33m, [m[1;32mdev[m[33m)[m HEAD@{20}: reset: moving to HEAD
+[33md2f4226[m[33m ([m[1;31morigin/dev[m[33m, [m[1;32mjeff/recurring-referral-rewards[m[33m, [m[1;32mdev[m[33m)[m HEAD@{21}: merge origin/dev: Fast-forward
+[33m8368bde[m HEAD@{22}: merge origin/dev: Fast-forward
+[33m49f15c4[m[33m ([m[1;31morigin/jeff/recurring-referral-rewards[m[33m)[m HEAD@{23}: commit: chore: remove ALTER queries and add new columns to existing tables
+[33m5dee03f[m HEAD@{24}: commit (merge): Merge remote-tracking branch 'origin/dev' into jeff/recurring-referral-rewards
+[33m96e5359[m HEAD@{25}: commit (merge): Merge remote-tracking branch 'origin/dev' into jeff/recurring-referral-rewards
+[33ma91b480[m HEAD@{26}: commit (merge): Merge remote-tracking branch 'origin/dev' into jeff/recurring-referral-rewards
+[33m4002f47[m HEAD@{27}: commit: fix: correct masked email table name and clean up RPC handlers
+[33m33e2937[m HEAD@{28}: commit: feat: enhance UI/UX of reward progress
+[33m3e0a046[m HEAD@{29}: commit: feat: recurring referral rewards admin side
+[33m825c2a9[m HEAD@{30}: commit: feat: recurring referral rewards
+[33m869cb42[m[33m ([m[1;31morigin/jeff/user-auth-management[m[33m, [m[1;32mjeff/user-auth-management[m[33m)[m HEAD@{31}: checkout: moving from jeff/user-auth-management to jeff/recurring-referral-rewards
+[33m869cb42[m[33m ([m[1;31morigin/jeff/user-auth-management[m[33m, [m[1;32mjeff/user-auth-management[m[33m)[m HEAD@{32}: commit: chore: rename last rpc
+[33mfe60554[m HEAD@{33}: commit: feat: enhance authentication security and user experience
+[33ma16fa72[m[33m ([m[1;32mjeff/fetch-mobile-number[m[33m)[m HEAD@{34}: checkout: moving from dev to jeff/user-auth-management
+[33ma16fa72[m[33m ([m[1;32mjeff/fetch-mobile-number[m[33m)[m HEAD@{35}: checkout: moving from jeff/fetch-mobile-number to dev
+[33ma16fa72[m[33m ([m[1;32mjeff/fetch-mobile-number[m[33m)[m HEAD@{36}: checkout: moving from dev to jeff/fetch-mobile-number
+[33ma16fa72[m[33m ([m[1;32mjeff/fetch-mobile-number[m[33m)[m HEAD@{37}: pull: Fast-forward
+[33mc57e12e[m HEAD@{38}: checkout: moving from jeff/plpgsql-convertion to dev
+[33m5e74073[m[33m ([m[1;31morigin/jeff/plpgsql-convertion[m[33m)[m HEAD@{39}: commit: refactor: remove deprecated package delete RPC
+[33maa383de[m HEAD@{40}: commit: fix: remove "delete forever" feature and rename "receive" column to "deleted_at"
+[33m63fff35[m HEAD@{41}: commit (merge): Merge branch 'jeff/archive-feature' into jeff/plpgsql-convertion
+[33m6bf0a16[m HEAD@{42}: commit: refactor: replace native confirm dialogs with modal confirmation
+[33ma987dd4[m HEAD@{43}: checkout: moving from jeff/referrals-plpgsql-convertion to jeff/plpgsql-convertion
+[33m1668492[m[33m ([m[1;31morigin/jeff/referrals-plpgsql-convertion[m[33m, [m[1;32mjeff/referrals-plpgsql-convertion[m[33m)[m HEAD@{44}: checkout: moving from jeff/archive-feature to jeff/referrals-plpgsql-convertion
+[33m4622f90[m[33m ([m[1;31morigin/jeff/archive-feature[m[33m, [m[1;32mjeff/archive-feature[m[33m)[m HEAD@{45}: commit: feat: implement inventory archive with restore and permanent delete
+[33ma987dd4[m HEAD@{46}: checkout: moving from jeff/plpgsql-convertion to jeff/archive-feature
+[33ma987dd4[m HEAD@{47}: merge origin/dev: Fast-forward
+[33m0da6fca[m HEAD@{48}: commit: refactor: render user package locker code and sort items by received_at DESC
+[33mb948261[m HEAD@{49}: merge origin/dev: Fast-forward
+[33md5a6938[m HEAD@{50}: commit: refactor: remove status in package flow and fix admin mailrooms route
+[33m861eb22[m[33m ([m[1;31morigin/allen/fix-kyc-and-compliance[m[33m)[m HEAD@{51}: merge origin/dev: Fast-forward
+[33m6b63099[m HEAD@{52}: checkout: moving from dev to jeff/plpgsql-convertion
+[33mc57e12e[m HEAD@{53}: checkout: moving from jeff/plpgsql-convertion to dev
+[33m6b63099[m HEAD@{54}: commit: feat: add soft delete to location lockers
+[33mc57e12e[m HEAD@{55}: merge origin/dev: Fast-forward
+[33m0a48fb4[m HEAD@{56}: checkout: moving from dev to jeff/plpgsql-convertion
+[33mc57e12e[m HEAD@{57}: pull: Fast-forward
+[33m9c2acb1[m HEAD@{58}: checkout: moving from jeff/plpgsql-convertion to dev
+[33m0a48fb4[m HEAD@{59}: commit: refactor: create RPC functions in /api/admin/mailroom/locations
+[33m2e3d462[m HEAD@{60}: commit (merge): Merge remote-tracking branch 'origin/dev' into jeff/plpgsql-convertion
+[33m4144984[m HEAD@{61}: commit: refactor: create RPC functions in generateMailroomCode()
+[33m8c1cb3a[m HEAD@{62}: commit: refactor: replaced inline SQL with RPC functions in markAsReadNotification()
+[33m0fb2087[m HEAD@{63}: commit: refactor: replaced inline SQL with RPC functions & enable notification feature
+[33mcc65eda[m HEAD@{64}: commit: refactor: replaced inline SQL with RPC functions in api/user/storage/:id
+[33ma811086[m HEAD@{65}: commit: refactor: replaced inline SQL with RPC functions in api/user/storage
+[33m9ea89f3[m HEAD@{66}: commit: refactor: replaced inline SQL with RPC functions in updateMailboxItem()
+[33m00d889e[m HEAD@{67}: commit: chore: rename migration sql
+[33m49981a8[m HEAD@{68}: commit (merge): Merge remote-tracking branch 'origin/dev' into jeff/plpgsql-convertion
+[33m0e93e80[m HEAD@{69}: commit (merge): Merge remote-tracking branch 'origin/dev' into jeff/plpgsql-convertion
+[33m9569780[m HEAD@{70}: commit (amend): chore: rename migration sql
+[33meafe259[m HEAD@{71}: commit (amend): chore: rename migration sql
+[33mcee7f2b[m HEAD@{72}: commit: chore: rename migration sql
+[33m093f02f[m HEAD@{73}: commit: refactor: replaced inline SQL with RPC functions in api/session and create rpc get_user_session_data(input_user_id UUID)
+[33m5116186[m HEAD@{74}: commit: refactor: replaced inline SQL with RPC functions in submitKYC()
+[33m3167b92[m HEAD@{75}: commit: refactor: replaced inline S

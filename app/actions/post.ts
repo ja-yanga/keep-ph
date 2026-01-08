@@ -977,3 +977,81 @@ export async function adminPermanentDeleteMailboxItem(id: string) {
 
   return typeof data === "string" ? JSON.parse(data) : data;
 }
+
+/**
+ * Trigger the mailroom cron job to process expired subscriptions.
+ * Logic is handled in the database RPC admin_process_expired_subscriptions.
+ */
+export async function adminProcessExpiredSubscriptions() {
+  const { data, error } = await supabase.rpc(
+    "admin_process_expired_subscriptions",
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Creates a new mailroom locker.
+ * Used in:
+ * - app/api/admin/mailroom/lockers/route.ts
+ */
+export async function adminCreateMailroomLocker(args: {
+  location_id: string;
+  locker_code: string;
+  is_available?: boolean;
+}) {
+  const { data, error } = await supabase.rpc("admin_create_mailroom_locker", {
+    input_data: args,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Generates multiple mailroom lockers atomically via RPC.
+ * Used in:
+ * - app/api/admin/mailroom/lockers/generate/route.ts
+ */
+export async function adminGenerateMailroomLockers(args: {
+  location_id: string;
+  total: number;
+}) {
+  const { data, error } = await supabase.rpc(
+    "admin_generate_mailroom_lockers",
+    {
+      input_location_id: args.location_id,
+      input_total_to_add: args.total,
+    },
+  );
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Processes a mailroom scan by inserting file record and updating package status.
+ * Used in:
+ * - app/api/admin/mailroom/scans/route.ts
+ */
+export async function adminProcessMailroomScan(args: {
+  package_id: string;
+  file_name: string;
+  file_url: string;
+  file_size_mb: number;
+  file_mime_type: string;
+}) {
+  const { data, error } = await supabase.rpc("admin_process_mailroom_scan", {
+    input_package_id: args.package_id,
+    input_file_name: args.file_name,
+    input_file_url: args.file_url,
+    input_file_size_mb: args.file_size_mb,
+    input_file_mime_type: args.file_mime_type,
+  });
+
+  if (error) throw error;
+  return data;
+}

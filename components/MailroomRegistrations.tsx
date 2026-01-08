@@ -4,6 +4,7 @@ import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import {
   Badge,
   Button,
@@ -110,7 +111,7 @@ export default function MailroomRegistrations() {
   const [activeTab, setActiveTab] = useState<string | null>("all");
 
   // --- SWR keys & fetcher ---
-  const combinedKey = "/api/admin/mailroom/registrations";
+  const combinedKey = API_ENDPOINTS.admin.mailroom.registrations;
   const fetcher = async (url: string) => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -363,7 +364,7 @@ export default function MailroomRegistrations() {
         );
         if (current) {
           const res = await fetch(
-            `/api/admin/mailroom/assigned-lockers/${current.id}`,
+            API_ENDPOINTS.admin.mailroom.assignedLocker(current.id),
             { method: "DELETE" },
           );
           if (!res.ok) throw new Error("Failed to unassign locker");
@@ -377,7 +378,7 @@ export default function MailroomRegistrations() {
         }
       } else {
         // Assign
-        const res = await fetch("/api/admin/mailroom/assigned-lockers", {
+        const res = await fetch(API_ENDPOINTS.admin.mailroom.assignedLockers, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -442,7 +443,9 @@ export default function MailroomRegistrations() {
   const handleRefreshStatus = async () => {
     setRefreshingStatus(true);
     try {
-      const res = await fetch("/api/admin/mailroom/cron", { method: "POST" });
+      const res = await fetch(API_ENDPOINTS.admin.mailroom.cron, {
+        method: "POST",
+      });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(txt || "Failed to run cron");

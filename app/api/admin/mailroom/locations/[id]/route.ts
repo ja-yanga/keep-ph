@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { adminUpdateMailroomLocation } from "@/app/actions/update";
 
-const supabaseAdmin = createSupabaseServiceClient();
-
+/**
+ * Handle PATCH requests to update a mailroom location.
+ * Delegates logic to the adminUpdateMailroomLocation server action.
+ */
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -11,8 +13,7 @@ export async function PATCH(
     let body: Record<string, unknown> = {};
     try {
       body = (await req.json()) as Record<string, unknown>;
-    } catch (parseErr) {
-      void parseErr;
+    } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
@@ -29,8 +30,8 @@ export async function PATCH(
         } else {
           id = parts[parts.length - 1];
         }
-      } catch (urlErr) {
-        void urlErr;
+      } catch {
+        // ignore url errors
       }
     }
 
@@ -41,158 +42,48 @@ export async function PATCH(
       );
     }
 
-    const name = body.name !== undefined ? String(body.name) : undefined;
-
-    // avoid nested ternaries — resolve each field explicitly
-    let code: string | null | undefined;
-    if (Object.prototype.hasOwnProperty.call(body, "code")) {
-      code = body.code ? String(body.code) : null;
-    } else {
-      code = undefined;
-    }
-
-    let region: string | null | undefined;
-    if (Object.prototype.hasOwnProperty.call(body, "region")) {
-      region = body.region ? String(body.region) : null;
-    } else {
-      region = undefined;
-    }
-
-    let city: string | null | undefined;
-    if (Object.prototype.hasOwnProperty.call(body, "city")) {
-      city = body.city ? String(body.city) : null;
-    } else {
-      city = undefined;
-    }
-
-    let barangay: string | null | undefined;
-    if (Object.prototype.hasOwnProperty.call(body, "barangay")) {
-      barangay = body.barangay ? String(body.barangay) : null;
-    } else {
-      barangay = undefined;
-    }
-
-    let zip: string | null | undefined;
-    if (Object.prototype.hasOwnProperty.call(body, "zip")) {
-      zip = body.zip ? String(body.zip) : null;
-    } else {
-      zip = undefined;
-    }
-
-    let totalLockers: number | undefined;
-    if (Object.prototype.hasOwnProperty.call(body, "total_lockers")) {
+    // Extract fields from body
+    const args: {
+      id: string;
+      name?: string;
+      code?: string | null;
+      region?: string | null;
+      city?: string | null;
+      barangay?: string | null;
+      zip?: string | null;
+      total_lockers?: number;
+    } = { id };
+    if (body.name !== undefined) args.name = String(body.name);
+    if (Object.prototype.hasOwnProperty.call(body, "code"))
+      args.code = body.code ? String(body.code) : null;
+    if (Object.prototype.hasOwnProperty.call(body, "region"))
+      args.region = body.region ? String(body.region) : null;
+    if (Object.prototype.hasOwnProperty.call(body, "city"))
+      args.city = body.city ? String(body.city) : null;
+    if (Object.prototype.hasOwnProperty.call(body, "barangay"))
+      args.barangay = body.barangay ? String(body.barangay) : null;
+    if (Object.prototype.hasOwnProperty.call(body, "zip"))
+      args.zip = body.zip ? String(body.zip) : null;
+    if (body.total_lockers !== undefined) {
       const n = Number(body.total_lockers);
-      totalLockers = Number.isNaN(n) ? 0 : n;
-    } else {
-      totalLockers = undefined;
+      args.total_lockers = Number.isNaN(n) ? 0 : n;
     }
 
-    const updates: Record<string, unknown> = {};
-    if (name !== undefined) updates.mailroom_location_name = name;
-    if (code !== undefined) updates.mailroom_location_prefix = code;
-    if (region !== undefined) updates.mailroom_location_region = region;
-    if (city !== undefined) updates.mailroom_location_city = city;
-    if (barangay !== undefined) updates.mailroom_location_barangay = barangay;
-    if (zip !== undefined) updates.mailroom_location_zip = zip;
-    if (totalLockers !== undefined)
-      updates.mailroom_location_total_lockers = totalLockers;
-
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(args).length === 1) {
       return NextResponse.json(
         { error: "No fields provided to update" },
         { status: 400 },
       );
     }
 
-    // Fetch current location first to compare total_lockers and get current prefix
-    const { data: current, error: fetchError } = await supabaseAdmin
-      .from("mailroom_location_table")
-      .select("mailroom_location_total_lockers, mailroom_location_prefix")
-      .eq("mailroom_location_id", id)
-      .single();
+    // Call the server action
+    const result = await adminUpdateMailroomLocation(args);
 
-    if (fetchError || !current) {
-      return NextResponse.json(
-        { error: "Location not found" },
-        { status: 404 },
-      );
-    }
-
-    const oldTotal =
-      ((current as Record<string, unknown>).mailroom_location_total_lockers as
-        | number
-        | undefined) ?? 0;
-    const newTotal =
-      (updates.mailroom_location_total_lockers as number | undefined) ??
-      oldTotal;
-
-    const activePrefix =
-      updates.mailroom_location_prefix !== undefined
-        ? updates.mailroom_location_prefix
-        : (current as Record<string, unknown>).mailroom_location_prefix;
-
-    // Update the location
-    const { data, error } = await supabaseAdmin
-      .from("mailroom_location_table")
-      .update(updates)
-      .eq("mailroom_location_id", id)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { error: (error as Error).message },
-        { status: 500 },
-      );
-    }
-
-    // If total_lockers increased, generate new lockers
-    if (newTotal > oldTotal) {
-      const prefix = activePrefix ? `${String(activePrefix)}-` : "L";
-
-      const lockersToCreate: Array<Record<string, unknown>> = [];
-      for (let i = oldTotal + 1; i <= newTotal; i += 1) {
-        lockersToCreate.push({
-          mailroom_location_id: id,
-          location_locker_code: `${prefix}${i.toString().padStart(3, "0")}`,
-          location_locker_is_available: true,
-        });
-      }
-
-      if (lockersToCreate.length > 0) {
-        try {
-          const { error: lockerError } = await supabaseAdmin
-            .from("location_locker_table")
-            .insert(lockersToCreate);
-          void lockerError;
-        } catch (lockerErr: unknown) {
-          void lockerErr;
-        }
-      }
-    }
-
-    const normalized = data
-      ? {
-          id: data.mailroom_location_id,
-          name: data.mailroom_location_name,
-          code: data.mailroom_location_prefix ?? null,
-          region: data.mailroom_location_region ?? null,
-          city: data.mailroom_location_city ?? null,
-          barangay: data.mailroom_location_barangay ?? null,
-          zip: data.mailroom_location_zip ?? null,
-          total_lockers: data.mailroom_location_total_lockers ?? 0,
-        }
-      : null;
-
-    return NextResponse.json(
-      { message: "Location updated", data: normalized },
-      { status: 200 },
-    );
+    return NextResponse.json(result, { status: 200 });
   } catch (err: unknown) {
-    void err;
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    console.error("[Locations API PATCH Error]:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

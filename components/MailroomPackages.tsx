@@ -349,7 +349,7 @@ export default function MailroomPackages() {
       setSearchingRecipients(true);
       try {
         const url = new URL(
-          "/api/admin/mailroom/registrations/search",
+          API_ENDPOINTS.admin.mailroom.searchRegistrations,
           window.location.origin,
         );
         url.searchParams.set("q", searchQuery);
@@ -888,25 +888,22 @@ export default function MailroomPackages() {
     const matchesStatus = filterStatus ? p.status === filterStatus : true;
     const matchesType = filterType ? p.package_type === filterType : true;
 
-    // Tab Logic
+    // --- Combine Tab Logic with Filters ---
+    let matchesTab = true;
     if (activeTab === "requests") {
-      return (p.status ?? "").includes("REQUEST");
-    }
-    if (activeTab === "active") {
-      return (p.status ?? "") === "STORED";
-    }
-    if (activeTab === "released") {
+      matchesTab = (p.status ?? "").includes("REQUEST");
+    } else if (activeTab === "active") {
+      matchesTab = (p.status ?? "") === "STORED";
+    } else if (activeTab === "released") {
       const s = p.status ?? "";
-      return s === "RELEASED" || s === "RETRIEVED";
-    }
-    if (activeTab === "disposed") {
-      return (p.status ?? "") === "DISPOSED";
-    }
-    if (activeTab === "archive") {
-      return false; // Archived packages are managed by archivedPackages state
+      matchesTab = s === "RELEASED" || s === "RETRIEVED";
+    } else if (activeTab === "disposed") {
+      matchesTab = (p.status ?? "") === "DISPOSED";
+    } else if (activeTab === "archive") {
+      matchesTab = false; // Archived packages are managed by archivedPackages state
     }
 
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesTab && matchesSearch && matchesStatus && matchesType;
   });
 
   const paginatedPackages =
@@ -1398,26 +1395,42 @@ export default function MailroomPackages() {
             label="Recipient"
             placeholder="Type to search recipients (min 2 characters)..."
             required
-            data={recipientOptions}
-            value={
-              recipientOptions.find(
-                (opt) => opt.value === formData.registration_id,
-              )?.label || recipientSearch
+            data={
+              // Merge currently selected recipient into options list if not present
+              formData.registration_id &&
+              !recipientOptions.find(
+                (o) => o.value === formData.registration_id,
+              )
+                ? [
+                    ...recipientOptions,
+                    {
+                      value: formData.registration_id,
+                      label:
+                        recipientOptions.find(
+                          (opt) => opt.value === formData.registration_id,
+                        )?.label || recipientSearch,
+                    },
+                  ]
+                : recipientOptions
             }
+            value={recipientSearch}
             onChange={(val) => {
               setRecipientSearch(val);
-              // If exact match found, set the registration_id
+              // Clear selection when typing, unless an exact label match is found
               const matched = recipientOptions.find((opt) => opt.label === val);
               if (matched) {
                 handleRegistrationChange(matched.value);
-              } else if (!val) {
+              } else if (formData.registration_id) {
+                // User is typing and it doesn't match the current selection label
                 handleRegistrationChange(null);
               }
             }}
             onOptionSubmit={(val) => {
-              handleRegistrationChange(val);
               const matched = recipientOptions.find((opt) => opt.value === val);
-              setRecipientSearch(matched?.label || "");
+              if (matched) {
+                setRecipientSearch(matched.label);
+                handleRegistrationChange(matched.value);
+              }
             }}
             rightSection={
               searchingRecipients ? (
@@ -1431,8 +1444,10 @@ export default function MailroomPackages() {
                 ? "Type at least 2 characters to search"
                 : undefined
             }
+            clearable
             limit={50}
           />
+
           <Select
             label="Assign Locker"
             placeholder={

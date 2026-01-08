@@ -1248,3 +1248,66 @@ export async function checkEmailExistsAction(email: string): Promise<boolean> {
     throw new Error(`Unexpected error: ${String(err)}`);
   }
 }
+
+/**
+ * Gets all mailroom lockers with location and assignment data.
+ * Used in:
+ * - app/api/admin/mailroom/lockers/route.ts
+ */
+export async function adminGetMailroomLockers() {
+  const { data, error } = await supabaseAdmin.rpc("admin_get_mailroom_lockers");
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Gets consolidated mailroom registrations data (registrations, lockers, assignments, plans, locations).
+ * Used in:
+ * - app/api/admin/mailroom/registrations/route.ts
+ */
+export async function adminGetMailroomRegistrationsConsolidated() {
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_get_mailroom_registrations_consolidated",
+  );
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Searches mailroom registrations via RPC.
+ * Used in:
+ * - app/api/admin/mailroom/registrations/search/route.ts
+ */
+export async function adminSearchMailroomRegistrations(args: {
+  q: string;
+  limit?: number;
+}) {
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_search_mailroom_registrations",
+    {
+      input_query: args.q,
+      input_limit: args.limit,
+    },
+  );
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Gets a single mailbox item for a user via RPC.
+ * Used in:
+ * - app/api/user/packages/[id]/route.ts
+ */
+export async function getUserMailboxItem(args: {
+  package_id: string;
+  user_id: string;
+}) {
+  const { data, error } = await supabaseAdmin.rpc("get_user_mailbox_item", {
+    input_package_id: args.package_id,
+    input_user_id: args.user_id,
+  });
+
+  if (error) throw error;
+  return data;
+}

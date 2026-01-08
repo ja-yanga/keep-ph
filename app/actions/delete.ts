@@ -86,3 +86,31 @@ export async function adminDeleteMailroomPackage(args: {
 
   return result;
 }
+
+export async function deleteMailroomAssignedLocker(id: string) {
+  const { data, error } = await supabaseAdmin.rpc(
+    "delete_mailroom_assigned_locker",
+    {
+      input_id: id,
+    },
+  );
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Soft deletes a mailroom locker and decrements location total_lockers.
+ * Used in:
+ * - app/api/admin/mailroom/lockers/[id]/route.ts
+ */
+export async function adminDeleteMailroomLocker(id: string) {
+  const { data, error } = await supabaseAdmin.rpc(
+    "admin_delete_mailroom_locker",
+    {
+      input_id: id,
+    },
+  );
+  if (error) throw error;
+  return data;
+}

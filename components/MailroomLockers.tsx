@@ -4,6 +4,7 @@ import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import {
   ActionIcon,
   Badge,
@@ -258,8 +259,8 @@ export default function MailroomLockers() {
   const [capacityStatus, setCapacityStatus] = useState<string>("Normal");
   const [submitting, setSubmitting] = useState(false);
 
-  const lockersKey = "/api/admin/mailroom/lockers?expanded=1";
-  const locationsKey = "/api/admin/mailroom/locations";
+  const lockersKey = `${API_ENDPOINTS.admin.mailroom.lockers}?expanded=1`;
+  const locationsKey = API_ENDPOINTS.admin.mailroom.locations;
 
   const fetcherLocations = async (url: string): Promise<Location[]> => {
     const res = await fetch(url);
@@ -402,7 +403,7 @@ export default function MailroomLockers() {
           try {
             await Promise.all(
               ghost.map((l) =>
-                fetch(`/api/admin/mailroom/lockers/${l.id}`, {
+                fetch(API_ENDPOINTS.admin.mailroom.locker(l.id), {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -498,8 +499,8 @@ export default function MailroomLockers() {
 
     try {
       const url = editingLocker
-        ? `/api/admin/mailroom/lockers/${editingLocker.id}`
-        : "/api/admin/mailroom/lockers";
+        ? API_ENDPOINTS.admin.mailroom.locker(editingLocker.id)
+        : API_ENDPOINTS.admin.mailroom.lockers;
       const method = editingLocker ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -525,7 +526,7 @@ export default function MailroomLockers() {
 
       if (editingLocker && assignment && capacityStatus !== assignment.status) {
         const statusRes = await fetch(
-          `/api/admin/mailroom/assigned-lockers/${assignment.id}`,
+          API_ENDPOINTS.admin.mailroom.assignedLocker(assignment.id),
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -559,9 +560,12 @@ export default function MailroomLockers() {
     if (!lockerToDelete) return;
 
     try {
-      const res = await fetch(`/api/admin/mailroom/lockers/${lockerToDelete}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        API_ENDPOINTS.admin.mailroom.locker(lockerToDelete),
+        {
+          method: "DELETE",
+        },
+      );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(txt || "Failed to delete");

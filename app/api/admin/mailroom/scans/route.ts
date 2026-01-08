@@ -1,6 +1,7 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { sendNotification } from "@/lib/notifications"; // Import the helper
+import { sendNotification } from "@/lib/notifications";
+import { adminProcessMailroomScan } from "@/app/actions/post";
 
 // Initialize Admin Client (Service Role needed for Storage uploads if RLS is strict)
 const supabase = createSupabaseServiceClient();
@@ -24,13 +25,14 @@ export async function POST(request: Request) {
     const filePath = `${fileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("MAILROOM-SCANS") // Ensure this bucket exists in Supabase
+      .from("MAILROOM-SCANS")
       .upload(filePath, file, {
         contentType: file.type,
         upsert: false,
       });
 
     if (uploadError) {
+      console.error("Storage upload error:", uploadError);
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
@@ -39,54 +41,33 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = supabase.storage.from("MAILROOM-SCANS").getPublicUrl(filePath);
 
-    // 3. Insert Record into mailroom_file_table
-    const fileSizeMb = file.size / (1024 * 1024); // Convert bytes to MB
+    // 3. Call server action / RPC to handle database updates
+    const fileSizeMb = file.size / (1024 * 1024);
+    const result = await adminProcessMailroomScan({
+      package_id: packageId,
+      file_name: file.name,
+      file_url: publicUrl,
+      file_size_mb: fileSizeMb,
+      file_mime_type: file.type,
+    });
 
-    const { error: dbError } = await supabase
-      .from("mailroom_file_table")
-      .insert({
-        mailbox_item_id: packageId,
-        mailroom_file_name: file.name,
-        mailroom_file_url: publicUrl,
-        mailroom_file_size_mb: fileSizeMb,
-        mailroom_file_mime_type: file.type,
-        mailroom_file_type: "SCANNED",
-      });
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
+    if (!result.ok) {
+      throw new Error(result.error || "Failed to process scan record");
     }
 
-    // 4. Update Package Status (Reset to STORED or mark as PROCESSED)
-    // We reset to 'STORED' so the "Request" badge disappears, but the file is now linked.
-    const { data: pkgData, error: updateError } = await supabase
-      .from("mailbox_item_table")
-      .update({ mailbox_item_status: "STORED" })
-      .eq("mailbox_item_id", packageId)
-      .select("mailroom_registration_id, mailbox_item_name")
-      .single();
+    const { user_id, mailroom_registration_id, mailbox_item_name } =
+      result.data;
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
-
-    // 5. Fetch registration to get user_id and mailroom_registration_code
-    const { data: registration } = await supabase
-      .from("mailroom_registration_table")
-      .select("user_id, mailroom_registration_code")
-      .eq("mailroom_registration_id", pkgData.mailroom_registration_id)
-      .single();
-
-    // 6. Send Notification
-    if (registration?.user_id) {
+    // 4. Send Notification
+    if (user_id) {
       try {
-        const label = pkgData?.mailbox_item_name ?? "Unknown";
+        const label = mailbox_item_name ?? "Unknown";
         await sendNotification(
-          registration.user_id,
+          user_id,
           "Document Scanned",
           `Your document (${label}) has been scanned and is ready to view.`,
           "SCAN_READY",
-          `/mailroom/${pkgData.mailroom_registration_id}`,
+          `/mailroom/${mailroom_registration_id}`,
         );
       } catch (notifyErr) {
         console.error("sendNotification failed:", notifyErr);
@@ -95,7 +76,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, url: publicUrl });
   } catch (error: unknown) {
-    console.error("Scan upload error:", error);
+    console.error("admin.mailroom.scans.POST:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Internal Server Error";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
