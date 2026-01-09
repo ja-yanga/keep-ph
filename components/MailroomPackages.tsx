@@ -140,6 +140,7 @@ export default function MailroomPackages() {
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false);
   const [packageToDelete, setPackageToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
     package_name: "",
@@ -608,6 +609,7 @@ export default function MailroomPackages() {
   const confirmDelete = async () => {
     if (!packageToDelete) return;
 
+    setIsDeleting(true);
     try {
       const res = await fetch(
         `/api/admin/mailroom/packages/${packageToDelete}`,
@@ -618,8 +620,8 @@ export default function MailroomPackages() {
 
       if (!res.ok) throw new Error("Failed to delete");
 
-      setGlobalSuccess("Package deleted successfully");
       await refreshAll();
+      closeDeleteModal();
     } catch (error) {
       console.error(error);
       notifications.show({
@@ -628,8 +630,10 @@ export default function MailroomPackages() {
         color: "red",
       });
     } finally {
-      closeDeleteModal();
+      setIsDeleting(false);
+
       setPackageToDelete(null);
+      setGlobalSuccess("Package deleted successfully");
     }
   };
 
@@ -1351,10 +1355,14 @@ export default function MailroomPackages() {
             undone.
           </Text>
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={closeDeleteModal}>
+            <Button
+              variant="default"
+              onClick={closeDeleteModal}
+              loading={isDeleting}
+            >
               Cancel
             </Button>
-            <Button color="red" onClick={confirmDelete}>
+            <Button color="red" onClick={confirmDelete} loading={isDeleting}>
               Delete
             </Button>
           </Group>
