@@ -507,6 +507,11 @@ export default function RegisterForm({
             <Stepper.Step
               label="Plan"
               description="Select package"
+              styles={{
+                stepDescription: {
+                  color: "#313131",
+                },
+              }}
               icon={<IconBox size={18} />}
             >
               <PlanStep
@@ -522,6 +527,11 @@ export default function RegisterForm({
             <Stepper.Step
               label="Location"
               description="Choose branch"
+              styles={{
+                stepDescription: {
+                  color: "#313131",
+                },
+              }}
               icon={<IconMapPin size={18} />}
             >
               <LocationStep
@@ -536,6 +546,11 @@ export default function RegisterForm({
             </Stepper.Step>
 
             <Stepper.Step
+              styles={{
+                stepDescription: {
+                  color: "#313131",
+                },
+              }}
               label="Details"
               description="Personal info"
               icon={<IconUser size={18} />}
@@ -557,6 +572,11 @@ export default function RegisterForm({
             </Stepper.Step>
 
             <Stepper.Step
+              styles={{
+                stepDescription: {
+                  color: "#313131",
+                },
+              }}
               label="Review"
               description="Finalize"
               icon={<IconCreditCard size={18} />}

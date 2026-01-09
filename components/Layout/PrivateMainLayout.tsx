@@ -4,18 +4,20 @@ import PrivateNavigationHeader from "./PrivateNavigationHeader";
 
 const PrivateMainLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <Box
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "#FFFFFF",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <PrivateNavigationHeader />
-      {children}
-      <Footer />
-    </Box>
+    <>
+      <Box
+        style={{
+          minHeight: "100dvh",
+          backgroundColor: "#FFFFFF",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <PrivateNavigationHeader />
+        {children}
+        <Footer />
+      </Box>
+    </>
   );
 };
 
