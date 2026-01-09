@@ -1,94 +1,124 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { DbLockerRow } from "@/utils/types";
 
 const supabase = createSupabaseServiceClient();
 
-type LockerRow = {
-  location_locker_id: string;
-  mailroom_location_id?: string | null;
-  location_locker_code?: string | null;
-  location_locker_is_available?: boolean | null;
-  location_locker_created_at?: string | null;
-  mailroom_location_table?: {
-    mailroom_location_id?: string;
-    mailroom_location_name?: string;
-  } | null;
-};
-
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    // fetch lockers with location info
-    const { data: lockersData, error: lockersErr } = await supabase
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+    const pageSize = Math.max(
+      1,
+      Math.min(100, Number(searchParams.get("pageSize") ?? 10)),
+    );
+    const search = searchParams.get("search")?.trim() || "";
+    const locationId = searchParams.get("locationId")?.trim() || "";
+    const activeTab = searchParams.get("activeTab") || "all";
+
+    const offset = (page - 1) * pageSize;
+
+    // Start building the query
+    let query = supabase
       .from("location_locker_table")
       .select(
-        "location_locker_id, mailroom_location_id, location_locker_code, location_locker_is_available, location_locker_created_at, mailroom_location_table(mailroom_location_id, mailroom_location_name)",
+        `
+        location_locker_id, 
+        mailroom_location_id, 
+        location_locker_code, 
+        location_locker_is_available, 
+        location_locker_created_at, 
+        mailroom_location_table(mailroom_location_id, mailroom_location_name),
+        mailroom_assigned_locker_table(
+          mailroom_assigned_locker_id, 
+          mailroom_registration_id, 
+          mailroom_assigned_locker_status
+        )
+        `,
+        { count: "exact" },
       )
-      .order("location_locker_created_at", { ascending: false })
-      .is("location_locker_deleted_at", null);
+      .is("location_locker_deleted_at", null)
+      .order("location_locker_created_at", { ascending: false });
+
+    // Apply Search
+    if (search) {
+      query = query.ilike("location_locker_code", `%${search}%`);
+    }
+
+    // Apply Location Filter
+    if (locationId) {
+      query = query.eq("mailroom_location_id", locationId);
+    }
+
+    // Apply Status Filter (Occupied vs Available)
+    if (activeTab === "occupied") {
+      query = query.eq("location_locker_is_available", false);
+    } else if (activeTab === "available") {
+      query = query.eq("location_locker_is_available", true);
+    }
+
+    // Apply Pagination
+    const {
+      data: lockersData,
+      error: lockersErr,
+      count,
+    } = await query.range(offset, offset + pageSize - 1);
 
     if (lockersErr) {
-      return NextResponse.json(
-        { error: (lockersErr as Error).message },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: lockersErr.message }, { status: 500 });
     }
 
-    const lockerRows = Array.isArray(lockersData)
-      ? (lockersData as LockerRow[])
-      : [];
+    const normalized = ((lockersData as unknown as DbLockerRow[]) ?? []).map(
+      (r) => {
+        const locTable = r.mailroom_location_table;
+        const assignments = r.mailroom_assigned_locker_table;
+        // Get the first assignment if it exists (assuming 1:1 active assignment)
+        const assigned =
+          Array.isArray(assignments) && assignments.length > 0
+            ? assignments[0]
+            : null;
 
-    // fetch current assignments separately and build map by locker id
-    const { data: assignedData } = await supabase
-      .from("mailroom_assigned_locker_table")
-      .select(
-        "mailroom_assigned_locker_id, location_locker_id, mailroom_registration_id, mailroom_assigned_locker_status",
-      );
+        const isAvailable = r.location_locker_is_available ?? true;
+        const isAssigned = Boolean(assigned) || isAvailable === false;
 
-    const assignedRows = Array.isArray(assignedData)
-      ? (assignedData as Record<string, unknown>[])
-      : [];
-    const assignedMap = new Map<string, Record<string, unknown>>();
-    for (const a of assignedRows) {
-      const lid = String(a.location_locker_id ?? "");
-      if (lid) {
-        // keep the latest if multiple (shouldn't happen due to UNIQUE constraint)
-        assignedMap.set(lid, a);
-      }
-    }
+        return {
+          id: r.location_locker_id,
+          location_id: r.mailroom_location_id ?? null,
+          code: r.location_locker_code ?? null,
+          is_available: isAvailable,
+          created_at: r.location_locker_created_at ?? null,
+          location: locTable
+            ? {
+                id: locTable.mailroom_location_id ?? null,
+                name: locTable.mailroom_location_name ?? null,
+              }
+            : null,
+          assigned: assigned
+            ? {
+                id: assigned.mailroom_assigned_locker_id ?? null,
+                registration_id: assigned.mailroom_registration_id ?? null,
+                status: assigned.mailroom_assigned_locker_status ?? null,
+              }
+            : null,
+          is_assigned: isAssigned,
+        };
+      },
+    );
 
-    const normalized = lockerRows.map((r) => {
-      const locTable = r.mailroom_location_table;
-      const assigned = assignedMap.get(r.location_locker_id ?? "") ?? null;
-      const isAvailable = r.location_locker_is_available ?? true;
-      // consider assigned existence first; fallback to is_available flag
-      const isAssigned = Boolean(assigned) || isAvailable === false;
-
-      return {
-        id: r.location_locker_id,
-        location_id: r.mailroom_location_id ?? null,
-        code: r.location_locker_code ?? null,
-        is_available: isAvailable,
-        created_at: r.location_locker_created_at ?? null,
-        location: locTable
-          ? {
-              id: locTable.mailroom_location_id ?? null,
-              name: locTable.mailroom_location_name ?? null,
-            }
-          : null,
-        assigned: assigned
-          ? {
-              id: assigned.mailroom_assigned_locker_id ?? null,
-              registration_id: assigned.mailroom_registration_id ?? null,
-              status: assigned.mailroom_assigned_locker_status ?? null,
-            }
-          : null,
-        is_assigned: isAssigned,
-      };
-    });
-
-    return NextResponse.json({ data: normalized }, { status: 200 });
+    return NextResponse.json(
+      {
+        data: normalized,
+        pagination: {
+          page,
+          pageSize,
+          totalCount: count ?? 0,
+          totalPages: Math.ceil((count ?? 0) / pageSize),
+        },
+      },
+      { status: 200 },
+    );
   } catch (err: unknown) {
-    void err;
+    console.error("admin.mailroom.lockers.GET:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },
