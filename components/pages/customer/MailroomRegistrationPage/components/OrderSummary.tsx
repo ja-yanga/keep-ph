@@ -38,16 +38,16 @@ export const OrderSummary = ({
 }: OrderSummaryProps) => {
   return (
     <Paper withBorder p="xl" radius="md" shadow="sm">
-      <Title order={4} mb="lg">
+      <Title order={2} mb="lg">
         Order Summary
       </Title>
       <Stack gap="md">
         <Group justify="space-between">
-          <Text c="dimmed">Plan</Text>
+          <Text c="#313131">Plan</Text>
           <Text fw={500}>{selectedPlan?.name || "—"}</Text>
         </Group>
         <Group justify="space-between">
-          <Text c="dimmed">Location</Text>
+          <Text c="#313131">Location</Text>
           <Text
             fw={500}
             style={{ maxWidth: 150, textAlign: "right" }}
@@ -57,7 +57,7 @@ export const OrderSummary = ({
           </Text>
         </Group>
         <Group justify="space-between">
-          <Text c="dimmed">Cycle</Text>
+          <Text c="#313131">Cycle</Text>
           <Group gap={6}>
             <Text fw={500}>
               {billingCycle === "annual" ? "Annual (12 Mo)" : "Monthly"}
@@ -70,7 +70,7 @@ export const OrderSummary = ({
           </Group>
         </Group>
         <Group justify="space-between">
-          <Text c="dimmed">Quantity</Text>
+          <Text c="#313131">Quantity</Text>
           <Text fw={500}>
             {qty} Locker{qty > 1 ? "s" : ""}
           </Text>
@@ -81,7 +81,7 @@ export const OrderSummary = ({
         {referralValid && (
           <>
             <Group justify="space-between">
-              <Text size="sm" c="dimmed">
+              <Text size="sm" c="#313131">
                 Subtotal
               </Text>
               <Text size="sm">{format(subTotal)}</Text>
@@ -102,14 +102,14 @@ export const OrderSummary = ({
           <Text size="lg" fw={700}>
             Total
           </Text>
-          <Text size="xl" fw={700} c={selectedPlan ? "#26316D" : "dimmed"}>
+          <Text size="xl" fw={700} c={selectedPlan ? "#26316D" : "#313131"}>
             {selectedPlan ? format(totalCost) : "—"}
           </Text>
         </Group>
 
         <Group justify="center" gap="xs" mt="xs">
           <IconCreditCard size={14} color="gray" />
-          <Text size="xs" c="dimmed">
+          <Text size="xs" c="#313131">
             Secure SSL Encryption
           </Text>
         </Group>

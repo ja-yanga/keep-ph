@@ -114,13 +114,14 @@ const ProfileTab = ({
                       pos="absolute"
                       bottom={5}
                       right={10}
+                      aria-label="Change avatar" // <-- This is key
                     >
                       <IconCamera size={18} />
                     </ActionIcon>
                   )}
                 </FileButton>
               </Box>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="#313131">
                 Click to upload new picture
               </Text>
             </Stack>
@@ -136,6 +137,11 @@ const ProfileTab = ({
                 label="Email"
                 value={email}
                 readOnly
+                styles={{
+                  description: {
+                    color: "#313131",
+                  },
+                }}
                 description="Contact support to change email"
               />
 

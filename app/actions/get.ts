@@ -1155,16 +1155,45 @@ export const getUserSession = async (userId: string) => {
 };
 
 /**
- * Gets user storage files and usage stats via RPC.
- * Returns scans array and usage object.
+ * Gets user storage files and usage stats via RPC with pagination and filtering.
+ * Returns scans array, pagination metadata, and usage object.
+ *
+ * @param userId - User ID to fetch files for
+ * @param options - Optional parameters for pagination, filtering, and sorting
+ * @returns Promise with storage files data including pagination info
  */
-export async function getUserStorageFiles(userId: string) {
+export async function getUserStorageFiles(
+  userId: string,
+  options?: {
+    search?: string;
+    sortBy?: "uploaded_at" | "file_name" | "file_size_mb";
+    sortDir?: "asc" | "desc";
+    page?: number;
+    limit?: number;
+  },
+) {
   if (!userId) {
     throw new Error("userId is required");
   }
 
+  const {
+    search = null,
+    sortBy = "uploaded_at",
+    sortDir = "desc",
+    page = 1,
+    limit = 10,
+  } = options || {};
+
+  // Calculate offset from page number
+  const offset = (page - 1) * limit;
+
   const { data, error } = await supabaseAdmin.rpc("get_user_storage_files", {
     input_user_id: userId,
+    search_query: search || null,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    page_limit: limit,
+    page_offset: offset,
   });
 
   if (error) {

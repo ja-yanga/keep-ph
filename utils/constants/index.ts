@@ -120,7 +120,7 @@ export const REFERRALS_UI = {
   },
   table: {
     heading: "Referral History",
-    headingColor: "#1A237E",
+    headingColor: "#313131",
   },
   datatable: {
     columns: {
