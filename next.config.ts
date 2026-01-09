@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/**",
       },
       {
+        protocol: "https",
+        hostname: "storage.keep-ph.com",
+        pathname: "/**",
+      },
+      {
         protocol: "http",
         hostname: "127.0.0.1",
         port: "54321",

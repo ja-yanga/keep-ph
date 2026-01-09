@@ -137,7 +137,7 @@ describe("AdminUserKyc", () => {
     // Mock global.fetch for the component's GET request
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => rows,
+      json: async () => ({ data: rows, total_count: rows.length }),
     } as unknown as Response);
 
     render(
@@ -149,7 +149,7 @@ describe("AdminUserKyc", () => {
     );
 
     // Assert the badge displays the expected count (flexible numeric match)
-    expect(await screen.findByText(/\d+\s*KYC records/i)).toBeInTheDocument();
+    expect(await screen.findByText(/\d+\s*Records/i)).toBeInTheDocument();
   });
 
   it("filters results via search input", async () => {
@@ -173,10 +173,19 @@ describe("AdminUserKyc", () => {
       },
     ];
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => testRows,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      const searchParams = new URL(url, "http://localhost").searchParams;
+      const query = searchParams.get("q") || "";
+      const filtered = testRows.filter(
+        (r) =>
+          r.full_name.toLowerCase().includes(query.toLowerCase()) ||
+          r.user_id.toLowerCase().includes(query.toLowerCase()),
+      );
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: filtered, total_count: filtered.length }),
+      } as unknown as Response);
+    });
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
@@ -187,7 +196,7 @@ describe("AdminUserKyc", () => {
     );
 
     // Wait for badge to ensure data loaded
-    await screen.findByText(/\d+\s*KYC records/i);
+    await screen.findByText(/\d+\s*Records/i);
 
     // Ensure table rows were rendered (header + data rows)
     await waitFor(() => {
@@ -201,17 +210,20 @@ describe("AdminUserKyc", () => {
     // Type a query that matches nothing -> expect the "no records" text
     await userEvent.type(input, "no-match-value");
     expect(
-      await screen.findByText(/No KYC records found/i),
+      await screen.findByText(/No records found/i, {}, { timeout: 2000 }),
     ).toBeInTheDocument();
 
     // Clear and type a query that should match Jane -> assert filtering applied
     await userEvent.clear(input);
     await userEvent.type(input, "Jane");
 
-    // Wait until "No KYC records found" disappears (indicates filtering applied)
-    await waitFor(() => {
-      expect(screen.queryByText(/No KYC records found/i)).toBeNull();
-    });
+    // Wait until "No records found" disappears (indicates filtering applied)
+    await waitFor(
+      () => {
+        expect(screen.queryByText(/No records found/i)).toBeNull();
+      },
+      { timeout: 2000 },
+    );
 
     // Ensure the input reflects the search term (confirmation that filtering triggered)
     expect((input as HTMLInputElement).value).toBe("Jane");
@@ -233,7 +245,7 @@ describe("AdminUserKyc", () => {
     // Mock GET listing response
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => [row],
+      json: async () => ({ data: [row], total_count: 1 }),
     } as unknown as Response);
 
     render(
@@ -245,7 +257,7 @@ describe("AdminUserKyc", () => {
     );
 
     // Wait for rows to load
-    await screen.findByText(/\d+\s*KYC records/i);
+    await screen.findByText(/\d+\s*Records/i);
 
     // Find and click the Manage button for the first row
     const manageBtns = await screen.findAllByRole("button", {
@@ -282,12 +294,12 @@ describe("AdminUserKyc", () => {
       ) {
         return Promise.resolve({
           ok: true,
-          json: async () => [row],
+          json: async () => ({ data: [row], total_count: 1 }),
         } as unknown as Response);
       }
       return Promise.resolve({
         ok: true,
-        json: async () => ({ success: true }),
+        json: async () => ({ success: true, ok: true }),
       } as unknown as Response);
     });
 
@@ -302,7 +314,7 @@ describe("AdminUserKyc", () => {
     );
 
     // Wait for data to render
-    await screen.findByText(/\d+\s*KYC records/i);
+    await screen.findByText(/\d+\s*Records/i);
 
     // Click the first Manage button then "Mark Verified"
     const manageBtns = await screen.findAllByRole("button", {

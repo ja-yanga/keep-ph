@@ -1,352 +1,469 @@
 "use client";
 
 import "mantine-datatable/styles.layer.css";
-import React, { useEffect, useState } from "react";
+
+import React, { useState, useMemo, useCallback, memo, useEffect } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   Paper,
   Group,
   TextInput,
-  Button,
   Stack,
-  Badge,
   Modal,
   Text,
-  Loader,
   Center,
-  Avatar,
-  Grid,
-  Image,
+  ActionIcon,
+  Badge,
 } from "@mantine/core";
-import { DataTable } from "mantine-datatable";
-import {
-  IconSearch,
-  IconUserCheck,
-  IconX,
-  IconInfoCircle,
-} from "@tabler/icons-react";
+import dynamic from "next/dynamic";
+import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+const DataTable = dynamic(
+  () => import("mantine-datatable").then((m) => m.DataTable),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "10px" }}>
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: 40,
+                flex: 1,
+                backgroundColor: "#f1f3f5",
+                borderRadius: "4px",
+                animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              }}
+            />
+          ))}
+        </div>
+        {[...Array(10)].map((_, i) => (
+          <div
+            key={i}
+            style={{
+              height: 52,
+              backgroundColor: "#f8f9fa",
+              borderRadius: "4px",
+              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            }}
+          />
+        ))}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+          }
+        `,
+          }}
+        />
+      </div>
+    ),
+  },
+) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { IconSearch, IconArrowRight, IconX } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
-import { useDisclosure } from "@mantine/hooks";
-import { getStatusFormat, normalizeImageUrl } from "@/utils/helper";
+import { getStatusFormat, fetcher } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { FormattedKycRow, KycRow } from "@/utils/types";
 
-type KycRow = {
-  id: string;
-  user_id: string;
-  status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
-  id_document_type?: string | null;
-  id_number?: string | null;
-  id_front_url?: string | null;
-  id_back_url?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  full_name?: string | null;
-  // Assuming a structured address object for readability
-  address?: {
-    line1?: string;
-    line2?: string | null;
-    city?: string;
-    region?: string;
-    postal?: string;
-  } | null;
-  submitted_at?: string | null;
-  verified_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
+const KycDetails = dynamic(() => import("./KycDetails"), {
+  ssr: false,
+  loading: () => (
+    <Center mih={300}>
+      <div
+        style={{
+          height: 200,
+          width: "100%",
+          borderRadius: "8px",
+          backgroundColor: "#e9ecef",
+          animation: "pulse 2s infinite",
+        }}
+      />
+    </Center>
+  ),
+});
 
-const fetcher = async (url: string) => {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `Failed to fetch ${url}`);
-  }
-  return res.json();
-};
+const SearchInput = memo(
+  ({ onSearch }: { onSearch: (value: string) => void }) => {
+    const [value, setValue] = useState("");
 
-// Helper component for consistent label-top, value-bottom styling
-const DetailStack = ({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) => (
-  <Stack gap={2} mt="md">
-    <Text fw={700} size="sm">
-      {label}
-    </Text>
-    {children}
-  </Stack>
+    const handleSearch = () => {
+      onSearch(value);
+    };
+
+    const handleClear = () => {
+      setValue("");
+      onSearch("");
+    };
+
+    return (
+      <TextInput
+        placeholder="Search by name or user id..."
+        aria-label="Search users"
+        leftSection={<IconSearch size={16} />}
+        rightSectionWidth={value ? 70 : 42}
+        rightSection={
+          value ? (
+            <Group gap={4}>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="gray.5"
+                onClick={handleClear}
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                <IconX size={16} />
+              </ActionIcon>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="indigo"
+                onClick={handleSearch}
+                aria-label="Submit search"
+                title="Submit search"
+              >
+                <IconArrowRight size={16} />
+              </ActionIcon>
+            </Group>
+          ) : (
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              c="gray.5"
+              onClick={handleSearch}
+              aria-label="Submit search"
+              title="Submit search"
+            >
+              <IconArrowRight size={16} />
+            </ActionIcon>
+          )
+        }
+        value={value}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSearch();
+          }
+        }}
+        style={{ width: 300 }}
+      />
+    );
+  },
 );
+SearchInput.displayName = "SearchInput";
 
-// Helper function to format the address object into readable lines
-function formatAddress(address?: KycRow["address"]): React.ReactNode {
-  if (!address) return <Text c="dimmed">—</Text>;
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
-  const parts = [];
-  if (address.line1) parts.push(address.line1);
-  if (address.line2) parts.push(address.line2);
-
-  const cityRegionPostal = [address.city, address.region, address.postal]
-    .filter(Boolean)
-    .join(", ");
-
-  if (cityRegionPostal) parts.push(cityRegionPostal);
-
-  if (parts.length === 0) return <Text c="dimmed">—</Text>;
-
-  return (
-    <Stack gap={0}>
-      {parts.map((part, index) => (
-        <Text key={index} size="sm">
-          {part}
-        </Text>
-      ))}
-    </Stack>
-  );
-}
+const KycTable = memo(
+  ({
+    rows,
+    columns,
+    page,
+    onPageChange,
+    pageSize,
+    onPageSizeChange,
+    totalRecords,
+    isValidating,
+    isSearching,
+  }: {
+    rows: FormattedKycRow[];
+    columns: DataTableColumn<FormattedKycRow>[];
+    page: number;
+    onPageChange: (p: number) => void;
+    pageSize: number;
+    onPageSizeChange: (s: number) => void;
+    totalRecords: number;
+    isValidating: boolean;
+    isSearching: boolean;
+  }) => {
+    return (
+      <DataTable
+        withTableBorder
+        borderRadius="sm"
+        striped
+        highlightOnHover
+        records={isSearching ? [] : rows}
+        idAccessor="id"
+        fetching={isValidating || isSearching}
+        minHeight={minTableHeight(pageSize)}
+        page={page}
+        onPageChange={onPageChange}
+        totalRecords={totalRecords}
+        recordsPerPage={pageSize}
+        recordsPerPageOptions={PAGE_SIZE_OPTIONS}
+        onRecordsPerPageChange={onPageSizeChange}
+        columns={columns}
+        noRecordsText="No records found"
+      />
+    );
+  },
+);
+KycTable.displayName = "KycTable";
 
 export default function AdminUserKyc() {
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [query, setQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleSearchSubmit = useCallback(
+    (val: string) => {
+      if (val === query && page === 1) return;
+      setIsSearching(true);
+      setQuery(val);
+      setPage(1);
+    },
+    [query, page],
+  );
+
   const { data, error, isValidating } = useSWR(
-    API_ENDPOINTS.admin.userKyc(),
+    `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
     fetcher,
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
+      keepPreviousData: true,
     },
   );
 
-  // pagination state required by DataTable props
-  const [page, setPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  useEffect(() => {
+    if (!isValidating) {
+      setIsSearching(false);
+    }
+  }, [isValidating]);
 
-  const [rows, setRows] = useState<KycRow[]>([]);
-  const [search, setSearch] = useState("");
+  const rows = useMemo<FormattedKycRow[]>(() => {
+    const rawData = data?.data || [];
+    return rawData.map((r: KycRow) => ({
+      ...r,
+      _formattedName:
+        (r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`) ||
+        "Unknown",
+      _formattedSub: r.submitted_at
+        ? dayjs(r.submitted_at).format("MMM D, YYYY")
+        : "—",
+      _formattedVer: r.verified_at
+        ? dayjs(r.verified_at).format("MMM D, YYYY")
+        : "—",
+    }));
+  }, [data]);
+  const totalRecords = data?.total_count || 0;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<KycRow | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [resolvedFront] = useState<string | null>(null);
-  const [resolvedBack] = useState<string | null>(null);
-  const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
-  const [zoomOpen, { open: openZoom, close: closeZoom }] = useDisclosure(false);
 
-  useEffect(() => {
-    let arr: KycRow[];
-    if (Array.isArray(data?.data)) {
-      arr = data.data;
-    } else if (Array.isArray(data)) {
-      arr = data;
-    } else {
-      arr = [];
-    }
-    setRows(arr);
-  }, [data]);
-
-  // const refresh = async () => {
-  //   try {
-  //     await swrMutate(key);
-  //     notifications.show({
-  //       title: "Refreshed",
-  //       message: "KYC list updated",
-  //       color: "green",
-  //     });
-  //   } catch (err) {
-  //     console.error("Refresh error:", err);
-  //     notifications.show({
-  //       title: "Error",
-  //       message: "Failed to refresh",
-  //       color: "red",
-  //     });
-  //   }
-  // };
-
-  const openDetails = (r: KycRow) => {
+  const openDetails = useCallback((r: KycRow) => {
     setSelected(r);
     setModalOpen(true);
-  };
+  }, []);
 
-  const actionVerify = async (r: KycRow, status: "VERIFIED" | "REJECTED") => {
-    setProcessing(true);
-    try {
-      const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: status }),
-      });
-      if (!res.ok) throw new Error("Action failed");
-      notifications.show({
-        title: "Success",
-        message: `Set ${status}`,
-        color: "green",
-      });
-      await swrMutate(API_ENDPOINTS.admin.userKyc());
-      setModalOpen(false);
-    } catch (e) {
-      console.error(e);
-      notifications.show({
-        title: "Error",
-        message: "Failed to update",
-        color: "red",
-      });
-    } finally {
-      setProcessing(false);
-    }
-  };
+  const actionVerify = useCallback(
+    async (r: KycRow, status: "VERIFIED" | "REJECTED") => {
+      setProcessing(true);
+      try {
+        const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: status }),
+        });
+        if (!res.ok) throw new Error("Action failed");
+        notifications.show({
+          title: "Success",
+          message: `Set ${status}`,
+          color: "green",
+        });
+        await swrMutate(
+          `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
+        );
+        setModalOpen(false);
+      } catch (e) {
+        console.error(e);
+        notifications.show({
+          title: "Error",
+          message: "Failed to update",
+          color: "red",
+        });
+      } finally {
+        setProcessing(false);
+      }
+    },
+    [query, page, pageSize],
+  );
 
-  const filtered = rows.filter((r) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    const name = (
-      r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`
-    ).toLowerCase();
-    return name.includes(q) || (r.user_id ?? "").toLowerCase().includes(q);
-  });
+  const columns = useMemo<DataTableColumn<FormattedKycRow>[]>(
+    () => [
+      {
+        accessor: "user",
+        title: "User",
+        render: (r: FormattedKycRow) => {
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  backgroundColor: "#f1f3f5",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#495057",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  overflow: "hidden",
+                }}
+              >
+                {r._formattedName.charAt(0)}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    fontSize: "14px",
+                    lineHeight: "1.55",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "150px",
+                  }}
+                >
+                  {r._formattedName}
+                </span>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#868e96",
+                    lineHeight: "1",
+                  }}
+                >
+                  {r.user_id}
+                </span>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessor: "doc",
+        title: "Document",
+        render: (r: FormattedKycRow) => (
+          <span style={{ fontSize: "14px" }}>
+            {(r.id_document_type ?? "—").replace("_", " ")}
+          </span>
+        ),
+      },
+      {
+        accessor: "status",
+        title: "Status",
+        width: 120,
+        render: (r: FormattedKycRow) => (
+          <Badge color={getStatusFormat(r.status)} variant="light" size="sm">
+            {r.status}
+          </Badge>
+        ),
+      },
+      {
+        accessor: "dates",
+        title: "Dates",
+        width: 180,
+        render: (r: FormattedKycRow) => (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: "12px", color: "#868e96" }}>
+              Sub: {r._formattedSub}
+            </span>
+            <span style={{ fontSize: "12px", color: "#868e96" }}>
+              Ver: {r._formattedVer}
+            </span>
+          </div>
+        ),
+      },
+      {
+        accessor: "actions",
+        title: "Actions",
+        textAlign: "right",
+        width: 100,
+        render: (r: FormattedKycRow) => (
+          <button
+            onClick={() => openDetails(r)}
+            aria-label={`Manage user ${r._formattedName}`}
+            title={`Manage user ${r._formattedName}`}
+            style={{
+              padding: "4px 8px",
+              fontSize: "12px",
+              fontWeight: 500,
+              color: "#4c6ef5",
+              backgroundColor: "#edf2ff",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              transition: "background-color 0.2s",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.backgroundColor = "#DBE4FF")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.backgroundColor = "#edf2ff")
+            }
+          >
+            Manage
+          </button>
+        ),
+      },
+    ],
+    [openDetails],
+  );
 
-  // client-side pagination (copying MailroomRegistrations approach)
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const handlePageSizeChange = useCallback((n: number) => {
+    setPageSize(n);
+    setPage(1);
+  }, []);
 
   if (error) {
     return (
-      <Center style={{ padding: 40 }}>
-        <Text color="red">Failed to load KYC records</Text>
+      <Center p={40}>
+        <Text c="red">Failed to load KYC records</Text>
       </Center>
     );
   }
 
   return (
-    <Stack align="center">
+    <Stack align="center" gap="lg" w="100%">
       <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
         <Group justify="space-between" mb="md">
-          <Group>
-            <TextInput
-              placeholder="Search by name or user id..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.currentTarget.value);
-                setPage(1);
-              }}
-              style={{ width: 300 }}
-            />
-          </Group>
+          <SearchInput onSearch={handleSearchSubmit} />
 
-          <Badge size="lg" variant="light">
-            {rows.length} KYC records
-          </Badge>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "4px 12px",
+              borderRadius: "4px",
+              backgroundColor: "#4c6ef5",
+              color: "white",
+              fontSize: "14px",
+              fontWeight: 600,
+              height: "30px", // Approximate Badge size="lg"
+            }}
+          >
+            {totalRecords} Records
+          </span>
         </Group>
 
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
-          highlightOnHover
-          records={paginated}
-          idAccessor="id"
-          fetching={isValidating}
-          minHeight={250}
+        <KycTable
+          rows={rows}
+          columns={columns}
           page={page}
-          onPageChange={(p: number) => setPage(p)}
-          totalRecords={filtered.length}
-          recordsPerPage={pageSize}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={(n) => {
-            setPageSize(n);
-            setPage(1);
-          }}
-          columns={[
-            {
-              accessor: "user",
-              title: "User",
-              render: (r: KycRow) => {
-                const name =
-                  r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`;
-                return (
-                  <Group>
-                    <Avatar radius="xl">{String(name || "U").charAt(0)}</Avatar>
-                    <div>
-                      <Text fw={500} size="sm">
-                        {name || "Unknown"}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {String(r.user_id ?? "")}
-                      </Text>
-                    </div>
-                  </Group>
-                );
-              },
-            },
-            {
-              accessor: "doc",
-              title: "Document",
-              render: (r: KycRow) => (
-                <div>
-                  <Text size="sm">{r.id_document_type ?? "—"}</Text>
-                </div>
-              ),
-            },
-            {
-              accessor: "status",
-              title: "Status",
-              width: 130,
-              render: (r: KycRow) => {
-                return (
-                  <Badge color={getStatusFormat(r.status)} variant="light">
-                    {r.status}
-                  </Badge>
-                );
-              },
-            },
-            {
-              accessor: "dates",
-              title: "Submitted / Verified",
-              width: 220,
-              render: (r: KycRow) => {
-                let submitted: string;
-                if (r.submitted_at) {
-                  submitted = dayjs(r.submitted_at).format("MMM D, YYYY");
-                } else {
-                  submitted = "—";
-                }
-                let verified: string;
-                if (r.verified_at) {
-                  verified = dayjs(r.verified_at).format("MMM D, YYYY");
-                } else {
-                  verified = "—";
-                }
-                return (
-                  <div>
-                    <Text size="xs" c="dimmed">
-                      Submitted: {submitted}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Verified: {verified}
-                    </Text>
-                  </div>
-                );
-              },
-            },
-            {
-              accessor: "actions",
-              title: "Actions",
-              textAlign: "right",
-              width: 200,
-              render: (r: KycRow) => (
-                <Group justify="right">
-                  <Button
-                    size="xs"
-                    variant="light"
-                    leftSection={<IconInfoCircle size={14} />}
-                    onClick={() => openDetails(r)}
-                  >
-                    Manage
-                  </Button>
-                </Group>
-              ),
-            },
-          ]}
-          noRecordsText="No KYC records found"
+          onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={handlePageSizeChange}
+          totalRecords={totalRecords}
+          isValidating={isValidating}
+          isSearching={isSearching}
         />
       </Paper>
 
@@ -357,184 +474,17 @@ export default function AdminUserKyc() {
         size="lg"
         centered
       >
-        {selected ? (
-          <Stack>
-            <Grid>
-              <Grid.Col span={6}>
-                <DetailStack label="Name">
-                  <Text size="sm" fw={500}>
-                    {selected.full_name ??
-                      `${selected.first_name ?? ""} ${
-                        selected.last_name ?? ""
-                      }`}
-                  </Text>
-                </DetailStack>
-
-                <DetailStack label="Document ID Number">
-                  <Text size="sm" fw={500}>
-                    {selected.id_number ?? "—"}
-                  </Text>
-                </DetailStack>
-
-                <DetailStack label="Document Type">
-                  <Text size="sm" fw={500}>
-                    {selected.id_document_type ?? "—"}
-                  </Text>
-                </DetailStack>
-              </Grid.Col>
-
-              <Grid.Col span={6}>
-                <DetailStack label="Address">
-                  {formatAddress(selected.address)}
-                </DetailStack>
-
-                <DetailStack label="Timestamps">
-                  <Text size="sm">
-                    Submitted:{" "}
-                    <Text span fw={500}>
-                      {selected.submitted_at
-                        ? dayjs(selected.submitted_at).format(
-                            "MMM D, YYYY hh:mm A",
-                          )
-                        : "—"}
-                    </Text>
-                  </Text>
-                  <Text size="sm">
-                    Verified:{" "}
-                    <Text span fw={500}>
-                      {selected.verified_at
-                        ? dayjs(selected.verified_at).format(
-                            "MMM D, YYYY hh:mm A",
-                          )
-                        : "—"}
-                    </Text>
-                  </Text>
-                </DetailStack>
-              </Grid.Col>
-            </Grid>
-
-            <Grid>
-              <Grid.Col span={6}>
-                <DetailStack label="ID Front">
-                  {selected.id_front_url && (
-                    <div>
-                      <Text size="xs" c="dimmed">
-                        Front
-                      </Text>
-                      {(() => {
-                        const src =
-                          resolvedFront ??
-                          normalizeImageUrl(selected.id_front_url);
-                        return src ? (
-                          <Image
-                            src={src}
-                            alt="ID front"
-                            width={240}
-                            height={160}
-                            fit="cover"
-                            radius="sm"
-                            style={{ cursor: "zoom-in" }}
-                            onClick={() => {
-                              setModalImageSrc(src);
-                              openZoom();
-                            }}
-                          />
-                        ) : (
-                          <Text size="xs" c="dimmed">
-                            Image unavailable
-                          </Text>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </DetailStack>
-              </Grid.Col>
-
-              <Grid.Col span={6}>
-                <DetailStack label="ID Back">
-                  {selected.id_back_url && (
-                    <div>
-                      <Text size="xs" c="dimmed">
-                        Back
-                      </Text>
-                      {(() => {
-                        const src =
-                          resolvedBack ??
-                          normalizeImageUrl(selected.id_back_url);
-                        return src ? (
-                          <Image
-                            src={src}
-                            alt="ID back"
-                            width={240}
-                            height={160}
-                            fit="cover"
-                            radius="sm"
-                            style={{ cursor: "zoom-in" }}
-                            onClick={() => {
-                              setModalImageSrc(src);
-                              openZoom();
-                            }}
-                          />
-                        ) : (
-                          <Text size="xs" c="dimmed">
-                            Image unavailable
-                          </Text>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </DetailStack>
-              </Grid.Col>
-            </Grid>
-
-            <Group justify="flex-end" mt="xl">
-              <Button variant="outline" onClick={() => setModalOpen(false)}>
-                Close
-              </Button>
-
-              {selected.status === "SUBMITTED" && (
-                <Button
-                  color="red"
-                  variant="outline"
-                  onClick={() => actionVerify(selected, "REJECTED")}
-                  loading={processing}
-                  leftSection={<IconX size={16} />}
-                >
-                  Reject
-                </Button>
-              )}
-
-              {selected.status !== "VERIFIED" && (
-                <Button
-                  color="green"
-                  onClick={() => actionVerify(selected, "VERIFIED")}
-                  loading={processing}
-                  leftSection={<IconUserCheck size={16} />}
-                >
-                  Mark Verified
-                </Button>
-              )}
-            </Group>
-
-            {/* Zoom modal for clicked ID image */}
-            <Modal opened={zoomOpen} onClose={closeZoom} size="lg" centered>
-              {modalImageSrc && (
-                <Image
-                  src={modalImageSrc}
-                  alt="ID preview"
-                  fit="contain"
-                  mah="80vh"
-                  w="100%"
-                />
-              )}
-            </Modal>
-          </Stack>
-        ) : (
-          <Center>
-            <Loader />
-          </Center>
-        )}
+        <KycDetails
+          selected={selected}
+          processing={processing}
+          onVerify={actionVerify}
+          onClose={() => setModalOpen(false)}
+        />
       </Modal>
     </Stack>
   );
+}
+
+function minTableHeight(pageSize: number) {
+  return 52 * pageSize + 50;
 }

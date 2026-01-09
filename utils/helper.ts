@@ -7,23 +7,23 @@ import {
   UserAddressRow,
 } from "./types";
 
+const colorGroups = {
+  green: ["VERIFIED", "PAID", "NORMAL"],
+  blue: [],
+  indigo: ["SUBMITTED", "PENDING"],
+  red: ["REJECTED", "FULL"],
+  orange: ["NEAR FULL"],
+};
+
+const statusToColor = Object.entries(colorGroups).reduce(
+  (acc, [color, statuses]) => {
+    statuses.forEach((s) => (acc[s] = color));
+    return acc;
+  },
+  {} as Record<string, string>,
+);
+
 export const getStatusFormat = (status: string = ""): string => {
-  const colorGroups = {
-    green: ["VERIFIED", "PAID", "NORMAL"],
-    blue: [],
-    yellow: ["SUBMITTED", "PENDING"],
-    red: ["REJECTED", "FULL"],
-    orange: ["NEAR FULL"],
-  };
-
-  const statusToColor = Object.entries(colorGroups).reduce(
-    (acc, [color, statuses]) => {
-      statuses.forEach((s) => (acc[s] = color));
-      return acc;
-    },
-    {} as Record<string, string>,
-  );
-
   return statusToColor[status.toUpperCase()] || "gray";
 };
 
