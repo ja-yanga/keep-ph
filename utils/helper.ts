@@ -8,11 +8,29 @@ import {
 } from "./types";
 
 const colorGroups = {
-  green: ["VERIFIED", "PAID", "NORMAL"],
-  blue: [],
-  indigo: ["SUBMITTED", "PENDING"],
-  red: ["REJECTED", "FULL"],
-  orange: ["NEAR FULL"],
+  green: [
+    "VERIFIED",
+    "PAID",
+    "NORMAL",
+    "STORED",
+    "RELEASED",
+    "RETRIEVED",
+    "COMPLETED",
+  ],
+  blue: ["EMPTY"],
+  indigo: [
+    "SUBMITTED",
+    "PENDING",
+    "PROCESSING",
+    "REQUEST_DISPOSE",
+    "REQUEST_RELEASE",
+    "REQUEST_SCAN",
+    "REQUEST_TO_DISPOSE",
+    "REQUEST_TO_RELEASE",
+    "REQUEST_TO_SCAN",
+  ],
+  red: ["REJECTED", "FULL", "DISPOSED", "FAILED"],
+  orange: ["NEAR FULL", "REFUNDED"],
 };
 
 const statusToColor = Object.entries(colorGroups).reduce(

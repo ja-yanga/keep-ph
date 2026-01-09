@@ -386,7 +386,7 @@ export default function MailroomLocations() {
   }
 
   return (
-    <Stack>
+    <Stack align="center" gap="lg" w="100%">
       {globalSuccess && (
         <Alert
           variant="light"
@@ -395,12 +395,14 @@ export default function MailroomLocations() {
           icon={<IconCheck size={16} />}
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
+          w="100%"
+          maw={1200}
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm">
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
         <Group justify="space-between" mb="md">
           <Group style={{ flex: 1 }}>
             <SearchInput
@@ -481,10 +483,10 @@ export default function MailroomLocations() {
 
         <DataTable
           aria-label="Mailroom locations list"
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
+          withTableBorder={false}
+          borderRadius="lg"
+          withColumnBorders={false}
+          verticalSpacing="md"
           highlightOnHover
           records={locations}
           fetching={isLoading}
@@ -500,48 +502,75 @@ export default function MailroomLocations() {
           }
           recordsPerPageLabel="Locations per page"
           columns={[
-            { accessor: "name", title: "Name", width: 200 },
+            {
+              accessor: "name",
+              title: "Name",
+              width: 200,
+              render: ({ name }: Location) => (
+                <Text fw={700} c="dark.4" size="sm">
+                  {name}
+                </Text>
+              ),
+            },
             {
               accessor: "code",
               title: "Code",
               width: 100,
               render: ({ code }: Location) =>
                 code ? (
-                  <Badge variant="outline" color="#374151" fw={700} tt="none">
+                  <Badge variant="light" color="gray" size="md">
                     {code}
                   </Badge>
                 ) : (
-                  "—"
+                  <Text size="sm" c="dimmed">
+                    —
+                  </Text>
                 ),
             },
             {
               accessor: "region",
               title: "Region",
-              render: ({ region }: Location) => region ?? "—",
+              render: ({ region }: Location) => (
+                <Text size="sm" c="dark.3" fw={500}>
+                  {region ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "city",
               title: "City",
-              render: ({ city }: Location) => city ?? "—",
+              render: ({ city }: Location) => (
+                <Text size="sm" c="dark.3" fw={500}>
+                  {city ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "barangay",
               title: "Barangay",
-              render: ({ barangay }: Location) => barangay ?? "—",
+              render: ({ barangay }: Location) => (
+                <Text size="sm" c="dark.3" fw={500}>
+                  {barangay ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "zip",
               title: "Zip",
               width: 100,
-              render: ({ zip }: Location) => zip ?? "—",
+              render: ({ zip }: Location) => (
+                <Text size="sm" c="dark.3">
+                  {zip ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "total_lockers",
               title: "Total Lockers",
-              width: 120,
+              width: 140,
               textAlign: "center",
               render: ({ total_lockers }: Location) => (
-                <Badge color="#1e3a8a" variant="outline" fw={700} tt="none">
+                <Badge color="blue" variant="light" size="md">
                   {total_lockers ?? 0}
                 </Badge>
               ),
@@ -566,7 +595,7 @@ export default function MailroomLocations() {
                   <Tooltip label="Edit">
                     <ActionIcon
                       variant="subtle"
-                      color="blue.9"
+                      color="blue.6"
                       onClick={() => {
                         openEdit(loc);
                         setGlobalSuccess(null);

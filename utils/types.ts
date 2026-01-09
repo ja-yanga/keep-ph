@@ -578,3 +578,15 @@ export type DbLockerRow = {
     mailroom_assigned_locker_status: string;
   }>;
 };
+
+export type LockerRow = {
+  location_locker_id: string;
+  mailroom_location_id?: string | null;
+  location_locker_code?: string | null;
+  location_locker_is_available?: boolean | null;
+  location_locker_created_at?: string | null;
+  mailroom_location_table?: {
+    mailroom_location_id?: string;
+    mailroom_location_name?: string;
+  } | null;
+};

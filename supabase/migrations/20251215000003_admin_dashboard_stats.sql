@@ -9,84 +9,104 @@ DECLARE
   result JSON;
 BEGIN
   WITH pkg_counts AS (
-  SELECT
-    COUNT(*) FILTER (
-      WHERE mailbox_item_status IN ('REQUEST_TO_SCAN', 'REQUEST_TO_RELEASE', 'REQUEST_TO_DISPOSE')
-    ) AS pending_count,
-    COUNT(*) FILTER (
-      WHERE mailbox_item_status IN ('STORED', 'REQUEST_TO_SCAN', 'REQUEST_TO_RELEASE', 'REQUEST_TO_DISPOSE')
-    ) AS stored_count
-  FROM public.mailbox_item_table
-),
-sub_counts AS (
-  SELECT COUNT(*) AS total_subscribers FROM public.mailroom_registration_table
-),
-locker_totals AS (
-  SELECT COUNT(*) AS total_lockers FROM public.location_locker_table
-),
-assigned_locker_totals AS (
-  SELECT COUNT(*) AS assigned_lockers FROM public.mailroom_assigned_locker_table
-),
-recent AS (
-  SELECT
-    mi.mailbox_item_id,
-    mi.mailbox_item_name,
-    mi.mailbox_item_type,
-    mi.mailbox_item_status,
-    mi.mailbox_item_received_at,
-    COALESCE(
-      CONCAT_WS(' ', uk.user_kyc_first_name, uk.user_kyc_last_name),
-      ml.mailroom_location_name,
-      CONCAT('Mailroom #', SUBSTRING(mr.mailroom_registration_id::TEXT FROM 1 FOR 8))
-    ) AS full_name
-  FROM public.mailbox_item_table mi
-  LEFT JOIN public.mailroom_registration_table mr
-    ON mr.mailroom_registration_id = mi.mailroom_registration_id
-  LEFT JOIN public.mailroom_location_table ml
-    ON ml.mailroom_location_id = mr.mailroom_location_id
-  LEFT JOIN public.users_table u
-    ON u.users_id = mr.user_id
-  LEFT JOIN public.user_kyc_table uk
-    ON uk.user_id = u.users_id
-  ORDER BY mi.mailbox_item_received_at DESC NULLS LAST
-  LIMIT 5
-),
-recent_payload AS (
-  SELECT COALESCE(
-    JSON_AGG(
-      JSON_BUILD_OBJECT(
-        'id', r.mailbox_item_id,
-        'package_name', r.mailbox_item_name,
-        'package_type', r.mailbox_item_type,
-        'status', r.mailbox_item_status,
-        'received_at', r.mailbox_item_received_at,
-        'registration', CASE
-          WHEN r.full_name IS NULL THEN NULL
-          ELSE JSON_BUILD_OBJECT('full_name', r.full_name)
-        END
-      )
-      ORDER BY r.mailbox_item_received_at DESC NULLS LAST
-    ),
-    '[]'::JSON
-  ) AS recent_packages
-  FROM recent r
-)
-  SELECT JSON_BUILD_OBJECT(
-    'pendingRequests', pkg_counts.pending_count,
-    'storedPackages', pkg_counts.stored_count,
-    'totalSubscribers', sub_counts.total_subscribers,
-    'lockerStats', JSON_BUILD_OBJECT(
-      'total', locker_totals.total_lockers,
-      'assigned', assigned_locker_totals.assigned_lockers
-    ),
-    'recentPackages', recent_payload.recent_packages
+    SELECT
+      COUNT(*) FILTER (
+        WHERE mailbox_item_status IN ('REQUEST_TO_SCAN', 'REQUEST_TO_RELEASE', 'REQUEST_TO_DISPOSE')
+        AND mailbox_item_deleted_at IS NULL
+      ) AS pending_count,
+      COUNT(*) FILTER (
+        WHERE mailbox_item_status IN ('STORED', 'REQUEST_TO_SCAN', 'REQUEST_TO_RELEASE', 'REQUEST_TO_DISPOSE')
+        AND mailbox_item_deleted_at IS NULL
+      ) AS stored_count
+    FROM public.mailbox_item_table
+  ),
+  sub_counts AS (
+    SELECT COUNT(*) AS total_subscribers 
+    FROM public.mailroom_registration_table
+    WHERE mailroom_registration_status = true
+  ),
+  locker_totals AS (
+    SELECT COUNT(*) AS total_lockers 
+    FROM public.location_locker_table
+    WHERE location_locker_deleted_at IS NULL
+  ),
+  assigned_locker_totals AS (
+    SELECT COUNT(*) AS assigned_lockers 
+    FROM public.mailroom_assigned_locker_table
+  ),
+  recent_base AS (
+    -- Optimize: Limit the base table scan before joining
+    SELECT
+      mailbox_item_id,
+      mailbox_item_name,
+      mailbox_item_type,
+      mailbox_item_status,
+      mailbox_item_received_at,
+      mailroom_registration_id
+    FROM public.mailbox_item_table
+    WHERE mailbox_item_deleted_at IS NULL
+    ORDER BY mailbox_item_received_at DESC NULLS LAST
+    LIMIT 5
+  ),
+  recent AS (
+    -- Only join on the 5 rows found
+    SELECT
+      rb.mailbox_item_id as id,
+      rb.mailbox_item_name as package_name,
+      rb.mailbox_item_type as package_type,
+      rb.mailbox_item_status as status,
+      rb.mailbox_item_received_at as received_at,
+      COALESCE(
+        CONCAT_WS(' ', uk.user_kyc_first_name, uk.user_kyc_last_name),
+        ml.mailroom_location_name,
+        CONCAT('Mailroom #', SUBSTRING(mr.mailroom_registration_id::TEXT FROM 1 FOR 8))
+      ) AS full_name
+    FROM recent_base rb
+    LEFT JOIN public.mailroom_registration_table mr
+      ON mr.mailroom_registration_id = rb.mailroom_registration_id
+    LEFT JOIN public.mailroom_location_table ml
+      ON ml.mailroom_location_id = mr.mailroom_location_id
+    LEFT JOIN public.users_table u
+      ON u.users_id = mr.user_id
+    LEFT JOIN public.user_kyc_table uk
+      ON uk.user_id = u.users_id
+  ),
+  recent_payload AS (
+    SELECT COALESCE(
+      JSON_AGG(
+        JSON_BUILD_OBJECT(
+          'id', r.id,
+          'package_name', r.package_name,
+          'package_type', r.package_type,
+          'status', r.status,
+          'received_at', r.received_at,
+          'registration', CASE 
+            WHEN r.full_name IS NULL THEN NULL 
+            ELSE JSON_BUILD_OBJECT('full_name', r.full_name) 
+          END
+        )
+        ORDER BY r.received_at DESC NULLS LAST
+      ),
+      '[]'::JSON
+    ) AS recent_packages
+    FROM recent r
   )
-  INTO result
-  FROM pkg_counts
-  CROSS JOIN sub_counts
-  CROSS JOIN locker_totals
-  CROSS JOIN assigned_locker_totals
-  CROSS JOIN recent_payload;
+    SELECT JSON_BUILD_OBJECT(
+      'pendingRequests', pc.pending_count,
+      'storedPackages', pc.stored_count,
+      'totalSubscribers', sc.total_subscribers,
+      'lockerStats', JSON_BUILD_OBJECT(
+        'total', lt.total_lockers,
+        'assigned', alt.assigned_lockers
+      ),
+      'recentPackages', rp.recent_packages
+    )
+    INTO result
+    FROM pkg_counts pc
+    CROSS JOIN sub_counts sc
+    CROSS JOIN locker_totals lt
+    CROSS JOIN assigned_locker_totals alt
+    CROSS JOIN recent_payload rp;
 
   RETURN result;
 END;

@@ -1,6 +1,6 @@
 "use client";
 import MailroomLockers from "@/components/MailroomLockers";
-import { Container, Title } from "@mantine/core";
+import { Container, Group, Title, Text } from "@mantine/core";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function LockersPage() {
@@ -8,9 +8,22 @@ export default function LockersPage() {
     <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
-          <Title order={1} mb="lg">
-            Lockers
-          </Title>
+          <Group
+            justify="space-between"
+            mb="xl"
+            align="flex-end"
+            w="100%"
+            maw={1200}
+          >
+            <div>
+              <Title order={1} fw={900} c="dark.5" lts="-0.02em">
+                Locker Management
+              </Title>
+              <Text c="dark.3" size="sm" fw={500}>
+                Track status, assign users, and manage requests.
+              </Text>
+            </div>
+          </Group>
           <MailroomLockers />
         </Container>
       </main>
