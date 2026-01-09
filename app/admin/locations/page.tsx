@@ -8,7 +8,7 @@ export default function LocationsPage() {
     <PrivateMainLayout>
       <main style={{ flex: 1 }}>
         <Container size="xl" py="xl">
-          <Title order={2} mb="lg">
+          <Title order={1} mb="lg">
             Register Mailroom Locations
           </Title>
           <MailroomLocations />

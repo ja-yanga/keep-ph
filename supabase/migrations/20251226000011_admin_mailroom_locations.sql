@@ -1,35 +1,35 @@
 -- RPC to list all mailroom locations for admin views
-CREATE OR REPLACE FUNCTION public.admin_list_mailroom_locations()
-RETURNS JSON
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO ''
-AS $$
-DECLARE
-  return_data JSON := '[]'::JSON;
-BEGIN
-  SELECT COALESCE(
-    JSON_AGG(
-      JSON_BUILD_OBJECT(
-        'mailroom_location_id', mailroom_location_id,
-        'mailroom_location_name', mailroom_location_name,
-        'mailroom_location_region', mailroom_location_region,
-        'mailroom_location_city', mailroom_location_city,
-        'mailroom_location_barangay', mailroom_location_barangay,
-        'mailroom_location_zip', mailroom_location_zip,
-        'mailroom_location_total_lockers', mailroom_location_total_lockers,
-        'mailroom_location_prefix', mailroom_location_prefix
-      )
-      ORDER BY mailroom_location_name ASC
-    ),
-    '[]'::JSON
-  )
-  INTO  return_data
-  FROM public.mailroom_location_table;
+-- CREATE OR REPLACE FUNCTION public.admin_list_mailroom_locations()
+-- RETURNS JSON
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- SET search_path TO ''
+-- AS $$
+-- DECLARE
+--   return_data JSON := '[]'::JSON;
+-- BEGIN
+--   SELECT COALESCE(
+--     JSON_AGG(
+--       JSON_BUILD_OBJECT(
+--         'mailroom_location_id', mailroom_location_id,
+--         'mailroom_location_name', mailroom_location_name,
+--         'mailroom_location_region', mailroom_location_region,
+--         'mailroom_location_city', mailroom_location_city,
+--         'mailroom_location_barangay', mailroom_location_barangay,
+--         'mailroom_location_zip', mailroom_location_zip,
+--         'mailroom_location_total_lockers', mailroom_location_total_lockers,
+--         'mailroom_location_prefix', mailroom_location_prefix
+--       )
+--       ORDER BY mailroom_location_name ASC
+--     ),
+--     '[]'::JSON
+--   )
+--   INTO  return_data
+--   FROM public.mailroom_location_table;
 
-  RETURN  return_data;
-END;
-$$;
+--   RETURN  return_data;
+-- END;
+-- $$;
 
 -- RPC to create a mailroom location and seed lockers
 CREATE OR REPLACE FUNCTION public.admin_create_mailroom_location(
