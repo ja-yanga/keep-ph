@@ -10,7 +10,6 @@ import {
   Paper,
   Box,
 } from "@mantine/core";
-import { IconMail, IconTruck, IconBuilding } from "@tabler/icons-react";
 import PublicMainLayout from "@/components/Layout/PublicMainLayout";
 import HeroSection from "@/components/HeroSection";
 import dynamic from "next/dynamic";
@@ -18,6 +17,75 @@ const PricingSection = dynamic(() => import("@/components/PricingSection"), {
   ssr: false,
   loading: () => null,
 });
+
+// inline SVG icons to avoid importing the whole icon library (smaller client bundle)
+const IconMail = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M3 8.5v7A2.5 2.5 0 0 0 5.5 18h13a2.5 2.5 0 0 0 2.5-2.5v-7"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4 7l8 5 8-5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+const IconTruck = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M1 10h13v6H1z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M15 10h5l3 4v2h-8"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="6.5" cy="18.5" r="1.5" fill="currentColor" />
+    <circle cx="18.5" cy="18.5" r="1.5" fill="currentColor" />
+  </svg>
+);
+const IconBuilding = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect
+      x="3"
+      y="3"
+      width="14"
+      height="18"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      rx="1"
+    />
+    <path
+      d="M7 7h4M7 11h4M7 15h4"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <rect
+      x="19"
+      y="8"
+      width="2"
+      height="10"
+      rx="0.5"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+  </svg>
+);
 
 // move feature data to module scope so it's not re-created each render
 const FEATURES = [
