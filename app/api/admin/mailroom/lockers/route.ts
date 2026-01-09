@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { DbLockerRow } from "@/utils/types";
+import { LockerRow } from "@/utils/types";
 
 const supabase = createSupabaseServiceClient();
 
@@ -22,19 +22,7 @@ export async function GET(req: Request) {
     let query = supabase
       .from("location_locker_table")
       .select(
-        `
-        location_locker_id, 
-        mailroom_location_id, 
-        location_locker_code, 
-        location_locker_is_available, 
-        location_locker_created_at, 
-        mailroom_location_table(mailroom_location_id, mailroom_location_name),
-        mailroom_assigned_locker_table(
-          mailroom_assigned_locker_id, 
-          mailroom_registration_id, 
-          mailroom_assigned_locker_status
-        )
-        `,
+        "location_locker_id, mailroom_location_id, location_locker_code, location_locker_is_available, location_locker_created_at, mailroom_location_table(mailroom_location_id, mailroom_location_name)",
         { count: "exact" },
       )
       .is("location_locker_deleted_at", null)
@@ -65,45 +53,73 @@ export async function GET(req: Request) {
     } = await query.range(offset, offset + pageSize - 1);
 
     if (lockersErr) {
-      return NextResponse.json({ error: lockersErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: (lockersErr as Error).message },
+        { status: 500 },
+      );
     }
 
-    const normalized = ((lockersData as unknown as DbLockerRow[]) ?? []).map(
-      (r) => {
-        const locTable = r.mailroom_location_table;
-        const assignments = r.mailroom_assigned_locker_table;
-        // Get the first assignment if it exists (assuming 1:1 active assignment)
-        const assigned =
-          Array.isArray(assignments) && assignments.length > 0
-            ? assignments[0]
-            : null;
+    const lockerRows = Array.isArray(lockersData)
+      ? (lockersData as LockerRow[])
+      : [];
 
-        const isAvailable = r.location_locker_is_available ?? true;
-        const isAssigned = Boolean(assigned) || isAvailable === false;
+    // Collect IDs for separate assignment fetch
+    const lockerIds = lockerRows.map((r) => r.location_locker_id);
 
-        return {
-          id: r.location_locker_id,
-          location_id: r.mailroom_location_id ?? null,
-          code: r.location_locker_code ?? null,
-          is_available: isAvailable,
-          created_at: r.location_locker_created_at ?? null,
-          location: locTable
-            ? {
-                id: locTable.mailroom_location_id ?? null,
-                name: locTable.mailroom_location_name ?? null,
-              }
-            : null,
-          assigned: assigned
-            ? {
-                id: assigned.mailroom_assigned_locker_id ?? null,
-                registration_id: assigned.mailroom_registration_id ?? null,
-                status: assigned.mailroom_assigned_locker_status ?? null,
-              }
-            : null,
-          is_assigned: isAssigned,
-        };
-      },
-    );
+    // fetch current assignments separately and build map by locker id
+    // Only fetch for the lockers on the current page
+    const assignedMap = new Map<string, Record<string, unknown>>();
+
+    if (lockerIds.length > 0) {
+      const { data: assignedData } = await supabase
+        .from("mailroom_assigned_locker_table")
+        .select(
+          "mailroom_assigned_locker_id, location_locker_id, mailroom_registration_id, mailroom_assigned_locker_status",
+        )
+        .in("location_locker_id", lockerIds);
+
+      const assignedRows = Array.isArray(assignedData)
+        ? (assignedData as Record<string, unknown>[])
+        : [];
+
+      for (const a of assignedRows) {
+        const lid = String(a.location_locker_id ?? "");
+        if (lid) {
+          // keep the latest if multiple (shouldn't happen due to UNIQUE constraint)
+          assignedMap.set(lid, a);
+        }
+      }
+    }
+
+    const normalized = lockerRows.map((r) => {
+      const locTable = r.mailroom_location_table;
+      const assigned = assignedMap.get(r.location_locker_id ?? "") ?? null;
+      const isAvailable = r.location_locker_is_available ?? true;
+      // consider assigned existence first; fallback to is_available flag
+      const isAssigned = Boolean(assigned) || isAvailable === false;
+
+      return {
+        id: r.location_locker_id,
+        location_id: r.mailroom_location_id ?? null,
+        locker_code: r.location_locker_code ?? null,
+        is_available: isAvailable,
+        created_at: r.location_locker_created_at ?? null,
+        location: locTable
+          ? {
+              id: locTable.mailroom_location_id ?? null,
+              name: locTable.mailroom_location_name ?? null,
+            }
+          : null,
+        assigned: assigned
+          ? {
+              id: assigned.mailroom_assigned_locker_id ?? null,
+              registration_id: assigned.mailroom_registration_id ?? null,
+              status: assigned.mailroom_assigned_locker_status ?? null,
+            }
+          : null,
+        is_assigned: isAssigned,
+      };
+    });
 
     return NextResponse.json(
       {
