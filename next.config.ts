@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // PERFORMANCE FIX: Optimize heavy libraries to reduce JS execution time
+  experimental: {
+    optimizePackageImports: [
+      "@mantine/core",
+      "@mantine/hooks",
+      "@tabler/icons-react",
+    ],
+  },
+
   images: {
     remotePatterns: [
       {

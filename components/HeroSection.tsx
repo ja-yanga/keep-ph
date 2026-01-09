@@ -6,14 +6,13 @@ import {
   Title,
   Text,
   Button,
-  Image,
   Box,
   Group,
 } from "@mantine/core";
-import { IconArrowRight } from "@tabler/icons-react";
+import NextImage from "next/image";
 import Link from "next/link";
 
-// FIX 1: Move these OUTSIDE so they don't block the main thread during render
+// Static constants outside the component to prevent re-allocation
 const COLORS = {
   primaryBlue: "#1A237E",
   textSecondary: "#4A5568",
@@ -61,31 +60,26 @@ export default function HeroSection() {
           <Grid.Col span={{ base: 12, md: 6 }} order={{ base: 1, md: 2 }}>
             <Box style={IMAGE_CONTAINER_STYLE}>
               <Box style={GLOW_STYLE} />
-
               <Box style={IMAGE_WRAPPER_STYLE}>
-                {/* server-rendered <img> via Mantine Image (no next/image client runtime) */}
-                <Image
+                <NextImage
                   src="/hero.avif"
                   alt="Modern Philippines Office"
                   width={950}
                   height={634}
-                  loading="eager"
-                  sizes="(max-width: 768px) 100vw, 475px"
-                  style={{
-                    objectFit: "cover",
-                    width: "100%",
-                    height: "100%",
-                  }}
+                  priority
+                  fetchPriority="high"
+                  quality={80}
+                  style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                  sizes="(max-width: 768px) 100vw, 50vw"
                 />
               </Box>
             </Box>
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, md: 6 }} order={{ base: 2, md: 1 }}>
-            <Stack gap="xl" className="hero-stack">
+            <Stack gap="xl" style={{ alignItems: "flex-start" }}>
               <Title
                 order={1}
-                className="hero-title"
                 style={{
                   fontWeight: 900,
                   fontSize: "clamp(2.5rem, 5vw, 3.75rem)",
@@ -106,23 +100,29 @@ export default function HeroSection() {
               </Title>
 
               <Text
-                style={{ color: COLORS.textSecondary, maxWidth: 540 }}
                 size="xl"
                 lh={1.6}
+                style={{ color: COLORS.textSecondary, maxWidth: 540 }}
               >
                 Get a prestigious virtual address in Metro Manila. Manage your
                 mail digitally and forward packages anywhere in the world with
                 ease.
               </Text>
 
-              <Group gap="sm" w="100%" mt="md" wrap="nowrap">
+              <Group
+                gap="sm"
+                w="100%"
+                mt="md"
+                wrap="nowrap"
+                className="hero-group"
+              >
                 <Button
                   component={Link}
                   href="/signup"
                   size="xl"
                   radius="xl"
                   color={COLORS.primaryBlue}
-                  rightSection={<IconArrowRight size={22} />}
+                  rightSection={<ArrowRightIcon size={22} />}
                   style={{
                     flex: 1,
                     boxShadow: "0 12px 24px rgba(26, 35, 126, 0.25)",
@@ -130,7 +130,6 @@ export default function HeroSection() {
                 >
                   Get Started
                 </Button>
-
                 <Button
                   component="a"
                   href="#pricing"
@@ -151,20 +150,19 @@ export default function HeroSection() {
           </Grid.Col>
         </Grid>
       </Container>
-
-      <style jsx>{`
-        @media (max-width: 48em) {
-          .hero-title {
-            text-align: center;
-          }
-          :global(.hero-stack) {
-            align-items: center !important;
-          }
-          :global(.mantine-Group-root) {
-            flex-wrap: wrap !important;
-          }
-        }
-      `}</style>
     </Box>
   );
 }
+
+// server component arrow icon (no external icon lib)
+const ArrowRightIcon = ({ size = 22 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M5 12h14M13 5l7 7-7 7"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
