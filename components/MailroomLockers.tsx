@@ -1,7 +1,5 @@
 "use client";
 
-import "mantine-datatable/styles.layer.css";
-
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
@@ -29,7 +27,6 @@ import {
   IconTrash,
   IconLock,
   IconLockOpen,
-  IconBox,
   IconLayoutGrid,
   IconCheck,
   IconAlertCircle,
@@ -39,6 +36,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import { getStatusFormat } from "@/utils/helper";
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
   {
@@ -449,30 +447,26 @@ export default function MailroomLockers() {
     }
   };
 
-  const getCapacityBadgeColor = React.useCallback(
-    (status: string | undefined) => {
-      if (status === "Full") return "#7f1d1d"; // Dark Red
-      if (status === "Near Full") return "#7c2d12"; // Dark Orange
-      if (status === "Empty") return "#374151"; // Dark Gray
-      return "#1e3a8a"; // Dark Blue
-    },
-    [],
-  );
-
-  const segmentedColor = React.useMemo(() => {
-    if (capacityStatus === "Full") return "red";
-    if (capacityStatus === "Near Full") return "orange";
-    if (capacityStatus === "Empty") return "gray";
-    return "blue";
-  }, [capacityStatus]);
-
   const columns = React.useMemo<DataTableColumn<Locker>[]>(
     () => [
-      { accessor: "locker_code", title: "Locker Code", width: 150 },
+      {
+        accessor: "locker_code",
+        title: "Locker Code",
+        width: 150,
+        render: ({ locker_code }: Locker) => (
+          <Text fw={700} c="dark.4" size="sm">
+            {locker_code}
+          </Text>
+        ),
+      },
       {
         accessor: "location.name",
         title: "Location",
-        render: ({ location }: Locker) => location?.name ?? "Unknown",
+        render: ({ location }: Locker) => (
+          <Text size="sm" c="dark.3" fw={500}>
+            {location?.name ?? "Unknown"}
+          </Text>
+        ),
       },
       {
         accessor: "is_available",
@@ -480,18 +474,10 @@ export default function MailroomLockers() {
         width: 150,
         render: ({ is_available }: Locker) => (
           <Badge
-            color={is_available ? "#064e3b" : "#7f1d1d"}
-            variant="outline"
-            size="sm"
-            fw={700}
-            tt="none"
-            leftSection={
-              is_available ? (
-                <IconLockOpen size={12} aria-hidden="true" />
-              ) : (
-                <IconLock size={12} aria-hidden="true" />
-              )
-            }
+            color={is_available ? "teal" : "red"}
+            variant="dot"
+            size="md"
+            radius="md"
           >
             {is_available ? "Available" : "Occupied"}
           </Badge>
@@ -500,19 +486,19 @@ export default function MailroomLockers() {
       {
         accessor: "capacity",
         title: "Capacity Status",
-        width: 150,
+        width: 180,
         render: (locker: Locker) => {
           const assignment = locker.assigned;
 
           if (!assignment) {
             return (
-              <Text size="sm" c="gray.7">
+              <Text size="sm" c="gray.4">
                 —
               </Text>
             );
           }
 
-          const color = getCapacityBadgeColor(assignment.status);
+          const color = getStatusFormat(assignment.status);
 
           return (
             <Badge
@@ -520,10 +506,9 @@ export default function MailroomLockers() {
               variant="outline"
               size="sm"
               fw={700}
-              tt="none"
-              leftSection={<IconBox size={12} aria-hidden="true" />}
+              tt="uppercase"
             >
-              {assignment.status ?? "Normal"}
+              {assignment.status ?? "NORMAL"}
             </Badge>
           );
         },
@@ -559,11 +544,11 @@ export default function MailroomLockers() {
         ),
       },
     ],
-    [getCapacityBadgeColor, handleOpenModal, handleDelete],
+    [getStatusFormat, handleOpenModal, handleDelete],
   );
 
   return (
-    <Stack align="center">
+    <Stack align="center" gap="lg" w="100%">
       {globalSuccess && (
         <Alert
           variant="light"
@@ -579,7 +564,7 @@ export default function MailroomLockers() {
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
         <Group justify="space-between" mb="md">
           <Group style={{ flex: 1 }}>
             <SearchInput onSearch={handleSearchSubmit} searchQuery={query} />
@@ -649,9 +634,9 @@ export default function MailroomLockers() {
             <div style={{ marginTop: "1rem" }}>
               <DataTable
                 aria-label="Lockers list"
-                withTableBorder
-                borderRadius="sm"
-                striped
+                withTableBorder={false}
+                borderRadius="lg"
+                verticalSpacing="md"
                 highlightOnHover
                 records={isSearching ? [] : lockers}
                 fetching={isValidating || isSearching}
@@ -780,7 +765,7 @@ export default function MailroomLockers() {
                     { label: "Near Full", value: "Near Full" },
                     { label: "Full", value: "Full" },
                   ]}
-                  color={segmentedColor}
+                  color={getStatusFormat(capacityStatus)}
                   aria-label="Set capacity status"
                 />
               </Stack>

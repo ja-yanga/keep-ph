@@ -10,7 +10,6 @@ import {
   ThemeIcon,
   RingProgress,
   Title,
-  Table,
   Badge,
   Center,
   SimpleGrid,
@@ -18,6 +17,7 @@ import {
   Button,
   Skeleton,
 } from "@mantine/core";
+import { DataTable } from "mantine-datatable";
 import {
   IconBox,
   IconUsers,
@@ -141,7 +141,7 @@ export default function AdminDashboard() {
       <Stack gap="xl">
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={2} fw={900} c="dark.5" lts="-0.02em">
+            <Title order={1} fw={900} c="dark.5" lts="-0.02em">
               Dashboard Overview
             </Title>
             <Text c="dark.3" size="sm" fw={500}>
@@ -251,74 +251,62 @@ export default function AdminDashboard() {
             </Button>
           </Group>
 
-          <div style={{ overflowX: "auto" }}>
-            <Table verticalSpacing="md" highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th style={{ borderBottomWidth: 2 }}>
-                    Package Name
-                  </Table.Th>
-                  <Table.Th style={{ borderBottomWidth: 2 }}>Type</Table.Th>
-                  <Table.Th style={{ borderBottomWidth: 2 }}>Status</Table.Th>
-                  <Table.Th
-                    style={{ textAlign: "right", borderBottomWidth: 2 }}
+          <DataTable
+            withTableBorder={false}
+            borderRadius="lg"
+            verticalSpacing="md"
+            highlightOnHover
+            minHeight={150}
+            records={recent}
+            columns={[
+              {
+                accessor: "package_name",
+                title: "Package Name",
+                render: (pkg) => (
+                  <Text fw={700} c="dark.4" size="sm">
+                    {pkg.package_name ?? "—"}
+                  </Text>
+                ),
+              },
+              {
+                accessor: "package_type",
+                title: "Type",
+                render: (pkg) => (
+                  <Badge size="md" variant="transparent" color="dark">
+                    {pkg.package_type}
+                  </Badge>
+                ),
+              },
+              {
+                accessor: "status",
+                title: "Status",
+                render: (pkg) => (
+                  <Badge
+                    size="md"
+                    radius="md"
+                    variant="dot"
+                    color={getStatusFormat(pkg.status)}
                   >
-                    Received
-                  </Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {recent.length > 0 ? (
-                  recent.map((pkg) => (
-                    <Table.Tr
-                      key={pkg.id}
-                      style={{ transition: "background-color 0.2s" }}
-                    >
-                      <Table.Td>
-                        <Text fw={700} c="dark.4" size="sm">
-                          {pkg.package_name ?? "—"}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge size="md" variant="transparent" color="dark">
-                          {pkg.package_type}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge
-                          size="md"
-                          radius="md"
-                          variant="dot"
-                          color={getStatusFormat(pkg.status)}
-                        >
-                          {pkg.status?.replace(/_/g, " ") ?? "—"}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td c="dark.3" style={{ textAlign: "right" }}>
-                        <Text size="sm" fw={600}>
-                          {dayjs(pkg.received_at).format("MMM D, h:mm A")}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
-                ) : (
-                  <Table.Tr>
-                    <Table.Td colSpan={4} align="center" py={60}>
-                      <Stack align="center" gap="xs">
-                        <IconPackage
-                          size={32}
-                          color="var(--mantine-color-gray-3)"
-                        />
-                        <Text c="dark.2" fs="italic" size="sm" fw={500}>
-                          No recent activity found
-                        </Text>
-                      </Stack>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </div>
+                    {pkg.status?.replace(/_/g, " ") ?? "—"}
+                  </Badge>
+                ),
+              },
+              {
+                accessor: "received_at",
+                title: "Received",
+                textAlign: "right",
+                render: (pkg) => (
+                  <Text size="sm" fw={600} c="dark.3">
+                    {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                  </Text>
+                ),
+              },
+            ]}
+            noRecordsText="No recent activity found"
+            noRecordsIcon={
+              <IconPackage size={32} color="var(--mantine-color-gray-3)" />
+            }
+          />
         </Paper>
       </Stack>
     );
