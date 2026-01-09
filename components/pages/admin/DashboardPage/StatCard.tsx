@@ -24,10 +24,11 @@ export function StatCard({
       radius="lg"
       shadow="xs"
       onClick={onClick}
-      className="dashboard-stat-card"
       style={{
         borderLeft: `6px solid var(--mantine-color-${color}-filled)`,
         background: `linear-gradient(135deg, var(--mantine-color-white) 0%, var(--mantine-color-gray-0) 100%)`,
+        cursor: "pointer",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       <Group justify="space-between" align="flex-start" wrap="nowrap">
@@ -54,7 +55,6 @@ export function StatCard({
           size={52}
           radius="md"
           style={{
-            boxShadow: `0 8px 16px -4px var(--mantine-color-${color}-light-color)`,
             flexShrink: 0,
           }}
         >

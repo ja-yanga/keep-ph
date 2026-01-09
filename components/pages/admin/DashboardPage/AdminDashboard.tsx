@@ -28,7 +28,7 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { fetcher } from "@/utils/helper";
+import { fetcher, getStatusFormat } from "@/utils/helper";
 import { StatCard } from "./StatCard";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
@@ -280,12 +280,7 @@ export default function AdminDashboard() {
                         </Text>
                       </Table.Td>
                       <Table.Td>
-                        <Badge
-                          size="sm"
-                          variant="outline"
-                          color="dark"
-                          radius="sm"
-                        >
+                        <Badge size="md" variant="transparent" color="dark">
                           {pkg.package_type}
                         </Badge>
                       </Table.Td>
@@ -294,12 +289,7 @@ export default function AdminDashboard() {
                           size="md"
                           radius="md"
                           variant="dot"
-                          color={(() => {
-                            if (pkg.status === "STORED") return "blue";
-                            if (pkg.status?.includes("REQUEST"))
-                              return "orange";
-                            return "gray";
-                          })()}
+                          color={getStatusFormat(pkg.status)}
                         >
                           {pkg.status?.replace(/_/g, " ") ?? "—"}
                         </Badge>
