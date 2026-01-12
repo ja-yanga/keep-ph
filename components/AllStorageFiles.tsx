@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import Image from "next/image";
 import { useMediaQuery, useDebouncedValue } from "@mantine/hooks";
-import useSWR, { mutate as swrMutate } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
   Badge,
   Group,
@@ -389,6 +389,7 @@ const TableRow = React.memo<{
 TableRow.displayName = "TableRow";
 
 export default function AllUserScans() {
+  const { mutate } = useSWRConfig();
   const { session } = useSession();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selected, setSelected] = useState<Scan | null>(null);
@@ -472,7 +473,7 @@ export default function AllUserScans() {
     if (!swrKey) return;
     setRefreshing(true);
     try {
-      await swrMutate(swrKey);
+      await mutate(swrKey);
     } finally {
       setRefreshing(false);
     }
@@ -515,7 +516,7 @@ export default function AllUserScans() {
 
       // Invalidate SWR cache to refetch with updated data
       if (swrKey) {
-        await swrMutate(swrKey);
+        await mutate(swrKey);
       }
     } catch (e: unknown) {
       console.error("delete failed", e);
