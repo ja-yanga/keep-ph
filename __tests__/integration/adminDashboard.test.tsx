@@ -1,3 +1,40 @@
+// Polyfill ResizeObserver and IntersectionObserver for JSDOM so mantine hooks don't throw
+type TestResizeObserver = {
+  observe(): void;
+  unobserve(): void;
+  disconnect(): void;
+};
+const g = globalThis as unknown as {
+  ResizeObserver?: new () => TestResizeObserver;
+  IntersectionObserver?: new (
+    cb?: IntersectionObserverCallback,
+    opts?: IntersectionObserverInit,
+  ) => IntersectionObserver;
+};
+
+if (typeof g.ResizeObserver === "undefined") {
+  g.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as new () => TestResizeObserver;
+}
+
+if (typeof g.IntersectionObserver === "undefined") {
+  g.IntersectionObserver = class {
+    constructor() {}
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  } as unknown as new (
+    cb?: IntersectionObserverCallback,
+    opts?: IntersectionObserverInit,
+  ) => IntersectionObserver;
+}
+
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -113,10 +150,10 @@ describe("AdminDashboard", () => {
 
   it("navigates when clicking Inventory card and View All Packages", async () => {
     const mockStats = {
-      pendingRequests: 1,
-      storedPackages: 2,
-      totalSubscribers: 3,
-      lockerStats: { total: 4, assigned: 1 },
+      pendingRequests: 5,
+      storedPackages: 12,
+      totalSubscribers: 100,
+      lockerStats: { total: 50, assigned: 25 },
       recentPackages: [],
     };
 
@@ -133,12 +170,14 @@ describe("AdminDashboard", () => {
 
     await screen.findByText(/Dashboard Overview/i);
 
-    // clicking Inventory card (card label "Inventory") should push to /admin/packages
-    await userEvent.click(screen.getByText(/Inventory/i));
-    expect(pushMock).toHaveBeenCalledWith("/admin/packages");
+    // StatCard now renders as a link — assert its href instead of triggering actual navigation
+    const inventoryLink = screen.getByRole("link", { name: /Inventory/i });
+    expect(inventoryLink).toHaveAttribute("href", "/admin/packages");
 
     // clicking "View All Packages" button should also navigate
-    const viewAll = screen.getByRole("button", { name: /View All Packages/i });
+    const viewAll = screen.getByRole("button", {
+      name: /View all packages/i,
+    });
     await userEvent.click(viewAll);
     expect(pushMock).toHaveBeenCalledWith("/admin/packages");
   });
@@ -161,8 +200,8 @@ describe("AdminDashboard", () => {
       </MantineProvider>,
     );
     await screen.findByText(/Dashboard Overview/i);
-    await userEvent.click(screen.getByText(/Pending Requests/i));
-    expect(pushMock).toHaveBeenCalledWith("/admin/packages?tab=requests");
+    const pendingLink = screen.getByRole("link", { name: /Pending Requests/i });
+    expect(pendingLink).toHaveAttribute("href", "/admin/packages?tab=requests");
   });
 
   it("navigates when clicking Subscribers card", async () => {
@@ -183,8 +222,8 @@ describe("AdminDashboard", () => {
       </MantineProvider>,
     );
     await screen.findByText(/Dashboard Overview/i);
-    await userEvent.click(screen.getByText(/Subscribers/i));
-    expect(pushMock).toHaveBeenCalledWith("/admin/mailrooms");
+    const subscribersLink = screen.getByRole("link", { name: /Subscribers/i });
+    expect(subscribersLink).toHaveAttribute("href", "/admin/mailrooms");
   });
 
   it("navigates when clicking Locker Occupancy card", async () => {
@@ -205,8 +244,13 @@ describe("AdminDashboard", () => {
       </MantineProvider>,
     );
     await screen.findByText(/Dashboard Overview/i);
-    await userEvent.click(screen.getByText(/Locker Occupancy/i));
-    expect(pushMock).toHaveBeenCalledWith("/admin/lockers?tab=occupied");
+    const occupancyLink = screen.getByRole("link", {
+      name: /Locker Occupancy/i,
+    });
+    expect(occupancyLink).toHaveAttribute(
+      "href",
+      "/admin/lockers?tab=occupied",
+    );
   });
 
   it("has Refresh Data button (non-navigation)", async () => {
@@ -226,10 +270,13 @@ describe("AdminDashboard", () => {
         <AdminDashboard />
       </MantineProvider>,
     );
-    const btn = await screen.findByRole("button", { name: /Refresh Data/i });
+
+    // find the label text then locate its button ancestor to avoid role/name collisions
+    const label = await screen.findByText(/Refresh Data/i);
+    const btn = label.closest("button");
     expect(btn).toBeInTheDocument();
     // clicking should not call router.push
-    await userEvent.click(btn);
+    await userEvent.click(btn!);
     expect(pushMock).not.toHaveBeenCalledWith(
       expect.stringContaining("/admin"),
     );
