@@ -46,7 +46,7 @@ const DataTable = dynamic(
       <div
         style={{ display: "flex", flexDirection: "column", gap: "10px" }}
         aria-busy="true"
-        aria-hidden="true"
+        aria-label="Loading lockers table"
       >
         <div style={{ display: "flex", gap: "10px" }}>
           {[...Array(5)].map((_, i) => (
