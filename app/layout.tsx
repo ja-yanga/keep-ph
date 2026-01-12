@@ -58,6 +58,23 @@ export default function RootLayout({
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript />
+        {/* Preconnect to Google Analytics for faster loading */}
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <>
+            <link
+              rel="preconnect"
+              href="https://www.googletagmanager.com"
+              crossOrigin="anonymous"
+            />
+            <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+            <link
+              rel="preconnect"
+              href="https://www.google-analytics.com"
+              crossOrigin="anonymous"
+            />
+            <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+          </>
+        )}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}

@@ -39,6 +39,7 @@ const nextConfig: NextConfig = {
       "@mantine/hooks",
       "@tabler/icons-react",
       "mantine-datatable",
+      "recharts", // Optimize recharts imports for better tree-shaking
     ],
   },
   // SWC minification is enabled by default in Next.js 13+
