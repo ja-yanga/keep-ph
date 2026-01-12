@@ -231,7 +231,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.admin_list_user_kyc(
   input_search TEXT DEFAULT '',
   input_limit INTEGER DEFAULT 500,
-  input_offset INTEGER DEFAULT 0
+  input_offset INTEGER DEFAULT 0,
+  input_status TEXT DEFAULT NULL
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -242,6 +243,7 @@ DECLARE
   sanitized_limit INTEGER := LEAST(GREATEST(COALESCE(input_limit, 1), 1), 1000);
   sanitized_offset INTEGER := GREATEST(COALESCE(input_offset, 0), 0);
   search_term TEXT := COALESCE(input_search, '');
+  status_term TEXT := NULLIF(UPPER(COALESCE(input_status, '')), '');
   final_data JSON := '[]'::JSON;
   total_count INTEGER := 0;
 BEGIN
@@ -250,9 +252,12 @@ BEGIN
   INTO total_count
   FROM public.user_kyc_table uk
   WHERE
-    search_term = ''
-    OR uk.user_kyc_first_name ILIKE '%' || search_term || '%'
-    OR uk.user_kyc_last_name ILIKE '%' || search_term || '%';
+    (status_term IS NULL OR UPPER(uk.user_kyc_status::text) = status_term)
+    AND (
+      search_term = ''
+      OR uk.user_kyc_first_name ILIKE '%' || search_term || '%'
+      OR uk.user_kyc_last_name ILIKE '%' || search_term || '%'
+    );
 
   -- Fetch paginated data
   WITH base AS (
@@ -285,55 +290,68 @@ BEGIN
       LIMIT 1
     ) addr ON TRUE
     WHERE
-      search_term = ''
-      OR uk.user_kyc_first_name ILIKE '%' || search_term || '%'
-      OR uk.user_kyc_last_name ILIKE '%' || search_term || '%'
-    ORDER BY uk.user_kyc_submitted_at DESC NULLS LAST
+      (status_term IS NULL OR UPPER(uk.user_kyc_status::text) = status_term)
+      AND (
+        search_term = ''
+        OR uk.user_kyc_first_name ILIKE '%' || search_term || '%'
+        OR uk.user_kyc_last_name ILIKE '%' || search_term || '%'
+      )
+    ORDER BY
+      CASE
+        WHEN uk.user_kyc_status::text = 'SUBMITTED'
+             OR (uk.user_kyc_submitted_at IS NOT NULL AND uk.user_kyc_verified_at IS NULL) THEN 0
+        WHEN uk.user_kyc_verified_at IS NOT NULL
+             OR uk.user_kyc_status::text = 'VERIFIED' THEN 1
+        ELSE 2
+      END,
+      -- submitted: oldest first
+      CASE
+        WHEN uk.user_kyc_status::text = 'SUBMITTED'
+             OR (uk.user_kyc_submitted_at IS NOT NULL AND uk.user_kyc_verified_at IS NULL)
+        THEN uk.user_kyc_submitted_at
+        ELSE NULL
+      END ASC NULLS LAST,
+      -- verified: most recently updated first
+      CASE
+        WHEN uk.user_kyc_verified_at IS NOT NULL
+             OR uk.user_kyc_status::text = 'VERIFIED'
+        THEN uk.user_kyc_updated_at
+        ELSE NULL
+      END DESC NULLS LAST,
+      COALESCE(uk.user_kyc_submitted_at, uk.user_kyc_verified_at, uk.user_kyc_created_at) DESC
     LIMIT sanitized_limit
     OFFSET sanitized_offset
   )
-  SELECT COALESCE(
-    JSON_AGG(
-      JSON_BUILD_OBJECT(
-        'user_kyc_id', user_kyc_id,
-        'user_id', user_id,
-        'user_kyc_status', user_kyc_status,
-        'user_kyc_id_document_type', user_kyc_id_document_type,
-        'user_kyc_id_number', user_kyc_id_number,
-        'user_kyc_id_front_url', user_kyc_id_front_url,
-        'user_kyc_id_back_url', user_kyc_id_back_url,
-        'user_kyc_first_name', user_kyc_first_name,
-        'user_kyc_last_name', user_kyc_last_name,
-        'user_kyc_submitted_at', user_kyc_submitted_at,
-        'user_kyc_verified_at', user_kyc_verified_at,
-        'user_kyc_created_at', user_kyc_created_at,
-        'user_kyc_updated_at', user_kyc_updated_at,
-        'address', CASE
-          WHEN addr_line1 IS NULL
-            AND addr_line2 IS NULL
-            AND addr_city IS NULL
-            AND addr_region IS NULL
-            AND addr_postal IS NULL
-          THEN NULL
-          ELSE JSON_BUILD_OBJECT(
-            'line1', addr_line1,
-            'line2', addr_line2,
-            'city', addr_city,
-            'region', addr_region,
-            'postal', addr_postal
-          )
-        END
+  SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT(
+    'user_kyc_id', user_kyc_id,
+    'user_id', user_id,
+    'user_kyc_status', user_kyc_status,
+    'user_kyc_id_document_type', user_kyc_id_document_type,
+    'user_kyc_id_number', user_kyc_id_number,
+    'user_kyc_id_front_url', user_kyc_id_front_url,
+    'user_kyc_id_back_url', user_kyc_id_back_url,
+    'user_kyc_first_name', user_kyc_first_name,
+    'user_kyc_last_name', user_kyc_last_name,
+    'user_kyc_submitted_at', user_kyc_submitted_at,
+    'user_kyc_verified_at', user_kyc_verified_at,
+    'user_kyc_created_at', user_kyc_created_at,
+    'user_kyc_updated_at', user_kyc_updated_at,
+    'address', CASE
+      WHEN addr_line1 IS NULL AND addr_line2 IS NULL AND addr_city IS NULL AND addr_region IS NULL AND addr_postal IS NULL
+      THEN NULL
+      ELSE JSON_BUILD_OBJECT(
+        'line1', addr_line1,
+        'line2', addr_line2,
+        'city', addr_city,
+        'region', addr_region,
+        'postal', addr_postal
       )
-    ),
-    '[]'::JSON
-  )
+    END
+  )), '[]'::JSON)
   INTO final_data
   FROM base;
 
-  RETURN JSON_BUILD_OBJECT(
-    'data', final_data,
-    'total_count', total_count
-  );
+  RETURN JSON_BUILD_OBJECT('data', final_data, 'total_count', total_count);
 END;
 $$;
 
