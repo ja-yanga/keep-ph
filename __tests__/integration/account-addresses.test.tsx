@@ -30,7 +30,7 @@ jest.mock("@mantine/notifications", () => ({
 }));
 
 import { notifications } from "@mantine/notifications";
-import AccountAddresses from "@/components/AccountAddresses";
+import AccountAddresses from "@/components/pages/customer/Account/AddressesTab";
 
 describe("AccountAddresses integration", () => {
   let originalFetch: typeof globalThis.fetch | undefined;

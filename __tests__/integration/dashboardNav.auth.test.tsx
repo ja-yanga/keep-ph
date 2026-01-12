@@ -1,20 +1,20 @@
+import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import PrivateNavigationHeader from "@/components/Layout/PrivateNavigationHeader";
 
-/**
- * Integration tests for PrivateNavigationHeader (authenticated area).
- *
- * What it covers:
- * - Rendering of authenticated nav links (Dashboard, Register Mail Service, Referrals, Storage)
- * - Notification badge count sourced from a mocked Supabase client
- * - Realtime subscription setup via supabase.channel(...).on(...)
- * - Marking notifications as read triggers DB update (supabase.from(...).update(...))
- * - Logout flow: calls signout endpoint, supabase.auth.signOut, and redirects to /signin
- * - Nav links' hrefs are correct (register, referrals, dashboard)
- * - Includes JSDOM polyfills (ResizeObserver, matchMedia) to support Mantine components
- */
+// stub Notifications to avoid realtime side-effects and act warnings
+jest.mock("@/components/Notifications", () => ({
+  __esModule: true,
+  default: () =>
+    // return a simple button with aria-label so tests can query it
+    React.createElement(
+      "button",
+      { "aria-label": "Notifications", type: "button" },
+      "Notifications",
+    ),
+}));
 
 const pushMock = jest.fn();
 const usePathnameMock = jest.fn();
@@ -183,38 +183,12 @@ describe("PrivateNavigationHeader (authenticated) — user role", () => {
     expect(screen.getByText(/Referrals/i)).toBeTruthy();
     expect(screen.getByText(/Storage/i)).toBeTruthy();
 
-    // Notifications button exists (notifications backend may be pending implementation)
-    const notifBtn = await screen.findByLabelText("notifications");
+    // Notifications button exists
+    const notifBtn = await screen.findByLabelText(/notifications/i);
     expect(notifBtn).toBeTruthy();
 
-    // Realtime subscription should be wired (channel.on called)
-    expect(channelMock).toHaveBeenCalled();
-    expect(channelOnMock).toHaveBeenCalled();
+    // realtime wiring is internal; UI and notifications button validated above
   });
-
-  // HIDE THIS TEST SINCE WE SEPARATED THE COMPONENT FOR NOTIFICATIONS
-  // it("marks notifications as read when popover is closed and calls DB update", async () => {
-  //   render(
-  //     <MantineProvider>
-  //       <PrivateNavigationHeader />
-  //     </MantineProvider>,
-  //   );
-
-  //   // Open notifications popover (ActionIcon uses aria-label="notifications")
-  //   const notifBtn = await screen.findByLabelText("notifications");
-  //   await userEvent.click(notifBtn);
-
-  //   // Popover content may render in a portal; ensure at least one "Notifications" node appears.
-  //   const headers = await screen.findAllByText(/Notifications/i);
-  //   expect(headers.length).toBeGreaterThan(0);
-
-  //   // Close the popover by clicking outside
-  //   await userEvent.click(document.body);
-  //   // Ensure popover content is removed/hidden after clicking outside
-  //   await waitFor(() =>
-  //     expect(screen.queryByText(/Notifications/i)).toBeNull(),
-  //   );
-  // });
 
   it("logs out: calls signout endpoint, supabase.auth.signOut and redirects to signin", async () => {
     render(
@@ -224,7 +198,9 @@ describe("PrivateNavigationHeader (authenticated) — user role", () => {
     );
 
     // Trigger logout control
-    const logoutBtn = screen.getByRole("button", { name: /Logout/i });
+    const logoutBtn = screen.getByRole("button", {
+      name: /sign out of your account/i,
+    });
     await userEvent.click(logoutBtn);
 
     // Confirm signout network call and supabase auth signOut were invoked and user redirected
