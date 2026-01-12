@@ -15,6 +15,7 @@ import {
   ActionIcon,
   Badge,
   Button,
+  SegmentedControl,
 } from "@mantine/core";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
@@ -160,6 +161,8 @@ SearchInput.displayName = "SearchInput";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
+type StatusTab = "ALL" | "SUBMITTED" | "VERIFIED" | "REJECTED";
+
 const KycTable = memo(
   ({
     rows,
@@ -211,6 +214,11 @@ export default function AdminUserKyc() {
   const [pageSize, setPageSize] = useState<number>(10);
   const [query, setQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusTab>("ALL");
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   const handleSearchSubmit = useCallback(
     (val: string) => {
@@ -222,14 +230,19 @@ export default function AdminUserKyc() {
     [query, page],
   );
 
-  const { data, error, isValidating } = useSWR(
-    `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      keepPreviousData: true,
-    },
-  );
+  const swrKey = useMemo(() => {
+    const base = `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(
+      query,
+    )}&page=${page}&pageSize=${pageSize}`;
+    return statusFilter === "ALL"
+      ? base
+      : `${base}&status=${encodeURIComponent(statusFilter)}`;
+  }, [query, page, pageSize, statusFilter]);
+
+  const { data, error, isValidating } = useSWR(swrKey, fetcher, {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  });
 
   useEffect(() => {
     if (!isValidating) {
@@ -414,6 +427,18 @@ export default function AdminUserKyc() {
             {totalRecords} Records
           </Badge>
         </Group>
+
+        <SegmentedControl
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as StatusTab)}
+          data={[
+            { label: "All", value: "ALL" },
+            { label: "Submitted", value: "SUBMITTED" },
+            { label: "Verified", value: "VERIFIED" },
+            { label: "Rejected", value: "REJECTED" },
+          ]}
+          size="sm"
+        />
 
         <KycTable
           rows={rows}

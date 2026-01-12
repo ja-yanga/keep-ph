@@ -27,11 +27,12 @@ export async function GET(req: Request) {
       Number(url.searchParams.get("pageSize") ?? "10"),
     );
     const offset = (page - 1) * pageSize;
-
+    const status = url.searchParams.get("status");
     const { data: raw, total_count } = await adminListUserKyc(
       q,
       pageSize,
       offset,
+      status ?? undefined,
     );
 
     const processed = raw.map((row) => {

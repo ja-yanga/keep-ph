@@ -605,11 +605,13 @@ export async function adminListUserKyc(
   search = "",
   limit = 500,
   offset = 0,
+  status?: string,
 ): Promise<{ data: AdminUserKyc[]; total_count: number }> {
   const { data, error } = await supabaseAdmin.rpc("admin_list_user_kyc", {
     input_search: search,
     input_limit: limit,
     input_offset: offset,
+    input_status: status ?? null,
   });
 
   if (error) {
