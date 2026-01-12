@@ -50,6 +50,7 @@ const nextConfig: NextConfig = {
       "@mantine/notifications",
       "@tabler/icons-react",
       "mantine-datatable",
+      "recharts", // Optimize recharts imports for better tree-shaking
     ],
   },
 
