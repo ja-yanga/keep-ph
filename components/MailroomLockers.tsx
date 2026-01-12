@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
+import useSWRInfinite from "swr/infinite";
 import {
   ActionIcon,
   Badge,
@@ -18,7 +19,7 @@ import {
   Tabs,
   Alert,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
@@ -158,7 +159,7 @@ const SearchInput = React.memo(
             handleSearch();
           }
         }}
-        style={{ width: "100%", maxWidth: 350 }}
+        style={{ flex: 1 }}
       />
     );
   },
@@ -235,6 +236,7 @@ export default function MailroomLockers() {
     deleteModalOpened,
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
   const [lockerToDelete, setLockerToDelete] = useState<string | null>(null);
   const [editingLocker, setEditingLocker] = useState<Locker | null>(null);
   const [formData, setFormData] = useState({
@@ -257,8 +259,6 @@ export default function MailroomLockers() {
   );
 
   const lockersKey = `/api/admin/mailroom/lockers?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(query)}&locationId=${filterLocation || ""}&activeTab=${activeTab}`;
-  const locationsKey = "/api/admin/mailroom/locations";
-
   const fetcherLocations = async (url: string): Promise<Location[]> => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -279,6 +279,33 @@ export default function MailroomLockers() {
     });
   };
 
+  const getLocationsKey = (
+    pageIndex: number,
+    previousPageData: Location[] | null,
+  ) => {
+    if (previousPageData && !previousPageData.length) return null;
+    if (pageIndex > 0) return null; // Fetch all in one go
+    return `/api/admin/mailroom/locations?page=1&pageSize=1000`;
+  };
+
+  const {
+    data: infiniteLocationsData,
+    // size: locationsSize,
+    // setSize: setLocationsSize,
+  } = useSWRInfinite(getLocationsKey, fetcherLocations, {
+    revalidateOnFocus: false,
+    dedupingInterval: 10000,
+    keepPreviousData: true,
+  });
+
+  // Flatten locations
+  useEffect(() => {
+    if (infiniteLocationsData) {
+      const all = infiniteLocationsData.flatMap((d) => d);
+      setLocations(all);
+    }
+  }, [infiniteLocationsData]);
+
   const { data: overviewData, isValidating } = useSWR(
     lockersKey,
     fetcherLockers,
@@ -288,9 +315,6 @@ export default function MailroomLockers() {
       keepPreviousData: true,
     },
   );
-  const { data: locationsData } = useSWR(locationsKey, fetcherLocations, {
-    revalidateOnFocus: false,
-  });
 
   useEffect(() => {
     if (!isValidating) {
@@ -304,11 +328,7 @@ export default function MailroomLockers() {
     } else {
       setLockers([]);
     }
-
-    if (Array.isArray(locationsData) && locationsData.length > 0) {
-      setLocations(locationsData);
-    }
-  }, [overviewData, locationsData]);
+  }, [overviewData]);
 
   const refreshAll = async () => {
     try {
@@ -565,43 +585,88 @@ export default function MailroomLockers() {
       )}
 
       <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
+        {isMobile ? (
+          <Stack mb="md">
             <SearchInput onSearch={handleSearchSubmit} searchQuery={query} />
-            <Select
-              placeholder="Filter by Location"
-              aria-label="Filter by location"
-              data={locations.map((l) => ({ value: l.id, label: l.name }))}
-              value={filterLocation}
-              onChange={(val) => {
-                setFilterLocation(val ?? null);
-                setPage(1);
-              }}
-              clearable
-              style={{ width: 200 }}
-            />
-
+            <Group grow>
+              <Select
+                placeholder="Filter by Location"
+                aria-label="Filter by location"
+                data={locations.map((l) => ({ value: l.id, label: l.name }))}
+                value={filterLocation}
+                onChange={(val) => {
+                  setFilterLocation(val ?? null);
+                  setPage(1);
+                }}
+                clearable
+                searchable
+              />
+              <Button
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
+                onClick={() => handleOpenModal()}
+                aria-label="Add new locker"
+                color="#1e3a8a"
+              >
+                Add
+              </Button>
+            </Group>
             {(query || filterLocation || activeTab !== "all") && (
               <Button
                 variant="subtle"
                 color="red.8"
                 size="sm"
                 onClick={clearFilters}
-                aria-label="Clear all filters"
               >
                 Clear Filters
               </Button>
             )}
-          </Group>
-          <Button
-            leftSection={<IconPlus size={16} aria-hidden="true" />}
-            onClick={() => handleOpenModal()}
-            aria-label="Add new locker"
-            color="#1e3a8a"
+          </Stack>
+        ) : (
+          <Group
+            justify="space-between"
+            mb="md"
+            gap="xs"
+            align="center"
+            wrap="nowrap"
           >
-            Add Locker
-          </Button>
-        </Group>
+            <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
+              <SearchInput onSearch={handleSearchSubmit} searchQuery={query} />
+              <Select
+                placeholder="Filter by Location"
+                aria-label="Filter by location"
+                data={locations.map((l) => ({ value: l.id, label: l.name }))}
+                value={filterLocation}
+                onChange={(val) => {
+                  setFilterLocation(val ?? null);
+                  setPage(1);
+                }}
+                clearable
+                searchable
+                style={{ width: 200, flexShrink: 0 }}
+              />
+
+              {(query || filterLocation || activeTab !== "all") && (
+                <Button
+                  variant="subtle"
+                  color="red.8"
+                  size="sm"
+                  onClick={clearFilters}
+                  aria-label="Clear all filters"
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </Group>
+            <Button
+              leftSection={<IconPlus size={16} aria-hidden="true" />}
+              onClick={() => handleOpenModal()}
+              aria-label="Add new locker"
+              color="#1e3a8a"
+            >
+              Add Locker
+            </Button>
+          </Group>
+        )}
 
         <Tabs
           id="mailroom-lockers-tabs"
@@ -650,9 +715,6 @@ export default function MailroomLockers() {
                   setPageSize(n);
                   setPage(1);
                 }}
-                paginationText={({ from, to, totalRecords }) =>
-                  `Showing ${from} to ${to} of ${totalRecords} lockers`
-                }
                 recordsPerPageLabel="Lockers per page"
                 noRecordsText="No records found"
                 columns={columns}
@@ -723,6 +785,8 @@ export default function MailroomLockers() {
           />
           <Select
             label="Location"
+            searchable
+            clearable
             placeholder="Select location"
             aria-label="Select locker location"
             data={locations.map((l) => ({ value: l.id, label: l.name }))}
