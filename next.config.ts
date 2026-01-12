@@ -35,7 +35,22 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/**",
       },
     ],
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60,
   },
+  // Performance optimizations
+  compress: true,
+  poweredByHeader: false,
+  // Optimize bundle size
+  experimental: {
+    optimizePackageImports: [
+      "@mantine/core",
+      "@mantine/hooks",
+      "@tabler/icons-react",
+      "mantine-datatable",
+    ],
+  },
+  // SWC minification is enabled by default in Next.js 13+
 };
 
 export default nextConfig;

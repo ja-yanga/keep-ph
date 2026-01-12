@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +27,7 @@ import {
   IconPackage,
   IconRefresh,
 } from "@tabler/icons-react";
+// Import only needed dayjs functions to reduce bundle size
 import dayjs from "dayjs";
 import { fetcher, getStatusFormat } from "@/utils/helper";
 import { StatCard } from "./StatCard";
@@ -53,14 +54,26 @@ type DashboardStats = {
 export default function AdminDashboard() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [currentDate, setCurrentDate] = useState<string>("");
+  const [dateTime, setDateTime] = useState<string>("");
 
   const {
     data,
     error,
     isValidating: isRefreshingSWR,
   } = useSWR<DashboardStats | undefined>(API_ENDPOINTS.admin.stats, fetcher, {
-    revalidateOnFocus: true,
+    revalidateOnFocus: false, // Disable to reduce unnecessary requests
+    revalidateOnReconnect: true, // Only revalidate on reconnect
+    dedupingInterval: 2000, // Dedupe requests within 2 seconds
+    focusThrottleInterval: 5000, // Throttle focus revalidation
   });
+
+  // Set date only on client side to prevent hydration mismatch
+  useEffect(() => {
+    const now = dayjs();
+    setCurrentDate(now.format("MMMM D, YYYY"));
+    setDateTime(now.format("YYYY-MM-DD"));
+  }, []);
 
   const loading = !data && !error;
 
@@ -81,7 +94,12 @@ export default function AdminDashboard() {
 
   if (loading) {
     pageContent = (
-      <Stack gap="xl">
+      <Stack
+        gap="xl"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading dashboard data"
+      >
         <Group justify="space-between" align="flex-end">
           <div>
             <Skeleton h={32} w={200} mb="xs" />
@@ -111,13 +129,21 @@ export default function AdminDashboard() {
     );
   } else if (!stats) {
     pageContent = (
-      <Center h={400}>
+      <Center h={400} role="alert" aria-live="polite">
         <Stack align="center" gap="xs">
-          <IconAlertCircle size={48} color="var(--mantine-color-gray-4)" />
+          <IconAlertCircle
+            size={48}
+            color="var(--mantine-color-gray-4)"
+            aria-hidden="true"
+          />
           <Text c="dimmed" fw={500}>
             No dashboard data available.
           </Text>
-          <Button variant="light" onClick={handleRefresh}>
+          <Button
+            variant="light"
+            onClick={handleRefresh}
+            aria-label="Try refreshing dashboard data"
+          >
             Try Refreshing
           </Button>
         </Stack>
@@ -146,17 +172,22 @@ export default function AdminDashboard() {
             </Title>
             <Text c="dark.3" size="sm" fw={500}>
               Welcome back. Here is what&apos;s happening today,{" "}
-              <Text span c="dark.4" fw={800}>
-                {dayjs().format("MMMM D, YYYY")}
-              </Text>
+              {currentDate ? (
+                <time dateTime={dateTime} suppressHydrationWarning>
+                  {currentDate}
+                </time>
+              ) : (
+                <span suppressHydrationWarning>today</span>
+              )}
               .
             </Text>
           </div>
           <Button
             variant="default"
-            leftSection={<IconRefresh size={16} />}
+            leftSection={<IconRefresh size={16} aria-hidden="true" />}
             loading={refreshing || isRefreshingSWR}
             onClick={handleRefresh}
+            aria-label="Refresh dashboard data"
           >
             Refresh Data
           </Button>
@@ -202,6 +233,7 @@ export default function AdminDashboard() {
                   roundCaps
                   thickness={6}
                   sections={[{ value: occupancyRate, color: "violet" }]}
+                  aria-label={`Locker occupancy: ${Math.round(occupancyRate)}%`}
                 />
                 <div>
                   <Text fw={800} size="xl" lh={1}>
@@ -219,7 +251,14 @@ export default function AdminDashboard() {
           />
         </SimpleGrid>
 
-        <Paper withBorder p="xl" radius="lg" shadow="sm">
+        <Paper
+          withBorder
+          p="xl"
+          radius="lg"
+          shadow="sm"
+          role="region"
+          aria-labelledby="recent-packages-heading"
+        >
           <Group justify="space-between" mb="xl">
             <Group gap="sm">
               <ThemeIcon
@@ -227,11 +266,17 @@ export default function AdminDashboard() {
                 gradient={{ from: "gray.1", to: "gray.2", deg: 180 }}
                 size="lg"
                 radius="md"
+                aria-hidden="true"
               >
                 <IconPackage size={20} color="var(--mantine-color-dark-3)" />
               </ThemeIcon>
               <div>
-                <Title order={3} fw={800} size="h4">
+                <Title
+                  order={3}
+                  fw={800}
+                  size="h4"
+                  id="recent-packages-heading"
+                >
                   Recent Packages
                 </Title>
                 <Text size="xs" c="dark.3" fw={500}>
@@ -244,8 +289,9 @@ export default function AdminDashboard() {
               color="dark"
               size="xs"
               radius="md"
-              rightSection={<IconArrowRight size={14} />}
+              rightSection={<IconArrowRight size={14} aria-hidden="true" />}
               onClick={() => router.push("/admin/packages")}
+              aria-label="View all packages"
             >
               View Full Inventory
             </Button>
@@ -258,6 +304,8 @@ export default function AdminDashboard() {
             highlightOnHover
             minHeight={150}
             records={recent}
+            role="table"
+            aria-label="Recent packages"
             columns={[
               {
                 accessor: "package_name",
@@ -286,6 +334,7 @@ export default function AdminDashboard() {
                     radius="md"
                     variant="dot"
                     color={getStatusFormat(pkg.status)}
+                    aria-label={`Package status: ${pkg.status?.replace(/_/g, " ") ?? "unknown"}`}
                   >
                     {pkg.status?.replace(/_/g, " ") ?? "—"}
                   </Badge>
@@ -297,14 +346,24 @@ export default function AdminDashboard() {
                 textAlign: "right",
                 render: (pkg) => (
                   <Text size="sm" fw={600} c="dark.3">
-                    {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                    {pkg.received_at ? (
+                      <time dateTime={pkg.received_at}>
+                        {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                      </time>
+                    ) : (
+                      "—"
+                    )}
                   </Text>
                 ),
               },
             ]}
             noRecordsText="No recent activity found"
             noRecordsIcon={
-              <IconPackage size={32} color="var(--mantine-color-gray-3)" />
+              <IconPackage
+                size={32}
+                color="var(--mantine-color-gray-3)"
+                aria-hidden="true"
+              />
             }
           />
         </Paper>

@@ -24,6 +24,15 @@ export function StatCard({
       radius="lg"
       shadow="xs"
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`${title}: ${value ?? description ?? "View details"}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         borderLeft: `6px solid var(--mantine-color-${color}-filled)`,
         background: `linear-gradient(135deg, var(--mantine-color-white) 0%, var(--mantine-color-gray-0) 100%)`,

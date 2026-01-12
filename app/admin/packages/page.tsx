@@ -1,12 +1,29 @@
 "use client";
-import { Container, Title } from "@mantine/core";
-import MailroomPackages from "@/components/MailroomPackages";
+import { Container, Title, Center, Loader } from "@mantine/core";
+import dynamic from "next/dynamic";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
+
+// Dynamic import for MailroomPackages to reduce initial bundle size
+const MailroomPackages = dynamic(
+  () => import("@/components/MailroomPackages"),
+  {
+    loading: () => (
+      <Center h={400}>
+        <Loader size="lg" color="violet" type="dots" />
+      </Center>
+    ),
+    ssr: true, // Enable SSR for better initial load
+  },
+);
 
 export default function PackagesPage() {
   return (
     <PrivateMainLayout>
-      <main style={{ flex: 1 }}>
+      <main
+        style={{ flex: 1 }}
+        role="main"
+        aria-label="Packages management page"
+      >
         <Container size="xl" py="xl">
           <Title order={2} mb="lg">
             Packages

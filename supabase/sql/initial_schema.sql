@@ -415,7 +415,7 @@ CREATE TABLE rewards_claim_table (
   rewards_claim_created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   rewards_claim_processed_at TIMESTAMP WITH TIME ZONE,
   rewards_claim_proof_path TEXT,
-  rewards_claim_total_referrals INTEGER,
+  rewards_claim_total_referrals INT,
   CONSTRAINT rewards_claim_table_pkey PRIMARY KEY (rewards_claim_id)
 );
 
@@ -1016,65 +1016,38 @@ USING (
 
 -- Rewards status RPC consolidates referral count + claims metadata
 CREATE OR REPLACE FUNCTION get_rewards_status(input_user_id UUID)
-RETURNS JSON
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO ''
 AS $$
 DECLARE
-  threshold CONSTANT INTEGER := 10;
-  default_amount CONSTANT NUMERIC := 500;
-  referral_cnt INTEGER := 0;
-  claims JSON := '[]'::JSON;
-  has_processing_or_paid BOOLEAN := FALSE;
+    v_total_referrals INT;
+    v_claimed_milestones INT;
+    v_eligible_milestones INT;
+    v_claimable_count INT;
+    v_referral_code TEXT;
 BEGIN
-  IF input_user_id IS NULL THEN
-    RAISE EXCEPTION 'input_user_id is required';
-  END IF;
+    SELECT users_referral_code, referral_reward_milestone_claimed 
+    INTO v_referral_code, v_claimed_milestones
+    FROM users_table 
+    WHERE users_id = input_user_id;
 
-  SELECT COUNT(*)
-  INTO referral_cnt
-  FROM public.referral_table
-  WHERE referral_referrer_user_id = input_user_id;
+    SELECT COUNT(*) INTO v_total_referrals
+    FROM public.referral_table
+    WHERE referral_referrer_user_id = input_user_id;
 
-  SELECT COALESCE(
-    JSON_AGG(
-      JSON_BUILD_OBJECT(
-        'id', rewards_claim_id,
-        'user_id', user_id,
-        'payment_method', rewards_claim_payment_method,
-        'account_details', rewards_claim_account_details,
-        'amount', rewards_claim_amount,
-        'status', rewards_claim_status,
-        'referral_count', rewards_claim_referral_count,
-        'created_at', rewards_claim_created_at,
-        'processed_at', rewards_claim_processed_at,
-        'proof_path', rewards_claim_proof_path
-      )
-      ORDER BY rewards_claim_created_at DESC
-    ),
-    '[]'::JSON
-  )
-  INTO claims
-  FROM public.rewards_claim_table
-  WHERE user_id = input_user_id;
+    v_eligible_milestones := FLOOR(v_total_referrals / 10);
+    v_claimable_count := v_eligible_milestones - v_claimed_milestones;
 
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.rewards_claim_table
-    WHERE user_id = input_user_id
-      AND rewards_claim_status IN ('PROCESSING', 'PAID')
-  )
-  INTO has_processing_or_paid;
-
-  RETURN JSON_BUILD_OBJECT(
-    'threshold', threshold,
-    'amount', default_amount,
-    'referralCount', referral_cnt,
-    'eligible', referral_cnt >= threshold,
-    'hasClaim', has_processing_or_paid,
-    'claims', claims
-  );
+    RETURN jsonb_build_object(
+        'threshold', 10,
+        'amount_per_milestone', 500,
+        'referralCount', v_total_referrals,
+        'eligibleMilestones', v_eligible_milestones,
+        'claimedMilestones', v_claimed_milestones,
+        'claimableCount', v_claimable_count,
+        'eligible', v_claimable_count > 0
+    );
 END;
 $$;
 
@@ -2746,6 +2719,1275 @@ GRANT EXECUTE ON FUNCTION public.get_admin_mailroom_packages(INTEGER, INTEGER, B
 ALTER TABLE public.payment_transaction_table 
 ADD CONSTRAINT payment_transaction_table_order_id_unique UNIQUE (payment_transaction_order_id);
 
+-- ============================================================================
+-- ADDITIONAL RPC FUNCTIONS (2026-01-05)
+-- ============================================================================
 
+-- Create RPC to get user mailroom registration stats
+CREATE OR REPLACE FUNCTION get_user_mailroom_registrations_stat(input_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    return_data JSONB;
+BEGIN
+    SELECT jsonb_agg(
+        jsonb_build_object(
+            'mailroom_registration_id', stats.mailroom_registration_id,
+            'stored', stats.stored,
+            'pending', stats.pending,
+            'released', stats.released
+        )
+    )
+    INTO return_data
+    FROM (
+        SELECT 
+            mit.mailroom_registration_id,
+            COUNT(*) FILTER (
+                WHERE mit.mailbox_item_status::TEXT NOT IN ('RELEASED', 'RETRIEVED', 'DISPOSED')
+                OR mit.mailbox_item_status::TEXT IN ('REQUEST_TO_SCAN', 'REQUEST_TO_RELEASE', 'REQUEST_TO_DISPOSE')
+            ) AS stored,
+            COUNT(*) FILTER (
+                WHERE mit.mailbox_item_status::TEXT LIKE 'REQUEST%'
+            ) AS pending,
+            COUNT(*) FILTER (
+                WHERE mit.mailbox_item_status::TEXT = 'RELEASED'
+            ) AS released
+        FROM mailbox_item_table mit
+        JOIN mailroom_registration_table mrt ON mit.mailroom_registration_id = mrt.mailroom_registration_id
+        WHERE mrt.user_id = input_user_id
+        AND mit.mailbox_item_deleted_at IS NULL
+        GROUP BY mit.mailroom_registration_id
+    ) stats;
 
+    RETURN COALESCE(return_data, '[]'::JSONB);
+END;
+$$;
 
+-- Create RPC for user to request action on a mailbox item
+CREATE OR REPLACE FUNCTION user_request_mailbox_item_action(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_user_id UUID;
+    var_mailbox_item_id UUID;
+    var_status TEXT;
+    var_selected_address_id UUID;
+    var_notes JSONB;
+    var_release_to_name TEXT;
+    var_registration_id UUID;
+    var_owner_id UUID;
+    var_action_type TEXT;
+    var_insert_obj JSONB;
+    var_release_info JSONB := '{}'::JSONB;
+    var_formatted_address TEXT;
+    var_return_data JSONB;
+BEGIN
+    var_user_id := (input_data->>'user_id')::UUID;
+    var_mailbox_item_id := (input_data->>'mailbox_item_id')::UUID;
+    var_status := input_data->>'status';
+    var_selected_address_id := (input_data->>'selected_address_id')::UUID;
+    var_notes := COALESCE((input_data->>'notes')::JSONB, '{}'::JSONB);
+    var_release_to_name := input_data->>'release_to_name';
+
+    -- 1. Verify ownership
+    SELECT mit.mailroom_registration_id INTO var_registration_id
+    FROM mailbox_item_table mit
+    WHERE mit.mailbox_item_id = var_mailbox_item_id;
+
+    IF var_registration_id IS NULL THEN
+        RAISE EXCEPTION 'Mailbox item not found';
+    END IF;
+
+    SELECT mrt.user_id INTO var_owner_id
+    FROM mailroom_registration_table mrt
+    WHERE mrt.mailroom_registration_id = var_registration_id;
+
+    IF var_owner_id <> var_user_id THEN
+        RAISE EXCEPTION 'Forbidden';
+    END IF;
+
+    -- 2. Handle status update
+    IF var_status IS NOT NULL THEN
+        IF var_status NOT IN ('STORED', 'RELEASED', 'RETRIEVED', 'DISPOSED', 'REQUEST_TO_RELEASE', 'REQUEST_TO_DISPOSE', 'REQUEST_TO_SCAN') THEN
+            RAISE EXCEPTION 'Invalid status';
+        END IF;
+
+        UPDATE mailbox_item_table
+        SET mailbox_item_status = var_status::mailroom_package_status,
+            mailbox_item_updated_at = NOW()
+        WHERE mailbox_item_id = var_mailbox_item_id;
+    END IF;
+
+    -- 3. Handle address selection
+    IF input_data ? 'selected_address_id' THEN
+        IF var_selected_address_id IS NOT NULL THEN
+            SELECT 
+                COALESCE(uat.user_address_label, '') || ', ' ||
+                COALESCE(uat.user_address_line1, '') || ', ' ||
+                COALESCE(uat.user_address_line2, '') || ', ' ||
+                COALESCE(uat.user_address_city, '') || ', ' ||
+                COALESCE(uat.user_address_region, '') || ', ' ||
+                COALESCE(uat.user_address_postal::TEXT, '')
+            INTO var_formatted_address
+            FROM user_address_table uat
+            WHERE uat.user_address_id = var_selected_address_id
+            AND uat.user_id = var_user_id;
+
+            IF var_formatted_address IS NULL THEN
+                RAISE EXCEPTION 'Address not found or unauthorized';
+            END IF;
+
+            UPDATE mailbox_item_table
+            SET user_address_id = var_selected_address_id,
+                mailbox_item_release_address = var_formatted_address
+            WHERE mailbox_item_id = var_mailbox_item_id;
+            
+            var_release_info := var_release_info || jsonb_build_object(
+                'user_address_id', var_selected_address_id,
+                'release_address', var_formatted_address
+            );
+        ELSE
+            UPDATE mailbox_item_table
+            SET user_address_id = NULL,
+                mailbox_item_release_address = NULL
+            WHERE mailbox_item_id = var_mailbox_item_id;
+        END IF;
+    END IF;
+
+    -- 4. Create action request if needed
+    var_action_type := CASE 
+        WHEN var_status = 'REQUEST_TO_RELEASE' THEN 'RELEASE'
+        WHEN var_status = 'REQUEST_TO_DISPOSE' THEN 'DISPOSE'
+        WHEN var_status = 'REQUEST_TO_SCAN' THEN 'SCAN'
+        ELSE NULL
+    END;
+
+    IF var_action_type IS NOT NULL THEN
+        IF var_action_type = 'RELEASE' THEN
+            -- Build release info for JSON storage
+            IF var_notes ? 'pickup_on_behalf' AND (var_notes->'pickup_on_behalf')::BOOLEAN THEN
+                var_release_info := var_release_info || jsonb_build_object(
+                    'pickup_on_behalf', jsonb_build_object(
+                        'name', var_notes->>'name',
+                        'mobile', var_notes->>'mobile',
+                        'contact_mode', var_notes->>'contact_mode'
+                    )
+                );
+            END IF;
+
+            IF var_release_to_name IS NOT NULL THEN
+                var_release_info := var_release_info || jsonb_build_object('release_to_name', var_release_to_name);
+            END IF;
+        END IF;
+
+        INSERT INTO mail_action_request_table (
+            mailbox_item_id,
+            user_id,
+            mail_action_request_type,
+            mail_action_request_status,
+            mail_action_request_forward_address,
+            mail_action_request_forward_tracking_number,
+            mail_action_request_forward_3pl_name,
+            mail_action_request_forward_tracking_url
+        )
+        VALUES (
+            var_mailbox_item_id,
+            var_user_id,
+            var_action_type::mail_action_request_type,
+            'PROCESSING',
+            CASE WHEN jsonb_array_length(jsonb_path_query_array(var_release_info, '$.*')) > 0 THEN var_release_info::TEXT ELSE input_data->>'forward_address' END,
+            input_data->>'forward_tracking_number',
+            input_data->>'forward_3pl_name',
+            input_data->>'forward_tracking_url'
+        );
+    END IF;
+
+    -- 5. Construct return data
+    SELECT row_to_json(mit)::JSONB INTO var_return_data
+    FROM mailbox_item_table mit
+    WHERE mit.mailbox_item_id = var_mailbox_item_id;
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for fetching user session data
+CREATE OR REPLACE FUNCTION get_user_session_data(input_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_profile JSONB;
+    var_kyc JSONB;
+    var_return_data JSONB;
+BEGIN
+    -- 1. Fetch profile data from users_table
+    SELECT jsonb_build_object(
+        'users_id', ut.users_id,
+        'users_email', ut.users_email,
+        'users_role', ut.users_role,
+        'users_avatar_url', ut.users_avatar_url,
+        'users_referral_code', ut.users_referral_code,
+        'users_is_verified', ut.users_is_verified,
+        'mobile_number', ut.mobile_number
+    )
+    INTO var_profile
+    FROM users_table ut
+    WHERE ut.users_id = input_user_id;
+
+    -- 2. Fetch KYC status
+    SELECT jsonb_build_object(
+        'status', COALESCE(uk.user_kyc_status, 'SUBMITTED')
+    )
+    INTO var_kyc
+    FROM user_kyc_table uk
+    WHERE uk.user_id = input_user_id;
+
+    -- 3. Construct return data
+    var_return_data := jsonb_build_object(
+        'profile', var_profile,
+        'kyc', var_kyc,
+        'role', var_profile->>'users_role'
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for KYC submission
+CREATE OR REPLACE FUNCTION user_submit_kyc(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_user_id UUID;
+    var_kyc_id UUID;
+    var_return_data JSONB;
+BEGIN
+    var_user_id := (input_data->>'user_id')::UUID;
+
+    -- Upsert KYC record
+    INSERT INTO user_kyc_table (
+        user_id,
+        user_kyc_status, 
+        user_kyc_id_document_type,
+        user_kyc_id_front_url,
+        user_kyc_id_back_url,
+        user_kyc_id_number,
+        user_kyc_first_name,
+        user_kyc_last_name,
+        user_kyc_date_of_birth,
+        user_kyc_agreements_accepted
+    )
+    VALUES (
+        var_user_id,
+        'SUBMITTED',
+        input_data->>'document_type',
+        input_data->>'id_front_url',
+        input_data->>'id_back_url',
+        input_data->>'user_kyc_id_number',
+        input_data->>'first_name',
+        input_data->>'last_name',
+        (input_data->>'birth_date')::DATE,
+        TRUE
+    )
+    ON CONFLICT (user_id) DO UPDATE SET
+        user_kyc_status = EXCLUDED.user_kyc_status,
+        user_kyc_id_document_type = EXCLUDED.user_kyc_id_document_type,
+        user_kyc_id_front_url = EXCLUDED.user_kyc_id_front_url,
+        user_kyc_id_back_url = EXCLUDED.user_kyc_id_back_url,
+        user_kyc_id_number = EXCLUDED.user_kyc_id_number,
+        user_kyc_first_name = EXCLUDED.user_kyc_first_name,
+        user_kyc_last_name = EXCLUDED.user_kyc_last_name,
+        user_kyc_date_of_birth = EXCLUDED.user_kyc_date_of_birth,
+        user_kyc_agreements_accepted = EXCLUDED.user_kyc_agreements_accepted
+    RETURNING user_kyc_id INTO var_kyc_id;
+
+    -- Insert address if provided
+    IF input_data->>'address_line1' IS NOT NULL AND input_data->>'address_line1' <> '' THEN
+        INSERT INTO user_kyc_address_table (
+            user_kyc_id,
+            user_kyc_address_line_one,
+            user_kyc_address_line_two,
+            user_kyc_address_city,
+            user_kyc_address_region,
+            user_kyc_address_postal_code,
+            user_kyc_address_is_default
+        )
+        VALUES (
+            var_kyc_id,
+            input_data->>'address_line1',
+            input_data->>'address_line2',
+            input_data->>'city',
+            input_data->>'region',
+            (input_data->>'postal')::INTEGER,
+            TRUE
+        );
+    END IF;
+
+    var_return_data := jsonb_build_object(
+        'ok', TRUE,
+        'status', 'SUBMITTED',
+        'user_kyc_id', var_kyc_id
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for user to fetch storage files and usage stats
+CREATE OR REPLACE FUNCTION get_user_storage_files(input_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_total_limit_mb NUMERIC := 0;
+    var_total_used_mb NUMERIC := 0;
+    var_scans JSONB := '[]'::JSONB;
+    var_return_data JSONB;
+BEGIN
+    -- 1. Calculate total storage limit across all user registrations
+    SELECT COALESCE(SUM(mpt.mailroom_plan_storage_limit), 0)
+    INTO var_total_limit_mb
+    FROM mailroom_registration_table mrt
+    JOIN mailroom_plan_table mpt ON mrt.mailroom_plan_id = mpt.mailroom_plan_id
+    WHERE mrt.user_id = input_user_id;
+
+    -- 2. Fetch scans and calculate total used storage
+    WITH user_mailbox_items AS (
+        SELECT mit.mailbox_item_id, mit.mailbox_item_name
+        FROM mailbox_item_table mit
+        JOIN mailroom_registration_table mrt ON mit.mailroom_registration_id = mrt.mailroom_registration_id
+        WHERE mrt.user_id = input_user_id
+    ),
+    user_files AS (
+        SELECT 
+            mft.mailroom_file_id AS id,
+            mft.mailroom_file_name AS file_name,
+            mft.mailroom_file_url AS file_url,
+            mft.mailroom_file_size_mb AS file_size_mb,
+            mft.mailroom_file_mime_type AS mime_type,
+            mft.mailroom_file_uploaded_at AS uploaded_at,
+            mft.mailbox_item_id AS package_id,
+            JSONB_BUILD_OBJECT(
+                'id', umi.mailbox_item_id,
+                'package_name', umi.mailbox_item_name
+            ) AS package
+        FROM mailroom_file_table mft
+        JOIN user_mailbox_items umi ON mft.mailbox_item_id = umi.mailbox_item_id
+        ORDER BY mft.mailroom_file_uploaded_at DESC
+    )
+    SELECT 
+        COALESCE(JSONB_AGG(uf), '[]'::JSONB),
+        COALESCE(SUM(uf.file_size_mb), 0)
+    INTO var_scans, var_total_used_mb
+    FROM user_files uf;
+
+    -- 3. Construct return data
+    var_return_data := JSONB_BUILD_OBJECT(
+        'scans', var_scans,
+        'usage', JSONB_BUILD_OBJECT(
+            'used_mb', var_total_used_mb,
+            'limit_mb', var_total_limit_mb,
+            'percentage', CASE 
+                WHEN var_total_limit_mb > 0 THEN LEAST((var_total_used_mb / var_total_limit_mb) * 100, 100)
+                ELSE 0
+            END
+        )
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for user to delete a storage file
+CREATE OR REPLACE FUNCTION delete_user_storage_file(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_user_id UUID;
+    var_file_id UUID;
+    var_registration_id UUID;
+    var_owner_id UUID;
+    var_file_url TEXT;
+    var_return_data JSONB;
+BEGIN
+    var_user_id := (input_data->>'user_id')::UUID;
+    var_file_id := (input_data->>'file_id')::UUID;
+
+    -- 1. Fetch file and its registration ID
+    SELECT 
+        mft.mailroom_file_url,
+        mit.mailroom_registration_id
+    INTO 
+        var_file_url,
+        var_registration_id
+    FROM mailroom_file_table mft
+    JOIN mailbox_item_table mit ON mft.mailbox_item_id = mit.mailbox_item_id
+    WHERE mft.mailroom_file_id = var_file_id;
+
+    IF var_file_url IS NULL THEN
+        RAISE EXCEPTION 'Scan not found';
+    END IF;
+
+    -- 2. Verify ownership
+    SELECT mrt.user_id INTO var_owner_id
+    FROM mailroom_registration_table mrt
+    WHERE mrt.mailroom_registration_id = var_registration_id;
+
+    IF var_owner_id <> var_user_id THEN
+        RAISE EXCEPTION 'Forbidden';
+    END IF;
+
+    -- 3. Delete from database
+    DELETE FROM mailroom_file_table
+    WHERE mailroom_file_id = var_file_id;
+
+    -- 4. Construct return data (frontend needs file_url to delete from storage)
+    var_return_data := JSONB_BUILD_OBJECT(
+        'success', TRUE,
+        'file_url', var_file_url
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for user to fetch scans and usage for a specific registration
+CREATE OR REPLACE FUNCTION get_registration_scans(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_user_id UUID;
+    var_registration_id UUID;
+    var_owner_id UUID;
+    var_limit_mb NUMERIC := 0;
+    var_used_mb NUMERIC := 0;
+    var_scans JSONB := '[]'::JSONB;
+    var_return_data JSONB;
+BEGIN
+    var_user_id := (input_data->>'user_id')::UUID;
+    var_registration_id := (input_data->>'registration_id')::UUID;
+
+    -- 1. Verify ownership and retrieve plan storage limit
+    SELECT 
+        mrt.user_id,
+        COALESCE(mpt.mailroom_plan_storage_limit, 100)
+    INTO 
+        var_owner_id,
+        var_limit_mb
+    FROM mailroom_registration_table mrt
+    JOIN mailroom_plan_table mpt ON mrt.mailroom_plan_id = mpt.mailroom_plan_id
+    WHERE mrt.mailroom_registration_id = var_registration_id;
+
+    IF var_owner_id IS NULL THEN
+        RAISE EXCEPTION 'Registration not found';
+    END IF;
+
+    IF var_owner_id <> var_user_id THEN
+        RAISE EXCEPTION 'You do not have permission to view these files';
+    END IF;
+
+    -- 2. Fetch scans and calculate total used storage for this registration
+    WITH reg_files AS (
+        SELECT 
+            mft.mailroom_file_id,
+            mft.mailbox_item_id,
+            mft.mailroom_file_name,
+            mft.mailroom_file_url,
+            mft.mailroom_file_size_mb,
+            mft.mailroom_file_mime_type,
+            mft.mailroom_file_uploaded_at,
+            mft.mailroom_file_type,
+            JSONB_BUILD_OBJECT(
+                'mailbox_item_id', mit.mailbox_item_id,
+                'mailbox_item_name', mit.mailbox_item_name,
+                'mailroom_registration_id', mit.mailroom_registration_id
+            ) AS mailbox_item_table
+        FROM mailroom_file_table mft
+        JOIN mailbox_item_table mit ON mft.mailbox_item_id = mit.mailbox_item_id
+        WHERE mit.mailroom_registration_id = var_registration_id
+        ORDER BY mft.mailroom_file_uploaded_at DESC
+    )
+    SELECT 
+        COALESCE(JSONB_AGG(rf), '[]'::JSONB),
+        COALESCE(SUM(rf.mailroom_file_size_mb), 0)
+    INTO var_scans, var_used_mb
+    FROM reg_files rf;
+
+    -- 3. Construct return data
+    var_return_data := JSONB_BUILD_OBJECT(
+        'scans', var_scans,
+        'usage', JSONB_BUILD_OBJECT(
+            'used_mb', var_used_mb,
+            'limit_mb', var_limit_mb,
+            'percentage', CASE 
+                WHEN var_limit_mb > 0 THEN LEAST((var_used_mb / var_limit_mb) * 100, 100)
+                ELSE 0
+            END
+        )
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC to safely create notifications
+CREATE OR REPLACE FUNCTION create_notification(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_user_id UUID;
+    var_title TEXT;
+    var_message TEXT;
+    var_type TEXT;
+    var_link TEXT;
+    var_return_data JSONB;
+BEGIN
+    var_user_id := (input_data->>'user_id')::UUID;
+    var_title := input_data->>'title';
+    var_message := input_data->>'message';
+    var_type := input_data->>'type';
+    var_link := input_data->>'link';
+
+    -- Insert the notification
+    INSERT INTO notification_table (
+        user_id,
+        notification_title,
+        notification_message,
+        notification_type,
+        notification_link,
+        notification_is_read
+    )
+    VALUES (
+        var_user_id,
+        var_title,
+        var_message,
+        var_type::notification_type,
+        var_link,
+        FALSE
+    );
+
+    var_return_data := JSONB_BUILD_OBJECT('success', TRUE);
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for admin to update a mailbox item and related data
+CREATE OR REPLACE FUNCTION admin_update_mailbox_item(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_admin_id UUID;
+    var_item_id UUID;
+    var_package_name TEXT;
+    var_registration_id UUID;
+    var_locker_id UUID;
+    var_package_type TEXT;
+    var_status TEXT;
+    var_package_photo TEXT;
+    var_locker_status TEXT;
+    
+    var_old_status TEXT;
+    var_old_registration_id UUID;
+    var_old_item_name TEXT;
+    
+    var_updated_item JSONB;
+    var_return_data JSONB;
+BEGIN
+    var_admin_id := (input_data->>'user_id')::UUID;
+    var_item_id := (input_data->>'id')::UUID;
+    var_package_name := input_data->>'package_name';
+    var_registration_id := (input_data->>'registration_id')::UUID;
+    var_locker_id := (input_data->>'locker_id')::UUID;
+    var_package_type := input_data->>'package_type';
+    var_status := input_data->>'status';
+    var_package_photo := input_data->>'package_photo';
+    var_locker_status := input_data->>'locker_status';
+
+    -- 1. Fetch existing item data
+    SELECT 
+        mailbox_item_status, 
+        mailroom_registration_id, 
+        mailbox_item_name
+    INTO 
+        var_old_status, 
+        var_old_registration_id, 
+        var_old_item_name
+    FROM mailbox_item_table
+    WHERE mailbox_item_id = var_item_id;
+
+    IF var_old_item_name IS NULL THEN
+        RAISE EXCEPTION 'Package not found';
+    END IF;
+
+    -- 2. Update mailbox_item_table
+    UPDATE mailbox_item_table
+    SET
+        mailbox_item_name = COALESCE(var_package_name, mailbox_item_name),
+        mailroom_registration_id = COALESCE(var_registration_id, mailroom_registration_id),
+        location_locker_id = CASE WHEN (input_data ? 'locker_id') THEN var_locker_id ELSE location_locker_id END,
+        mailbox_item_type = COALESCE(var_package_type::mailroom_package_type, mailbox_item_type),
+        mailbox_item_status = COALESCE(var_status::mailroom_package_status, mailbox_item_status),
+        mailbox_item_photo = CASE WHEN (input_data ? 'package_photo') THEN var_package_photo ELSE mailbox_item_photo END,
+        mailbox_item_updated_at = NOW()
+    WHERE mailbox_item_id = var_item_id
+    RETURNING TO_JSONB(mailbox_item_table.*) INTO var_updated_item;
+
+    -- 3. Update locker status if provided
+    IF var_locker_status IS NOT NULL AND var_old_registration_id IS NOT NULL THEN
+        UPDATE mailroom_assigned_locker_table
+        SET mailroom_assigned_locker_status = var_locker_status::mailroom_assigned_locker_status
+        WHERE mailroom_registration_id = var_old_registration_id;
+    END IF;
+
+    -- 4. Construct return data with embedded files
+    SELECT 
+      var_updated_item || jsonb_build_object(
+        'mailroom_file_table', (
+          SELECT json_agg(row_to_json(mft))
+          FROM public.mailroom_file_table mft
+          WHERE mft.mailbox_item_id = var_item_id
+        )
+      ) INTO var_updated_item;
+
+    var_return_data := JSONB_BUILD_OBJECT(
+        'ok', TRUE,
+        'item', var_updated_item,
+        'old_status', var_old_status,
+        'old_registration_id', var_old_registration_id,
+        'old_item_name', var_old_item_name
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for admin to soft delete a mailbox item
+CREATE OR REPLACE FUNCTION admin_delete_mailbox_item(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_admin_id UUID;
+    var_item_id UUID;
+    var_package_name TEXT;
+    var_registration_id UUID;
+    var_return_data JSONB;
+BEGIN
+    var_admin_id := (input_data->>'user_id')::UUID;
+    var_item_id := (input_data->>'id')::UUID;
+
+    -- 1. Fetch package details for logging
+    SELECT 
+        mailbox_item_name, 
+        mailroom_registration_id
+    INTO 
+        var_package_name, 
+        var_registration_id
+    FROM mailbox_item_table
+    WHERE mailbox_item_id = var_item_id;
+
+    IF var_package_name IS NULL THEN
+        RAISE EXCEPTION 'Package not found';
+    END IF;
+
+    -- 2. Soft delete: set deleted_at timestamp
+    UPDATE mailbox_item_table
+    SET mailbox_item_deleted_at = NOW()
+    WHERE mailbox_item_id = var_item_id;
+
+    -- 3. Construct return data
+    var_return_data := JSONB_BUILD_OBJECT(
+        'success', TRUE,
+        'package_name', var_package_name,
+        'registration_id', var_registration_id,
+        'deleted_at', NOW()
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC to mark all unread notifications as read for a specific user
+CREATE OR REPLACE FUNCTION mark_notifications_as_read(input_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_return_data JSONB;
+BEGIN
+    UPDATE notification_table
+    SET notification_is_read = TRUE
+    WHERE user_id = input_user_id
+      AND notification_is_read = FALSE;
+
+    var_return_data := JSONB_BUILD_OBJECT('success', TRUE);
+    RETURN var_return_data;
+END;
+$$;
+
+-- Create RPC for generating a unique mailroom registration code
+CREATE OR REPLACE FUNCTION generate_mailroom_registration_code()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_mailroom_code TEXT;
+    var_is_unique BOOLEAN := FALSE;
+    var_attempts INTEGER := 0;
+    var_random_str TEXT;
+    var_return_data JSONB;
+BEGIN
+    WHILE NOT var_is_unique AND var_attempts < 10 LOOP
+        -- Generate 6 random hex characters
+        var_random_str := UPPER(SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 6));
+        var_mailroom_code := 'KPH-' || var_random_str;
+
+        -- Check if code exists
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM mailroom_registration_table 
+            WHERE mailroom_registration_code = var_mailroom_code
+        ) THEN
+            var_is_unique := TRUE;
+        END IF;
+
+        var_attempts := var_attempts + 1;
+    END LOOP;
+
+    IF NOT var_is_unique THEN
+        RAISE EXCEPTION 'Failed to generate unique mailroom code';
+    END IF;
+
+    var_return_data := JSONB_BUILD_OBJECT(
+        'code', var_mailroom_code
+    );
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- RPC for getting assigned lockers for admin
+CREATE OR REPLACE FUNCTION admin_get_assigned_lockers()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_return_data JSONB;
+BEGIN
+    SELECT JSONB_AGG(
+        JSONB_BUILD_OBJECT(
+            'id', malt.mailroom_assigned_locker_id,
+            'registration_id', malt.mailroom_registration_id,
+            'locker_id', malt.location_locker_id,
+            'status', malt.mailroom_assigned_locker_status,
+            'assigned_at', malt.mailroom_assigned_locker_assigned_at,
+            'registration', JSONB_BUILD_OBJECT(
+                'id', mrt.mailroom_registration_id,
+                'user_id', mrt.user_id,
+                'email', ut.users_email
+            ),
+            'locker', JSONB_BUILD_OBJECT(
+                'id', llt.location_locker_id,
+                'code', llt.location_locker_code,
+                'is_available', llt.location_locker_is_available
+            )
+        )
+    ) INTO var_return_data
+    FROM mailroom_assigned_locker_table malt
+    JOIN mailroom_registration_table mrt ON malt.mailroom_registration_id = mrt.mailroom_registration_id
+    JOIN users_table ut ON mrt.user_id = ut.users_id
+    JOIN location_locker_table llt ON malt.location_locker_id = llt.location_locker_id;
+
+    RETURN COALESCE(var_return_data, '[]'::JSONB);
+END;
+$$;
+
+-- RPC for creating an assigned locker for admin
+CREATE OR REPLACE FUNCTION admin_create_assigned_locker(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    var_registration_id UUID;
+    var_locker_id UUID;
+    var_locker_available BOOLEAN;
+    var_new_assignment_id UUID;
+    var_return_data JSONB;
+BEGIN
+    var_registration_id := (input_data->>'registration_id')::UUID;
+    var_locker_id := (input_data->>'locker_id')::UUID;
+
+    -- 1. Check locker availability
+    SELECT location_locker_is_available INTO var_locker_available
+    FROM location_locker_table
+    WHERE location_locker_id = var_locker_id
+    FOR UPDATE; -- Lock the row for update
+
+    IF var_locker_available IS NULL THEN
+        RAISE EXCEPTION 'Locker not found';
+    ELSIF var_locker_available = FALSE THEN
+        RAISE EXCEPTION 'Locker is not available';
+    END IF;
+
+    -- 2. Create assignment
+    INSERT INTO mailroom_assigned_locker_table (
+        mailroom_registration_id,
+        location_locker_id,
+        mailroom_assigned_locker_status,
+        mailroom_assigned_locker_assigned_at
+    )
+    VALUES (
+        var_registration_id,
+        var_locker_id,
+        'Empty',
+        NOW()
+    )
+    RETURNING mailroom_assigned_locker_id INTO var_new_assignment_id;
+
+    -- 3. Mark locker unavailable
+    UPDATE location_locker_table
+    SET location_locker_is_available = FALSE
+    WHERE location_locker_id = var_locker_id;
+
+    -- 4. Return the new assignment with joined data
+    SELECT JSONB_BUILD_OBJECT(
+        'id', malt.mailroom_assigned_locker_id,
+        'registration_id', malt.mailroom_registration_id,
+        'locker_id', malt.location_locker_id,
+        'status', malt.mailroom_assigned_locker_status,
+        'assigned_at', malt.mailroom_assigned_locker_assigned_at,
+        'locker', JSONB_BUILD_OBJECT(
+            'location_locker_id', llt.location_locker_id,
+            'location_locker_code', llt.location_locker_code
+        ),
+        'registration', JSONB_BUILD_OBJECT(
+            'mailroom_registration_id', mrt.mailroom_registration_id,
+            'user_id', mrt.user_id
+        )
+    ) INTO var_return_data
+    FROM mailroom_assigned_locker_table malt
+    JOIN location_locker_table llt ON malt.location_locker_id = llt.location_locker_id
+    JOIN mailroom_registration_table mrt ON malt.mailroom_registration_id = mrt.mailroom_registration_id
+    WHERE malt.mailroom_assigned_locker_id = var_new_assignment_id;
+
+    RETURN var_return_data;
+END;
+$$;
+
+-- RPC to fetch archived (soft-deleted) inventory records
+CREATE OR REPLACE FUNCTION public.get_admin_archived_packages(
+  input_limit INTEGER DEFAULT 50,
+  input_offset INTEGER DEFAULT 0
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  result JSON;
+  packages_json JSON;
+  total_count INTEGER;
+BEGIN
+  -- Get total count of archived packages
+  SELECT COUNT(*) INTO total_count
+  FROM public.mailbox_item_table
+  WHERE mailbox_item_deleted_at IS NOT NULL;
+
+  -- Get archived packages with same structure as get_admin_mailroom_packages
+  WITH archived_items AS (
+    SELECT 
+      mi.mailbox_item_id,
+      mi.mailbox_item_name,
+      mi.mailroom_registration_id,
+      mi.location_locker_id,
+      mi.mailbox_item_type,
+      mi.mailbox_item_status,
+      mi.mailbox_item_photo,
+      mi.mailbox_item_received_at,
+      mi.mailbox_item_created_at,
+      mi.mailbox_item_updated_at,
+      mi.mailbox_item_deleted_at,
+      mr.mailroom_registration_id AS reg_id,
+      mr.mailroom_registration_code,
+      ll.location_locker_id AS locker_id,
+      ll.location_locker_code,
+      u.users_email,
+      u.mobile_number,
+      uk.user_kyc_first_name,
+      uk.user_kyc_last_name,
+      ml.mailroom_location_name,
+      p.mailroom_plan_id,
+      p.mailroom_plan_name,
+      p.mailroom_plan_can_receive_mail,
+      p.mailroom_plan_can_receive_parcels
+    FROM public.mailbox_item_table mi
+    LEFT JOIN public.mailroom_registration_table mr ON mr.mailroom_registration_id = mi.mailroom_registration_id
+    LEFT JOIN public.location_locker_table ll ON ll.location_locker_id = mi.location_locker_id
+    LEFT JOIN public.users_table u ON u.users_id = mr.user_id
+    LEFT JOIN public.user_kyc_table uk ON uk.user_id = u.users_id
+    LEFT JOIN public.mailroom_location_table ml ON ml.mailroom_location_id = mr.mailroom_location_id
+    LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = mr.mailroom_plan_id
+    WHERE mi.mailbox_item_deleted_at IS NOT NULL
+    ORDER BY mi.mailbox_item_deleted_at DESC
+    LIMIT input_limit
+    OFFSET input_offset
+  )
+  SELECT COALESCE(
+    JSON_AGG(
+      JSON_BUILD_OBJECT(
+        'id', ai.mailbox_item_id,
+        'package_name', ai.mailbox_item_name,
+        'registration_id', ai.mailroom_registration_id,
+        'locker_id', ai.location_locker_id,
+        'package_type', ai.mailbox_item_type,
+        'status', ai.mailbox_item_status,
+        'package_photo', ai.mailbox_item_photo,
+        'received_at', ai.mailbox_item_received_at,
+        'mailbox_item_created_at', ai.mailbox_item_created_at,
+        'mailbox_item_updated_at', ai.mailbox_item_updated_at,
+        'deleted_at', ai.mailbox_item_deleted_at,
+        'registration', CASE
+          WHEN ai.reg_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'id', ai.reg_id,
+            'full_name', COALESCE(
+              CONCAT_WS(' ', ai.user_kyc_first_name, ai.user_kyc_last_name),
+              ai.mailroom_location_name,
+              'Unknown'
+            ),
+            'email', ai.users_email,
+            'mobile', ai.mobile_number,
+            'mailroom_code', ai.mailroom_registration_code,
+            'mailroom_plans', CASE
+              WHEN ai.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+                'name', ai.mailroom_plan_name,
+                'can_receive_mail', ai.mailroom_plan_can_receive_mail,
+                'can_receive_parcels', ai.mailroom_plan_can_receive_parcels
+              )
+              ELSE NULL
+            END
+          )
+          ELSE NULL
+        END,
+        'locker', CASE
+          WHEN ai.locker_id IS NOT NULL THEN JSON_BUILD_OBJECT(
+            'id', ai.locker_id,
+            'locker_code', ai.location_locker_code
+          )
+          ELSE NULL
+        END
+      )
+    ),
+    '[]'::JSON
+  )
+  INTO packages_json
+  FROM archived_items ai;
+
+  result := JSON_BUILD_OBJECT(
+    'packages', packages_json,
+    'total_count', total_count
+  );
+
+  RETURN result;
+END;
+$$;
+
+-- RPC to restore archived package
+CREATE OR REPLACE FUNCTION public.admin_restore_mailbox_item(input_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  var_item_id UUID;
+  var_package_name TEXT;
+  var_return_data JSONB;
+BEGIN
+  var_item_id := (input_data->>'id')::UUID;
+
+  UPDATE public.mailbox_item_table
+  SET mailbox_item_deleted_at = NULL,
+      mailbox_item_updated_at = NOW()
+  WHERE mailbox_item_id = var_item_id
+  RETURNING mailbox_item_name INTO var_package_name;
+
+  IF var_package_name IS NULL THEN
+    RAISE EXCEPTION 'Package not found';
+  END IF;
+
+  var_return_data := JSONB_BUILD_OBJECT(
+    'success', TRUE,
+    'package_name', var_package_name,
+    'restored_at', NOW()
+  );
+
+  RETURN var_return_data;
+END;
+$$;
+
+-- Create DB-BACKUPS storage bucket for database backups
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM storage.buckets WHERE id = 'DB-BACKUPS'
+  ) THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('DB-BACKUPS', 'DB-BACKUPS', false);
+  ELSE
+    UPDATE storage.buckets 
+    SET public = false 
+    WHERE id = 'DB-BACKUPS';
+  END IF;
+END $$;
+
+-- Policy: Only admins can access DB-BACKUPS bucket
+DROP POLICY IF EXISTS db_backups_policy ON storage.objects;
+CREATE POLICY db_backups_policy
+ON storage.objects
+FOR ALL
+USING (
+  bucket_id = 'DB-BACKUPS'
+  AND EXISTS (
+    SELECT 1 
+    FROM public.users_table 
+    WHERE users_id = auth.uid() 
+    AND users_role = 'admin'
+  )
+);
+
+CREATE OR REPLACE FUNCTION check_email_exists(p_email TEXT)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1
+        FROM users_table
+        WHERE users_email = p_email
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; 
+
+CREATE OR REPLACE FUNCTION public.get_user_kyc_with_populated_user(input_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  IF input_user_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN (
+    SELECT 
+      to_jsonb(kyc.*) || 
+      jsonb_build_object(
+        'user', jsonb_build_object(
+          'users_id', users.users_id,
+          'users_email', users.users_email,
+          'users_avatar_url', users.users_avatar_url
+        )
+      )
+    FROM public.user_kyc_table AS kyc
+    LEFT JOIN public.users_table AS users
+      ON kyc.user_id = users.users_id
+    WHERE kyc.user_id = input_user_id
+    LIMIT 1
+  );
+END;
+$$;
+
+-- Create the RPC function to claim rewards
+CREATE OR REPLACE FUNCTION public.claim_referral_rewards(
+    input_user_id UUID,
+    input_payment_method TEXT,
+    input_account_details TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_total_referrals INT;
+    v_claimed_milestones INT;
+    v_eligible_milestones INT;
+    v_claimable_count INT;
+    v_reward_amount INT;
+    v_new_milestone_count INT;
+    v_result JSONB;
+BEGIN
+    -- Get current user stats
+    -- Count from referral_table where this user is the referrer
+    SELECT COUNT(*) INTO v_total_referrals
+    FROM public.referral_table
+    WHERE referral_referrer_user_id = input_user_id;
+
+    -- Get already claimed milestones
+    SELECT referral_reward_milestone_claimed INTO v_claimed_milestones
+    FROM users_table
+    WHERE users_id = input_user_id;
+
+    -- Calculate eligibility
+    v_eligible_milestones := FLOOR(v_total_referrals / 10);
+    v_claimable_count := v_eligible_milestones - v_claimed_milestones;
+
+    IF v_claimable_count <= 0 THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'No rewards currently claimable',
+            'payout', 0
+        );
+    END IF;
+
+    v_reward_amount := v_claimable_count * 500;
+    v_new_milestone_count := v_claimed_milestones + v_claimable_count;
+
+    -- Update user table (atomic)
+    UPDATE users_table
+    SET referral_reward_milestone_claimed = v_new_milestone_count
+    WHERE users_id = input_user_id;
+
+    -- Insert into rewards_claim_table for history and audit
+    INSERT INTO public.rewards_claim_table (
+        user_id,
+        rewards_claim_payment_method,
+        rewards_claim_account_details,
+        rewards_claim_amount,
+        rewards_claim_status,
+        rewards_claim_referral_count,
+        rewards_claim_total_referrals
+    ) VALUES (
+        input_user_id,
+        input_payment_method, -- Use actual payment method
+        input_account_details, -- Use actual account details
+        v_reward_amount,
+        'PENDING', -- Set to PENDING so admin can process it
+        v_claimable_count * 10, -- Referrals for this specific claim
+        v_total_referrals -- Snapshot of total referrals at time of claim
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Rewards claimed successfully',
+        'payout', v_reward_amount,
+        'milestones_claimed', v_claimable_count,
+        'total_claimed_milestones', v_new_milestone_count
+    );
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', SQLERRM,
+        'payout', 0
+    );
+END;
+$$;
+
+-- Additional GRANT PERMISSIONS
+GRANT EXECUTE ON FUNCTION get_user_storage_files(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION delete_user_storage_file(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_registration_scans(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION create_notification(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION create_notification(JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION admin_update_mailbox_item(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_update_mailbox_item(JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION admin_delete_mailbox_item(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_delete_mailbox_item(JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION mark_notifications_as_read(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION mark_notifications_as_read(UUID) TO service_role;
+GRANT EXECUTE ON FUNCTION generate_mailroom_registration_code() TO authenticated;
+GRANT EXECUTE ON FUNCTION generate_mailroom_registration_code() TO service_role;
+GRANT EXECUTE ON FUNCTION admin_get_assigned_lockers() TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_get_assigned_lockers() TO service_role;
+GRANT EXECUTE ON FUNCTION admin_create_assigned_locker(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_create_assigned_locker(JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_admin_archived_packages(INTEGER, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_restore_mailbox_item(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_referral_rewards(UUID, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_kyc_with_populated_user(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION check_email_exists(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION check_email_exists(TEXT) TO anon;
+
+-- Create a function to get user notifications
+CREATE OR REPLACE FUNCTION get_user_notifications(input_user_id UUID, input_limit INT DEFAULT 10)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    return_data JSONB;
+BEGIN
+    SELECT 
+        jsonb_agg(notification_table)
+    INTO 
+        return_data
+    FROM (
+        SELECT 
+            notification_table.*
+        FROM notification_table
+        WHERE user_id = input_user_id
+        ORDER BY notification_created_at DESC
+        LIMIT input_limit
+    ) AS notification_table;
+
+    RETURN COALESCE(return_data, '[]'::JSONB);
+END;
+$$;
+
+-- Create a function to list all mailroom plans
+CREATE OR REPLACE FUNCTION get_mailroom_plans()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    return_data JSONB;
+BEGIN
+    SELECT 
+        jsonb_agg(mailroom_plan_table)
+    INTO 
+        return_data
+    FROM (
+        SELECT 
+            mailroom_plan_id,
+            mailroom_plan_name,
+            mailroom_plan_price,
+            mailroom_plan_description,
+            mailroom_plan_storage_limit,
+            mailroom_plan_can_receive_mail,
+            mailroom_plan_can_receive_parcels,
+            mailroom_plan_can_digitize
+        FROM mailroom_plan_table
+        ORDER BY mailroom_plan_price ASC
+    ) AS mailroom_plan_table;
+
+    RETURN COALESCE(return_data, '[]'::JSONB);
+END;
+$$;
+
+-- Additional GRANT PERMISSIONS
+GRANT EXECUTE ON FUNCTION get_user_notifications(UUID, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_mailroom_plans() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_mailroom_plans() TO anon;
