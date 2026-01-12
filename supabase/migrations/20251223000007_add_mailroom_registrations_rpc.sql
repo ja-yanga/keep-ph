@@ -1,5 +1,10 @@
--- RPC: get user mailroom registrations with related data
-CREATE OR REPLACE FUNCTION get_user_mailroom_registrations(input_user_id UUID)
+-- Update RPC function to support search and pagination
+CREATE OR REPLACE FUNCTION get_user_mailroom_registrations(
+  input_user_id UUID,
+  search_query TEXT DEFAULT NULL,
+  page_limit INTEGER DEFAULT NULL,
+  page_offset INTEGER DEFAULT NULL
+)
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -7,11 +12,46 @@ SET search_path TO ''
 AS $$
 DECLARE
   result JSON := '[]'::JSON;
+  total_count INTEGER := 0;
+  search_filter TEXT := '';
+  validated_limit INTEGER;
+  validated_offset INTEGER;
 BEGIN
   IF input_user_id IS NULL THEN
-    RETURN '[]'::JSON;
+    RETURN json_build_object(
+      'data', '[]'::JSON,
+      'pagination', json_build_object(
+        'total', 0,
+        'limit', 0,
+        'offset', 0,
+        'has_more', false
+      )
+    );
   END IF;
 
+  -- Validate and set defaults for pagination
+  validated_limit := COALESCE(NULLIF(page_limit, 0), NULL);
+  validated_offset := COALESCE(NULLIF(page_offset, 0), 0);
+
+  -- Build search filter
+  IF search_query IS NOT NULL AND search_query != '' THEN
+    search_filter := '%' || TRIM(search_query) || '%';
+  END IF;
+
+  -- Get total count (for pagination metadata)
+  SELECT COUNT(*)
+  INTO total_count
+  FROM public.mailroom_registration_table r
+  LEFT JOIN public.mailroom_location_table l ON l.mailroom_location_id = r.mailroom_location_id
+  LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = r.mailroom_plan_id
+  WHERE r.user_id = input_user_id
+    AND (
+      search_filter = '' OR
+      COALESCE(l.mailroom_location_name, '') ILIKE search_filter OR
+      COALESCE(p.mailroom_plan_name, '') ILIKE search_filter
+    );
+
+  -- Get paginated data
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(
@@ -92,24 +132,47 @@ BEGIN
           ELSE NULL
         END
       )
-      ORDER BY r.mailroom_registration_created_at DESC
     ),
     '[]'::JSON
   )
   INTO result
-  FROM public.mailroom_registration_table r
+  FROM (
+    SELECT r.mailroom_registration_id
+    FROM public.mailroom_registration_table r
+    LEFT JOIN public.mailroom_location_table l ON l.mailroom_location_id = r.mailroom_location_id
+    LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = r.mailroom_plan_id
+    WHERE r.user_id = input_user_id
+      AND (
+        search_filter = '' OR
+        COALESCE(l.mailroom_location_name, '') ILIKE search_filter OR
+        COALESCE(p.mailroom_plan_name, '') ILIKE search_filter
+      )
+    ORDER BY r.mailroom_registration_created_at DESC
+    LIMIT validated_limit
+    OFFSET validated_offset
+  ) filtered_ids
+  INNER JOIN public.mailroom_registration_table r ON r.mailroom_registration_id = filtered_ids.mailroom_registration_id
   LEFT JOIN public.mailroom_location_table l ON l.mailroom_location_id = r.mailroom_location_id
   LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = r.mailroom_plan_id
   LEFT JOIN public.subscription_table s ON s.mailroom_registration_id = r.mailroom_registration_id
   LEFT JOIN public.users_table u ON u.users_id = r.user_id
-  LEFT JOIN public.user_kyc_table k ON k.user_id = u.users_id
-  WHERE r.user_id = input_user_id;
+  LEFT JOIN public.user_kyc_table k ON k.user_id = u.users_id;
 
-  RETURN result;
+  RETURN json_build_object(
+    'data', COALESCE(result, '[]'::JSON),
+    'pagination', json_build_object(
+      'total', total_count,
+      'limit', COALESCE(validated_limit, total_count),
+      'offset', validated_offset,
+      'has_more', CASE 
+        WHEN validated_limit IS NOT NULL THEN (validated_offset + validated_limit) < total_count
+        ELSE false
+      END
+    )
+  );
 END;
 $$;
 
--- Grant execute permissions
-GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registrations(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registrations(UUID) TO anon;
-
+-- Update grants
+GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registrations(UUID, TEXT, INTEGER, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_mailroom_registrations(UUID, TEXT, INTEGER, INTEGER) TO anon;
