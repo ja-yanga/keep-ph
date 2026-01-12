@@ -14,6 +14,7 @@ import {
   Center,
   ActionIcon,
   Badge,
+  Button,
 } from "@mantine/core";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
@@ -102,6 +103,7 @@ const SearchInput = memo(
     return (
       <TextInput
         placeholder="Search by name or user id..."
+        w="100%"
         aria-label="Search users"
         leftSection={<IconSearch size={16} />}
         rightSectionWidth={value ? 70 : 42}
@@ -182,9 +184,9 @@ const KycTable = memo(
   }) => {
     return (
       <DataTable
-        withTableBorder
-        borderRadius="sm"
-        striped
+        withTableBorder={false}
+        borderRadius="lg"
+        verticalSpacing="md"
         highlightOnHover
         records={isSearching ? [] : rows}
         idAccessor="id"
@@ -301,49 +303,30 @@ export default function AdminUserKyc() {
         title: "User",
         render: (r: FormattedKycRow) => {
           return (
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <Group gap="sm" wrap="nowrap">
               <div
                 style={{
-                  width: 26,
-                  height: 26,
+                  width: 32,
+                  height: 32,
                   borderRadius: "50%",
-                  backgroundColor: "#f1f3f5",
+                  backgroundColor: "var(--mantine-color-gray-1)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#495057",
-                  fontSize: "12px",
-                  fontWeight: 500,
+                  color: "var(--mantine-color-gray-7)",
+                  fontSize: "14px",
+                  fontWeight: 600,
                   overflow: "hidden",
                 }}
               >
                 {r._formattedName.charAt(0)}
               </div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span
-                  style={{
-                    fontWeight: 500,
-                    fontSize: "14px",
-                    lineHeight: "1.55",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: "150px",
-                  }}
-                >
+              <Stack gap={2}>
+                <Text fw={700} c="dark.4" size="sm" lh={1.2}>
                   {r._formattedName}
-                </span>
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: "#868e96",
-                    lineHeight: "1",
-                  }}
-                >
-                  {r.user_id}
-                </span>
-              </div>
-            </div>
+                </Text>
+              </Stack>
+            </Group>
           );
         },
       },
@@ -351,17 +334,22 @@ export default function AdminUserKyc() {
         accessor: "doc",
         title: "Document",
         render: (r: FormattedKycRow) => (
-          <span style={{ fontSize: "14px" }}>
+          <Text size="sm" c="dark.4" fw={500}>
             {(r.id_document_type ?? "—").replace("_", " ")}
-          </span>
+          </Text>
         ),
       },
       {
         accessor: "status",
         title: "Status",
-        width: 120,
+        width: 140,
         render: (r: FormattedKycRow) => (
-          <Badge color={getStatusFormat(r.status)} variant="light" size="sm">
+          <Badge
+            color={getStatusFormat(r.status)}
+            variant="dot"
+            size="md"
+            radius="md"
+          >
             {r.status}
           </Badge>
         ),
@@ -369,16 +357,18 @@ export default function AdminUserKyc() {
       {
         accessor: "dates",
         title: "Dates",
-        width: 180,
+        width: 200,
         render: (r: FormattedKycRow) => (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: "12px", color: "#868e96" }}>
+          <Stack gap={2}>
+            <Text size="sm" c="dark.3">
               Sub: {r._formattedSub}
-            </span>
-            <span style={{ fontSize: "12px", color: "#868e96" }}>
-              Ver: {r._formattedVer}
-            </span>
-          </div>
+            </Text>
+            {r.verified_at && (
+              <Text size="sm" c="dark.3">
+                Ver: {r._formattedVer}
+              </Text>
+            )}
+          </Stack>
         ),
       },
       {
@@ -387,30 +377,14 @@ export default function AdminUserKyc() {
         textAlign: "right",
         width: 100,
         render: (r: FormattedKycRow) => (
-          <button
+          <Button
+            size="xs"
+            variant="light"
+            color="blue"
             onClick={() => openDetails(r)}
-            aria-label={`Manage user ${r._formattedName}`}
-            title={`Manage user ${r._formattedName}`}
-            style={{
-              padding: "4px 8px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#4c6ef5",
-              backgroundColor: "#edf2ff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              transition: "background-color 0.2s",
-            }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.backgroundColor = "#DBE4FF")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.backgroundColor = "#edf2ff")
-            }
           >
             Manage
-          </button>
+          </Button>
         ),
       },
     ],
@@ -432,26 +406,13 @@ export default function AdminUserKyc() {
 
   return (
     <Stack align="center" gap="lg" w="100%">
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
-        <Group justify="space-between" mb="md">
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        <Group justify="space-between" mb="md" w="100%" wrap="nowrap">
           <SearchInput onSearch={handleSearchSubmit} />
 
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "4px 12px",
-              borderRadius: "4px",
-              backgroundColor: "#4c6ef5",
-              color: "white",
-              fontSize: "14px",
-              fontWeight: 600,
-              height: "30px", // Approximate Badge size="lg"
-            }}
-          >
+          <Badge size="lg" variant="light" color="indigo" w="10rem">
             {totalRecords} Records
-          </span>
+          </Badge>
         </Group>
 
         <KycTable
