@@ -12,11 +12,11 @@ import {
   Title,
   Table,
   Badge,
-  Loader,
   Center,
   SimpleGrid,
   Stack,
   Button,
+  Skeleton,
 } from "@mantine/core";
 import {
   IconBox,
@@ -28,7 +28,7 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { fetcher } from "@/utils/helper";
+import { fetcher, getStatusFormat } from "@/utils/helper";
 import { StatCard } from "./StatCard";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
@@ -81,14 +81,46 @@ export default function AdminDashboard() {
 
   if (loading) {
     pageContent = (
-      <Center h={400}>
-        <Loader size="lg" color="violet" type="dots" />
-      </Center>
+      <Stack gap="xl">
+        <Group justify="space-between" align="flex-end">
+          <div>
+            <Skeleton h={32} w={200} mb="xs" />
+            <Skeleton h={16} w={300} />
+          </div>
+          <Skeleton h={36} w={120} />
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} h={120} radius="lg" />
+          ))}
+        </SimpleGrid>
+
+        <Paper withBorder p="lg" radius="md">
+          <Group justify="space-between" mb="lg">
+            <Skeleton h={24} w={150} />
+            <Skeleton h={24} w={100} />
+          </Group>
+          <Stack gap="xs">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} h={40} />
+            ))}
+          </Stack>
+        </Paper>
+      </Stack>
     );
   } else if (!stats) {
     pageContent = (
       <Center h={400}>
-        <Text c="dimmed">No dashboard data available.</Text>
+        <Stack align="center" gap="xs">
+          <IconAlertCircle size={48} color="var(--mantine-color-gray-4)" />
+          <Text c="dimmed" fw={500}>
+            No dashboard data available.
+          </Text>
+          <Button variant="light" onClick={handleRefresh}>
+            Try Refreshing
+          </Button>
+        </Stack>
       </Center>
     );
   } else {
@@ -109,12 +141,15 @@ export default function AdminDashboard() {
       <Stack gap="xl">
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={2} fw={800} c="dark.4">
+            <Title order={2} fw={900} c="dark.5" lts="-0.02em">
               Dashboard Overview
             </Title>
-            <Text c="dimmed" size="sm">
+            <Text c="dark.3" size="sm" fw={500}>
               Welcome back. Here is what&apos;s happening today,{" "}
-              {dayjs().format("MMMM D, YYYY")}.
+              <Text span c="dark.4" fw={800}>
+                {dayjs().format("MMMM D, YYYY")}
+              </Text>
+              .
             </Text>
           </div>
           <Button
@@ -171,11 +206,11 @@ export default function AdminDashboard() {
                 <div>
                   <Text fw={800} size="xl" lh={1}>
                     {stats.lockerStats.assigned}
-                    <Text span size="sm" c="dimmed" fw={500}>
+                    <Text span size="sm" c="dark.3" fw={600}>
                       /{stats.lockerStats.total}
                     </Text>
                   </Text>
-                  <Text size="xs" c="dimmed">
+                  <Text size="xs" c="dark.4" fw={600}>
                     {Math.round(occupancyRate)}% Utilized
                   </Text>
                 </div>
@@ -184,74 +219,106 @@ export default function AdminDashboard() {
           />
         </SimpleGrid>
 
-        <Paper withBorder p="lg" radius="md" shadow="sm">
-          <Group justify="space-between" mb="lg">
-            <Group gap="xs">
-              <ThemeIcon variant="light" color="gray" size="md">
-                <IconPackage size={16} />
+        <Paper withBorder p="xl" radius="lg" shadow="sm">
+          <Group justify="space-between" mb="xl">
+            <Group gap="sm">
+              <ThemeIcon
+                variant="gradient"
+                gradient={{ from: "gray.1", to: "gray.2", deg: 180 }}
+                size="lg"
+                radius="md"
+              >
+                <IconPackage size={20} color="var(--mantine-color-dark-3)" />
               </ThemeIcon>
-              <Title order={4}>Recent Packages</Title>
+              <div>
+                <Title order={3} fw={800} size="h4">
+                  Recent Packages
+                </Title>
+                <Text size="xs" c="dark.3" fw={500}>
+                  Latest arrivals and updates
+                </Text>
+              </div>
             </Group>
             <Button
-              variant="subtle"
+              variant="outline"
+              color="dark"
               size="xs"
+              radius="md"
               rightSection={<IconArrowRight size={14} />}
               onClick={() => router.push("/admin/packages")}
             >
-              View All Packages
+              View Full Inventory
             </Button>
           </Group>
 
-          <Table verticalSpacing="sm" highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Package</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th style={{ textAlign: "right" }}>Received</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {recent.length > 0 ? (
-                recent.map((pkg) => (
-                  <Table.Tr key={pkg.id}>
-                    <Table.Td fw={600} c="dark.3">
-                      {pkg.package_name ?? "—"}
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{pkg.package_type}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge
-                        size="sm"
-                        variant="dot"
-                        color={(() => {
-                          if (pkg.status === "STORED") return "blue";
-                          if (pkg.status?.includes("REQUEST")) return "orange";
-                          return "gray";
-                        })()}
-                      >
-                        {pkg.status?.replace(/_/g, " ") ?? "—"}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td c="dimmed" style={{ textAlign: "right" }}>
-                      <Text size="sm">
-                        {dayjs(pkg.received_at).format("MMM D, h:mm A")}
-                      </Text>
+          <div style={{ overflowX: "auto" }}>
+            <Table verticalSpacing="md" highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th style={{ borderBottomWidth: 2 }}>
+                    Package Name
+                  </Table.Th>
+                  <Table.Th style={{ borderBottomWidth: 2 }}>Type</Table.Th>
+                  <Table.Th style={{ borderBottomWidth: 2 }}>Status</Table.Th>
+                  <Table.Th
+                    style={{ textAlign: "right", borderBottomWidth: 2 }}
+                  >
+                    Received
+                  </Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {recent.length > 0 ? (
+                  recent.map((pkg) => (
+                    <Table.Tr
+                      key={pkg.id}
+                      style={{ transition: "background-color 0.2s" }}
+                    >
+                      <Table.Td>
+                        <Text fw={700} c="dark.4" size="sm">
+                          {pkg.package_name ?? "—"}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge size="md" variant="transparent" color="dark">
+                          {pkg.package_type}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge
+                          size="md"
+                          radius="md"
+                          variant="dot"
+                          color={getStatusFormat(pkg.status)}
+                        >
+                          {pkg.status?.replace(/_/g, " ") ?? "—"}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td c="dark.3" style={{ textAlign: "right" }}>
+                        <Text size="sm" fw={600}>
+                          {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))
+                ) : (
+                  <Table.Tr>
+                    <Table.Td colSpan={4} align="center" py={60}>
+                      <Stack align="center" gap="xs">
+                        <IconPackage
+                          size={32}
+                          color="var(--mantine-color-gray-3)"
+                        />
+                        <Text c="dark.2" fs="italic" size="sm" fw={500}>
+                          No recent activity found
+                        </Text>
+                      </Stack>
                     </Table.Td>
                   </Table.Tr>
-                ))
-              ) : (
-                <Table.Tr>
-                  <Table.Td colSpan={4} align="center" py="xl">
-                    <Text c="dimmed" fs="italic">
-                      No recent activity found
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
+                )}
+              </Table.Tbody>
+            </Table>
+          </div>
         </Paper>
       </Stack>
     );
