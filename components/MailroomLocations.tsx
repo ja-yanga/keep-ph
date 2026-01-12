@@ -25,6 +25,7 @@ import {
   Loader,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   IconRefresh,
   IconEye,
@@ -130,7 +131,7 @@ const SearchInput = React.memo(
             handleSearch();
           }
         }}
-        style={{ width: "100%", maxWidth: 350 }}
+        style={{ width: "100%" }}
       />
     );
   },
@@ -160,6 +161,7 @@ export default function MailroomLocations() {
 
   const [formError, setFormError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const queryParams = new URLSearchParams({
     page: String(page),
@@ -403,13 +405,79 @@ export default function MailroomLocations() {
       )}
 
       <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
+        {isMobile ? (
+          <Stack mb="md" gap="md">
             <SearchInput
               onSearch={handleSearchSubmit}
               searchQuery={query}
               loading={isSearching}
             />
+            <Group grow gap="xs">
+              <Select
+                placeholder="Region"
+                aria-label="Filter by region"
+                data={regions}
+                value={filterRegion}
+                onChange={setFilterRegion}
+                clearable
+                searchable
+              />
+              <Select
+                placeholder="City"
+                aria-label="Filter by city"
+                data={cities}
+                value={filterCity}
+                onChange={setFilterCity}
+                clearable
+                searchable
+              />
+            </Group>
+            <Group grow gap="xs">
+              <Select
+                placeholder="Sort By"
+                aria-label="Sort locations"
+                data={[
+                  { value: "name_asc", label: "Name (A-Z)" },
+                  { value: "lockers_desc", label: "Lockers (High-Low)" },
+                  { value: "lockers_asc", label: "Lockers (Low-High)" },
+                ]}
+                value={sortBy}
+                onChange={setSortBy}
+                clearable
+              />
+              <Button
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
+                onClick={() => {
+                  setCreateOpen(true);
+                  setGlobalSuccess(null);
+                }}
+                color="#1e3a8a"
+                aria-label="Create new location"
+              >
+                Create
+              </Button>
+            </Group>
+            {hasFilters && (
+              <Button
+                variant="subtle"
+                color="red.8"
+                size="sm"
+                onClick={clearFilters}
+                fullWidth
+              >
+                Clear Filters
+              </Button>
+            )}
+          </Stack>
+        ) : (
+          <Group mb="md" gap="xs" wrap="nowrap">
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <SearchInput
+                onSearch={handleSearchSubmit}
+                searchQuery={query}
+                loading={isSearching}
+              />
+            </div>
             <Select
               placeholder="Region"
               aria-label="Filter by region"
@@ -418,7 +486,7 @@ export default function MailroomLocations() {
               onChange={setFilterRegion}
               clearable
               searchable
-              style={{ width: 150 }}
+              style={{ width: 150, flexShrink: 0 }}
             />
             <Select
               placeholder="City"
@@ -428,7 +496,7 @@ export default function MailroomLocations() {
               onChange={setFilterCity}
               clearable
               searchable
-              style={{ width: 150 }}
+              style={{ width: 150, flexShrink: 0 }}
             />
             <Select
               placeholder="Sort By"
@@ -441,7 +509,7 @@ export default function MailroomLocations() {
               value={sortBy}
               onChange={setSortBy}
               clearable
-              style={{ width: 180 }}
+              style={{ width: 180, flexShrink: 0 }}
             />
             {hasFilters && (
               <Button
@@ -450,12 +518,11 @@ export default function MailroomLocations() {
                 size="sm"
                 onClick={clearFilters}
                 aria-label="Clear all filters"
+                style={{ flexShrink: 0 }}
               >
                 Clear Filters
               </Button>
             )}
-          </Group>
-          <Group>
             <Tooltip label="Refresh list">
               <ActionIcon
                 variant="subtle"
@@ -463,6 +530,7 @@ export default function MailroomLocations() {
                 size="lg"
                 onClick={() => mutate()}
                 aria-label="Refresh locations list"
+                style={{ flexShrink: 0 }}
               >
                 <IconRefresh size={16} aria-hidden="true" />
               </ActionIcon>
@@ -475,11 +543,12 @@ export default function MailroomLocations() {
               }}
               color="#1e3a8a"
               aria-label="Create new location"
+              style={{ flexShrink: 0 }}
             >
               Create
             </Button>
           </Group>
-        </Group>
+        )}
 
         <DataTable
           aria-label="Mailroom locations list"
@@ -497,9 +566,9 @@ export default function MailroomLocations() {
           onPageChange={(p) => setPage(p)}
           recordsPerPageOptions={[10, 20, 50]}
           onRecordsPerPageChange={setPageSize}
-          paginationText={({ from, to, totalRecords }) =>
-            `Showing ${from} to ${to} of ${totalRecords} locations`
-          }
+          // paginationText={({ from, to, totalRecords }) =>
+          //   `Showing ${from} to ${to} of ${totalRecords} locations`
+          // }
           recordsPerPageLabel="Locations per page"
           columns={[
             {
