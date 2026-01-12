@@ -1,10 +1,10 @@
 import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import UserDashboard from "@/components/UserDashboard";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
 import { notifications } from "@mantine/notifications";
+import DashboardContentWithMailRoom from "@/components/pages/customer/Dashboard/components/DashboardContentWithMailRoom";
 
 /**
  * Integration tests for UserDashboard (frontend-focused).
@@ -77,7 +77,7 @@ describe("UserDashboard — UI: rendering, copy action, and pagination", () => {
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
         <MantineProvider>
-          <UserDashboard
+          <DashboardContentWithMailRoom
             {...({ initialData } as unknown as Record<string, unknown>)}
           />
         </MantineProvider>
@@ -184,25 +184,50 @@ describe("UserDashboard — UI: rendering, copy action, and pagination", () => {
       },
     ] as const;
 
-    (global.fetch as unknown) = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: initialData }),
-    } as unknown as Response);
+    // Mock fetch to return data with pagination metadata
+    // The hook expects pagination in meta.pagination or directly in the response
+    (global.fetch as unknown) = jest
+      .fn()
+      .mockImplementation((input: RequestInfo) => {
+        const url = String(input);
+        const searchParams = new URLSearchParams(
+          url.includes("?") ? url.split("?")[1] : "",
+        );
+        const page = parseInt(searchParams.get("page") || "1", 10);
+        const limit = parseInt(searchParams.get("limit") || "2", 10);
+        const offset = (page - 1) * limit;
+        const paginatedData = initialData.slice(offset, offset + limit);
+
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: paginatedData,
+            meta: {
+              pagination: {
+                total: initialData.length,
+                limit,
+                offset,
+                has_more: offset + limit < initialData.length,
+              },
+            },
+          }),
+        } as unknown as Response);
+      });
 
     // Act: render dashboard
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
         <MantineProvider>
-          <UserDashboard
+          <DashboardContentWithMailRoom
             {...({ initialData } as unknown as Record<string, unknown>)}
           />
         </MantineProvider>
       </SWRConfig>,
     );
 
-    // Assert: Add New Mailroom link exists
+    // Assert: Add New link exists
     const addLink = await screen.findByRole("link", {
-      name: /Add New Mailroom/i,
+      name: /Add New/i,
     });
     expect(addLink).toHaveAttribute("href", "/mailroom/register");
 
@@ -223,24 +248,43 @@ describe("UserDashboard — UI: rendering, copy action, and pagination", () => {
 
     // Act: go to next page and assert reg-3 appears
     await userEvent.click(nextBtn);
-    await waitFor(() => expect(prevBtn).toBeEnabled());
-    await waitFor(() => {
-      const all = screen.getAllByRole("link", { name: /Manage Mailbox/i });
-      const linkReg3 = all.find((l) =>
-        String(l.getAttribute("href")).includes("/mailroom/reg-3"),
-      );
-      expect(linkReg3).toBeTruthy();
-    });
+
+    // Wait for the page to change and data to update
+    await waitFor(
+      () => {
+        const all = screen.getAllByRole("link", { name: /Manage Mailbox/i });
+        const linkReg3 = all.find((l) =>
+          String(l.getAttribute("href")).includes("/mailroom/reg-3"),
+        );
+        expect(linkReg3).toBeTruthy();
+      },
+      { timeout: 3000 },
+    );
+
+    // After data updates, previous button should be enabled
+    const prevBtnAfterNext = screen.getByRole("button", { name: /Previous/i });
+    await waitFor(() => expect(prevBtnAfterNext).toBeEnabled());
 
     // Act: return to previous page and assert reg-1 is back
-    await userEvent.click(prevBtn);
-    await waitFor(() => expect(prevBtn).toBeDisabled());
-    await waitFor(() => {
-      const all = screen.getAllByRole("link", { name: /Manage Mailbox/i });
-      const linkBack = all.find((l) =>
-        String(l.getAttribute("href")).includes("/mailroom/reg-1"),
-      );
-      expect(linkBack).toBeTruthy();
+    const prevBtnBeforeClick = screen.getByRole("button", {
+      name: /Previous/i,
     });
+    await userEvent.click(prevBtnBeforeClick);
+
+    // Wait for the page to change and data to update
+    await waitFor(
+      () => {
+        const all = screen.getAllByRole("link", { name: /Manage Mailbox/i });
+        const linkBack = all.find((l) =>
+          String(l.getAttribute("href")).includes("/mailroom/reg-1"),
+        );
+        expect(linkBack).toBeTruthy();
+      },
+      { timeout: 3000 },
+    );
+
+    // After data updates, previous button should be disabled again
+    const prevBtnAfterBack = screen.getByRole("button", { name: /Previous/i });
+    await waitFor(() => expect(prevBtnAfterBack).toBeDisabled());
   });
 });

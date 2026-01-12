@@ -287,10 +287,31 @@ export async function getUserVerificationStatus(
  */
 export async function getMailroomRegistrations(
   userId: string,
-): Promise<unknown[]> {
+  options?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+): Promise<{
+  data: unknown[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+}> {
   if (!userId) {
-    return [];
+    return {
+      data: [],
+      pagination: { total: 0, limit: 0, offset: 0, has_more: false },
+    };
   }
+
+  const { search = null, page = 1, limit = 10 } = options || {};
+
+  // Calculate offset from page number
+  const offset = (page - 1) * limit;
 
   // Validate UUID format
   const uuidRegex =
@@ -304,6 +325,9 @@ export async function getMailroomRegistrations(
       "get_user_mailroom_registrations",
       {
         input_user_id: userId,
+        search_query: search || null,
+        page_limit: limit,
+        page_offset: offset,
       },
     );
 
@@ -323,7 +347,10 @@ export async function getMailroomRegistrations(
 
     // Handle null or undefined data
     if (data === null || data === undefined) {
-      return [];
+      return {
+        data: [],
+        pagination: { total: 0, limit: 0, offset: 0, has_more: false },
+      };
     }
 
     // Parse data if it's a string, otherwise use as is
@@ -339,13 +366,29 @@ export async function getMailroomRegistrations(
       throw new Error("Failed to parse mailroom registrations response");
     }
 
-    // Ensure it's an array
-    if (!Array.isArray(payload)) {
-      console.error("Invalid payload structure:", { payload, userId });
-      return [];
+    // Handle new response format with data and pagination
+    if (payload && typeof payload === "object" && "data" in payload) {
+      const result = payload as {
+        data: unknown;
+        pagination?: {
+          total: number;
+          limit: number;
+          offset: number;
+          has_more: boolean;
+        };
+      };
+      const dataArray = Array.isArray(result.data) ? result.data : [];
+
+      return { data: dataArray, pagination: result.pagination };
     }
 
-    return payload;
+    // Fallback for old format (array)
+    if (Array.isArray(payload)) {
+      return { data: payload };
+    }
+
+    console.error("Invalid payload structure:", { payload, userId });
+    return { data: [] };
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -987,17 +1030,25 @@ export async function getAllMailRoomLocation() {
   return data;
 }
 
-export async function getMailroomRegistrationsWithStats(userId: string) {
-  if (!userId) return { data: [], stats: null };
+export async function getMailroomRegistrationsWithStats(
+  userId: string,
+  options?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+) {
+  if (!userId) return { data: [], stats: null, total: 0 };
 
   try {
-    // 1. Get Registrations
-    const registrations = (await getMailroomRegistrations(userId)) as Record<
-      string,
-      unknown
-    >[];
+    // 1. Get Registrations with pagination
+    const { data: registrations, pagination } = await getMailroomRegistrations(
+      userId,
+      options,
+    );
+    const registrationsArray = registrations as Record<string, unknown>[];
 
-    // 2. Get Overall Stats
+    // 2. Get Overall Stats (always fetch for all registrations, not just current page)
     let totals: Record<string, unknown> | null = null;
     try {
       totals = await getUserMailroomStats(userId);
@@ -1005,7 +1056,7 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
       console.error("Failed to get user mailroom stats:", e);
     }
 
-    // 3. Get Per-Registration Stats
+    // 3. Get Per-Registration Stats (for current page registrations only)
     let regStatsRaw: Array<{
       mailroom_registration_id: string;
       stored: number;
@@ -1036,8 +1087,8 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
         regMap.set(key, { stored, pending, released });
       }
     } else {
-      // Fallback: build counts from mailbox_item_table
-      const regIds = registrations
+      // Fallback: build counts from mailbox_item_table for current page registrations
+      const regIds = registrationsArray
         .map((r) =>
           toStr(r.mailroom_registration_id ?? r.id ?? r.registration_id ?? ""),
         )
@@ -1094,7 +1145,7 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
     }
 
     // 5. Map stats to registrations
-    const results = registrations.map((r) => {
+    const results = registrationsArray.map((r) => {
       const idKey = toStr(
         r.mailroom_registration_id ?? r.id ?? r.registration_id ?? "",
       ).toLowerCase();
@@ -1108,6 +1159,7 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
     return {
       data: results,
       stats: totals,
+      pagination,
     };
   } catch (err) {
     if (err instanceof Error) throw err;
