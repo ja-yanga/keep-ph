@@ -27,7 +27,7 @@ jest.mock("@/components/SessionProvider", () => ({
   }),
 }));
 
-import AccountContent from "@/components/AccountContent";
+import AccountContent from "@/components/pages/customer/Account/index";
 
 describe("AccountContent — change password", () => {
   let originalFetch: typeof globalThis.fetch | undefined;

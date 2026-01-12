@@ -148,8 +148,9 @@ describe("AdminUserKyc", () => {
       </SWRConfig>,
     );
 
-    // Assert the badge displays the expected count (flexible numeric match)
-    expect(await screen.findByText(/\d+\s*Records/i)).toBeInTheDocument();
+    // Wait for the table to render and assert there's at least a header + one row
+    await screen.findByRole("table");
+    expect(screen.getAllByRole("row").length).toBeGreaterThanOrEqual(2);
   });
 
   it("filters results via search input", async () => {
@@ -195,8 +196,8 @@ describe("AdminUserKyc", () => {
       </SWRConfig>,
     );
 
-    // Wait for badge to ensure data loaded
-    await screen.findByText(/\d+\s*Records/i);
+    // Wait for table to ensure data loaded
+    await screen.findByRole("table");
 
     // Ensure table rows were rendered (header + data rows)
     await waitFor(() => {
@@ -208,14 +209,14 @@ describe("AdminUserKyc", () => {
     ) as HTMLInputElement;
 
     // Type a query that matches nothing -> expect the "no records" text
-    await userEvent.type(input, "no-match-value");
+    await userEvent.type(input, "no-match-value{enter}");
     expect(
       await screen.findByText(/No records found/i, {}, { timeout: 2000 }),
     ).toBeInTheDocument();
 
     // Clear and type a query that should match Jane -> assert filtering applied
     await userEvent.clear(input);
-    await userEvent.type(input, "Jane");
+    await userEvent.type(input, "Jane{enter}");
 
     // Wait until "No records found" disappears (indicates filtering applied)
     await waitFor(
@@ -257,7 +258,7 @@ describe("AdminUserKyc", () => {
     );
 
     // Wait for rows to load
-    await screen.findByText(/\d+\s*Records/i);
+    await screen.findByRole("table");
 
     // Find and click the Manage button for the first row
     const manageBtns = await screen.findAllByRole("button", {
@@ -314,7 +315,7 @@ describe("AdminUserKyc", () => {
     );
 
     // Wait for data to render
-    await screen.findByText(/\d+\s*Records/i);
+    await screen.findByRole("table");
 
     // Click the first Manage button then "Mark Verified"
     const manageBtns = await screen.findAllByRole("button", {

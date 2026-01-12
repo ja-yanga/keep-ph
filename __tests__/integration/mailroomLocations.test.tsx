@@ -124,7 +124,7 @@ describe("MailroomLocations", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: [loc] }),
-    } as unknown as Response);
+    } as unknown as Response) as unknown as typeof global.fetch;
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
@@ -161,10 +161,21 @@ describe("MailroomLocations", () => {
       },
     ];
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: locations }),
-    } as unknown as Response);
+    // mock fetch to respect the `search` query param so tests can exercise filtering
+    global.fetch = jest.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      const parsed = new URL(url, "http://localhost");
+      const searchParam = parsed.searchParams.get("search") || "";
+      const filtered = locations.filter((l) =>
+        searchParam === ""
+          ? true
+          : l.name.toLowerCase().includes(searchParam.toLowerCase()),
+      );
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: filtered }),
+      } as unknown as Response);
+    }) as unknown as typeof global.fetch;
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
@@ -175,16 +186,18 @@ describe("MailroomLocations", () => {
     );
 
     await screen.findByText(/Main Office/i);
-    const input = screen.getByPlaceholderText(/Search.../i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      /Search locations/i,
+    ) as HTMLInputElement;
 
-    await userEvent.type(input, "Branch");
+    await userEvent.type(input, "Branch{enter}");
     await waitFor(() => {
       expect(screen.queryByText(/No locations found/i)).toBeNull();
       expect(screen.getByText(/Branch/i)).toBeInTheDocument();
     });
 
     await userEvent.clear(input);
-    await userEvent.type(input, "no-match");
+    await userEvent.type(input, "no-match{enter}");
     expect(await screen.findByText(/No locations found/i)).toBeInTheDocument();
   });
 
@@ -203,7 +216,7 @@ describe("MailroomLocations", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: [loc] }),
-    } as unknown as Response);
+    } as unknown as Response) as unknown as typeof global.fetch;
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>

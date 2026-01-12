@@ -1,75 +1,116 @@
-import { Group, Paper, Stack, Text, ThemeIcon } from "@mantine/core";
+import Link from "next/link";
 
+// StatCard as a pure HTML/CSS Server Component - Zero external dependencies
 export function StatCard({
   title,
   value,
   description,
   icon: Icon,
   color,
-  onClick,
+  href,
   customContent,
+  "aria-label": ariaLabel,
 }: {
   title: string;
   value?: number | string;
   description?: string;
   icon: React.ComponentType<{ size?: number; color?: string; stroke?: number }>;
   color: string;
-  onClick: () => void;
+  href: string;
   customContent?: React.ReactNode;
+  "aria-label"?: string;
 }) {
   return (
-    <Paper
-      withBorder
-      p="md"
-      radius="lg"
-      shadow="xs"
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      aria-label={`${title}: ${value ?? description ?? "View details"}`}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
+    <Link
+      href={href}
+      aria-label={
+        ariaLabel || `${title}: ${value ?? description ?? "View details"}`
+      }
       style={{
+        display: "block",
+        textDecoration: "none",
+        color: "inherit",
+        padding: "1rem",
+        borderRadius: "1rem",
+        border: "1px solid #e9ecef",
         borderLeft: `6px solid var(--mantine-color-${color}-filled)`,
-        background: `linear-gradient(135deg, var(--mantine-color-white) 0%, var(--mantine-color-gray-0) 100%)`,
-        cursor: "pointer",
-        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        background: "linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+        transition: "transform 0.2s ease",
       }}
     >
-      <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Stack gap={4}>
-          <Text size="xs" c="dark.3" fw={700} tt="uppercase" lts="0.05em">
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "1rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            flex: 1,
+          }}
+        >
+          <span
+            style={{
+              fontSize: "0.75rem",
+              color: "#495057",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             {title}
-          </Text>
+          </span>
           {customContent ? (
             customContent
           ) : (
             <>
-              <Text fw={900} size="2.2rem" lh={1} mt={4}>
+              <span
+                style={{
+                  fontWeight: 900,
+                  fontSize: "2.2rem",
+                  lineHeight: 1,
+                  marginTop: "4px",
+                  display: "block",
+                  color: "#212529",
+                }}
+              >
                 {value}
-              </Text>
-              <Text size="xs" c="dark.3" fw={600}>
+              </span>
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  color: "#495057",
+                  fontWeight: 600,
+                  display: "block",
+                }}
+              >
                 {description}
-              </Text>
+              </span>
             </>
           )}
-        </Stack>
-        <ThemeIcon
-          color={color}
-          variant="light"
-          size={52}
-          radius="md"
+        </div>
+        <div
           style={{
+            backgroundColor: `var(--mantine-color-${color}-light)`,
+            color: `var(--mantine-color-${color}-filled)`,
+            width: "52px",
+            height: "52px",
+            borderRadius: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             flexShrink: 0,
           }}
         >
           <Icon size={30} stroke={1.5} />
-        </ThemeIcon>
-      </Group>
-    </Paper>
+        </div>
+      </div>
+    </Link>
   );
 }
