@@ -10,14 +10,14 @@ import {
   ThemeIcon,
   RingProgress,
   Title,
-  Table,
   Badge,
-  Loader,
   Center,
   SimpleGrid,
   Stack,
   Button,
+  Skeleton,
 } from "@mantine/core";
+import { DataTable } from "mantine-datatable";
 import {
   IconBox,
   IconUsers,
@@ -29,7 +29,7 @@ import {
 } from "@tabler/icons-react";
 // Import only needed dayjs functions to reduce bundle size
 import dayjs from "dayjs";
-import { fetcher } from "@/utils/helper";
+import { fetcher, getStatusFormat } from "@/utils/helper";
 import { StatCard } from "./StatCard";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
@@ -94,19 +94,59 @@ export default function AdminDashboard() {
 
   if (loading) {
     pageContent = (
-      <Center
-        h={400}
+      <Stack
+        gap="xl"
         role="status"
         aria-live="polite"
         aria-label="Loading dashboard data"
       >
-        <Loader size="lg" color="violet" type="dots" />
-      </Center>
+        <Group justify="space-between" align="flex-end">
+          <div>
+            <Skeleton h={32} w={200} mb="xs" />
+            <Skeleton h={16} w={300} />
+          </div>
+          <Skeleton h={36} w={120} />
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} h={120} radius="lg" />
+          ))}
+        </SimpleGrid>
+
+        <Paper withBorder p="lg" radius="md">
+          <Group justify="space-between" mb="lg">
+            <Skeleton h={24} w={150} />
+            <Skeleton h={24} w={100} />
+          </Group>
+          <Stack gap="xs">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} h={40} />
+            ))}
+          </Stack>
+        </Paper>
+      </Stack>
     );
   } else if (!stats) {
     pageContent = (
       <Center h={400} role="alert" aria-live="polite">
-        <Text c="dimmed">No dashboard data available.</Text>
+        <Stack align="center" gap="xs">
+          <IconAlertCircle
+            size={48}
+            color="var(--mantine-color-gray-4)"
+            aria-hidden="true"
+          />
+          <Text c="dimmed" fw={500}>
+            No dashboard data available.
+          </Text>
+          <Button
+            variant="light"
+            onClick={handleRefresh}
+            aria-label="Try refreshing dashboard data"
+          >
+            Try Refreshing
+          </Button>
+        </Stack>
       </Center>
     );
   } else {
@@ -127,10 +167,10 @@ export default function AdminDashboard() {
       <Stack gap="xl">
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={1} fw={800} c="dark.4">
+            <Title order={1} fw={900} c="dark.5" lts="-0.02em">
               Dashboard Overview
             </Title>
-            <Text c="dimmed" size="sm" role="text">
+            <Text c="dark.3" size="sm" fw={500}>
               Welcome back. Here is what&apos;s happening today,{" "}
               {currentDate ? (
                 <time dateTime={dateTime} suppressHydrationWarning>
@@ -198,11 +238,11 @@ export default function AdminDashboard() {
                 <div>
                   <Text fw={800} size="xl" lh={1}>
                     {stats.lockerStats.assigned}
-                    <Text span size="sm" c="dimmed" fw={500}>
+                    <Text span size="sm" c="dark.3" fw={600}>
                       /{stats.lockerStats.total}
                     </Text>
                   </Text>
-                  <Text size="xs" c="dimmed">
+                  <Text size="xs" c="dark.4" fw={600}>
                     {Math.round(occupancyRate)}% Utilized
                   </Text>
                 </div>
@@ -213,97 +253,119 @@ export default function AdminDashboard() {
 
         <Paper
           withBorder
-          p="lg"
-          radius="md"
+          p="xl"
+          radius="lg"
           shadow="sm"
           role="region"
           aria-labelledby="recent-packages-heading"
         >
-          <Group justify="space-between" mb="lg">
-            <Group gap="xs">
+          <Group justify="space-between" mb="xl">
+            <Group gap="sm">
               <ThemeIcon
-                variant="light"
-                color="gray"
-                size="md"
+                variant="gradient"
+                gradient={{ from: "gray.1", to: "gray.2", deg: 180 }}
+                size="lg"
+                radius="md"
                 aria-hidden="true"
               >
-                <IconPackage size={16} />
+                <IconPackage size={20} color="var(--mantine-color-dark-3)" />
               </ThemeIcon>
-              <Title order={2} id="recent-packages-heading">
-                Recent Packages
-              </Title>
+              <div>
+                <Title
+                  order={3}
+                  fw={800}
+                  size="h4"
+                  id="recent-packages-heading"
+                >
+                  Recent Packages
+                </Title>
+                <Text size="xs" c="dark.3" fw={500}>
+                  Latest arrivals and updates
+                </Text>
+              </div>
             </Group>
             <Button
-              variant="subtle"
+              variant="outline"
+              color="dark"
               size="xs"
+              radius="md"
               rightSection={<IconArrowRight size={14} aria-hidden="true" />}
               onClick={() => router.push("/admin/packages")}
               aria-label="View all packages"
             >
-              View All Packages
+              View Full Inventory
             </Button>
           </Group>
 
-          <Table
-            verticalSpacing="sm"
+          <DataTable
+            withTableBorder={false}
+            borderRadius="lg"
+            verticalSpacing="md"
             highlightOnHover
+            minHeight={150}
+            records={recent}
             role="table"
             aria-label="Recent packages"
-          >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th scope="col">Package</Table.Th>
-                <Table.Th scope="col">Type</Table.Th>
-                <Table.Th scope="col">Status</Table.Th>
-                <Table.Th scope="col" style={{ textAlign: "right" }}>
-                  Received
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {recent.length > 0 ? (
-                recent.map((pkg) => (
-                  <Table.Tr key={pkg.id}>
-                    <Table.Td fw={600} c="dark.3">
-                      {pkg.package_name ?? "—"}
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{pkg.package_type}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge
-                        size="sm"
-                        variant="dot"
-                        color={(() => {
-                          if (pkg.status === "STORED") return "blue";
-                          if (pkg.status?.includes("REQUEST")) return "orange";
-                          return "gray";
-                        })()}
-                        aria-label={`Package status: ${pkg.status?.replace(/_/g, " ") ?? "unknown"}`}
-                      >
-                        {pkg.status?.replace(/_/g, " ") ?? "—"}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td c="dimmed" style={{ textAlign: "right" }}>
-                      <Text size="sm">
-                        <time dateTime={pkg.received_at || undefined}>
-                          {dayjs(pkg.received_at).format("MMM D, h:mm A")}
-                        </time>
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ))
-              ) : (
-                <Table.Tr>
-                  <Table.Td colSpan={4} align="center" py="xl">
-                    <Text c="dimmed" fs="italic">
-                      No recent activity found
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
+            columns={[
+              {
+                accessor: "package_name",
+                title: "Package Name",
+                render: (pkg) => (
+                  <Text fw={700} c="dark.4" size="sm">
+                    {pkg.package_name ?? "—"}
+                  </Text>
+                ),
+              },
+              {
+                accessor: "package_type",
+                title: "Type",
+                render: (pkg) => (
+                  <Badge size="md" variant="transparent" color="dark">
+                    {pkg.package_type}
+                  </Badge>
+                ),
+              },
+              {
+                accessor: "status",
+                title: "Status",
+                render: (pkg) => (
+                  <Badge
+                    size="md"
+                    radius="md"
+                    variant="dot"
+                    color={getStatusFormat(pkg.status)}
+                    aria-label={`Package status: ${pkg.status?.replace(/_/g, " ") ?? "unknown"}`}
+                  >
+                    {pkg.status?.replace(/_/g, " ") ?? "—"}
+                  </Badge>
+                ),
+              },
+              {
+                accessor: "received_at",
+                title: "Received",
+                textAlign: "right",
+                render: (pkg) => (
+                  <Text size="sm" fw={600} c="dark.3">
+                    {pkg.received_at ? (
+                      <time dateTime={pkg.received_at}>
+                        {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                      </time>
+                    ) : (
+                      "—"
+                    )}
+                  </Text>
+                ),
+              },
+            ]}
+            noRecordsText="No recent activity found"
+            noRecordsIcon={
+              <IconPackage
+                size={32}
+                color="var(--mantine-color-gray-3)"
+                aria-hidden="true"
+              />
+            }
+          />
         </Paper>
       </Stack>
     );

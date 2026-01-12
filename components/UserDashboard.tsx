@@ -531,7 +531,7 @@ export default function UserDashboard({
     return (
       <Stack align="center" py="xl">
         <Loader size="md" />
-        <Text c="dimmed">Loading your dashboard...</Text>
+        <Text c="#313131">Loading your dashboard...</Text>
       </Stack>
     );
   }
@@ -542,7 +542,7 @@ export default function UserDashboard({
         <Text c="red" fw={700}>
           Error
         </Text>
-        <Text c="dimmed">{error}</Text>
+        <Text c="#313131">{error}</Text>
         <Button mt="md" onClick={refresh}>
           Retry
         </Button>
@@ -557,7 +557,7 @@ export default function UserDashboard({
           <Title order={2} c="dark.8">
             Hello, {firstName ?? "User"}
           </Title>
-          <Text c="dimmed">Here is what&apos;s happening with your mail.</Text>
+          <Text c="#313131">Here is what&apos;s happening with your mail.</Text>
         </Box>
         <Group
           gap="sm"
@@ -581,7 +581,8 @@ export default function UserDashboard({
             component={Link}
             href="/mailroom/register"
             variant="outline"
-            style={{ whiteSpace: "nowrap" }}
+            c="#26316D"
+            style={{ whiteSpace: "nowrap", border: "1px solid #26316D" }}
           >
             Add New
           </Button>
@@ -601,7 +602,7 @@ export default function UserDashboard({
               <IconBox size={24} />
             </ThemeIcon>
             <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              <Text c="#313131" size="xs" tt="uppercase" fw={700}>
                 Items in Storage
               </Text>
               <Text fw={700} size="xl" c="blue.9">
@@ -617,7 +618,7 @@ export default function UserDashboard({
               <IconAlertCircle size={24} />
             </ThemeIcon>
             <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              <Text c="#313131" size="xs" tt="uppercase" fw={700}>
                 Pending Requests
               </Text>
               <Text fw={700} size="xl">
@@ -633,7 +634,7 @@ export default function UserDashboard({
               <IconTruckDelivery size={24} />
             </ThemeIcon>
             <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              <Text c="#313131" size="xs" tt="uppercase" fw={700}>
                 Total Released
               </Text>
               <Text fw={700} size="xl">
@@ -644,7 +645,15 @@ export default function UserDashboard({
         </Paper>
       </SimpleGrid>
 
-      <Divider label="Your Active Subscriptions" labelPosition="center" />
+      <Divider
+        label="Your Active Subscriptions"
+        labelPosition="center"
+        styles={{
+          label: {
+            color: "#313131",
+          },
+        }}
+      />
 
       {(() => {
         const list = filtered;
@@ -700,7 +709,7 @@ export default function UserDashboard({
                     {/* CODE AND PLAN - Responsive Grid */}
                     <Group justify="space-between" align="flex-start">
                       <Box>
-                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        <Text size="xs" c="#313131" tt="uppercase" fw={700}>
                           Mailroom Code
                         </Text>
                         <Text
@@ -715,7 +724,7 @@ export default function UserDashboard({
                       </Box>
 
                       <Box style={{ textAlign: isMobile ? "left" : "right" }}>
-                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        <Text size="xs" c="#313131" tt="uppercase" fw={700}>
                           Plan
                         </Text>
                         <Text fw={600} size="sm">
@@ -725,13 +734,13 @@ export default function UserDashboard({
                     </Group>
 
                     <Box>
-                      <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      <Text size="xs" c="#313131" tt="uppercase" fw={700}>
                         Subscriber
                       </Text>
                       <Text fw={600} size="sm" lh={1.2}>
                         {row.name}
                       </Text>
-                      <Text size="xs" c="dimmed" truncate>
+                      <Text size="xs" c="#313131" truncate>
                         {row.email}
                       </Text>
                     </Box>
@@ -743,20 +752,20 @@ export default function UserDashboard({
                       <Box>
                         <Group gap={6} mb={4}>
                           <IconPackage size={14} color="gray" />
-                          <Text size="xs" c="dimmed">
+                          <Text size="xs" c="#313131">
                             Current Inventory
                           </Text>
                         </Group>
                         <Text fw={700} size="lg">
                           {row.stats.stored}{" "}
-                          <small style={{ fontWeight: 400, color: "#868e96" }}>
+                          <small style={{ fontWeight: 400, color: "#313131" }}>
                             items
                           </small>
                         </Text>
                       </Box>
 
                       <Box style={{ textAlign: isMobile ? "left" : "right" }}>
-                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        <Text size="xs" c="#313131" tt="uppercase" fw={700}>
                           {row.auto_renew ? "Renews On" : "Expires On"}
                         </Text>
                         <Text
@@ -772,12 +781,22 @@ export default function UserDashboard({
                     </SimpleGrid>
 
                     <Group mt="xs" gap={8}>
-                      <Badge color="teal" variant="light" size="sm">
-                        Released: {row.stats.released}
-                      </Badge>
                       <Badge
                         size="sm"
-                        color={row.stats.pending > 0 ? "orange" : "gray"}
+                        variant="light"
+                        styles={{
+                          root: {
+                            backgroundColor: "#b2dfdb", // accessible light teal
+                            color: "#004d40", // dark teal text
+                          },
+                        }}
+                      >
+                        Released: {row.stats.released}
+                      </Badge>
+
+                      <Badge
+                        size="sm"
+                        color={row.stats.pending > 0 ? "orange" : "#313131"}
                         variant={row.stats.pending > 0 ? "filled" : "light"}
                       >
                         {row.stats.pending} request
@@ -793,6 +812,7 @@ export default function UserDashboard({
                       href={`/mailroom/${row.id}`}
                       radius="md"
                       fullWidth
+                      bg="#26316D"
                       rightSection={<IconChevronRight size={16} />}
                     >
                       Manage Mailbox
@@ -801,10 +821,18 @@ export default function UserDashboard({
                     {row.auto_renew && row.mailroom_status === "ACTIVE" && (
                       <Button
                         variant="filled"
-                        color="red"
                         radius="md"
                         fullWidth
                         size="sm"
+                        styles={{
+                          root: {
+                            backgroundColor: "#d32f2f", // accessible red
+                            color: "#ffffff", // white text
+                            "&:hover": {
+                              backgroundColor: "#b71c1c", // darker red on hover
+                            },
+                          },
+                        }}
                         onClick={() => {
                           setSelectedSubId(row.id);
                           setCancelModalOpen(true);
@@ -821,7 +849,7 @@ export default function UserDashboard({
             {total > perPage && (
               <Stack gap="sm" mt="md" w="100%">
                 <Group justify="center" display={{ base: "flex", sm: "none" }}>
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" c="#313131">
                     {Math.min(start + 1, total)}–
                     {Math.min(start + pageItems.length, total)} of {total}
                   </Text>
@@ -829,7 +857,7 @@ export default function UserDashboard({
                 <Group justify="space-between" align="center" w="100%">
                   <Text
                     size="sm"
-                    c="dimmed"
+                    c="#313131"
                     display={{ base: "none", sm: "block" }}
                   >
                     Showing {Math.min(start + 1, total)}–
@@ -879,7 +907,7 @@ export default function UserDashboard({
           <Paper withBorder p="sm" bg="gray.0">
             <Group gap="sm">
               <IconCreditCardOff size={20} color="gray" />
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="#313131">
                 You will retain access to your mailroom and packages until the
                 current period expires. After that, the account will become
                 inactive.

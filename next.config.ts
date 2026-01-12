@@ -1,12 +1,26 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // PERFORMANCE FIX: Optimize heavy libraries to reduce JS execution time
+  experimental: {
+    optimizePackageImports: [
+      "@mantine/core",
+      "@mantine/hooks",
+      "@tabler/icons-react",
+    ],
+  },
+
   images: {
     remotePatterns: [
       {
         protocol: "https",
         hostname: "rqdyfadbeafmunvmlqcp.supabase.co",
         pathname: "/storage/v1/object/**",
+      },
+      {
+        protocol: "https",
+        hostname: "storage.keep-ph.com",
+        pathname: "/**",
       },
       {
         protocol: "http",

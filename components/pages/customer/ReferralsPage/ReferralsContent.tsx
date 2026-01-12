@@ -281,11 +281,10 @@ export default function ReferralsContent() {
           <Title order={1} style={{ fontWeight: 800, color: "#1A237E" }}>
             {REFERRALS_UI.hero.title}
           </Title>
-          <Text c="dimmed" size="lg" ta="center" maw={600}>
+          <Text c="#313131" size="lg" ta="center" maw={600}>
             {heroDescription}
           </Text>
         </Stack>
-
         {loading ? (
           <Center py="xl">
             <Loader color="blue" />
@@ -316,7 +315,7 @@ export default function ReferralsContent() {
                       </Badge>
                     </Group>
 
-                    <Text size="sm" c="dimmed">
+                    <Text size="sm" c="#313131">
                       {REFERRALS_UI.summaryCard.description}
                     </Text>
 
@@ -382,15 +381,21 @@ export default function ReferralsContent() {
               >
                 <Group justify="space-between" align="center" wrap="wrap">
                   <Stack gap={4}>
-                    <Title order={3} c={isRewardReady ? "green.7" : "indigo.9"}>
+                    <Title order={2} c={isRewardReady ? "green.7" : "indigo.9"}>
                       {isRewardReady
                         ? `${REFERRALS_UI.progressCard.unlockedTitle} (${rewardStatus?.claimableCount} Reward${(rewardStatus?.claimableCount || 0) > 1 ? "s" : ""} ready!)`
                         : `${REFERRALS_UI.progressCard.progressTitle} (${referralCount % REWARD_THRESHOLD}/${REWARD_THRESHOLD})`}
                     </Title>
                     <Group gap="xs">
-                      <Badge color="indigo" variant="light">
+                      <Badge
+                        style={{
+                          color: "#1e1e1e", // very dark text (near 100% contrast)
+                          backgroundColor: "#c7d2fe", // light indigo background (~50% lightness)
+                        }}
+                      >
                         Lifetime Referrals: {referralCount}
                       </Badge>
+
                       {rewardStatus?.claimedMilestones ? (
                         <Badge color="green" variant="light">
                           Total Rewards Claimed:{" "}
@@ -398,7 +403,7 @@ export default function ReferralsContent() {
                         </Badge>
                       ) : null}
                     </Group>
-                    <Text c="dimmed" size="sm">
+                    <Text c="#313131" size="sm">
                       {isRewardReady
                         ? REFERRALS_UI.progressCard.unlockedDescription
                         : progressDescription}
@@ -445,11 +450,12 @@ export default function ReferralsContent() {
             >
               <Stack align="center" gap="xs">
                 <Group gap="xs">
-                  <IconTicket size={16} color="gray" />
+                  <IconTicket size={16} color="#2b2b2b" />
+
                   <Text
                     size="xs"
                     fw={700}
-                    c="dimmed"
+                    c="#1f1f1f"
                     tt="uppercase"
                     style={{ letterSpacing: 1 }}
                   >
@@ -476,8 +482,6 @@ export default function ReferralsContent() {
                     copy: () => void;
                   }) => (
                     <Button
-                      color={copied ? "teal" : "indigo"}
-                      variant={copied ? "filled" : "light"}
                       onClick={copy}
                       disabled={!referralCode}
                       radius="xl"
@@ -490,6 +494,29 @@ export default function ReferralsContent() {
                           <IconCopy size={18} />
                         )
                       }
+                      styles={{
+                        root: {
+                          backgroundColor: copied ? "#0f766e" : "#3730a3", // dark teal / dark indigo
+                          color: "#ffffff",
+
+                          "&:hover": {
+                            backgroundColor: copied ? "#115e59" : "#312e81",
+                          },
+
+                          "&:active": {
+                            backgroundColor: copied ? "#134e4a" : "#1e1b4b",
+                          },
+
+                          "&:disabled": {
+                            backgroundColor: "#4b5563", // still dark enough
+                            color: "#ffffff",
+                            opacity: 1, // IMPORTANT: prevent contrast drop
+                          },
+                        },
+                        label: {
+                          color: "#ffffff",
+                        },
+                      }}
                     >
                       {copied
                         ? REFERRALS_UI.codeCard.copySuccess

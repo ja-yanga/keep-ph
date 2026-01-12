@@ -604,26 +604,38 @@ export async function getUserAddresses(
 export async function adminListUserKyc(
   search = "",
   limit = 500,
-): Promise<AdminUserKyc[]> {
+  offset = 0,
+  status?: string,
+): Promise<{ data: AdminUserKyc[]; total_count: number }> {
   const { data, error } = await supabaseAdmin.rpc("admin_list_user_kyc", {
     input_search: search,
     input_limit: limit,
+    input_offset: offset,
+    input_status: status ?? null,
   });
 
   if (error) {
     throw error;
   }
 
-  const parsed =
-    typeof data === "string"
-      ? (JSON.parse(data) as unknown[])
-      : ((data as unknown[]) ?? []);
+  const payload =
+    typeof data === "string" ? JSON.parse(data) : (data as unknown);
 
-  if (!Array.isArray(parsed)) {
-    return [];
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !("total_count" in payload)
+  ) {
+    return { data: [], total_count: 0 };
   }
 
-  return parsed as AdminUserKyc[];
+  const result = payload as { data: AdminUserKyc[]; total_count: number };
+
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    total_count: Number(result.total_count) || 0,
+  };
 }
 
 export async function getUserRole(userId: string) {
@@ -1107,12 +1119,17 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
  * Fetches notifications for a specific user via RPC.
  * Returns an array of notifications, sorted by creation date (desc), limited to 10.
  */
-export async function getNotificationByUserId(userId: string) {
+export async function getNotificationByUserId(
+  userId: string,
+  limit: number = 10,
+  offset: number = 2,
+) {
   if (!userId) return [];
 
   const { data, error } = await supabaseAdmin.rpc("get_user_notifications", {
     input_user_id: userId,
-    input_limit: 10,
+    input_limit: limit,
+    input_offset: offset,
   });
 
   if (error) {
@@ -1140,16 +1157,45 @@ export const getUserSession = async (userId: string) => {
 };
 
 /**
- * Gets user storage files and usage stats via RPC.
- * Returns scans array and usage object.
+ * Gets user storage files and usage stats via RPC with pagination and filtering.
+ * Returns scans array, pagination metadata, and usage object.
+ *
+ * @param userId - User ID to fetch files for
+ * @param options - Optional parameters for pagination, filtering, and sorting
+ * @returns Promise with storage files data including pagination info
  */
-export async function getUserStorageFiles(userId: string) {
+export async function getUserStorageFiles(
+  userId: string,
+  options?: {
+    search?: string;
+    sortBy?: "uploaded_at" | "file_name" | "file_size_mb";
+    sortDir?: "asc" | "desc";
+    page?: number;
+    limit?: number;
+  },
+) {
   if (!userId) {
     throw new Error("userId is required");
   }
 
+  const {
+    search = null,
+    sortBy = "uploaded_at",
+    sortDir = "desc",
+    page = 1,
+    limit = 10,
+  } = options || {};
+
+  // Calculate offset from page number
+  const offset = (page - 1) * limit;
+
   const { data, error } = await supabaseAdmin.rpc("get_user_storage_files", {
     input_user_id: userId,
+    search_query: search || null,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    page_limit: limit,
+    page_offset: offset,
   });
 
   if (error) {

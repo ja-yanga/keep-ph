@@ -12,7 +12,7 @@ export function StatCard({
   title: string;
   value?: number | string;
   description?: string;
-  icon: React.ComponentType<{ size?: number; color?: string }>;
+  icon: React.ComponentType<{ size?: number; color?: string; stroke?: number }>;
   color: string;
   onClick: () => void;
   customContent?: React.ReactNode;
@@ -21,8 +21,8 @@ export function StatCard({
     <Paper
       withBorder
       p="md"
-      radius="md"
-      shadow="sm"
+      radius="lg"
+      shadow="xs"
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -34,32 +34,25 @@ export function StatCard({
         }
       }}
       style={{
+        borderLeft: `6px solid var(--mantine-color-${color}-filled)`,
+        background: `linear-gradient(135deg, var(--mantine-color-white) 0%, var(--mantine-color-gray-0) 100%)`,
         cursor: "pointer",
-        transition: "all 0.2s ease",
-        borderLeft: `4px solid var(--mantine-color-${color}-6)`,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-4px)";
-        e.currentTarget.style.boxShadow = "var(--mantine-shadow-md)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.boxShadow = "var(--mantine-shadow-sm)";
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
-      <Group justify="space-between" align="flex-start">
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Stack gap={4}>
-          <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+          <Text size="xs" c="dark.3" fw={700} tt="uppercase" lts="0.05em">
             {title}
           </Text>
           {customContent ? (
             customContent
           ) : (
             <>
-              <Text fw={800} size="2rem" lh={1} mt={4}>
+              <Text fw={900} size="2.2rem" lh={1} mt={4}>
                 {value}
               </Text>
-              <Text size="xs" c="dimmed" fw={500}>
+              <Text size="xs" c="dark.3" fw={600}>
                 {description}
               </Text>
             </>
@@ -68,11 +61,13 @@ export function StatCard({
         <ThemeIcon
           color={color}
           variant="light"
-          size={48}
+          size={52}
           radius="md"
-          style={{ opacity: 0.8 }}
+          style={{
+            flexShrink: 0,
+          }}
         >
-          <Icon size={28} />
+          <Icon size={30} stroke={1.5} />
         </ThemeIcon>
       </Group>
     </Paper>
