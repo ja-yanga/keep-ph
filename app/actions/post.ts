@@ -848,16 +848,40 @@ export async function adminReleaseMailroomPackage(args: {
     data: { publicUrl },
   } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(fileName);
 
+  // Calculate file size in MB
+  const fileSizeMb = file.size / (1024 * 1024);
+
+  // Insert proof of release into mailroom_file_table
+  const { error: fileInsertError } = await supabaseAdmin
+    .from("mailroom_file_table")
+    .insert({
+      mailbox_item_id: packageId,
+      mailroom_file_name: file.name,
+      mailroom_file_url: publicUrl,
+      mailroom_file_size_mb: fileSizeMb,
+      mailroom_file_mime_type: file.type,
+      mailroom_file_type: "RELEASED",
+    });
+
+  if (fileInsertError) {
+    console.error("[release] Failed to insert mailroom file:", fileInsertError);
+    // Don't throw - continue with package update
+  }
+
   // Update Package Status and snapshot release address/name if provided
+  // Note: Keep mailbox_item_photo for backward compatibility, but proof is now in mailroom_file_table
   const updatePayload: Record<string, unknown> = {
     mailbox_item_status: "RELEASED",
-    mailbox_item_photo: publicUrl,
   };
 
   if (releaseAddressId) {
     updatePayload.user_address_id = releaseAddressId;
     updatePayload.mailbox_item_release_address = releaseAddressText;
   }
+
+  // Note: release_to_name is stored in mail_action_request_table or can be derived from address
+  // The mailbox_item_table doesn't have a dedicated release_to_name field
+  // It will be available through the mailroom_file_table or registration data
 
   const { data: pkg, error: updateError } = await supabaseAdmin
     .from("mailbox_item_table")

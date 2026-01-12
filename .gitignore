@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+__tests__/screenshots/
+__tests__/lighthouse-reports/
 
 # next.js
 /.next/

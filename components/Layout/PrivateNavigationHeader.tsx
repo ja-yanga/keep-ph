@@ -96,14 +96,18 @@ export default function PrivateNavigationHeader() {
                 onClick={toggle}
                 hiddenFrom="sm"
                 size="sm"
+                aria-label="Toggle navigation menu"
+                aria-expanded={opened}
+                aria-controls="mobile-navigation-drawer"
               />
             )}
 
             <Link
               href={isAdmin ? "/admin/dashboard" : "/dashboard"}
               style={{ textDecoration: "none" }}
+              aria-label="Keep PH - Home"
             >
-              <Title order={3} fw={800} c="#1A237E">
+              <Title order={1} fw={800} c="#1A237E">
                 Keep PH
               </Title>
             </Link>
@@ -128,9 +132,9 @@ export default function PrivateNavigationHeader() {
                 color="gray"
                 radius="xl"
                 size="lg"
-                aria-label="account"
+                aria-label="View account settings"
               >
-                <IconUser size={20} />
+                <IconUser size={20} aria-hidden="true" />
               </ActionIcon>
             </Tooltip>
 
@@ -143,7 +147,8 @@ export default function PrivateNavigationHeader() {
               fw={600}
               c="#26316D"
               px={18}
-              visibleFrom="xs" // Hide text button on very small screens if needed
+              visibleFrom="xs"
+              aria-label="Sign out of your account"
             >
               Logout
             </Button>
@@ -158,6 +163,8 @@ export default function PrivateNavigationHeader() {
         title="Navigation"
         size="xs"
         hiddenFrom="sm"
+        id="mobile-navigation-drawer"
+        aria-label="Mobile navigation menu"
       >
         <Stack gap="md" mt="xl">
           {navLinks}

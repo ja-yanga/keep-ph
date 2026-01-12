@@ -8,8 +8,8 @@
 -- USAGE:
 -- 1. Open Supabase Dashboard > SQL Editor
 -- 2. Paste and run this entire file
--- 3. Change 'admin@example.com' to your desired admin email
--- 4. Change 'admin123' to your desired admin password
+-- 3. Creates two admin users: admin@example.com and admin1@example.com
+-- 4. Both admin users have password: 'admin123'
 -- 5. After running, you can sign in with the admin credentials
 --
 -- IDEMPOTENCY:
@@ -33,6 +33,7 @@
 -- Only insert if user doesn't already exist (idempotent)
 DO $$
 BEGIN
+  -- Create admin@example.com
   IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@example.com') THEN
     INSERT INTO auth.users (
       instance_id,
@@ -72,9 +73,50 @@ BEGIN
       ''
     );
   END IF;
+
+  -- Create admin1@example.com
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin1@example.com') THEN
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      recovery_sent_at,
+      last_sign_in_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      confirmation_token,
+      email_change,
+      email_change_token_new,
+      recovery_token
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      gen_random_uuid(),
+      'authenticated',
+      'authenticated',
+      'admin1@example.com',
+      crypt('admin123', gen_salt('bf')),
+      current_timestamp,
+      current_timestamp,
+      current_timestamp,
+      '{"provider":"email","providers":["email"]}',
+      '{"role":"admin"}',
+      current_timestamp,
+      current_timestamp,
+      '',
+      '',
+      '',
+      ''
+    );
+  END IF;
 END $$;
 
--- Create identity record for admin user(s)
+-- Create identity records for admin user(s)
 -- Note: provider_id is required in newer Supabase versions
 INSERT INTO auth.identities (
     id,
@@ -96,7 +138,7 @@ SELECT
     current_timestamp,
     current_timestamp
 FROM auth.users
-WHERE email = 'admin@example.com'
+WHERE email IN ('admin@example.com', 'admin1@example.com')
   AND NOT EXISTS (
       SELECT 1 FROM auth.identities WHERE user_id = auth.users.id
   );
@@ -106,7 +148,7 @@ WHERE email = 'admin@example.com'
 UPDATE public.users_table
 SET users_role = 'admin',
     users_is_verified = true
-WHERE users_email = 'admin@example.com';
+WHERE users_email IN ('admin@example.com', 'admin1@example.com');
 
 -- If the trigger didn't create the entry (unlikely), create it manually
 -- Only insert if entry doesn't exist (idempotent)
@@ -124,7 +166,7 @@ SELECT
     true,
     'ADMIN' || upper(substring(md5(random()::text) from 1 for 6))
 FROM auth.users
-WHERE email = 'admin@example.com'
+WHERE email IN ('admin@example.com', 'admin1@example.com')
   AND NOT EXISTS (
       SELECT 1 FROM public.users_table WHERE users_id = auth.users.id
   );

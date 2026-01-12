@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +27,7 @@ import {
   IconPackage,
   IconRefresh,
 } from "@tabler/icons-react";
+// Import only needed dayjs functions to reduce bundle size
 import dayjs from "dayjs";
 import { fetcher } from "@/utils/helper";
 import { StatCard } from "./StatCard";
@@ -53,14 +54,26 @@ type DashboardStats = {
 export default function AdminDashboard() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [currentDate, setCurrentDate] = useState<string>("");
+  const [dateTime, setDateTime] = useState<string>("");
 
   const {
     data,
     error,
     isValidating: isRefreshingSWR,
   } = useSWR<DashboardStats | undefined>(API_ENDPOINTS.admin.stats, fetcher, {
-    revalidateOnFocus: true,
+    revalidateOnFocus: false, // Disable to reduce unnecessary requests
+    revalidateOnReconnect: true, // Only revalidate on reconnect
+    dedupingInterval: 2000, // Dedupe requests within 2 seconds
+    focusThrottleInterval: 5000, // Throttle focus revalidation
   });
+
+  // Set date only on client side to prevent hydration mismatch
+  useEffect(() => {
+    const now = dayjs();
+    setCurrentDate(now.format("MMMM D, YYYY"));
+    setDateTime(now.format("YYYY-MM-DD"));
+  }, []);
 
   const loading = !data && !error;
 
@@ -81,13 +94,18 @@ export default function AdminDashboard() {
 
   if (loading) {
     pageContent = (
-      <Center h={400}>
+      <Center
+        h={400}
+        role="status"
+        aria-live="polite"
+        aria-label="Loading dashboard data"
+      >
         <Loader size="lg" color="violet" type="dots" />
       </Center>
     );
   } else if (!stats) {
     pageContent = (
-      <Center h={400}>
+      <Center h={400} role="alert" aria-live="polite">
         <Text c="dimmed">No dashboard data available.</Text>
       </Center>
     );
@@ -109,19 +127,27 @@ export default function AdminDashboard() {
       <Stack gap="xl">
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={2} fw={800} c="dark.4">
+            <Title order={1} fw={800} c="dark.4">
               Dashboard Overview
             </Title>
-            <Text c="dimmed" size="sm">
+            <Text c="dimmed" size="sm" role="text">
               Welcome back. Here is what&apos;s happening today,{" "}
-              {dayjs().format("MMMM D, YYYY")}.
+              {currentDate ? (
+                <time dateTime={dateTime} suppressHydrationWarning>
+                  {currentDate}
+                </time>
+              ) : (
+                <span suppressHydrationWarning>today</span>
+              )}
+              .
             </Text>
           </div>
           <Button
             variant="default"
-            leftSection={<IconRefresh size={16} />}
+            leftSection={<IconRefresh size={16} aria-hidden="true" />}
             loading={refreshing || isRefreshingSWR}
             onClick={handleRefresh}
+            aria-label="Refresh dashboard data"
           >
             Refresh Data
           </Button>
@@ -167,6 +193,7 @@ export default function AdminDashboard() {
                   roundCaps
                   thickness={6}
                   sections={[{ value: occupancyRate, color: "violet" }]}
+                  aria-label={`Locker occupancy: ${Math.round(occupancyRate)}%`}
                 />
                 <div>
                   <Text fw={800} size="xl" lh={1}>
@@ -184,31 +211,53 @@ export default function AdminDashboard() {
           />
         </SimpleGrid>
 
-        <Paper withBorder p="lg" radius="md" shadow="sm">
+        <Paper
+          withBorder
+          p="lg"
+          radius="md"
+          shadow="sm"
+          role="region"
+          aria-labelledby="recent-packages-heading"
+        >
           <Group justify="space-between" mb="lg">
             <Group gap="xs">
-              <ThemeIcon variant="light" color="gray" size="md">
+              <ThemeIcon
+                variant="light"
+                color="gray"
+                size="md"
+                aria-hidden="true"
+              >
                 <IconPackage size={16} />
               </ThemeIcon>
-              <Title order={4}>Recent Packages</Title>
+              <Title order={2} id="recent-packages-heading">
+                Recent Packages
+              </Title>
             </Group>
             <Button
               variant="subtle"
               size="xs"
-              rightSection={<IconArrowRight size={14} />}
+              rightSection={<IconArrowRight size={14} aria-hidden="true" />}
               onClick={() => router.push("/admin/packages")}
+              aria-label="View all packages"
             >
               View All Packages
             </Button>
           </Group>
 
-          <Table verticalSpacing="sm" highlightOnHover>
+          <Table
+            verticalSpacing="sm"
+            highlightOnHover
+            role="table"
+            aria-label="Recent packages"
+          >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Package</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th style={{ textAlign: "right" }}>Received</Table.Th>
+                <Table.Th scope="col">Package</Table.Th>
+                <Table.Th scope="col">Type</Table.Th>
+                <Table.Th scope="col">Status</Table.Th>
+                <Table.Th scope="col" style={{ textAlign: "right" }}>
+                  Received
+                </Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -230,13 +279,16 @@ export default function AdminDashboard() {
                           if (pkg.status?.includes("REQUEST")) return "orange";
                           return "gray";
                         })()}
+                        aria-label={`Package status: ${pkg.status?.replace(/_/g, " ") ?? "unknown"}`}
                       >
                         {pkg.status?.replace(/_/g, " ") ?? "—"}
                       </Badge>
                     </Table.Td>
                     <Table.Td c="dimmed" style={{ textAlign: "right" }}>
                       <Text size="sm">
-                        {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                        <time dateTime={pkg.received_at || undefined}>
+                          {dayjs(pkg.received_at).format("MMM D, h:mm A")}
+                        </time>
                       </Text>
                     </Table.Td>
                   </Table.Tr>

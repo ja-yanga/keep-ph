@@ -1,13 +1,28 @@
 "use client";
 
 import { Container } from "@mantine/core";
-import AdminDashboard from "@/components/pages/admin/DashboardPage/AdminDashboard";
+import dynamic from "next/dynamic";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
+import { Loader, Center } from "@mantine/core";
+
+// Dynamically import AdminDashboard with code splitting
+// This reduces initial bundle size and improves performance
+const AdminDashboard = dynamic(
+  () => import("@/components/pages/admin/DashboardPage/AdminDashboard"),
+  {
+    loading: () => (
+      <Center h={400}>
+        <Loader size="lg" color="violet" type="dots" />
+      </Center>
+    ),
+    ssr: true, // Enable SSR for better initial load
+  },
+);
 
 export default function AdminDashboardPage() {
   return (
     <PrivateMainLayout>
-      <main style={{ flex: 1 }}>
+      <main style={{ flex: 1 }} role="main" aria-label="Admin dashboard">
         <Container size="xl" py="xl">
           <AdminDashboard />
         </Container>

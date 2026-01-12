@@ -24,6 +24,15 @@ export function StatCard({
       radius="md"
       shadow="sm"
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`${title}: ${value ?? description ?? "View details"}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         cursor: "pointer",
         transition: "all 0.2s ease",

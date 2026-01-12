@@ -11,6 +11,7 @@ const customJestConfig = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },
+  transformIgnorePatterns: ["node_modules/(?!(lighthouse)/)"],
 };
 
 module.exports = createJestConfig(customJestConfig);
