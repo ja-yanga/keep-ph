@@ -590,3 +590,49 @@ export type LockerRow = {
     mailroom_location_name?: string;
   } | null;
 };
+
+export type MailroomRow = {
+  id: string;
+  mailroom_code: string | null;
+  name: string;
+  email: string | null;
+  plan: string | null;
+  location: string | null;
+  created_at?: string | null;
+  expiry_at?: string | null;
+  mailroom_status?: string | null;
+  auto_renew: boolean;
+  stats: {
+    stored: number;
+    pending: number;
+    released: number;
+  };
+  raw?: RawRow;
+};
+
+export type MailroomStats = {
+  stored: number;
+  pending: number;
+  released: number;
+};
+
+export type MailroomTotals = MailroomStats | null;
+
+export type DashboardFilters = {
+  plan: string | null;
+  location: string | null;
+  mailroomStatus: string | null;
+};
+
+export type ApiResponse = {
+  rows: RawRow[];
+  stats?: MailroomStats;
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+};
+
+export type MailroomStatus = "ACTIVE" | "EXPIRING" | "INACTIVE";

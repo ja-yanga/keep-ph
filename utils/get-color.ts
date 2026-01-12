@@ -12,3 +12,9 @@ export const getNotificationColor = (type: string) => {
       return "gray";
   }
 };
+
+export const getStatusColor = (status?: string | null): string => {
+  if (status === "ACTIVE") return "green";
+  if (status === "EXPIRING") return "yellow";
+  return "red";
+};
