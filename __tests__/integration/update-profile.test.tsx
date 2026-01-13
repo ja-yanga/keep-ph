@@ -3,6 +3,24 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 
+// mock compressToAVIF to avoid canvas usage in JSDOM
+jest.mock("@/utils/compress-to-avif", () => ({
+  __esModule: true,
+  compressToAVIF: jest.fn(async (file: File) => {
+    // return the File (or a Blob) directly so component proceeds without canvas
+    return file;
+  }),
+}));
+
+// polyfill URL.createObjectURL used by component
+if (typeof URL.createObjectURL !== "function") {
+  URL.createObjectURL = jest.fn(() => "blob:preview");
+}
+// polyfill URL.revokeObjectURL used by component cleanup
+if (typeof URL.revokeObjectURL !== "function") {
+  URL.revokeObjectURL = jest.fn();
+}
+
 /*
   Integration tests for AccountContent -> update profile flow.
 
@@ -29,7 +47,7 @@ jest.mock("@/components/SessionProvider", () => ({
   }),
 }));
 
-import AccountSettings from "@/components/pages/customer/Account";
+import AccountContent from "@/components/pages/customer/Account/index";
 
 describe("AccountContent — update profile", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
@@ -38,8 +56,8 @@ describe("AccountContent — update profile", () => {
     jest.clearAllMocks();
     originalFetch = globalThis.fetch;
 
-    // Default fetch mock used by tests: respond to KYC and update-profile endpoints.
-    const fetchMock = jest.fn(async (input: RequestInfo) => {
+    // Default fetch mock used by tests: respond to KYC and upload/update endpoints.
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/api/user/kyc")) {
         // KYC lookup returns empty array (no KYC records)
@@ -48,8 +66,11 @@ describe("AccountContent — update profile", () => {
           json: async () => ({ data: [] }),
         } as unknown as Response;
       }
-      if (url.includes("/api/auth/update-profile")) {
-        // Default case: successful profile update
+      // accept either avatar upload or legacy update-profile endpoint
+      if (
+        url.includes("/api/auth/update-profile") ||
+        url.includes("/api/uploads/avatar")
+      ) {
         return {
           ok: true,
           json: async () => ({ message: "Profile updated successfully" }),
@@ -70,29 +91,31 @@ describe("AccountContent — update profile", () => {
     // Render component inside MantineProvider to ensure Mantine UI works
     render(
       <MantineProvider>
-        <AccountSettings />
+        <AccountContent />
       </MantineProvider>,
     );
 
-    // Find and click Save Profile which opens a confirmation modal
-    const saveBtn = await screen.findByRole("button", {
-      name: /Save Profile/i,
-    });
-    await userEvent.click(saveBtn);
+    // The UI now exposes avatar upload controls. Locate the hidden file input and
+    // simulate selecting a file to trigger the same upload flow.
+    const fileInput = (document.querySelector('input[type="file"]') ||
+      (await screen
+        .findByLabelText("Change avatar")
+        .then(() =>
+          document.querySelector('input[type="file"]'),
+        ))) as HTMLInputElement | null;
+    expect(fileInput).toBeTruthy();
+    const file = new File(["dummy"], "avatar.png", { type: "image/png" });
+    // fire change to simulate selecting a file
+    await userEvent.upload(fileInput!, file);
 
-    // Confirm the save in the modal
-    const confirmBtn = await screen.findByRole("button", {
-      name: /Confirm Save/i,
-    });
-    await userEvent.click(confirmBtn);
-
-    // Expect a POST to update-profile with JSON content-type
+    // Expect a POST to update-profile OR avatar upload endpoint
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/auth/update-profile",
+        expect.stringMatching(
+          /(\/api\/auth\/update-profile|\/api\/uploads\/avatar)/,
+        ),
         expect.objectContaining({
           method: "POST",
-          headers: { "Content-Type": "application/json" },
         }),
       );
     });
@@ -107,9 +130,9 @@ describe("AccountContent — update profile", () => {
   });
 
   it("shows error when update-profile returns non-ok", async () => {
-    // Replace fetch for this test so update-profile returns an error response
+    // Replace fetch for this test so update-profile/avatar returns an error response
     (globalThis.fetch as jest.Mock).mockImplementation(
-      async (input: RequestInfo) => {
+      async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.includes("/api/user/kyc")) {
           return {
@@ -117,7 +140,10 @@ describe("AccountContent — update profile", () => {
             json: async () => ({ data: [] }),
           } as unknown as Response;
         }
-        if (url.includes("/api/auth/update-profile")) {
+        if (
+          url.includes("/api/auth/update-profile") ||
+          url.includes("/api/uploads/avatar")
+        ) {
           // Simulate server error payload
           return {
             ok: false,
@@ -130,20 +156,20 @@ describe("AccountContent — update profile", () => {
 
     render(
       <MantineProvider>
-        <AccountSettings />
+        <AccountContent />
       </MantineProvider>,
     );
 
-    // Open modal and confirm save as in the success test
-    const saveBtn = await screen.findByRole("button", {
-      name: /Save Profile/i,
-    });
-    await userEvent.click(saveBtn);
-
-    const confirmBtn = await screen.findByRole("button", {
-      name: /Confirm Save/i,
-    });
-    await userEvent.click(confirmBtn);
+    // Trigger the avatar upload error path like the success test
+    const fileInput = (document.querySelector('input[type="file"]') ||
+      (await screen
+        .findByLabelText("Change avatar")
+        .then(() =>
+          document.querySelector('input[type="file"]'),
+        ))) as HTMLInputElement | null;
+    expect(fileInput).toBeTruthy();
+    const file = new File(["dummy"], "avatar.png", { type: "image/png" });
+    await userEvent.upload(fileInput!, file);
 
     // Expect an alert role to appear and contain the server-provided error message
     const alert = await screen.findByRole("alert");

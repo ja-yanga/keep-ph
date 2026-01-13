@@ -423,9 +423,9 @@ export default function AdminUserKyc() {
         <Group justify="space-between" mb="md" w="100%" wrap="nowrap">
           <SearchInput onSearch={handleSearchSubmit} />
 
-          <Badge size="lg" variant="light" color="indigo" w="10rem">
+          {/* <Badge size="lg" variant="filled" color="indigo" w="10rem">
             {totalRecords} Records
-          </Badge>
+          </Badge> */}
         </Group>
 
         <SegmentedControl

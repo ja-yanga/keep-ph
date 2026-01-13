@@ -1,6 +1,5 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
-// import "./globals.css";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 // Import Mantine CSS - Next.js will optimize this automatically
 import "@mantine/core/styles.css";
 import "mantine-datatable/styles.css";
@@ -13,31 +12,24 @@ import {
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 
-// Optimize font loading with display swap to prevent render-blocking
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap", // Prevent render-blocking
-  preload: true,
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap", // Prevent render-blocking
-  preload: false, // Only preload primary font
-});
-
+// CRITICAL: Use only ONE font to minimize render-blocking
 const inter = Inter({
-  variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap", // Prevent FOIT (Flash of Invisible Text)
+  preload: true,
+  fallback: ["system-ui", "arial"],
 });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#ffffff",
+};
 
 export const metadata: Metadata = {
   title: "Keep PH - Admin Dashboard",
   description:
     "Admin dashboard for managing packages, users, and mailroom operations",
-  // Optimize for performance
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
   ),
@@ -58,17 +50,24 @@ export default function RootLayout({
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript />
+        {/* DNS Prefetch for external resources */}
+        <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://rqdyfadbeafmunvmlqcp.supabase.co"
+        />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}
+        className={inter.className}
         suppressHydrationWarning
+        style={{ fontFamily: inter.style.fontFamily }}
       >
         {/* Add Google Analytics here */}
         {process.env.NEXT_PUBLIC_GA_ID && (
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
 
-        <MantineProvider theme={{ fontFamily: inter.style.fontFamily }}>
+        <MantineProvider>
           <ServerSessionProvider>{children}</ServerSessionProvider>
         </MantineProvider>
       </body>

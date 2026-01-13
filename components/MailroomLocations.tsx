@@ -37,7 +37,22 @@ import {
   IconX,
   IconArrowRight,
 } from "@tabler/icons-react";
-import { DataTable } from "mantine-datatable";
+import dynamic from "next/dynamic";
+import { type DataTableProps } from "mantine-datatable";
+// Lazy load DataTable to reduce initial bundle
+const DataTable = dynamic(
+  () => import("mantine-datatable").then((m) => m.DataTable),
+  {
+    ssr: false,
+    loading: () => (
+      <Stack gap="xs" role="progressbar" aria-label="Loading locations table">
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} h={40} />
+        ))}
+      </Stack>
+    ),
+  },
+) as <T>(props: DataTableProps<T>) => React.ReactElement;
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type Location = {
@@ -84,35 +99,35 @@ const SearchInput = React.memo(
         return (
           <Group gap={4}>
             <ActionIcon
-              size="sm"
+              size="md"
               variant="transparent"
-              c="gray.7"
+              c="dark.7"
               onClick={handleClear}
               aria-label="Clear search"
             >
-              <IconX size={16} aria-hidden="true" />
+              <IconX size={18} aria-hidden="true" />
             </ActionIcon>
             <ActionIcon
-              size="sm"
+              size="md"
               variant="transparent"
               c="indigo"
               onClick={handleSearch}
               aria-label="Submit search"
             >
-              <IconArrowRight size={16} aria-hidden="true" />
+              <IconArrowRight size={18} aria-hidden="true" />
             </ActionIcon>
           </Group>
         );
       }
       return (
         <ActionIcon
-          size="sm"
+          size="md"
           variant="transparent"
-          c="gray.7"
+          c="dark.7"
           onClick={handleSearch}
           aria-label="Submit search"
         >
-          <IconArrowRight size={16} aria-hidden="true" />
+          <IconArrowRight size={18} aria-hidden="true" />
         </ActionIcon>
       );
     };
@@ -373,7 +388,7 @@ export default function MailroomLocations() {
 
   if (!data && isLoading) {
     return (
-      <Stack gap="md" aria-busy="true" aria-hidden="true">
+      <Stack gap="md" aria-hidden="true">
         <Group justify="space-between">
           <Group>
             <Skeleton height={36} width={200} radius="sm" />
@@ -399,12 +414,28 @@ export default function MailroomLocations() {
           onClose={() => setGlobalSuccess(null)}
           w="100%"
           maw={1200}
+          aria-live="polite"
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+      <Paper
+        p="xl"
+        radius="lg"
+        withBorder
+        shadow="sm"
+        w="100%"
+        component="section"
+        aria-labelledby="locations-management-title"
+      >
+        <Title
+          order={2}
+          id="locations-management-title"
+          style={{ display: "none" }}
+        >
+          Mailroom Locations Management
+        </Title>
         {isMobile ? (
           <Stack mb="md" gap="md">
             <SearchInput
@@ -452,7 +483,7 @@ export default function MailroomLocations() {
                   setGlobalSuccess(null);
                 }}
                 color="#1e3a8a"
-                aria-label="Create new location"
+                aria-label="Create new mailroom location"
               >
                 Create
               </Button>
@@ -526,7 +557,7 @@ export default function MailroomLocations() {
             <Tooltip label="Refresh list">
               <ActionIcon
                 variant="subtle"
-                color="gray.7"
+                color="dark.7"
                 size="lg"
                 onClick={() => mutate()}
                 aria-label="Refresh locations list"
@@ -542,10 +573,10 @@ export default function MailroomLocations() {
                 setGlobalSuccess(null);
               }}
               color="#1e3a8a"
-              aria-label="Create new location"
+              aria-label="Create new mailroom location"
               style={{ flexShrink: 0 }}
             >
-              Create
+              Create Location
             </Button>
           </Group>
         )}
@@ -559,16 +590,16 @@ export default function MailroomLocations() {
           highlightOnHover
           records={locations}
           fetching={isLoading}
-          minHeight={200}
+          minHeight={minTableHeight(pageSize)}
           totalRecords={totalRecords}
           recordsPerPage={pageSize}
           page={page}
           onPageChange={(p) => setPage(p)}
           recordsPerPageOptions={[10, 20, 50]}
           onRecordsPerPageChange={setPageSize}
-          // paginationText={({ from, to, totalRecords }) =>
-          //   `Showing ${from} to ${to} of ${totalRecords} locations`
-          // }
+          paginationText={({ from, to, totalRecords }) =>
+            `Showing ${from}–${to} of ${totalRecords}`
+          }
           recordsPerPageLabel="Locations per page"
           columns={[
             {
@@ -576,7 +607,7 @@ export default function MailroomLocations() {
               title: "Name",
               width: 200,
               render: ({ name }: Location) => (
-                <Text fw={700} c="dark.4" size="sm">
+                <Text fw={700} c="dark.7" size="sm">
                   {name}
                 </Text>
               ),
@@ -587,11 +618,11 @@ export default function MailroomLocations() {
               width: 100,
               render: ({ code }: Location) =>
                 code ? (
-                  <Badge variant="light" color="gray" size="md">
+                  <Text fw={700} c="dark.7" size="sm">
                     {code}
-                  </Badge>
+                  </Text>
                 ) : (
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" c="dark.7">
                     —
                   </Text>
                 ),
@@ -600,7 +631,7 @@ export default function MailroomLocations() {
               accessor: "region",
               title: "Region",
               render: ({ region }: Location) => (
-                <Text size="sm" c="dark.3" fw={500}>
+                <Text size="sm" c="dark.7" fw={500}>
                   {region ?? "—"}
                 </Text>
               ),
@@ -609,7 +640,7 @@ export default function MailroomLocations() {
               accessor: "city",
               title: "City",
               render: ({ city }: Location) => (
-                <Text size="sm" c="dark.3" fw={500}>
+                <Text size="sm" c="dark.7" fw={500}>
                   {city ?? "—"}
                 </Text>
               ),
@@ -618,7 +649,7 @@ export default function MailroomLocations() {
               accessor: "barangay",
               title: "Barangay",
               render: ({ barangay }: Location) => (
-                <Text size="sm" c="dark.3" fw={500}>
+                <Text size="sm" c="dark.7" fw={500}>
                   {barangay ?? "—"}
                 </Text>
               ),
@@ -628,7 +659,7 @@ export default function MailroomLocations() {
               title: "Zip",
               width: 100,
               render: ({ zip }: Location) => (
-                <Text size="sm" c="dark.3">
+                <Text size="sm" c="dark.7">
                   {zip ?? "—"}
                 </Text>
               ),
@@ -639,7 +670,12 @@ export default function MailroomLocations() {
               width: 140,
               textAlign: "center",
               render: ({ total_lockers }: Location) => (
-                <Badge color="blue" variant="light" size="md">
+                <Badge
+                  color="blue"
+                  variant="light"
+                  size="md"
+                  aria-label={`${total_lockers ?? 0} total lockers`}
+                >
                   {total_lockers ?? 0}
                 </Badge>
               ),
@@ -654,7 +690,8 @@ export default function MailroomLocations() {
                   <Tooltip label="View">
                     <ActionIcon
                       variant="subtle"
-                      color="gray.7"
+                      color="dark.7"
+                      size="lg"
                       onClick={() => openView(loc)}
                       aria-label={`View details of ${loc.name}`}
                     >
@@ -664,7 +701,8 @@ export default function MailroomLocations() {
                   <Tooltip label="Edit">
                     <ActionIcon
                       variant="subtle"
-                      color="blue.6"
+                      color="blue.7"
+                      size="lg"
                       onClick={() => {
                         openEdit(loc);
                         setGlobalSuccess(null);
@@ -685,8 +723,13 @@ export default function MailroomLocations() {
       <Modal
         opened={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Create Mailroom Location"
+        title={
+          <Text id="create-location-title" fw={700}>
+            Create Mailroom Location
+          </Text>
+        }
         centered
+        aria-labelledby="create-location-title"
       >
         <form onSubmit={handleCreate}>
           <Stack>
@@ -698,6 +741,7 @@ export default function MailroomLocations() {
                 icon={<IconAlertCircle size={16} />}
                 withCloseButton
                 onClose={() => setFormError(null)}
+                aria-live="assertive"
               >
                 {formError}
               </Alert>
@@ -747,11 +791,20 @@ export default function MailroomLocations() {
               required
             />
             <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={() => setCreateOpen(false)}>
+              <Button
+                variant="default"
+                onClick={() => setCreateOpen(false)}
+                aria-label="Cancel location creation"
+              >
                 Cancel
               </Button>
-              <Button type="submit" loading={creating}>
-                Create
+              <Button
+                type="submit"
+                loading={creating}
+                aria-label="Create new location"
+                disabled={creating}
+              >
+                Create Location
               </Button>
             </Group>
           </Stack>
@@ -761,27 +814,41 @@ export default function MailroomLocations() {
       <Modal
         opened={viewOpen}
         onClose={() => setViewOpen(false)}
-        title="Location Details"
+        title={
+          <Text id="view-location-title" fw={700}>
+            Location Details
+          </Text>
+        }
         centered
         size="lg"
+        aria-labelledby="view-location-title"
       >
         {viewLocation && (
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
               <Box>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                   Location Name
                 </Text>
                 <Group gap="xs">
-                  <Title order={3}>{viewLocation.name}</Title>
+                  <Title order={2}>{viewLocation.name}</Title>
                   {viewLocation.code && (
-                    <Badge variant="outline" size="lg">
+                    <Badge
+                      variant="outline"
+                      size="lg"
+                      aria-label={`Location code: ${viewLocation.code}`}
+                    >
                       {viewLocation.code}
                     </Badge>
                   )}
                 </Group>
               </Box>
-              <Badge size="lg" variant="light" color="blue">
+              <Badge
+                size="lg"
+                variant="light"
+                color="blue"
+                aria-label={`${viewLocation.total_lockers ?? 0} total lockers`}
+              >
                 {viewLocation.total_lockers ?? 0} Lockers
               </Badge>
             </Group>
@@ -794,7 +861,7 @@ export default function MailroomLocations() {
             >
               <SimpleGrid cols={2} spacing="md" verticalSpacing="lg">
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     Region
                   </Text>
                   <Text fw={500} size="sm">
@@ -802,7 +869,7 @@ export default function MailroomLocations() {
                   </Text>
                 </Box>
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     City
                   </Text>
                   <Text fw={500} size="sm">
@@ -810,7 +877,7 @@ export default function MailroomLocations() {
                   </Text>
                 </Box>
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     Barangay
                   </Text>
                   <Text fw={500} size="sm">
@@ -818,7 +885,7 @@ export default function MailroomLocations() {
                   </Text>
                 </Box>
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.3" tt="uppercase" fw={700}>
                     Zip Code
                   </Text>
                   <Text fw={500} size="sm">
@@ -829,7 +896,11 @@ export default function MailroomLocations() {
             </Paper>
 
             <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={() => setViewOpen(false)}>
+              <Button
+                variant="default"
+                onClick={() => setViewOpen(false)}
+                aria-label="Close location details"
+              >
                 Close
               </Button>
             </Group>
@@ -840,8 +911,13 @@ export default function MailroomLocations() {
       <Modal
         opened={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Edit Location"
+        title={
+          <Text id="edit-location-title" fw={700}>
+            Edit Location
+          </Text>
+        }
         centered
+        aria-labelledby="edit-location-title"
       >
         <form onSubmit={handleEdit}>
           <Stack>
@@ -853,6 +929,7 @@ export default function MailroomLocations() {
                 icon={<IconAlertCircle size={16} />}
                 withCloseButton
                 onClose={() => setFormError(null)}
+                aria-live="assertive"
               >
                 {formError}
               </Alert>
@@ -908,4 +985,8 @@ export default function MailroomLocations() {
       </Modal>
     </Stack>
   );
+}
+
+function minTableHeight(pageSize: number) {
+  return 52 * pageSize + 50;
 }
