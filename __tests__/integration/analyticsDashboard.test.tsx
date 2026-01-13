@@ -136,7 +136,9 @@ describe("AnalyticsDashboard", () => {
 
     // open select: Mantine renders the visible control as a textbox (readonly input)
     // Use the textbox role to interact with the combobox control reliably.
-    const selectInput = screen.getByRole("textbox", { name: "" });
+    const selectInput = screen.getByRole("textbox", {
+      name: /Select time range for analytics data/i,
+    });
     await userEvent.click(selectInput);
     const opt = await screen.findByText(/Last 30 days/i);
     await userEvent.click(opt);
@@ -160,8 +162,9 @@ describe("AnalyticsDashboard", () => {
     );
 
     // component sets a friendly error message on failure
+    // component now surfaces a GA-specific configuration message for this error
     expect(
-      await screen.findByText(/Could not load live data/i),
+      await screen.findByText(/Google Analytics is not configured/i),
     ).toBeInTheDocument();
   });
 });
