@@ -250,11 +250,9 @@ const Notifications = () => {
               </Center>
             )}
 
-            {!initialLoading && notifications.length === 0 && (
-              <NotificationEmpty />
-            )}
+            {notifications.length === 0 && <NotificationEmpty />}
 
-            {!initialLoading && notifications.length > 0 && (
+            {notifications.length > 0 && (
               <Stack gap={0}>
                 {notifications.map((n) => (
                   <Box
@@ -326,9 +324,7 @@ const Notifications = () => {
               style={{
                 minHeight: "1px",
                 visibility:
-                  hasMore && !initialLoading && notifications.length > 0
-                    ? "visible"
-                    : "hidden",
+                  hasMore && notifications.length > 0 ? "visible" : "hidden",
               }}
             >
               <Center p="md">{isLoadingMore && <Loader size="sm" />}</Center>

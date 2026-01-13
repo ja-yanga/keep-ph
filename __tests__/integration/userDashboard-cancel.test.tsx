@@ -24,6 +24,7 @@ import DashboardContentWithMailRoom from "@/components/pages/customer/Dashboard/
 jest.mock("@/components/SessionProvider", () => ({
   useSession: () => ({ session: { user: { id: "user-1" } } }),
 }));
+
 jest.mock("@mantine/notifications", () => ({
   notifications: { show: jest.fn() },
 }));

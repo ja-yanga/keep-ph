@@ -29,7 +29,7 @@ jest.mock("@/components/SessionProvider", () => ({
   }),
 }));
 
-import AccountContent from "@/components/AccountContent";
+import AccountSettings from "@/components/pages/customer/Account";
 
 describe("AccountContent — update profile", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
@@ -70,7 +70,7 @@ describe("AccountContent — update profile", () => {
     // Render component inside MantineProvider to ensure Mantine UI works
     render(
       <MantineProvider>
-        <AccountContent />
+        <AccountSettings />
       </MantineProvider>,
     );
 
@@ -130,7 +130,7 @@ describe("AccountContent — update profile", () => {
 
     render(
       <MantineProvider>
-        <AccountContent />
+        <AccountSettings />
       </MantineProvider>,
     );
 
