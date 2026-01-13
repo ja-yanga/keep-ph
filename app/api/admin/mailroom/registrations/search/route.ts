@@ -222,7 +222,7 @@ export async function GET(req: Request) {
     const data = allRegistrations;
 
     // Transform data to match component expectations
-    registrations = (data || []).map((reg: Record<string, unknown>) => {
+    registrations = ((data as Record<string, unknown>[]) || []).map((reg) => {
       const user = (reg.user as Record<string, unknown>) || {};
       const userKycTable = Array.isArray(user.user_kyc_table)
         ? (user.user_kyc_table[0] as Record<string, unknown>)
