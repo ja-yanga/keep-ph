@@ -155,12 +155,24 @@ export async function GET(req: Request) {
       0,
     );
 
-    return NextResponse.json({
-      visitorData,
-      deviceData,
-      topPages,
-      stats: { activeNow, totalVisitors, totalPageViews },
-    });
+    return NextResponse.json(
+      {
+        visitorData,
+        deviceData,
+        topPages,
+        stats: { activeNow, totalVisitors, totalPageViews },
+      },
+      {
+        headers: {
+          // Cache for 60 seconds, allow stale-while-revalidate for 120 seconds
+          // Analytics data doesn't need to be real-time, so caching improves performance
+          "Cache-Control":
+            "private, max-age=60, s-maxage=60, stale-while-revalidate=120",
+          "Content-Type": "application/json",
+          Connection: "keep-alive",
+        },
+      },
+    );
   } catch (error: unknown) {
     console.error("Analytics API Error:", error);
     const errorMessage =
