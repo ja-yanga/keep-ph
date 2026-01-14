@@ -931,19 +931,39 @@ export default function MailroomPackages() {
       const matchesStatus = filterStatus ? p.status === filterStatus : true;
       const matchesType = filterType ? p.package_type === filterType : true;
 
-      // Tab Logic
+      // Tab Logic - apply filters after tab filtering
       if (activeTab === "requests") {
-        return (p.status ?? "").includes("REQUEST");
+        return (
+          (p.status ?? "").includes("REQUEST") &&
+          matchesSearch &&
+          matchesStatus &&
+          matchesType
+        );
       }
       if (activeTab === "active") {
-        return (p.status ?? "") === "STORED";
+        return (
+          (p.status ?? "") === "STORED" &&
+          matchesSearch &&
+          matchesStatus &&
+          matchesType
+        );
       }
       if (activeTab === "released") {
         const s = p.status ?? "";
-        return s === "RELEASED" || s === "RETRIEVED";
+        return (
+          (s === "RELEASED" || s === "RETRIEVED") &&
+          matchesSearch &&
+          matchesStatus &&
+          matchesType
+        );
       }
       if (activeTab === "disposed") {
-        return (p.status ?? "") === "DISPOSED";
+        return (
+          (p.status ?? "") === "DISPOSED" &&
+          matchesSearch &&
+          matchesStatus &&
+          matchesType
+        );
       }
       if (activeTab === "archive") {
         return false; // Archived packages are managed by archivedPackages state
