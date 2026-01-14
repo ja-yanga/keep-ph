@@ -281,7 +281,7 @@ export default function AdminUserKyc() {
       setProcessing(true);
       try {
         const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
-          method: "POST",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: status }),
         });
