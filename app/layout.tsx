@@ -11,6 +11,7 @@ import {
 } from "@mantine/core";
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import { StoreProvider } from "@/store/StoreProvider";
 
 // CRITICAL: Use only ONE font to minimize render-blocking
 const inter = Inter({
@@ -68,7 +69,9 @@ export default function RootLayout({
         )}
 
         <MantineProvider>
-          <ServerSessionProvider>{children}</ServerSessionProvider>
+          <StoreProvider>
+            <ServerSessionProvider>{children}</ServerSessionProvider>
+          </StoreProvider>
         </MantineProvider>
       </body>
     </html>
