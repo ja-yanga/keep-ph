@@ -45,7 +45,12 @@ export function PaginationControls({
             variant="outline"
             disabled={start + itemsPerPage >= totalItems}
             onClick={() => onPageChange(currentPage + 1)}
-            style={isMobile ? { flex: 1 } : undefined}
+            style={{
+              whiteSpace: "nowrap",
+              border: "1px solid #26316D",
+              ...(isMobile ? { flex: 1 } : {}),
+            }}
+            c="#26316D"
           >
             Next
           </Button>

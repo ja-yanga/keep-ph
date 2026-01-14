@@ -164,7 +164,6 @@ export default function PrivateNavigationHeader() {
         size="xs"
         hiddenFrom="sm"
         id="mobile-navigation-drawer"
-        aria-label="Mobile navigation menu"
       >
         <Stack gap="md" mt="xl">
           {navLinks}
