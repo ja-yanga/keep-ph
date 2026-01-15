@@ -340,7 +340,7 @@ export default function MailroomPlans() {
           </Group>
           <Tooltip label="Refresh list">
             <Button
-              variant="light"
+              variant="filled"
               leftSection={<IconRefresh size={16} />}
               onClick={fetchData}
             >
@@ -382,7 +382,7 @@ export default function MailroomPlans() {
               title: "Price",
               width: 150,
               render: ({ price }: Plan) => (
-                <Badge color="green" variant="light" size="lg">
+                <Badge color="green" variant="filled" size="lg">
                   {formatCurrency(price)}
                 </Badge>
               ),
@@ -402,7 +402,7 @@ export default function MailroomPlans() {
               accessor: "description",
               title: "Description",
               render: ({ description }: Plan) => (
-                <Text lineClamp={1} size="sm" c="dimmed">
+                <Text lineClamp={1} size="sm" c="#4A5568">
                   {description ?? "—"}
                 </Text>
               ),
@@ -452,7 +452,7 @@ export default function MailroomPlans() {
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
               <Box>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
                   Plan Name
                 </Text>
                 <Title order={3}>{viewPlan.name}</Title>
@@ -470,7 +470,7 @@ export default function MailroomPlans() {
                 bg="var(--mantine-color-gray-0)"
               >
                 <Stack gap="xs">
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
                     Storage Limit
                   </Text>
                   <Group gap="xs">
@@ -490,7 +490,7 @@ export default function MailroomPlans() {
               bg="var(--mantine-color-gray-0)"
             >
               <Stack gap="xs">
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
                   Description
                 </Text>
                 <Text size="sm">{viewPlan.description || "—"}</Text>
@@ -551,7 +551,7 @@ export default function MailroomPlans() {
             {/* ERROR ALERT INSIDE MODAL */}
             {formError && (
               <Alert
-                variant="light"
+                variant="filled"
                 color="red"
                 title="Error"
                 icon={<IconAlertCircle size={16} />}
@@ -577,7 +577,7 @@ export default function MailroomPlans() {
                 min={0}
                 required
                 leftSection={
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" c="#4A5568">
                     ₱
                   </Text>
                 }

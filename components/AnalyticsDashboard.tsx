@@ -372,14 +372,14 @@ export default function AnalyticsDashboard() {
             <ThemeIcon
               size="xl"
               radius="md"
-              variant="light"
+              variant="filled"
               color="green"
               aria-hidden="true"
             >
               <IconActivity size={28} />
             </ThemeIcon>
             <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              <Text c="#4A5568" size="xs" tt="uppercase" fw={700}>
                 Active Now
               </Text>
               <Text
@@ -408,14 +408,14 @@ export default function AnalyticsDashboard() {
             <ThemeIcon
               size="xl"
               radius="md"
-              variant="light"
+              variant="filled"
               color="blue"
               aria-hidden="true"
             >
               <IconUsers size={28} />
             </ThemeIcon>
             <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              <Text c="#4A5568" size="xs" tt="uppercase" fw={700}>
                 Total Visitors (7d)
               </Text>
               <Text
@@ -440,14 +440,14 @@ export default function AnalyticsDashboard() {
             <ThemeIcon
               size="xl"
               radius="md"
-              variant="light"
+              variant="filled"
               color="violet"
               aria-hidden="true"
             >
               <IconEye size={28} />
             </ThemeIcon>
             <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              <Text c="#4A5568" size="xs" tt="uppercase" fw={700}>
                 Page Views (7d)
               </Text>
               <Text
@@ -536,7 +536,7 @@ export default function AnalyticsDashboard() {
                 <Group key={d.name} role="listitem">
                   <ThemeIcon
                     color={d.color}
-                    variant="light"
+                    variant="filled"
                     size="sm"
                     aria-hidden="true"
                   >
@@ -552,7 +552,7 @@ export default function AnalyticsDashboard() {
                     </Text>
                     <Text
                       size="xs"
-                      c="dimmed"
+                      c="#4A5568"
                       aria-label={`${d.value} ${d.name} users`}
                     >
                       {d.value} users

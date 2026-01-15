@@ -106,8 +106,8 @@ export default function MailroomRegistrations() {
   const [submitting, setSubmitting] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
 
-  // NEW: Tab State
-  const [activeTab, setActiveTab] = useState<string | null>("all");
+  // Tab state (must always be a valid tab value to keep ARIA correct)
+  const [activeTab, setActiveTab] = useState<string>("all");
 
   // --- SWR keys & fetcher ---
   const combinedKey = "/api/admin/mailroom/registrations";
@@ -472,23 +472,26 @@ export default function MailroomRegistrations() {
     return !dayjs().isAfter(expiresAt);
   };
 
-  // Filter logic
-  const filteredRegistrations = registrations.filter((r) => {
+  const matchesSearch = (r: Registration, q: string) =>
+    r.full_name.toLowerCase().includes(q) ||
+    r.email.toLowerCase().includes(q) ||
+    (r.mailroom_code && r.mailroom_code.toLowerCase().includes(q));
+
+  // Filter logic (computed by tab value so we can render real tab panels)
+  const filteredRegistrationsByTab = (tab: "all" | "active" | "inactive") => {
     const q = search.toLowerCase();
-    const matchesSearch =
-      r.full_name.toLowerCase().includes(q) ||
-      r.email.toLowerCase().includes(q) ||
-      (r.mailroom_code && r.mailroom_code.toLowerCase().includes(q));
+    return registrations.filter((r) => {
+      if (!matchesSearch(r, q)) return false;
+      const isActive = isRegistrationActive(r);
+      if (tab === "active") return isActive;
+      if (tab === "inactive") return !isActive;
+      return true;
+    });
+  };
 
-    const isActive = isRegistrationActive(r);
-
-    // Tab Logic
-    let matchesTab = true;
-    if (activeTab === "active") matchesTab = isActive;
-    if (activeTab === "inactive") matchesTab = !isActive;
-
-    return matchesSearch && matchesTab;
-  });
+  const filteredRegistrations = filteredRegistrationsByTab(
+    (activeTab as "all" | "active" | "inactive") ?? "all",
+  );
 
   const paginatedRegistrations = filteredRegistrations.slice(
     (page - 1) * pageSize,
@@ -532,8 +535,8 @@ export default function MailroomRegistrations() {
             />
             <Tooltip label="Force check for expired subscriptions">
               <Button
-                variant="light"
-                color="orange"
+                variant="filled"
+                color="orange.9"
                 onClick={handleRefreshStatus}
                 loading={refreshingStatus}
                 leftSection={<IconRefresh size={16} />}
@@ -542,161 +545,192 @@ export default function MailroomRegistrations() {
               </Button>
             </Tooltip>
           </Group>
-          <Badge size="lg" variant="light">
+          <Badge size="lg" variant="filled" color="violet.9">
             {registrations.length} Registered Users
           </Badge>
         </Group>
 
         {/* NEW: Tabs Component */}
-        <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+        <Tabs
+          value={activeTab}
+          onChange={(value) => setActiveTab(value || "all")}
+          mb="md"
+          aria-label="User filter tabs"
+          keepMounted={false}
+        >
           <Tabs.List>
-            <Tabs.Tab value="all" leftSection={<IconUsers size={16} />}>
+            <Tabs.Tab
+              value="all"
+              leftSection={<IconUsers size={16} aria-hidden="true" />}
+            >
               All Users
             </Tabs.Tab>
-            <Tabs.Tab value="active" leftSection={<IconUserCheck size={16} />}>
+            <Tabs.Tab
+              value="active"
+              leftSection={<IconUserCheck size={16} aria-hidden="true" />}
+            >
               Active
             </Tabs.Tab>
-            <Tabs.Tab value="inactive" leftSection={<IconUserOff size={16} />}>
+            <Tabs.Tab
+              value="inactive"
+              leftSection={<IconUserOff size={16} aria-hidden="true" />}
+            >
               Inactive
             </Tabs.Tab>
           </Tabs.List>
+          {(["all", "active", "inactive"] as const).map((tab) => (
+            <Tabs.Panel key={tab} value={tab} pt="xs">
+              {tab === activeTab && (
+                <DataTable
+                  withTableBorder
+                  borderRadius="sm"
+                  withColumnBorders
+                  striped
+                  highlightOnHover
+                  records={paginatedRegistrations}
+                  fetching={loading}
+                  minHeight={200}
+                  totalRecords={filteredRegistrations.length}
+                  recordsPerPage={pageSize}
+                  page={page}
+                  onPageChange={setPage}
+                  recordsPerPageOptions={[10, 20, 50]}
+                  onRecordsPerPageChange={setPageSize}
+                  columns={[
+                    {
+                      accessor: "mailroom_code",
+                      title: "Mailroom Code",
+                      width: 140,
+                      render: (r: Registration) =>
+                        r.mailroom_code ? (
+                          <Badge
+                            size="md"
+                            variant="filled"
+                            color="violet.9"
+                            radius="sm"
+                            style={{ textTransform: "none", fontSize: "13px" }}
+                          >
+                            {r.mailroom_code}
+                          </Badge>
+                        ) : (
+                          <Text size="sm" c="#4A5568" fs="italic">
+                            Pending
+                          </Text>
+                        ),
+                    },
+                    {
+                      accessor: "full_name",
+                      title: "User Details",
+                      width: 250,
+                      render: (r: Registration) => (
+                        <Group gap="sm">
+                          <Avatar color="blue" radius="xl">
+                            {r.full_name.charAt(0)}
+                          </Avatar>
+                          <Stack gap={0}>
+                            <Text size="sm" fw={500}>
+                              {r.full_name}
+                            </Text>
+                            <Group gap={4}>
+                              <IconMail size={12} color="gray" />
+                              <Text size="xs" c="#4A5568">
+                                {r.email}
+                              </Text>
+                            </Group>
+                          </Stack>
+                        </Group>
+                      ),
+                    },
+                    {
+                      accessor: "status",
+                      title: "Status",
+                      width: 120,
+                      render: (r: Registration) => {
+                        const isActive = isRegistrationActive(r);
+                        return (
+                          <Badge
+                            color={isActive ? "green.9" : "red.9"}
+                            variant="filled"
+                          >
+                            {isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        );
+                      },
+                    },
+                    {
+                      accessor: "subscription",
+                      title: "Subscription",
+                      width: 200,
+                      render: (r: Registration) => {
+                        const expiresAt = dayjs(r.created_at).add(
+                          r.months,
+                          "month",
+                        );
+                        const isExpired = dayjs().isAfter(expiresAt);
+
+                        return (
+                          <Stack gap={2}>
+                            <Text size="sm" fw={500}>
+                              {getPlanName(r)}
+                            </Text>
+                            <Group gap={4}>
+                              <IconCalendar
+                                size={14}
+                                color={isExpired ? "red" : "gray"}
+                              />
+                              <Text size="xs" c={isExpired ? "red" : "#4A5568"}>
+                                Expires: {expiresAt.format("MMM D, YYYY")}
+                              </Text>
+                            </Group>
+                          </Stack>
+                        );
+                      },
+                    },
+                    {
+                      accessor: "location",
+                      title: "Location",
+                      render: (r: Registration) => {
+                        const found = locations.find(
+                          (l) => l.id === r.location_id,
+                        );
+                        const name =
+                          r.location_name || found?.name || "Main Branch";
+                        return (
+                          <Group gap={4}>
+                            <IconMapPin size={14} color="gray" />
+                            <Text size="sm">{name}</Text>
+                          </Group>
+                        );
+                      },
+                    },
+                    {
+                      accessor: "actions",
+                      title: "Actions",
+                      width: 160,
+                      textAlign: "right",
+                      render: (r: Registration) => (
+                        <Group gap="xs" justify="flex-end">
+                          <Button
+                            size="compact-xs"
+                            variant="filled"
+                            color="blue.9"
+                            leftSection={
+                              <IconInfoCircle size={14} aria-hidden="true" />
+                            }
+                            onClick={() => handleOpenLockerModal(r)}
+                          >
+                            View Details
+                          </Button>
+                        </Group>
+                      ),
+                    },
+                  ]}
+                  noRecordsText="No registrations found"
+                />
+              )}
+            </Tabs.Panel>
+          ))}
         </Tabs>
-
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
-          highlightOnHover
-          records={paginatedRegistrations}
-          fetching={loading}
-          minHeight={200}
-          totalRecords={filteredRegistrations.length}
-          recordsPerPage={pageSize}
-          page={page}
-          onPageChange={setPage}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={setPageSize}
-          columns={[
-            {
-              accessor: "mailroom_code",
-              title: "Mailroom Code",
-              width: 140,
-              render: (r: Registration) =>
-                r.mailroom_code ? (
-                  <Badge
-                    size="md"
-                    variant="light"
-                    color="violet"
-                    radius="sm"
-                    style={{ textTransform: "none", fontSize: "13px" }}
-                  >
-                    {r.mailroom_code}
-                  </Badge>
-                ) : (
-                  <Text size="sm" c="dimmed" fs="italic">
-                    Pending
-                  </Text>
-                ),
-            },
-            {
-              accessor: "full_name",
-              title: "User Details",
-              width: 250,
-              render: (r: Registration) => (
-                <Group gap="sm">
-                  <Avatar color="blue" radius="xl">
-                    {r.full_name.charAt(0)}
-                  </Avatar>
-                  <Stack gap={0}>
-                    <Text size="sm" fw={500}>
-                      {r.full_name}
-                    </Text>
-                    <Group gap={4}>
-                      <IconMail size={12} color="gray" />
-                      <Text size="xs" c="dimmed">
-                        {r.email}
-                      </Text>
-                    </Group>
-                  </Stack>
-                </Group>
-              ),
-            },
-            {
-              accessor: "status",
-              title: "Status",
-              width: 120,
-              render: (r: Registration) => {
-                const isActive = isRegistrationActive(r);
-                return (
-                  <Badge color={isActive ? "green" : "red"} variant="light">
-                    {isActive ? "Active" : "Inactive"}
-                  </Badge>
-                );
-              },
-            },
-            {
-              accessor: "subscription",
-              title: "Subscription",
-              width: 200,
-              render: (r: Registration) => {
-                const expiresAt = dayjs(r.created_at).add(r.months, "month");
-                const isExpired = dayjs().isAfter(expiresAt);
-
-                return (
-                  <Stack gap={2}>
-                    <Text size="sm" fw={500}>
-                      {getPlanName(r)}
-                    </Text>
-                    <Group gap={4}>
-                      <IconCalendar
-                        size={14}
-                        color={isExpired ? "red" : "gray"}
-                      />
-                      <Text size="xs" c={isExpired ? "red" : "dimmed"}>
-                        Expires: {expiresAt.format("MMM D, YYYY")}
-                      </Text>
-                    </Group>
-                  </Stack>
-                );
-              },
-            },
-            {
-              accessor: "location",
-              title: "Location",
-              render: (r: Registration) => {
-                const found = locations.find((l) => l.id === r.location_id);
-                const name = r.location_name || found?.name || "Main Branch";
-                return (
-                  <Group gap={4}>
-                    <IconMapPin size={14} color="gray" />
-                    <Text size="sm">{name}</Text>
-                  </Group>
-                );
-              },
-            },
-            {
-              accessor: "actions",
-              title: "Actions",
-              width: 160,
-              textAlign: "right",
-              render: (r: Registration) => (
-                <Group gap="xs" justify="flex-end">
-                  <Button
-                    size="compact-xs"
-                    variant="light"
-                    color="blue"
-                    leftSection={<IconInfoCircle size={14} />}
-                    onClick={() => handleOpenLockerModal(r)}
-                  >
-                    View Details
-                  </Button>
-                </Group>
-              ),
-            },
-          ]}
-          noRecordsText="No registrations found"
-        />
       </Paper>
 
       {/* Locker Management Modal */}
@@ -722,7 +756,7 @@ export default function MailroomRegistrations() {
             >
               <Grid>
                 <Grid.Col span={6}>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
                     Contact Information
                   </Text>
                   <Text fw={500} size="lg" mt={4}>
@@ -740,7 +774,7 @@ export default function MailroomRegistrations() {
                         <Text size="sm">{selectedUser.phone_number}</Text>
                       </Group>
                     ) : (
-                      <Text size="sm" c="dimmed" fs="italic">
+                      <Text size="sm" c="#4A5568" fs="italic">
                         No phone number provided
                       </Text>
                     )}
@@ -748,7 +782,7 @@ export default function MailroomRegistrations() {
                 </Grid.Col>
 
                 <Grid.Col span={6}>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
                     Plan Details
                   </Text>
                   <Stack gap={4} mt="xs">
@@ -780,7 +814,7 @@ export default function MailroomRegistrations() {
                               "Main Branch"}
                           </Text>
                           {foundLoc && (
-                            <Text size="xs" c="dimmed" mt={4}>
+                            <Text size="xs" c="#4A5568" mt={4}>
                               {foundLoc.barangay
                                 ? `${foundLoc.barangay}, `
                                 : ""}
@@ -825,7 +859,7 @@ export default function MailroomRegistrations() {
                         </Table.Td>
                         <Table.Td>
                           <Badge
-                            variant="light"
+                            variant="filled"
                             color={(() => {
                               if (l.status === "Full") return "red";
                               if (l.status === "Near Full") return "orange";
@@ -842,7 +876,7 @@ export default function MailroomRegistrations() {
                 </Table>
               ) : (
                 <Paper p="sm" withBorder bg="var(--mantine-color-gray-0)">
-                  <Text size="sm" c="dimmed" ta="center">
+                  <Text size="sm" c="#4A5568" ta="center">
                     No lockers assigned yet.
                   </Text>
                 </Paper>

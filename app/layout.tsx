@@ -16,7 +16,7 @@ import GoogleAnalytics from "@/components/GoogleAnalytics";
 const inter = Inter({
   subsets: ["latin"],
   display: "swap", // Prevent FOIT (Flash of Invisible Text)
-  preload: true,
+  preload: false, // Let Next.js optimize font loading to reduce critical path latency
   fallback: ["system-ui", "arial"],
 });
 
@@ -52,8 +52,9 @@ export default function RootLayout({
         <ColorSchemeScript />
         {/* DNS Prefetch for external resources */}
         <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+        {/* Use dns-prefetch instead of preconnect for Supabase - connections happen after page load */}
         <link
-          rel="preconnect"
+          rel="dns-prefetch"
           href="https://rqdyfadbeafmunvmlqcp.supabase.co"
         />
       </head>

@@ -330,7 +330,7 @@ export default function AdminRewards() {
 
   // avoid nested ternary expressions for proof preview
   let viewProofContent: React.ReactNode = (
-    <Text c="dimmed" id="view-proof-modal-description">
+    <Text c="#4A5568" id="view-proof-modal-description">
       No proof available for this claim.
     </Text>
   );
@@ -378,7 +378,7 @@ export default function AdminRewards() {
     <Stack align="center" w="100%" gap="md">
       {globalSuccess && (
         <Alert
-          variant="light"
+          variant="filled"
           color="green"
           title="Success"
           withCloseButton
@@ -409,10 +409,11 @@ export default function AdminRewards() {
           <Tabs
             value={activeTab}
             onChange={(value) => {
-              setActiveTab(value as ClaimStatusTab);
+              setActiveTab((value as ClaimStatusTab) || "PENDING");
               setPage(1); // Reset page on tab change
             }}
             keepMounted={false}
+            aria-label="Reward claim status tabs"
           >
             <Tabs.List>
               <Tabs.Tab
@@ -452,6 +453,10 @@ export default function AdminRewards() {
                 Paid/Completed
               </Tabs.Tab>
             </Tabs.List>
+
+            {/* Panels are required so Tabs can generate valid aria-controls/tabpanel ids */}
+            <Tabs.Panel value="PENDING" />
+            <Tabs.Panel value="PAID" />
           </Tabs>
         </Stack>
 
@@ -550,7 +555,7 @@ export default function AdminRewards() {
                       <Group gap={8} align="center">
                         <Text
                           size="xs"
-                          c="dimmed"
+                          c="#4A5568"
                           style={{ wordBreak: "break-all" }}
                         >
                           {revealed[row.id]
@@ -739,7 +744,7 @@ export default function AdminRewards() {
             aria-label="Select proof of payment file"
             aria-describedby="file-input-description"
           />
-          <Text size="xs" c="dimmed" id="file-input-description">
+          <Text size="xs" c="#4A5568" id="file-input-description">
             Accepted formats: JPEG, PNG, GIF, or PDF (max 5MB)
           </Text>
 

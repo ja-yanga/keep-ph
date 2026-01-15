@@ -18,9 +18,11 @@ export default async function ServerSessionProvider({
   const base = process.env.NEXT_PUBLIC_BASE_URL ?? "";
   let sessionData: unknown = null;
   try {
+    // Use short cache (10 seconds) instead of no-store to allow bfcache
+    // Session data changes infrequently, so short cache is safe
     const res = await fetch(`${base}/api/session`, {
       headers: { cookie: cookieHeader },
-      cache: "no-store",
+      next: { revalidate: 10 }, // Revalidate every 10 seconds
     });
     sessionData = (await res.json().catch(() => null)) ?? null;
   } catch {
