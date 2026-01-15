@@ -698,6 +698,7 @@ export default function MailroomLockers() {
           <Tabs.Panel value={activeTab}>
             <div style={{ marginTop: "1rem" }}>
               <DataTable
+                striped
                 aria-label="Lockers list"
                 withTableBorder={false}
                 borderRadius="lg"

@@ -196,6 +196,7 @@ const KycTable = memo(
   }) => {
     return (
       <DataTable
+        striped
         withTableBorder={false}
         borderRadius="lg"
         verticalSpacing="md"

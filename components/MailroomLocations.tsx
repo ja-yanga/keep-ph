@@ -582,6 +582,7 @@ export default function MailroomLocations() {
         )}
 
         <DataTable
+          striped
           aria-label="Mailroom locations list"
           withTableBorder={false}
           borderRadius="lg"

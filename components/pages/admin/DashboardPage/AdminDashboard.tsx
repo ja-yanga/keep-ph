@@ -416,6 +416,7 @@ export default function AdminDashboard({
             {/* On mobile, only render if it was visible in viewport. On desktop, follow the idle callback readiness. */}
             {(isMobile ? wasTableVisible : true) && isTableReady ? (
               <DataTable
+                striped
                 withTableBorder={false}
                 borderRadius="lg"
                 verticalSpacing="md"
