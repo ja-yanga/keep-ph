@@ -18,12 +18,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // optional: support ?q=search and ?limit
+    // support ?q=search, ?page=1, ?pageSize=10
     const url = new URL(req.url);
     const q = url.searchParams.get("q") ?? "";
-    const limit = Number(url.searchParams.get("limit") ?? "500");
-
-    const raw = await adminListUserKyc(q, limit);
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
+    const pageSize = Math.max(
+      1,
+      Number(url.searchParams.get("pageSize") ?? "10"),
+    );
+    const offset = (page - 1) * pageSize;
+    const status = url.searchParams.get("status");
+    const { data: raw, total_count } = await adminListUserKyc(
+      q,
+      pageSize,
+      offset,
+      status ?? undefined,
+    );
 
     const processed = raw.map((row) => {
       const firstName = row.user_kyc_first_name ?? "";
@@ -59,7 +69,14 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ data: processed });
+    return NextResponse.json(
+      { data: processed, total_count },
+      {
+        headers: {
+          "Cache-Control": "no-cache, must-revalidate",
+        },
+      },
+    );
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("admin KYC list error:", err);

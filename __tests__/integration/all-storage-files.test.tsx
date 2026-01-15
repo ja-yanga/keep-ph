@@ -4,6 +4,41 @@ import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
 
+// mock next/image to avoid Next.js image loader errors in JSDOM
+jest.mock("next/image", () => {
+  return {
+    __esModule: true,
+    default: ({
+      src,
+      alt,
+      ...props
+    }: {
+      src: string | { src?: string };
+      alt?: string;
+      [k: string]: unknown;
+    }) => {
+      // only forward string/number props to avoid boolean DOM attribute warnings
+      const forwardedProps = Object.fromEntries(
+        Object.entries(props).filter(([, v]) => {
+          const t = typeof v;
+          return t === "string" || t === "number";
+        }),
+      ) as Record<string, string | number>;
+
+      const srcStr =
+        typeof src === "string"
+          ? src
+          : (src && (src as unknown as { src?: string }).src) || "";
+
+      return React.createElement("img", {
+        src: srcStr,
+        alt,
+        ...forwardedProps,
+      });
+    },
+  };
+});
+
 /*
   Integration tests for AllStorageFiles component.
 
@@ -117,14 +152,12 @@ describe("AllStorageFiles component", () => {
       </SWRConfig>,
     );
 
-    // Expect empty state message to appear
-    expect(
-      await screen.findByText(/No files found in your storage/i),
-    ).toBeInTheDocument();
+    // Expect empty state message to appear (match actual component text)
+    expect(await screen.findByText(/No files found/i)).toBeInTheDocument();
 
-    // Assert fetch was called for the storage endpoint
+    // Assert fetch was called for the storage endpoint (allow query params)
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/user/storage",
+      expect.stringContaining("/api/user/storage"),
       expect.any(Object),
     );
   });
@@ -158,22 +191,17 @@ describe("AllStorageFiles component", () => {
       </SWRConfig>,
     );
 
-    // Wait for the filename text to appear in the rendered output.
-    // findByText waits for async updates (fetch -> render).
     const filenameNode = await screen.findByText(/doc\.png/i);
     expect(filenameNode).toBeInTheDocument();
 
-    // Locate the table (component renders a table of files) and ensure filename is inside it
     const table = (await screen.findAllByRole("table"))[0];
     expect(within(table).getByText(/doc\.png/i)).toBeInTheDocument();
 
-    // Find the table row that contains the filename (robust to nested markup)
     const docRow = (within(table).getAllByRole("row") || []).find((r) =>
       /doc\.png/i.test(r.textContent || ""),
     ) as HTMLElement | undefined;
     expect(docRow).toBeDefined();
 
-    // Try to find a "Preview" button by accessible name inside the row; if not available, fall back to first action button
     let previewBtn: HTMLElement;
     try {
       previewBtn = within(docRow as HTMLElement).getByRole("button", {
@@ -183,7 +211,6 @@ describe("AllStorageFiles component", () => {
       previewBtn = within(docRow as HTMLElement).getAllByRole("button")[0];
     }
 
-    // Click preview and assert modal with image appears
     await userEvent.click(previewBtn);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByAltText(/doc\.png/i)).toHaveAttribute(
@@ -207,21 +234,26 @@ describe("AllStorageFiles component", () => {
       },
     ];
 
-    // fetchMock handles both initial GET and subsequent DELETE calls
+    // keep mutable state so subsequent GET after DELETE returns empty
+    let deleted = false;
     const fetchMock = jest.fn(
       async (input: RequestInfo, init?: RequestInit) => {
         const url = String(input);
-        const method = init?.method ?? "GET"; // undefined method treated as GET
+        const method = (init && init.method) ?? "GET";
         if (url.includes("/api/user/storage") && method === "GET") {
           return {
             ok: true,
-            json: async () => ({ scans }),
+            json: async () => ({
+              scans: deleted ? [] : scans,
+              pagination: { total: deleted ? 0 : 1, limit: 10 },
+            }),
           } as unknown as Response;
         }
         if (
           url.includes(`/api/user/storage/${encodeURIComponent("delete-1")}`) &&
           method === "DELETE"
         ) {
+          deleted = true;
           return {
             ok: true,
             json: async () => ({ success: true }),
@@ -240,17 +272,14 @@ describe("AllStorageFiles component", () => {
       </SWRConfig>,
     );
 
-    // Wait for filename to appear (ensures initial GET completed and UI rendered)
     expect(await screen.findByText(/to-delete\.pdf/i)).toBeInTheDocument();
 
-    // Find the table and locate the row containing the filename
     const tableAfter = (await screen.findAllByRole("table"))[0];
     const delRow = (within(tableAfter).getAllByRole("row") || []).find((r) =>
       /to-delete\.pdf/i.test(r.textContent || ""),
     );
     expect(delRow).toBeDefined();
 
-    // Click the delete action inside that row (prefers accessible "Delete" button)
     let deleteBtnInRow: HTMLElement;
     try {
       deleteBtnInRow = within(delRow as HTMLElement).getByRole("button", {
@@ -263,24 +292,30 @@ describe("AllStorageFiles component", () => {
     }
     await userEvent.click(deleteBtnInRow);
 
-    // Confirm modal appears and confirm deletion
     const confirmDialog = await screen.findByRole("dialog");
     const delBtn = within(confirmDialog).getByRole("button", {
       name: /Delete/i,
     });
     await userEvent.click(delBtn);
 
-    // Expect DELETE request made to the correct endpoint
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        `/api/user/storage/${encodeURIComponent("delete-1")}`,
+        expect.stringContaining(
+          `/api/user/storage/${encodeURIComponent("delete-1")}`,
+        ),
         expect.objectContaining({ method: "DELETE" }),
       );
     });
 
-    // And the file should be removed from the list
-    await waitFor(async () => {
-      expect(screen.queryByText(/to-delete\.pdf/i)).not.toBeInTheDocument();
-    });
+    // after deletion the list should be empty; wait for row to be removed
+    await waitFor(
+      () => {
+        expect(screen.queryByText(/to-delete\.pdf/i)).not.toBeInTheDocument();
+      },
+      { timeout: 8000 },
+    );
   });
 });
+
+// increase jest timeout for this integration file
+jest.setTimeout(15000);

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/app/actions/get";
 import { adminUpdateUserKyc } from "@/app/actions/update";
 
-export async function POST(
+export async function PUT(
   req: Request,
   context: { params: Promise<Record<string, string | undefined>> },
 ) {

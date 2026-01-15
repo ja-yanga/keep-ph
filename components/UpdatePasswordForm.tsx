@@ -17,6 +17,7 @@ import {
   Progress,
   Group,
   rem,
+  Box,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconX } from "@tabler/icons-react";
@@ -29,6 +30,9 @@ export default function UpdatePasswordForm() {
   const [popoverOpened, setPopoverOpened] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const router = useRouter();
+  const supabase = createClient();
+
   // Password Strength Logic
   const checks = [
     { label: "Includes at least 6 characters", meets: password.length > 5 },
@@ -36,42 +40,30 @@ export default function UpdatePasswordForm() {
     { label: "Includes lowercase letter", meets: /[a-z]/.test(password) },
     { label: "Includes uppercase letter", meets: /[A-Z]/.test(password) },
   ];
-  const strength = checks.reduce(
-    (acc, requirement) => (!requirement.meets ? acc : acc + 1),
-    0,
-  );
-  let color: string;
-  if (strength === 4) {
-    color = "teal";
-  } else if (strength > 2) {
-    color = "yellow";
-  } else {
-    color = "red";
-  }
-  const router = useRouter();
 
-  const supabase = createClient();
+  const strength = checks.reduce((acc, req) => (!req.meets ? acc : acc + 1), 0);
+
+  // Logic for color without nested ternaries
+  let progressColor = "red";
+  if (strength === 4) progressColor = "teal";
+  else if (strength > 2) progressColor = "yellow";
 
   useEffect(() => {
     const initSession = async () => {
-      // Check if a session already exists
       const {
         data: { session },
       } = await supabase.auth.getSession();
-
       if (session) {
         setVerifying(false);
         return;
       }
 
-      // If no session, check for recovery tokens in URL hash
       const hash = window.location.hash;
       if (hash.includes("access_token")) {
         const params = new URLSearchParams(hash.replace("#", ""));
         const access_token = params.get("access_token")!;
         const refresh_token = params.get("refresh_token")!;
 
-        // Set session manually
         const { error } = await supabase.auth.setSession({
           access_token,
           refresh_token,
@@ -87,7 +79,6 @@ export default function UpdatePasswordForm() {
           return;
         }
 
-        // Clean URL
         window.history.replaceState(
           {},
           document.title,
@@ -97,7 +88,6 @@ export default function UpdatePasswordForm() {
         return;
       }
 
-      // If no session and no token
       notifications.show({
         title: "Session Expired",
         message: "Please request a new password reset link.",
@@ -109,27 +99,30 @@ export default function UpdatePasswordForm() {
     initSession();
   }, [supabase, router]);
 
-  const handleUpdate = async () => {
-    setSubmitted(true);
-    if (!password || !confirmPassword) return;
-    if (password !== confirmPassword) {
-      notifications.show({
-        title: "Error",
-        message: "Passwords do not match",
-        color: "red",
-      });
-      return;
-    }
-    if (strength < 4) {
-      notifications.show({
-        title: "Error",
-        message: "Password is too weak",
-        color: "red",
-      });
-      return;
-    }
-    setLoading(true);
+  // DERIVED ERROR LOGIC (No nested ternaries)
+  const getPasswordErrorMessage = () => {
+    if (!submitted) return null;
+    if (!password) return "Password is required";
+    if (strength < 4) return "Password is too weak";
+    return null;
+  };
 
+  const getConfirmErrorMessage = () => {
+    if (!submitted) return null;
+    if (!confirmPassword) return "Please confirm your password";
+    if (password !== confirmPassword) return "Passwords do not match";
+    return null;
+  };
+
+  const handleUpdate = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setSubmitted(true);
+
+    if (!password || !confirmPassword) return;
+    if (password !== confirmPassword) return; // Notification already handled by visual error
+    if (strength < 4) return;
+
+    setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
@@ -139,37 +132,20 @@ export default function UpdatePasswordForm() {
         color: "red",
       });
     } else {
-      // sign out current session so middleware won't redirect an authenticated user
       try {
         await supabase.auth.signOut();
-      } catch (e) {
-        console.debug("signOut failed (ignored):", e);
+      } catch (err) {
+        console.debug(err);
       }
-      // navigate to signin with flag to show confirmation
       router.push("/signin?pw_reset=1");
     }
-
     setLoading(false);
-  };
-
-  const getPasswordError = () => {
-    if (!submitted) return null;
-    if (!password) return "Password is required";
-    if (strength < 4) return "Password is too weak";
-    return null;
-  };
-
-  const getConfirmPasswordError = () => {
-    if (!submitted) return null;
-    if (!confirmPassword) return "Please confirm your password";
-    if (password !== confirmPassword) return "Passwords do not match";
-    return null;
   };
 
   if (verifying) {
     return (
       <Center style={{ flex: 1 }}>
-        <Loader size="lg" />
+        <Loader size="lg" aria-label="Verifying your reset session" />
       </Center>
     );
   }
@@ -179,7 +155,8 @@ export default function UpdatePasswordForm() {
       <Container size={420} w="100%">
         <Title
           ta="center"
-          order={2}
+          order={1}
+          size="h2"
           style={{ fontFamily: "Greycliff CF, sans-serif" }}
         >
           Set New Password
@@ -188,7 +165,15 @@ export default function UpdatePasswordForm() {
           Please enter your new password below
         </Text>
 
-        <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+        <Paper
+          withBorder
+          shadow="md"
+          p={30}
+          mt={30}
+          radius="md"
+          component="form"
+          onSubmit={handleUpdate}
+        >
           <Stack>
             <Popover
               opened={popoverOpened}
@@ -207,35 +192,47 @@ export default function UpdatePasswordForm() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.currentTarget.value)}
-                    error={getPasswordError()}
+                    error={getPasswordErrorMessage()}
+                    aria-invalid={submitted && strength < 4}
+                    aria-describedby="password-requirements-hint"
                   />
                 </div>
               </Popover.Target>
               <Popover.Dropdown>
-                <Progress
-                  color={color}
-                  value={(strength * 100) / 4}
-                  mb={10}
-                  size={7}
-                />
-                {checks.map((requirement, index) => (
-                  <Group key={index} gap={10} mt={7}>
-                    {requirement.meets ? (
-                      <IconCheck
-                        style={{ width: rem(14), height: rem(14) }}
-                        color="var(--mantine-color-teal-filled)"
-                      />
-                    ) : (
-                      <IconX
-                        style={{ width: rem(14), height: rem(14) }}
-                        color="var(--mantine-color-red-filled)"
-                      />
-                    )}
-                    <Text size="sm" c={requirement.meets ? "teal" : "red"}>
-                      {requirement.label}
-                    </Text>
-                  </Group>
-                ))}
+                <Box id="password-requirements-hint" aria-live="polite">
+                  <Progress
+                    color={progressColor}
+                    value={(strength * 100) / 4}
+                    mb={10}
+                    size={7}
+                    aria-label={`Password strength: ${strength} out of 4`}
+                  />
+                  {checks.map((requirement, index) => (
+                    <Group key={index} gap={10} mt={7}>
+                      {requirement.meets ? (
+                        <IconCheck
+                          style={{ width: rem(14), height: rem(14) }}
+                          color="var(--mantine-color-teal-filled)"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <IconX
+                          style={{ width: rem(14), height: rem(14) }}
+                          color="var(--mantine-color-red-filled)"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <Text size="sm" c={requirement.meets ? "teal" : "red"}>
+                        {requirement.label}
+                        <span className="sr-only">
+                          {requirement.meets
+                            ? " - Requirement met"
+                            : " - Requirement not met"}
+                        </span>
+                      </Text>
+                    </Group>
+                  ))}
+                </Box>
               </Popover.Dropdown>
             </Popover>
 
@@ -245,11 +242,13 @@ export default function UpdatePasswordForm() {
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-              error={getConfirmPasswordError()}
+              error={getConfirmErrorMessage()}
+              aria-invalid={submitted && password !== confirmPassword}
             />
+
             <Button
+              type="submit"
               fullWidth
-              onClick={handleUpdate}
               loading={loading}
               style={{ backgroundColor: "#1A237E" }}
             >
@@ -258,6 +257,19 @@ export default function UpdatePasswordForm() {
           </Stack>
         </Paper>
       </Container>
+
+      <style jsx>{`
+        .sr-only {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          border: 0;
+        }
+      `}</style>
     </Center>
   );
 }

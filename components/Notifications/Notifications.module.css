@@ -3,3 +3,22 @@
     background-color: rgb(236, 236, 236) !important;
   }
 }
+
+.srOnly {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  background-color: var(--mantine-color-red-6);
+  color: white;
+  border-radius: 50%;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border: 2px solid white;
+  pointer-events: none;
+}

@@ -22,7 +22,10 @@ test("logout calls signout endpoint, supabase signOut and redirects", async () =
       <PrivateNavigationHeader />
     </MantineProvider>,
   );
-  await userEvent.click(screen.getByRole("button", { name: /Logout/i }));
+  // button now exposes an aria-label "Sign out of your account"
+  await userEvent.click(
+    screen.getByRole("button", { name: /sign out of your account/i }),
+  );
   await waitFor(() => {
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/auth/signout",

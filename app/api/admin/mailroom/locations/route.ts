@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getAllMailRoomLocation } from "@/app/actions/get";
 import { adminCreateMailroomLocation } from "@/app/actions/post";
 import type { LocationRow } from "@/utils/types";
 
@@ -15,11 +14,78 @@ const normalizeLocation = (row: LocationRow) => ({
   total_lockers: row.mailroom_location_total_lockers ?? 0,
 });
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const locations = await getAllMailRoomLocation();
-    const normalized = locations.map(normalizeLocation);
-    return NextResponse.json({ data: normalized }, { status: 200 });
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+    const pageSize = Math.max(
+      1,
+      Math.min(100, Number(searchParams.get("pageSize") ?? 10)),
+    );
+    const search = searchParams.get("search")?.trim() || "";
+    const region = searchParams.get("region")?.trim() || "";
+    const city = searchParams.get("city")?.trim() || "";
+    const sortBy = searchParams.get("sortBy")?.trim() || "";
+
+    const offset = (page - 1) * pageSize;
+
+    const supabase = await createClient();
+
+    // Call the optimized RPC
+    const { data, error } = await supabase.rpc(
+      "rpc_list_mailroom_locations_paginated",
+      {
+        p_search: search,
+        p_region: region,
+        p_city: city,
+        p_sort_by: sortBy || "name_asc",
+        p_limit: pageSize,
+        p_offset: offset,
+      },
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    type RpcLocationResult = {
+      id: string;
+      name: string;
+      code: string;
+      region: string;
+      city: string;
+      barangay: string;
+      zip: string;
+      total_lockers: number;
+      total_count: string | number;
+    };
+
+    const rows = (data as RpcLocationResult[]) || [];
+    const count = rows.length > 0 ? Number(rows[0].total_count) : 0;
+
+    const normalized = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      code: row.code,
+      region: row.region,
+      city: row.city,
+      barangay: row.barangay,
+      zip: row.zip,
+      total_lockers: row.total_lockers,
+    }));
+
+    return NextResponse.json(
+      {
+        data: normalized,
+        pagination: {
+          page,
+          pageSize,
+          totalCount: count,
+          totalPages: Math.ceil(count / pageSize),
+        },
+      },
+      { status: 200 },
+    );
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";

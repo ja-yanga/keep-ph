@@ -45,7 +45,7 @@ export const PlanStep = ({
   return (
     <Stack mt="lg">
       <Group justify="space-between" align="center">
-        <Title order={4}>1. Select Your Plan</Title>
+        <Title order={2}>1. Select Your Plan</Title>
         <SegmentedControl
           value={billingCycle}
           onChange={(val) => setBillingCycle(val as "monthly" | "annual")}
@@ -138,7 +138,7 @@ export const PlanStep = ({
                       <Badge
                         size="lg"
                         variant={isSelected ? "filled" : "light"}
-                        color={isSelected ? "blue" : "gray"}
+                        color={isSelected ? "blue" : "#313131"}
                         style={{
                           backgroundColor: isSelected ? "#26316D" : undefined,
                         }}
@@ -166,14 +166,14 @@ export const PlanStep = ({
                       >
                         {format(displayPrice)}
                       </Text>
-                      <Text c="dimmed" fw={500}>
+                      <Text c="#313131" fw={500}>
                         /mo
                       </Text>
                     </Group>
 
                     {billingCycle === "annual" ? (
                       <Group gap={6} mt={4} mb="md">
-                        <Text size="xs" c="dimmed" td="line-through">
+                        <Text size="xs" c="#313131" td="line-through">
                           {format(monthlyBase)}
                         </Text>
                         <Text size="xs" c="green" fw={600}>
@@ -187,7 +187,7 @@ export const PlanStep = ({
                     <Divider my="sm" variant="dashed" />
                     <Text
                       size="sm"
-                      c="dimmed"
+                      c="#313131"
                       mb="md"
                       style={{ lineHeight: 1.4 }}
                     >
@@ -198,14 +198,14 @@ export const PlanStep = ({
                       {features.map((f, idx) => (
                         <Group key={idx} gap="sm">
                           <ThemeIcon
-                            color={isSelected ? "blue" : "gray"}
+                            color={isSelected ? "blue" : "#313131"}
                             variant="light"
                             size="sm"
                             radius="xl"
                           >
                             <IconCheck size={10} />
                           </ThemeIcon>
-                          <Text size="sm" fw={500} c="dark.3">
+                          <Text size="sm" fw={500} c="#313131">
                             {f.label}
                           </Text>
                         </Group>
@@ -214,10 +214,10 @@ export const PlanStep = ({
                   </Box>
                   <Button
                     fullWidth
-                    variant={isSelected ? "filled" : "light"}
-                    color="blue"
+                    variant={isSelected ? "filled" : "default"}
                     mt="xl"
                     style={{
+                      color: isSelected ? "#fff" : "#313131",
                       backgroundColor: isSelected ? "#26316D" : undefined,
                     }}
                   >

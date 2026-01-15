@@ -287,10 +287,31 @@ export async function getUserVerificationStatus(
  */
 export async function getMailroomRegistrations(
   userId: string,
-): Promise<unknown[]> {
+  options?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+): Promise<{
+  data: unknown[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+}> {
   if (!userId) {
-    return [];
+    return {
+      data: [],
+      pagination: { total: 0, limit: 0, offset: 0, has_more: false },
+    };
   }
+
+  const { search = null, page = 1, limit = 10 } = options || {};
+
+  // Calculate offset from page number
+  const offset = (page - 1) * limit;
 
   // Validate UUID format
   const uuidRegex =
@@ -304,6 +325,9 @@ export async function getMailroomRegistrations(
       "get_user_mailroom_registrations",
       {
         input_user_id: userId,
+        search_query: search || null,
+        page_limit: limit,
+        page_offset: offset,
       },
     );
 
@@ -323,7 +347,10 @@ export async function getMailroomRegistrations(
 
     // Handle null or undefined data
     if (data === null || data === undefined) {
-      return [];
+      return {
+        data: [],
+        pagination: { total: 0, limit: 0, offset: 0, has_more: false },
+      };
     }
 
     // Parse data if it's a string, otherwise use as is
@@ -339,13 +366,29 @@ export async function getMailroomRegistrations(
       throw new Error("Failed to parse mailroom registrations response");
     }
 
-    // Ensure it's an array
-    if (!Array.isArray(payload)) {
-      console.error("Invalid payload structure:", { payload, userId });
-      return [];
+    // Handle new response format with data and pagination
+    if (payload && typeof payload === "object" && "data" in payload) {
+      const result = payload as {
+        data: unknown;
+        pagination?: {
+          total: number;
+          limit: number;
+          offset: number;
+          has_more: boolean;
+        };
+      };
+      const dataArray = Array.isArray(result.data) ? result.data : [];
+
+      return { data: dataArray, pagination: result.pagination };
     }
 
-    return payload;
+    // Fallback for old format (array)
+    if (Array.isArray(payload)) {
+      return { data: payload };
+    }
+
+    console.error("Invalid payload structure:", { payload, userId });
+    return { data: [] };
   } catch (err) {
     if (err instanceof Error) {
       throw err;
@@ -604,26 +647,38 @@ export async function getUserAddresses(
 export async function adminListUserKyc(
   search = "",
   limit = 500,
-): Promise<AdminUserKyc[]> {
+  offset = 0,
+  status?: string,
+): Promise<{ data: AdminUserKyc[]; total_count: number }> {
   const { data, error } = await supabaseAdmin.rpc("admin_list_user_kyc", {
     input_search: search,
     input_limit: limit,
+    input_offset: offset,
+    input_status: status ?? null,
   });
 
   if (error) {
     throw error;
   }
 
-  const parsed =
-    typeof data === "string"
-      ? (JSON.parse(data) as unknown[])
-      : ((data as unknown[]) ?? []);
+  const payload =
+    typeof data === "string" ? JSON.parse(data) : (data as unknown);
 
-  if (!Array.isArray(parsed)) {
-    return [];
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !("total_count" in payload)
+  ) {
+    return { data: [], total_count: 0 };
   }
 
-  return parsed as AdminUserKyc[];
+  const result = payload as { data: AdminUserKyc[]; total_count: number };
+
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    total_count: Number(result.total_count) || 0,
+  };
 }
 
 export async function getUserRole(userId: string) {
@@ -838,16 +893,19 @@ export async function adminGetMailroomPackages(args: {
   limit?: number;
   offset?: number;
   compact?: boolean;
+  status?: string[];
 }): Promise<{
   packages: unknown[];
   registrations: unknown[];
   lockers: unknown[];
   assignedLockers: unknown[];
   totalCount: number;
+  counts?: Record<string, number>;
 }> {
   const limit = Math.min(args.limit ?? 50, 200);
   const offset = args.offset ?? 0;
   const compact = args.compact ?? false;
+  const status = args.status ?? null;
 
   const { data, error } = await supabaseAdmin.rpc(
     "get_admin_mailroom_packages",
@@ -855,6 +913,7 @@ export async function adminGetMailroomPackages(args: {
       input_limit: limit,
       input_offset: offset,
       input_compact: compact,
+      input_status: status,
     },
   );
 
@@ -887,12 +946,15 @@ export async function adminGetMailroomPackages(args: {
       ? rpcData.total_count
       : packages.length;
 
+  const counts = (rpcData.counts as Record<string, number>) || undefined;
+
   return {
     packages,
     registrations,
     lockers,
     assignedLockers,
     totalCount,
+    counts,
   };
 }
 
@@ -975,17 +1037,25 @@ export async function getAllMailRoomLocation() {
   return data;
 }
 
-export async function getMailroomRegistrationsWithStats(userId: string) {
-  if (!userId) return { data: [], stats: null };
+export async function getMailroomRegistrationsWithStats(
+  userId: string,
+  options?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+) {
+  if (!userId) return { data: [], stats: null, total: 0 };
 
   try {
-    // 1. Get Registrations
-    const registrations = (await getMailroomRegistrations(userId)) as Record<
-      string,
-      unknown
-    >[];
+    // 1. Get Registrations with pagination
+    const { data: registrations, pagination } = await getMailroomRegistrations(
+      userId,
+      options,
+    );
+    const registrationsArray = registrations as Record<string, unknown>[];
 
-    // 2. Get Overall Stats
+    // 2. Get Overall Stats (always fetch for all registrations, not just current page)
     let totals: Record<string, unknown> | null = null;
     try {
       totals = await getUserMailroomStats(userId);
@@ -993,7 +1063,7 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
       console.error("Failed to get user mailroom stats:", e);
     }
 
-    // 3. Get Per-Registration Stats
+    // 3. Get Per-Registration Stats (for current page registrations only)
     let regStatsRaw: Array<{
       mailroom_registration_id: string;
       stored: number;
@@ -1024,8 +1094,8 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
         regMap.set(key, { stored, pending, released });
       }
     } else {
-      // Fallback: build counts from mailbox_item_table
-      const regIds = registrations
+      // Fallback: build counts from mailbox_item_table for current page registrations
+      const regIds = registrationsArray
         .map((r) =>
           toStr(r.mailroom_registration_id ?? r.id ?? r.registration_id ?? ""),
         )
@@ -1082,7 +1152,7 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
     }
 
     // 5. Map stats to registrations
-    const results = registrations.map((r) => {
+    const results = registrationsArray.map((r) => {
       const idKey = toStr(
         r.mailroom_registration_id ?? r.id ?? r.registration_id ?? "",
       ).toLowerCase();
@@ -1096,6 +1166,7 @@ export async function getMailroomRegistrationsWithStats(userId: string) {
     return {
       data: results,
       stats: totals,
+      pagination,
     };
   } catch (err) {
     if (err instanceof Error) throw err;
@@ -1145,16 +1216,45 @@ export const getUserSession = async (userId: string) => {
 };
 
 /**
- * Gets user storage files and usage stats via RPC.
- * Returns scans array and usage object.
+ * Gets user storage files and usage stats via RPC with pagination and filtering.
+ * Returns scans array, pagination metadata, and usage object.
+ *
+ * @param userId - User ID to fetch files for
+ * @param options - Optional parameters for pagination, filtering, and sorting
+ * @returns Promise with storage files data including pagination info
  */
-export async function getUserStorageFiles(userId: string) {
+export async function getUserStorageFiles(
+  userId: string,
+  options?: {
+    search?: string;
+    sortBy?: "uploaded_at" | "file_name" | "file_size_mb";
+    sortDir?: "asc" | "desc";
+    page?: number;
+    limit?: number;
+  },
+) {
   if (!userId) {
     throw new Error("userId is required");
   }
 
+  const {
+    search = null,
+    sortBy = "uploaded_at",
+    sortDir = "desc",
+    page = 1,
+    limit = 10,
+  } = options || {};
+
+  // Calculate offset from page number
+  const offset = (page - 1) * limit;
+
   const { data, error } = await supabaseAdmin.rpc("get_user_storage_files", {
     input_user_id: userId,
+    search_query: search || null,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    page_limit: limit,
+    page_offset: offset,
   });
 
   if (error) {

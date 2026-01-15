@@ -5,6 +5,7 @@ import PrivateNavigationHeader from "./PrivateNavigationHeader";
 const PrivateMainLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <Box
+      component="div"
       style={{
         minHeight: "100dvh",
         backgroundColor: "#FFFFFF",

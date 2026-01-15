@@ -8,7 +8,6 @@ import {
   Popover,
   Text,
   Stack,
-  Indicator,
   ScrollArea,
   ThemeIcon,
   Divider,
@@ -221,24 +220,21 @@ const Notifications = () => {
         onClose={markAsRead}
       >
         <Popover.Target>
-          <Indicator
-            color="red"
-            size={16}
-            label={unreadCount}
-            disabled={unreadCount === 0}
-            offset={4}
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="lg"
+            onClick={() => setNotifOpen((o) => !o)}
+            aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+            style={{ position: "relative" }}
           >
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              radius="xl"
-              size="lg"
-              aria-label="notifications"
-              onClick={() => setNotifOpen((o) => !o)}
-            >
-              <IconBell size={20} />
-            </ActionIcon>
-          </Indicator>
+            <IconBell size={20} />
+            {unreadCount > 0 && (
+              <span className={styles.srOnly} aria-hidden="true">
+                {unreadCount}
+              </span>
+            )}
+          </ActionIcon>
         </Popover.Target>
         <Popover.Dropdown p={0}>
           <Box p="sm" bg="gray.0">
@@ -254,11 +250,9 @@ const Notifications = () => {
               </Center>
             )}
 
-            {!initialLoading && notifications.length === 0 && (
-              <NotificationEmpty />
-            )}
+            {notifications.length === 0 && <NotificationEmpty />}
 
-            {!initialLoading && notifications.length > 0 && (
+            {notifications.length > 0 && (
               <Stack gap={0}>
                 {notifications.map((n) => (
                   <Box
@@ -330,9 +324,7 @@ const Notifications = () => {
               style={{
                 minHeight: "1px",
                 visibility:
-                  hasMore && !initialLoading && notifications.length > 0
-                    ? "visible"
-                    : "hidden",
+                  hasMore && notifications.length > 0 ? "visible" : "hidden",
               }}
             >
               <Center p="md">{isLoadingMore && <Loader size="sm" />}</Center>

@@ -1,9 +1,8 @@
 "use client";
 
-import "mantine-datatable/styles.layer.css";
-
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
+import useSWRInfinite from "swr/infinite";
 import {
   ActionIcon,
   Badge,
@@ -20,7 +19,7 @@ import {
   Tabs,
   Alert,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
@@ -29,13 +28,143 @@ import {
   IconTrash,
   IconLock,
   IconLockOpen,
-  IconBox,
   IconLayoutGrid,
   IconCheck,
   IconAlertCircle,
+  IconX,
+  IconArrowRight,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { DataTable } from "mantine-datatable";
+import dynamic from "next/dynamic";
+import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import { getStatusFormat } from "@/utils/helper";
+const DataTable = dynamic(
+  () => import("mantine-datatable").then((m) => m.DataTable),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+        aria-busy="true"
+        aria-label="Loading lockers table"
+      >
+        <div style={{ display: "flex", gap: "10px" }}>
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: 40,
+                flex: 1,
+                backgroundColor: "#f1f3f5",
+                borderRadius: "4px",
+                animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              }}
+            />
+          ))}
+        </div>
+        {[...Array(10)].map((_, i) => (
+          <div
+            key={i}
+            style={{
+              height: 52,
+              backgroundColor: "#f8f9fa",
+              borderRadius: "4px",
+              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            }}
+          />
+        ))}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+          }
+        `,
+          }}
+        />
+      </div>
+    ),
+  },
+) as <T>(props: DataTableProps<T>) => React.ReactElement;
+
+const SearchInput = React.memo(
+  ({
+    onSearch,
+    searchQuery,
+  }: {
+    onSearch: (value: string) => void;
+    searchQuery: string;
+  }) => {
+    const [value, setValue] = useState(searchQuery);
+
+    // Sync internal value when parent searchQuery changes (e.g. Clear Filters)
+    useEffect(() => {
+      setValue(searchQuery);
+    }, [searchQuery]);
+
+    const handleSearch = () => {
+      onSearch(value);
+    };
+
+    const handleClear = () => {
+      setValue("");
+      onSearch("");
+    };
+
+    return (
+      <TextInput
+        placeholder="Search lockers By code..."
+        aria-label="Search lockers"
+        leftSection={<IconSearch size={16} aria-hidden="true" />}
+        rightSectionWidth={value ? 70 : 42}
+        rightSection={
+          value ? (
+            <Group gap={4}>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="gray.7"
+                onClick={handleClear}
+                aria-label="Clear search"
+              >
+                <IconX size={16} aria-hidden="true" />
+              </ActionIcon>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="indigo"
+                onClick={handleSearch}
+                aria-label="Submit search"
+              >
+                <IconArrowRight size={16} aria-hidden="true" />
+              </ActionIcon>
+            </Group>
+          ) : (
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              c="gray.7"
+              onClick={handleSearch}
+              aria-label="Submit search"
+            >
+              <IconArrowRight size={16} aria-hidden="true" />
+            </ActionIcon>
+          )
+        }
+        value={value}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSearch();
+          }
+        }}
+        style={{ flex: 1 }}
+      />
+    );
+  },
+);
+SearchInput.displayName = "SearchInput";
 
 type Location = {
   id: string;
@@ -63,170 +192,30 @@ type Locker = {
   } | null;
 };
 
-type AssignedLocker = {
-  id: string;
-  registration_id: string;
-  locker_id: string;
-  status: "Empty" | "Normal" | "Near Full" | "Full";
-  registration?: {
-    id: string;
-    full_name: string;
-    email: string;
-  } | null;
-};
-
 const fetcherLockers = async (
   url: string,
 ): Promise<{
-  lockers: Locker[];
-  locations: Location[];
-  assigned: AssignedLocker[];
+  data: Locker[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
 }> => {
   const res = await fetch(url);
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(txt || `Failed to fetch ${url}`);
   }
-  const payload = (await res
-    .json()
-    .catch(() => ({}) as Record<string, unknown>)) as Record<string, unknown>;
-  const data: unknown = payload.data ?? payload;
-
-  let rawLockers: unknown[] = [];
-  if (Array.isArray(data)) {
-    rawLockers = data as unknown[];
-  } else if (Array.isArray((data as Record<string, unknown>)?.lockers)) {
-    rawLockers = (data as Record<string, unknown>).lockers as unknown[];
-  } else {
-    rawLockers = [];
-  }
-  const lockers = (rawLockers ?? []).map((r) => {
-    const row = r as Record<string, unknown>;
-    const locationTable = row.mailroom_location_table as
-      | Record<string, unknown>
-      | undefined;
-    const assignedRow = (row.assigned ??
-      (row as Record<string, unknown>).assigned) as
-      | Record<string, unknown>
-      | undefined;
-
-    const assignedMapped =
-      assignedRow == null
-        ? null
-        : {
-            id: String(
-              assignedRow.mailroom_assigned_locker_id ?? assignedRow.id ?? "",
-            ),
-            registration_id: String(
-              assignedRow.mailroom_registration_id ??
-                assignedRow.registration_id ??
-                "",
-            ),
-            locker_id: String(
-              assignedRow.location_locker_id ??
-                assignedRow.locker_id ??
-                row.location_locker_id ??
-                row.id ??
-                "",
-            ),
-            status: String(
-              assignedRow.mailroom_assigned_locker_status ??
-                assignedRow.status ??
-                "Normal",
-            ) as AssignedLocker["status"],
-            registration: assignedRow.registration
-              ? {
-                  id: String(
-                    (assignedRow.registration as Record<string, unknown>)
-                      .mailroom_registration_id ??
-                      (assignedRow.registration as Record<string, unknown>)
-                        .id ??
-                      "",
-                  ),
-                  full_name: String(
-                    (assignedRow.registration as Record<string, unknown>)
-                      .full_name ?? "",
-                  ),
-                  email: String(
-                    (assignedRow.registration as Record<string, unknown>)
-                      .email ?? "",
-                  ),
-                }
-              : null,
-          };
-
-    return {
-      id: String(row.id ?? row.location_locker_id ?? ""),
-      locker_code: String(row.code ?? row.location_locker_code ?? ""),
-      location_id: String(row.location_id ?? row.mailroom_location_id ?? ""),
-      is_available: Boolean(
-        row.is_available ?? row.location_locker_is_available ?? true,
-      ),
-      location: locationTable
-        ? {
-            id: String(locationTable.mailroom_location_id ?? ""),
-            name: String(locationTable.mailroom_location_name ?? ""),
-          }
-        : ((row.location as Locker["location"]) ?? null),
-      // preserve DB-style id for matching
-      location_locker_id: String(row.location_locker_id ?? row.id ?? ""),
-      assigned: assignedMapped,
-    } as Locker;
-  });
-
-  const rawLocations: unknown[] = Array.isArray(
-    (data as Record<string, unknown>)?.locations,
-  )
-    ? ((data as Record<string, unknown>).locations as unknown[])
-    : [];
-  const locations = (rawLocations ?? []).map((r) => {
-    const row = r as Record<string, unknown>;
-    return {
-      id: String(row.id ?? row.mailroom_location_id ?? ""),
-      name: String(row.name ?? row.mailroom_location_name ?? ""),
-    } as Location;
-  });
-
-  const dataRecord = data as Record<string, unknown>;
-  let rawAssigned: unknown[] = [];
-  if (Array.isArray(dataRecord.assigned)) {
-    rawAssigned = dataRecord.assigned as unknown[];
-  } else if (Array.isArray(dataRecord.assigned_lockers)) {
-    rawAssigned = dataRecord.assigned_lockers as unknown[];
-  }
-
-  const assigned = (rawAssigned ?? []).map((r) => {
-    const row = r as Record<string, unknown>;
-    return {
-      id: String(row.id ?? row.assigned_locker_id ?? ""),
-      registration_id: String(row.registration_id ?? ""),
-      locker_id: String(row.locker_id ?? row.location_locker_id ?? ""),
-      status: (row.status as AssignedLocker["status"]) ?? "Normal",
-      registration: row.registration
-        ? {
-            id: String((row.registration as Record<string, unknown>).id ?? ""),
-            full_name: String(
-              (row.registration as Record<string, unknown>).full_name ?? "",
-            ),
-            email: String(
-              (row.registration as Record<string, unknown>).email ?? "",
-            ),
-          }
-        : null,
-    } as AssignedLocker;
-  });
-
-  return { lockers, locations, assigned };
+  return res.json();
 };
 
 export default function MailroomLockers() {
   const [lockers, setLockers] = useState<Locker[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [assignedMap, setAssignedMap] = useState<
-    Record<string, AssignedLocker | undefined>
-  >({});
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [filterLocation, setFilterLocation] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
@@ -247,6 +236,7 @@ export default function MailroomLockers() {
     deleteModalOpened,
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
   const [lockerToDelete, setLockerToDelete] = useState<string | null>(null);
   const [editingLocker, setEditingLocker] = useState<Locker | null>(null);
   const [formData, setFormData] = useState({
@@ -258,9 +248,17 @@ export default function MailroomLockers() {
   const [capacityStatus, setCapacityStatus] = useState<string>("Normal");
   const [submitting, setSubmitting] = useState(false);
 
-  const lockersKey = "/api/admin/mailroom/lockers?expanded=1";
-  const locationsKey = "/api/admin/mailroom/locations";
+  const handleSearchSubmit = React.useCallback(
+    (val: string) => {
+      if (val === query && page === 1) return;
+      setIsSearching(true);
+      setQuery(val);
+      setPage(1);
+    },
+    [query, page],
+  );
 
+  const lockersKey = `/api/admin/mailroom/lockers?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(query)}&locationId=${filterLocation || ""}&activeTab=${activeTab}`;
   const fetcherLocations = async (url: string): Promise<Location[]> => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -281,161 +279,62 @@ export default function MailroomLockers() {
     });
   };
 
-  const { data: overviewData, isValidating: overviewValidating } = useSWR(
-    lockersKey,
-    fetcherLockers,
-    { revalidateOnFocus: true },
-  );
-  const { data: locationsData } = useSWR(locationsKey, fetcherLocations, {
-    revalidateOnFocus: true,
+  const getLocationsKey = (
+    pageIndex: number,
+    previousPageData: Location[] | null,
+  ) => {
+    if (previousPageData && !previousPageData.length) return null;
+    if (pageIndex > 0) return null; // Fetch all in one go
+    return `/api/admin/mailroom/locations?page=1&pageSize=1000`;
+  };
+
+  const {
+    data: infiniteLocationsData,
+    // size: locationsSize,
+    // setSize: setLocationsSize,
+  } = useSWRInfinite(getLocationsKey, fetcherLocations, {
+    revalidateOnFocus: false,
+    dedupingInterval: 10000,
+    keepPreviousData: true,
   });
 
+  // Flatten locations
   useEffect(() => {
-    setLoading(Boolean(overviewValidating));
-    if (overviewData) {
-      // keep raw locker fields (including DB-style keys) on objects
-      const lockersPayload = (overviewData.lockers ?? []).map((lk) => ({
-        ...lk,
-        // ensure DB-style id field is present for matching
-        location_locker_id: String(
-          (lk as Record<string, unknown>).location_locker_id ??
-            (lk as Record<string, unknown>).id ??
-            "",
-        ),
-      })) as Locker[];
-      setLockers(lockersPayload);
+    if (infiniteLocationsData) {
+      const all = infiniteLocationsData.flatMap((d) => d);
+      setLocations(all);
+    }
+  }, [infiniteLocationsData]);
 
-      // prefer dedicated locations endpoint; fallback to overviewData.locations; final fallback derive from lockers
-      if (Array.isArray(locationsData) && locationsData.length > 0) {
-        setLocations(locationsData);
-      } else if (
-        Array.isArray(overviewData.locations) &&
-        overviewData.locations.length > 0
-      ) {
-        setLocations(overviewData.locations as Location[]);
-      } else {
-        const fromLockers: Location[] = [];
-        const raw = overviewData.lockers ?? [];
-        for (const lk of raw) {
-          if (!lk.location) continue;
-          if (!fromLockers.some((x) => x.id === lk.location!.id)) {
-            fromLockers.push(lk.location);
-          }
-        }
-        setLocations(fromLockers);
-      }
-      // build assignedLockers array and a fast lookup map keyed by normalized locker id
-      let derivedAssigned: AssignedLocker[] = [];
-      if (
-        Array.isArray(overviewData.assigned) &&
-        overviewData.assigned.length > 0
-      ) {
-        derivedAssigned = overviewData.assigned as AssignedLocker[];
-      } else {
-        const rawLockers = overviewData.lockers ?? [];
-        for (const lk of rawLockers) {
-          if (!lk || !(lk as Locker).assigned) continue;
-          const aRec = (lk as Locker).assigned as Record<string, unknown>;
-          const regRec = (aRec.registration ?? undefined) as
-            | Record<string, unknown>
-            | undefined;
+  const { data: overviewData, isValidating } = useSWR(
+    lockersKey,
+    fetcherLockers,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
+      keepPreviousData: true,
+    },
+  );
 
-          const id = String(aRec.id ?? aRec.mailroom_assigned_locker_id ?? "");
-          const registrationId = String(
-            aRec.registration_id ?? aRec.mailroom_registration_id ?? "",
-          );
-          const lockerId = String(
-            (lk as Record<string, unknown>).id ??
-              (lk as Record<string, unknown>).location_locker_id ??
-              "",
-          );
-          const status = String(
-            aRec.status ?? aRec.mailroom_assigned_locker_status ?? "Normal",
-          ) as AssignedLocker["status"];
+  useEffect(() => {
+    if (!isValidating) {
+      setIsSearching(false);
+    }
+  }, [isValidating]);
 
-          const registration = regRec
-            ? {
-                id: String(regRec.id ?? regRec.mailroom_registration_id ?? ""),
-                full_name: String(regRec.full_name ?? ""),
-                email: String(regRec.email ?? ""),
-              }
-            : null;
-
-          derivedAssigned.push({
-            id,
-            registration_id: registrationId,
-            locker_id: lockerId,
-            status,
-            registration,
-          });
-        }
-      }
-      // build lookup map from derivedAssigned (do not assign array to map state)
-
-      const map: Record<string, AssignedLocker | undefined> = {};
-      const normalizeKey = (v?: string | null) =>
-        (v ?? "").toLowerCase().trim();
-      for (const a of derivedAssigned) {
-        const key = normalizeKey(a.locker_id);
-        if (key) map[key] = a;
-      }
-      setAssignedMap(map);
+  useEffect(() => {
+    if (overviewData?.data) {
+      setLockers(overviewData.data);
     } else {
       setLockers([]);
-      setLocations([]);
-      setAssignedMap({});
     }
-
-    // auto-fix ghost lockers (no console logs)
-    if (
-      (overviewData?.lockers?.length ?? 0) > 0 &&
-      (overviewData?.assigned?.length ?? 0) > 0
-    ) {
-      const assignedIds = new Set(
-        (overviewData?.assigned ?? []).map((a) => a.locker_id),
-      );
-      const ghost = (overviewData?.lockers ?? []).filter(
-        (l) => !l.is_available && !assignedIds.has(l.id),
-      );
-      if (ghost.length > 0) {
-        (async () => {
-          try {
-            await Promise.all(
-              ghost.map((l) =>
-                fetch(`/api/admin/mailroom/lockers/${l.id}`, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    locker_code: l.locker_code,
-                    location_id: l.location_id,
-                    is_available: true,
-                  }),
-                }),
-              ),
-            );
-            notifications.show({
-              title: "System Cleanup",
-              message: `Automatically freed ${ghost.length} lockers that had no active assignment.`,
-              color: "orange",
-              icon: <IconLockOpen size={16} />,
-            });
-            await swrMutate(lockersKey);
-          } catch (err: unknown) {
-            void err;
-          }
-        })();
-      }
-    }
-  }, [overviewData, overviewValidating]);
+  }, [overviewData]);
 
   const refreshAll = async () => {
-    setLoading(true);
     try {
       await swrMutate(lockersKey);
     } catch {
       // noop
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -452,23 +351,13 @@ export default function MailroomLockers() {
   }, [opened]);
 
   const clearFilters = () => {
-    setSearch("");
+    setQuery("");
     setFilterLocation(null);
     setActiveTab("all");
+    setPage(1);
   };
 
   const handleOpenModal = (locker?: Locker) => {
-    const normalize = (v?: string | null) => (v ?? "").toLowerCase().trim();
-    const findAssignmentForLocker = (l: Locker | undefined) => {
-      if (!l) return undefined;
-      return (
-        assignedMap[normalize(l.id)] ??
-        assignedMap[normalize(l.location_locker_id ?? "")] ??
-        assignedMap[normalize(l.location_id ?? "")] ??
-        assignedMap[normalize(l.locker_code ?? "")]
-      );
-    };
-
     if (locker) {
       setEditingLocker(locker);
       setFormData({
@@ -476,8 +365,7 @@ export default function MailroomLockers() {
         location_id: locker.location_id,
         is_available: locker.is_available,
       });
-      const assignment = findAssignmentForLocker(locker);
-      setCapacityStatus(assignment?.status ?? "Normal");
+      setCapacityStatus(locker.assigned?.status ?? "Normal");
     } else {
       setEditingLocker(null);
       setFormData({ locker_code: "", location_id: "", is_available: true });
@@ -514,26 +402,22 @@ export default function MailroomLockers() {
       }
 
       // if locker has an assignment, update its capacity status
-      const normalize = (v?: string | null) => (v ?? "").toLowerCase().trim();
-      const assignment =
-        (editingLocker
-          ? (assignedMap[normalize(editingLocker.id)] ??
-            assignedMap[normalize(editingLocker.location_locker_id ?? "")] ??
-            assignedMap[normalize(editingLocker.location_id ?? "")] ??
-            assignedMap[normalize(editingLocker.locker_code ?? "")])
-          : undefined) ?? null;
+      const assignment = editingLocker?.assigned;
 
       if (editingLocker && assignment && capacityStatus !== assignment.status) {
-        const statusRes = await fetch(
-          `/api/admin/mailroom/assigned-lockers/${assignment.id}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: capacityStatus }),
-          },
-        );
-        if (!statusRes.ok) {
-          void (await statusRes.text().catch(() => ""));
+        const assignmentId = assignment.id;
+        if (assignmentId) {
+          const statusRes = await fetch(
+            `/api/admin/mailroom/assigned-lockers/${assignmentId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: capacityStatus }),
+            },
+          );
+          if (!statusRes.ok) {
+            void (await statusRes.text().catch(() => ""));
+          }
         }
       }
 
@@ -549,6 +433,8 @@ export default function MailroomLockers() {
       setSubmitting(false);
     }
   };
+
+  const activeAssignment = editingLocker?.assigned ?? null;
 
   const handleDelete = (id: string) => {
     setLockerToDelete(id);
@@ -581,56 +467,108 @@ export default function MailroomLockers() {
     }
   };
 
-  const matchesStatus = (l: Locker): boolean => {
-    if (activeTab === "available") return l.is_available;
-    if (activeTab === "occupied") return !l.is_available;
-    return true;
-  };
+  const columns = React.useMemo<DataTableColumn<Locker>[]>(
+    () => [
+      {
+        accessor: "locker_code",
+        title: "Locker Code",
+        width: 150,
+        render: ({ locker_code }: Locker) => (
+          <Text fw={700} c="dark.4" size="sm">
+            {locker_code}
+          </Text>
+        ),
+      },
+      {
+        accessor: "location.name",
+        title: "Location",
+        render: ({ location }: Locker) => (
+          <Text size="sm" c="dark.3" fw={500}>
+            {location?.name ?? "Unknown"}
+          </Text>
+        ),
+      },
+      {
+        accessor: "is_available",
+        title: "Status",
+        width: 150,
+        render: ({ is_available }: Locker) => (
+          <Badge
+            color={is_available ? "teal" : "red"}
+            variant="dot"
+            size="md"
+            radius="md"
+          >
+            {is_available ? "Available" : "Occupied"}
+          </Badge>
+        ),
+      },
+      {
+        accessor: "capacity",
+        title: "Capacity Status",
+        width: 180,
+        render: (locker: Locker) => {
+          const assignment = locker.assigned;
 
-  const filteredLockers = lockers.filter((l) => {
-    const q = search.toLowerCase();
-    const matchesSearch =
-      (l.locker_code ?? "").toLowerCase().includes(q) ||
-      (l.location?.name ?? "").toLowerCase().includes(q);
-    const matchesLocation = filterLocation
-      ? l.location_id === filterLocation
-      : true;
-    return matchesSearch && matchesLocation && matchesStatus(l);
-  });
+          if (!assignment) {
+            return (
+              <Text size="sm" c="gray.4">
+                —
+              </Text>
+            );
+          }
 
-  const paginatedLockers = filteredLockers.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
+          const color = getStatusFormat(assignment.status);
+
+          return (
+            <Badge
+              color={color}
+              variant="outline"
+              size="sm"
+              fw={700}
+              tt="uppercase"
+            >
+              {assignment.status ?? "NORMAL"}
+            </Badge>
+          );
+        },
+      },
+      {
+        accessor: "actions",
+        title: "Actions",
+        width: 100,
+        textAlign: "right",
+        render: (locker: Locker) => (
+          <Group gap="xs" justify="flex-end" wrap="nowrap">
+            <Tooltip label="Edit locker details">
+              <ActionIcon
+                variant="subtle"
+                color="blue"
+                onClick={() => handleOpenModal(locker)}
+                aria-label={`Edit locker ${locker.locker_code}`}
+              >
+                <IconEdit size={16} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Delete locker permanently">
+              <ActionIcon
+                variant="subtle"
+                color="red.8"
+                onClick={() => handleDelete(locker.id)}
+                aria-label={`Delete locker ${locker.locker_code}`}
+              >
+                <IconTrash size={16} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        ),
+      },
+    ],
+    [getStatusFormat, handleOpenModal, handleDelete],
   );
 
-  const activeAssignment = (() => {
-    const normalize = (v?: string | null) => (v ?? "").toLowerCase().trim();
-    if (!editingLocker) return null;
-    return (
-      assignedMap[normalize(editingLocker.id)] ??
-      assignedMap[normalize(editingLocker.location_locker_id ?? "")] ??
-      assignedMap[normalize(editingLocker.location_id ?? "")] ??
-      assignedMap[normalize(editingLocker.locker_code ?? "")] ??
-      null
-    );
-  })();
-
-  const getCapacityBadgeColor = (status: string | undefined) => {
-    if (status === "Full") return "red";
-    if (status === "Near Full") return "orange";
-    if (status === "Empty") return "gray";
-    return "blue";
-  };
-
-  const segmentedColor = React.useMemo(() => {
-    if (capacityStatus === "Full") return "red";
-    if (capacityStatus === "Near Full") return "orange";
-    if (capacityStatus === "Empty") return "gray";
-    return "blue";
-  }, [capacityStatus]);
-
   return (
-    <Stack align="center">
+    <Stack align="center" gap="lg" w="100%">
       {globalSuccess && (
         <Alert
           variant="light"
@@ -646,174 +584,145 @@ export default function MailroomLockers() {
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
-            <TextInput
-              placeholder="Search lockers..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 250 }}
-            />
-            <Select
-              placeholder="Filter by Location"
-              data={locations.map((l) => ({ value: l.id, label: l.name }))}
-              value={filterLocation}
-              onChange={(val) => setFilterLocation(val ?? null)}
-              clearable
-              style={{ width: 200 }}
-            />
-
-            {(search || filterLocation || activeTab !== "all") && (
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        {isMobile ? (
+          <Stack mb="md">
+            <SearchInput onSearch={handleSearchSubmit} searchQuery={query} />
+            <Group grow>
+              <Select
+                placeholder="Filter by Location"
+                aria-label="Filter by location"
+                data={locations.map((l) => ({ value: l.id, label: l.name }))}
+                value={filterLocation}
+                onChange={(val) => {
+                  setFilterLocation(val ?? null);
+                  setPage(1);
+                }}
+                clearable
+                searchable
+              />
+              <Button
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
+                onClick={() => handleOpenModal()}
+                aria-label="Add new locker"
+                color="#1e3a8a"
+              >
+                Add
+              </Button>
+            </Group>
+            {(query || filterLocation || activeTab !== "all") && (
               <Button
                 variant="subtle"
-                color="red"
+                color="red.8"
                 size="sm"
                 onClick={clearFilters}
               >
                 Clear Filters
               </Button>
             )}
-          </Group>
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => handleOpenModal()}
+          </Stack>
+        ) : (
+          <Group
+            justify="space-between"
+            mb="md"
+            gap="xs"
+            align="center"
+            wrap="nowrap"
           >
-            Add Locker
-          </Button>
-        </Group>
+            <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
+              <SearchInput onSearch={handleSearchSubmit} searchQuery={query} />
+              <Select
+                placeholder="Filter by Location"
+                aria-label="Filter by location"
+                data={locations.map((l) => ({ value: l.id, label: l.name }))}
+                value={filterLocation}
+                onChange={(val) => {
+                  setFilterLocation(val ?? null);
+                  setPage(1);
+                }}
+                clearable
+                searchable
+                style={{ width: 200, flexShrink: 0 }}
+              />
+
+              {(query || filterLocation || activeTab !== "all") && (
+                <Button
+                  variant="subtle"
+                  color="red.8"
+                  size="sm"
+                  onClick={clearFilters}
+                  aria-label="Clear all filters"
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </Group>
+            <Button
+              leftSection={<IconPlus size={16} aria-hidden="true" />}
+              onClick={() => handleOpenModal()}
+              aria-label="Add new locker"
+              color="#1e3a8a"
+            >
+              Add Locker
+            </Button>
+          </Group>
+        )}
 
         <Tabs
+          id="mailroom-lockers-tabs"
           value={activeTab}
           onChange={(val: string | null) => setActiveTab(val ?? "all")}
           mb="md"
         >
-          <Tabs.List>
-            <Tabs.Tab value="all" leftSection={<IconLayoutGrid size={16} />}>
+          <Tabs.List aria-label="Locker status filter">
+            <Tabs.Tab
+              value="all"
+              leftSection={<IconLayoutGrid size={16} aria-hidden="true" />}
+            >
               All Lockers
             </Tabs.Tab>
-            <Tabs.Tab value="occupied" leftSection={<IconLock size={16} />}>
+            <Tabs.Tab
+              value="occupied"
+              leftSection={<IconLock size={16} aria-hidden="true" />}
+            >
               Occupied
             </Tabs.Tab>
             <Tabs.Tab
               value="available"
-              leftSection={<IconLockOpen size={16} />}
+              leftSection={<IconLockOpen size={16} aria-hidden="true" />}
             >
               Available
             </Tabs.Tab>
           </Tabs.List>
+
+          <Tabs.Panel value={activeTab}>
+            <div style={{ marginTop: "1rem" }}>
+              <DataTable
+                striped
+                aria-label="Lockers list"
+                withTableBorder={false}
+                borderRadius="lg"
+                verticalSpacing="md"
+                highlightOnHover
+                records={isSearching ? [] : lockers}
+                fetching={isValidating || isSearching}
+                minHeight={minTableHeight(pageSize)}
+                totalRecords={overviewData?.pagination?.totalCount ?? 0}
+                recordsPerPage={pageSize}
+                page={page}
+                onPageChange={setPage}
+                recordsPerPageOptions={[10, 20, 50]}
+                onRecordsPerPageChange={(n: number) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                recordsPerPageLabel="Lockers per page"
+                noRecordsText="No records found"
+                columns={columns}
+              />
+            </div>
+          </Tabs.Panel>
         </Tabs>
-
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
-          highlightOnHover
-          records={paginatedLockers}
-          fetching={loading}
-          minHeight={200}
-          totalRecords={filteredLockers.length}
-          recordsPerPage={pageSize}
-          page={page}
-          onPageChange={(p) => setPage(p)}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={(n: number) => setPageSize(n)}
-          columns={[
-            { accessor: "locker_code", title: "Locker Code", width: 150 },
-            {
-              accessor: "location.name",
-              title: "Location",
-              render: ({ location }: Locker) => location?.name ?? "Unknown",
-            },
-            {
-              accessor: "is_available",
-              title: "Status",
-              width: 150,
-              render: ({ is_available }: Locker) => (
-                <Badge
-                  color={is_available ? "green" : "red"}
-                  variant="light"
-                  leftSection={
-                    is_available ? (
-                      <IconLockOpen size={12} />
-                    ) : (
-                      <IconLock size={12} />
-                    )
-                  }
-                >
-                  {is_available ? "Available" : "Occupied"}
-                </Badge>
-              ),
-            },
-            {
-              accessor: "capacity",
-              title: "Capacity Status",
-              width: 150,
-              render: (locker: Locker) => {
-                const normalize = (v?: string | null) =>
-                  (v ?? "").toLowerCase().trim();
-
-                const byId =
-                  assignedMap[normalize(locker.id)] ??
-                  assignedMap[normalize(locker.location_locker_id ?? "")] ??
-                  assignedMap[normalize(locker.location_id ?? "")] ??
-                  assignedMap[normalize(locker.locker_code ?? "")];
-                const assignment = byId ?? null;
-
-                if (!assignment) {
-                  return (
-                    <Text size="sm" c="dimmed">
-                      —
-                    </Text>
-                  );
-                }
-
-                const color = getCapacityBadgeColor(assignment.status);
-
-                return (
-                  <Badge
-                    color={color}
-                    variant="outline"
-                    leftSection={<IconBox size={12} />}
-                  >
-                    {assignment.status ?? "Normal"}
-                  </Badge>
-                );
-              },
-            },
-            {
-              accessor: "actions",
-              title: "Actions",
-              width: 100,
-              textAlign: "right",
-              render: (locker: Locker) => (
-                <Group gap="xs" justify="flex-end">
-                  <Tooltip label="Edit">
-                    <ActionIcon
-                      variant="subtle"
-                      color="blue"
-                      onClick={() => handleOpenModal(locker)}
-                    >
-                      <IconEdit size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Delete">
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => handleDelete(locker.id)}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-              ),
-            },
-          ]}
-          noRecordsText="No lockers found"
-        />
       </Paper>
 
       <Modal
@@ -828,10 +737,18 @@ export default function MailroomLockers() {
             undone.
           </Text>
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={closeDeleteModal}>
+            <Button
+              variant="default"
+              onClick={closeDeleteModal}
+              aria-label="Cancel deletion"
+            >
               Cancel
             </Button>
-            <Button color="red" onClick={confirmDelete}>
+            <Button
+              color="red"
+              onClick={confirmDelete}
+              aria-label="Confirm locker deletion"
+            >
               Delete
             </Button>
           </Group>
@@ -869,7 +786,10 @@ export default function MailroomLockers() {
           />
           <Select
             label="Location"
+            searchable
+            clearable
             placeholder="Select location"
+            aria-label="Select locker location"
             data={locations.map((l) => ({ value: l.id, label: l.name }))}
             value={formData.location_id}
             onChange={(val) =>
@@ -910,17 +830,22 @@ export default function MailroomLockers() {
                     { label: "Near Full", value: "Near Full" },
                     { label: "Full", value: "Full" },
                   ]}
-                  color={segmentedColor}
+                  color={getStatusFormat(capacityStatus)}
+                  aria-label="Set capacity status"
                 />
               </Stack>
             </Paper>
           )}
 
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={close}>
+            <Button variant="default" onClick={close} aria-label="Cancel form">
               Cancel
             </Button>
-            <Button onClick={handleSubmit} loading={submitting}>
+            <Button
+              onClick={handleSubmit}
+              loading={submitting}
+              aria-label="Save locker details"
+            >
               Save
             </Button>
           </Group>
@@ -928,4 +853,8 @@ export default function MailroomLockers() {
       </Modal>
     </Stack>
   );
+}
+
+function minTableHeight(pageSize: number) {
+  return 52 * pageSize + 50;
 }

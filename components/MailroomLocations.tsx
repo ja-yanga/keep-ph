@@ -3,6 +3,7 @@
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState, useMemo } from "react";
+import useSWR from "swr";
 import {
   Box,
   Button,
@@ -20,8 +21,11 @@ import {
   SimpleGrid,
   Select,
   Alert,
+  Skeleton,
+  Loader,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   IconRefresh,
   IconEye,
@@ -30,9 +34,25 @@ import {
   IconPlus,
   IconAlertCircle,
   IconCheck,
+  IconX,
+  IconArrowRight,
 } from "@tabler/icons-react";
-import { notifications } from "@mantine/notifications";
-import { DataTable } from "mantine-datatable";
+import dynamic from "next/dynamic";
+import { type DataTableProps } from "mantine-datatable";
+// Lazy load DataTable to reduce initial bundle
+const DataTable = dynamic(
+  () => import("mantine-datatable").then((m) => m.DataTable),
+  {
+    ssr: false,
+    loading: () => (
+      <Stack gap="xs" role="progressbar" aria-label="Loading locations table">
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} h={40} />
+        ))}
+      </Stack>
+    ),
+  },
+) as <T>(props: DataTableProps<T>) => React.ReactElement;
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 type Location = {
@@ -46,10 +66,96 @@ type Location = {
   total_lockers?: number | null;
 };
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+const SearchInput = React.memo(
+  ({
+    onSearch,
+    searchQuery,
+    loading,
+  }: {
+    onSearch: (value: string) => void;
+    searchQuery: string;
+    loading?: boolean;
+  }) => {
+    const [value, setValue] = useState(searchQuery);
+
+    useEffect(() => {
+      setValue(searchQuery);
+    }, [searchQuery]);
+
+    const handleSearch = () => {
+      onSearch(value);
+    };
+
+    const handleClear = () => {
+      setValue("");
+      onSearch("");
+    };
+
+    const renderRightSection = () => {
+      if (loading) return <Loader size="xs" />;
+      if (value) {
+        return (
+          <Group gap={4}>
+            <ActionIcon
+              size="md"
+              variant="transparent"
+              c="dark.7"
+              onClick={handleClear}
+              aria-label="Clear search"
+            >
+              <IconX size={18} aria-hidden="true" />
+            </ActionIcon>
+            <ActionIcon
+              size="md"
+              variant="transparent"
+              c="indigo"
+              onClick={handleSearch}
+              aria-label="Submit search"
+            >
+              <IconArrowRight size={18} aria-hidden="true" />
+            </ActionIcon>
+          </Group>
+        );
+      }
+      return (
+        <ActionIcon
+          size="md"
+          variant="transparent"
+          c="dark.7"
+          onClick={handleSearch}
+          aria-label="Submit search"
+        >
+          <IconArrowRight size={18} aria-hidden="true" />
+        </ActionIcon>
+      );
+    };
+
+    return (
+      <TextInput
+        placeholder="Search locations by name or code..."
+        aria-label="Search locations"
+        leftSection={<IconSearch size={16} aria-hidden="true" />}
+        rightSectionWidth={value ? 70 : 42}
+        rightSection={renderRightSection()}
+        value={value}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSearch();
+          }
+        }}
+        style={{ width: "100%" }}
+      />
+    );
+  },
+);
+SearchInput.displayName = "SearchInput";
+
 export default function MailroomLocations() {
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   const [filterRegion, setFilterRegion] = useState<string | null>(null);
   const [filterCity, setFilterCity] = useState<string | null>(null);
@@ -70,6 +176,45 @@ export default function MailroomLocations() {
 
   const [formError, setFormError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    search: query,
+    region: filterRegion || "",
+    city: filterCity || "",
+    sortBy: sortBy || "",
+  });
+
+  const { data, isLoading, mutate, isValidating } = useSWR(
+    `${API_ENDPOINTS.admin.mailroom.locations}?${queryParams.toString()}`,
+    fetcher,
+    { keepPreviousData: true },
+  );
+
+  useEffect(() => {
+    if (!isValidating) {
+      setIsSearching(false);
+    }
+  }, [isValidating]);
+
+  const locations = (data?.data as Location[]) ?? [];
+  const totalRecords = data?.pagination?.totalCount ?? 0;
+
+  // Derive regions and cities from a separate fetch or use a subset if needed.
+  // For the sake of this implementation, we'll use a subset or the user can search.
+  // In lockers, locations were fetched separately. Here we'll just keep the useMemo for labels
+  // based on the current page data for now, but in high-perf apps these should be lookups.
+  const regions = useMemo(() => {
+    const unique = new Set(locations.map((l) => l.region).filter(Boolean));
+    return Array.from(unique).sort() as string[];
+  }, [locations]);
+
+  const cities = useMemo(() => {
+    const unique = new Set(locations.map((l) => l.city).filter(Boolean));
+    return Array.from(unique).sort() as string[];
+  }, [locations]);
 
   const form = useForm({
     initialValues: {
@@ -96,12 +241,8 @@ export default function MailroomLocations() {
   });
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
     setPage(1);
-  }, [search, filterRegion, filterCity, sortBy]);
+  }, [query, filterRegion, filterCity, sortBy]);
 
   useEffect(() => {
     if (createOpen || editOpen) {
@@ -119,39 +260,25 @@ export default function MailroomLocations() {
     return undefined;
   }, [globalSuccess]);
 
+  const handleSearchSubmit = React.useCallback(
+    (val: string) => {
+      if (val === query && page === 1) return;
+      setIsSearching(true);
+      setQuery(val);
+      setPage(1);
+    },
+    [query, page],
+  );
+
   const clearFilters = () => {
-    setSearch("");
+    setQuery("");
     setFilterRegion(null);
     setFilterCity(null);
     setSortBy(null);
+    setPage(1);
   };
 
-  const hasFilters = Boolean(search || filterRegion || filterCity || sortBy);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(API_ENDPOINTS.admin.mailroom.locations);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          (json && (json.error as string)) ?? "Failed to load locations",
-        );
-      }
-      setLocations((json.data as Location[]) ?? []);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("Load error", message);
-      notifications.show({
-        title: "Error",
-        message: "Failed to load locations",
-        color: "red",
-      });
-      setLocations([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const hasFilters = Boolean(query || filterRegion || filterCity || sortBy);
 
   const handleCreate = form.onSubmit(async (values) => {
     setCreating(true);
@@ -183,7 +310,7 @@ export default function MailroomLocations() {
       );
       setCreateOpen(false);
       form.reset();
-      fetchData();
+      mutate();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("create error", message);
@@ -192,16 +319,6 @@ export default function MailroomLocations() {
       setCreating(false);
     }
   });
-
-  const regions = useMemo(() => {
-    const unique = new Set(locations.map((l) => l.region).filter(Boolean));
-    return Array.from(unique).sort() as string[];
-  }, [locations]);
-
-  const cities = useMemo(() => {
-    const unique = new Set(locations.map((l) => l.city).filter(Boolean));
-    return Array.from(unique).sort() as string[];
-  }, [locations]);
 
   const openView = (loc: Location) => {
     setViewLocation(loc);
@@ -259,7 +376,7 @@ export default function MailroomLocations() {
       );
       setEditOpen(false);
       setEditLocation(null);
-      fetchData();
+      mutate();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("edit error", message);
@@ -269,54 +386,24 @@ export default function MailroomLocations() {
     }
   });
 
-  const filteredLocations = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return locations
-      .filter((loc) => {
-        const matchesSearch =
-          !q ||
-          String(loc.name ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(loc.code ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(loc.region ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(loc.city ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(loc.barangay ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(loc.zip ?? "")
-            .toLowerCase()
-            .includes(q);
-
-        const matchesRegion = filterRegion ? loc.region === filterRegion : true;
-        const matchesCity = filterCity ? loc.city === filterCity : true;
-
-        return matchesSearch && matchesRegion && matchesCity;
-      })
-      .sort((a, b) => {
-        if (sortBy === "name_asc")
-          return (a.name || "").localeCompare(b.name || "");
-        if (sortBy === "lockers_desc")
-          return (b.total_lockers || 0) - (a.total_lockers || 0);
-        if (sortBy === "lockers_asc")
-          return (a.total_lockers || 0) - (b.total_lockers || 0);
-        return 0;
-      });
-  }, [locations, search, filterRegion, filterCity, sortBy]);
-
-  const paginatedLocations = filteredLocations.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  );
+  if (!data && isLoading) {
+    return (
+      <Stack gap="md" aria-hidden="true">
+        <Group justify="space-between">
+          <Group>
+            <Skeleton height={36} width={200} radius="sm" />
+            <Skeleton height={36} width={150} radius="sm" />
+            <Skeleton height={36} width={150} radius="sm" />
+          </Group>
+          <Skeleton height={36} width={100} radius="sm" />
+        </Group>
+        <Skeleton height={400} radius="sm" />
+      </Stack>
+    );
+  }
 
   return (
-    <Stack>
+    <Stack align="center" gap="lg" w="100%">
       {globalSuccess && (
         <Alert
           variant="light"
@@ -325,41 +412,126 @@ export default function MailroomLocations() {
           icon={<IconCheck size={16} />}
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
+          w="100%"
+          maw={1200}
+          aria-live="polite"
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm">
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
-            <TextInput
-              placeholder="Search..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 200 }}
+      <Paper
+        p="xl"
+        radius="lg"
+        withBorder
+        shadow="sm"
+        w="100%"
+        component="section"
+        aria-labelledby="locations-management-title"
+      >
+        <Title
+          order={2}
+          id="locations-management-title"
+          style={{ display: "none" }}
+        >
+          Mailroom Locations Management
+        </Title>
+        {isMobile ? (
+          <Stack mb="md" gap="md">
+            <SearchInput
+              onSearch={handleSearchSubmit}
+              searchQuery={query}
+              loading={isSearching}
             />
+            <Group grow gap="xs">
+              <Select
+                placeholder="Region"
+                aria-label="Filter by region"
+                data={regions}
+                value={filterRegion}
+                onChange={setFilterRegion}
+                clearable
+                searchable
+              />
+              <Select
+                placeholder="City"
+                aria-label="Filter by city"
+                data={cities}
+                value={filterCity}
+                onChange={setFilterCity}
+                clearable
+                searchable
+              />
+            </Group>
+            <Group grow gap="xs">
+              <Select
+                placeholder="Sort By"
+                aria-label="Sort locations"
+                data={[
+                  { value: "name_asc", label: "Name (A-Z)" },
+                  { value: "lockers_desc", label: "Lockers (High-Low)" },
+                  { value: "lockers_asc", label: "Lockers (Low-High)" },
+                ]}
+                value={sortBy}
+                onChange={setSortBy}
+                clearable
+              />
+              <Button
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
+                onClick={() => {
+                  setCreateOpen(true);
+                  setGlobalSuccess(null);
+                }}
+                color="#1e3a8a"
+                aria-label="Create new mailroom location"
+              >
+                Create
+              </Button>
+            </Group>
+            {hasFilters && (
+              <Button
+                variant="subtle"
+                color="red.8"
+                size="sm"
+                onClick={clearFilters}
+                fullWidth
+              >
+                Clear Filters
+              </Button>
+            )}
+          </Stack>
+        ) : (
+          <Group mb="md" gap="xs" wrap="nowrap">
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <SearchInput
+                onSearch={handleSearchSubmit}
+                searchQuery={query}
+                loading={isSearching}
+              />
+            </div>
             <Select
               placeholder="Region"
+              aria-label="Filter by region"
               data={regions}
               value={filterRegion}
               onChange={setFilterRegion}
               clearable
               searchable
-              style={{ width: 150 }}
+              style={{ width: 150, flexShrink: 0 }}
             />
             <Select
               placeholder="City"
+              aria-label="Filter by city"
               data={cities}
               value={filterCity}
               onChange={setFilterCity}
               clearable
               searchable
-              style={{ width: 150 }}
+              style={{ width: 150, flexShrink: 0 }}
             />
             <Select
               placeholder="Sort By"
+              aria-label="Sort locations"
               data={[
                 { value: "name_asc", label: "Name (A-Z)" },
                 { value: "lockers_desc", label: "Lockers (High-Low)" },
@@ -368,89 +540,143 @@ export default function MailroomLocations() {
               value={sortBy}
               onChange={setSortBy}
               clearable
-              style={{ width: 180 }}
+              style={{ width: 180, flexShrink: 0 }}
             />
             {hasFilters && (
               <Button
                 variant="subtle"
-                color="red"
+                color="red.8"
                 size="sm"
                 onClick={clearFilters}
+                aria-label="Clear all filters"
+                style={{ flexShrink: 0 }}
               >
                 Clear Filters
               </Button>
             )}
-          </Group>
-          <Group>
             <Tooltip label="Refresh list">
-              <Button variant="light" onClick={fetchData}>
-                <IconRefresh size={16} />
-              </Button>
+              <ActionIcon
+                variant="subtle"
+                color="dark.7"
+                size="lg"
+                onClick={() => mutate()}
+                aria-label="Refresh locations list"
+                style={{ flexShrink: 0 }}
+              >
+                <IconRefresh size={16} aria-hidden="true" />
+              </ActionIcon>
             </Tooltip>
             <Button
-              leftSection={<IconPlus size={16} />}
+              leftSection={<IconPlus size={16} aria-hidden="true" />}
               onClick={() => {
                 setCreateOpen(true);
                 setGlobalSuccess(null);
               }}
+              color="#1e3a8a"
+              aria-label="Create new mailroom location"
+              style={{ flexShrink: 0 }}
             >
-              Create
+              Create Location
             </Button>
           </Group>
-        </Group>
+        )}
 
         <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
           striped
+          aria-label="Mailroom locations list"
+          withTableBorder={false}
+          borderRadius="lg"
+          withColumnBorders={false}
+          verticalSpacing="md"
           highlightOnHover
-          records={paginatedLocations}
-          fetching={loading}
-          minHeight={200}
-          totalRecords={filteredLocations.length}
+          records={locations}
+          fetching={isLoading}
+          minHeight={minTableHeight(pageSize)}
+          totalRecords={totalRecords}
           recordsPerPage={pageSize}
           page={page}
           onPageChange={(p) => setPage(p)}
           recordsPerPageOptions={[10, 20, 50]}
           onRecordsPerPageChange={setPageSize}
+          paginationText={({ from, to, totalRecords }) =>
+            `Showing ${from}–${to} of ${totalRecords}`
+          }
+          recordsPerPageLabel="Locations per page"
           columns={[
-            { accessor: "name", title: "Name", width: 200 },
+            {
+              accessor: "name",
+              title: "Name",
+              width: 200,
+              render: ({ name }: Location) => (
+                <Text fw={700} c="dark.7" size="sm">
+                  {name}
+                </Text>
+              ),
+            },
             {
               accessor: "code",
               title: "Code",
               width: 100,
               render: ({ code }: Location) =>
-                code ? <Badge variant="outline">{code}</Badge> : "—",
+                code ? (
+                  <Text fw={700} c="dark.7" size="sm">
+                    {code}
+                  </Text>
+                ) : (
+                  <Text size="sm" c="dark.7">
+                    —
+                  </Text>
+                ),
             },
             {
               accessor: "region",
               title: "Region",
-              render: ({ region }: Location) => region ?? "—",
+              render: ({ region }: Location) => (
+                <Text size="sm" c="dark.7" fw={500}>
+                  {region ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "city",
               title: "City",
-              render: ({ city }: Location) => city ?? "—",
+              render: ({ city }: Location) => (
+                <Text size="sm" c="dark.7" fw={500}>
+                  {city ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "barangay",
               title: "Barangay",
-              render: ({ barangay }: Location) => barangay ?? "—",
+              render: ({ barangay }: Location) => (
+                <Text size="sm" c="dark.7" fw={500}>
+                  {barangay ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "zip",
               title: "Zip",
               width: 100,
-              render: ({ zip }: Location) => zip ?? "—",
+              render: ({ zip }: Location) => (
+                <Text size="sm" c="dark.7">
+                  {zip ?? "—"}
+                </Text>
+              ),
             },
             {
               accessor: "total_lockers",
               title: "Total Lockers",
-              width: 120,
+              width: 140,
               textAlign: "center",
               render: ({ total_lockers }: Location) => (
-                <Badge color="blue" variant="light">
+                <Badge
+                  color="blue"
+                  variant="light"
+                  size="md"
+                  aria-label={`${total_lockers ?? 0} total lockers`}
+                >
                   {total_lockers ?? 0}
                 </Badge>
               ),
@@ -465,22 +691,26 @@ export default function MailroomLocations() {
                   <Tooltip label="View">
                     <ActionIcon
                       variant="subtle"
-                      color="gray"
+                      color="dark.7"
+                      size="lg"
                       onClick={() => openView(loc)}
+                      aria-label={`View details of ${loc.name}`}
                     >
-                      <IconEye size={16} />
+                      <IconEye size={16} aria-hidden="true" />
                     </ActionIcon>
                   </Tooltip>
                   <Tooltip label="Edit">
                     <ActionIcon
                       variant="subtle"
-                      color="blue"
+                      color="blue.7"
+                      size="lg"
                       onClick={() => {
                         openEdit(loc);
                         setGlobalSuccess(null);
                       }}
+                      aria-label={`Edit ${loc.name}`}
                     >
-                      <IconEdit size={16} />
+                      <IconEdit size={16} aria-hidden="true" />
                     </ActionIcon>
                   </Tooltip>
                 </Group>
@@ -494,8 +724,13 @@ export default function MailroomLocations() {
       <Modal
         opened={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Create Mailroom Location"
+        title={
+          <Text id="create-location-title" fw={700}>
+            Create Mailroom Location
+          </Text>
+        }
         centered
+        aria-labelledby="create-location-title"
       >
         <form onSubmit={handleCreate}>
           <Stack>
@@ -507,6 +742,7 @@ export default function MailroomLocations() {
                 icon={<IconAlertCircle size={16} />}
                 withCloseButton
                 onClose={() => setFormError(null)}
+                aria-live="assertive"
               >
                 {formError}
               </Alert>
@@ -556,11 +792,20 @@ export default function MailroomLocations() {
               required
             />
             <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={() => setCreateOpen(false)}>
+              <Button
+                variant="default"
+                onClick={() => setCreateOpen(false)}
+                aria-label="Cancel location creation"
+              >
                 Cancel
               </Button>
-              <Button type="submit" loading={creating}>
-                Create
+              <Button
+                type="submit"
+                loading={creating}
+                aria-label="Create new location"
+                disabled={creating}
+              >
+                Create Location
               </Button>
             </Group>
           </Stack>
@@ -570,27 +815,41 @@ export default function MailroomLocations() {
       <Modal
         opened={viewOpen}
         onClose={() => setViewOpen(false)}
-        title="Location Details"
+        title={
+          <Text id="view-location-title" fw={700}>
+            Location Details
+          </Text>
+        }
         centered
         size="lg"
+        aria-labelledby="view-location-title"
       >
         {viewLocation && (
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
               <Box>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                   Location Name
                 </Text>
                 <Group gap="xs">
-                  <Title order={3}>{viewLocation.name}</Title>
+                  <Title order={2}>{viewLocation.name}</Title>
                   {viewLocation.code && (
-                    <Badge variant="outline" size="lg">
+                    <Badge
+                      variant="outline"
+                      size="lg"
+                      aria-label={`Location code: ${viewLocation.code}`}
+                    >
                       {viewLocation.code}
                     </Badge>
                   )}
                 </Group>
               </Box>
-              <Badge size="lg" variant="light" color="blue">
+              <Badge
+                size="lg"
+                variant="light"
+                color="blue"
+                aria-label={`${viewLocation.total_lockers ?? 0} total lockers`}
+              >
                 {viewLocation.total_lockers ?? 0} Lockers
               </Badge>
             </Group>
@@ -603,7 +862,7 @@ export default function MailroomLocations() {
             >
               <SimpleGrid cols={2} spacing="md" verticalSpacing="lg">
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     Region
                   </Text>
                   <Text fw={500} size="sm">
@@ -611,7 +870,7 @@ export default function MailroomLocations() {
                   </Text>
                 </Box>
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     City
                   </Text>
                   <Text fw={500} size="sm">
@@ -619,7 +878,7 @@ export default function MailroomLocations() {
                   </Text>
                 </Box>
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     Barangay
                   </Text>
                   <Text fw={500} size="sm">
@@ -627,7 +886,7 @@ export default function MailroomLocations() {
                   </Text>
                 </Box>
                 <Box>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="dark.3" tt="uppercase" fw={700}>
                     Zip Code
                   </Text>
                   <Text fw={500} size="sm">
@@ -638,7 +897,11 @@ export default function MailroomLocations() {
             </Paper>
 
             <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={() => setViewOpen(false)}>
+              <Button
+                variant="default"
+                onClick={() => setViewOpen(false)}
+                aria-label="Close location details"
+              >
                 Close
               </Button>
             </Group>
@@ -649,8 +912,13 @@ export default function MailroomLocations() {
       <Modal
         opened={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Edit Location"
+        title={
+          <Text id="edit-location-title" fw={700}>
+            Edit Location
+          </Text>
+        }
         centered
+        aria-labelledby="edit-location-title"
       >
         <form onSubmit={handleEdit}>
           <Stack>
@@ -662,6 +930,7 @@ export default function MailroomLocations() {
                 icon={<IconAlertCircle size={16} />}
                 withCloseButton
                 onClose={() => setFormError(null)}
+                aria-live="assertive"
               >
                 {formError}
               </Alert>
@@ -717,4 +986,8 @@ export default function MailroomLocations() {
       </Modal>
     </Stack>
   );
+}
+
+function minTableHeight(pageSize: number) {
+  return 52 * pageSize + 50;
 }

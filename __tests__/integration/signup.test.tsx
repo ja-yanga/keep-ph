@@ -52,11 +52,14 @@ describe("SignUpForm integration", () => {
     // Fill out form fields
     await userEvent.type(screen.getByLabelText(/Email/i), "test@example.com");
     const passwordFields = screen.getAllByLabelText(/Password/i);
-    await userEvent.type(passwordFields[0], "password123");
-    await userEvent.type(passwordFields[1], "password123");
+    // use a strong password that satisfies the component checks (length, number, lowercase, uppercase)
+    await userEvent.type(passwordFields[0], "Password123");
+    await userEvent.type(passwordFields[1], "Password123");
 
     // Submit the form
-    const submitBtn = screen.getByRole("button", { name: /Sign Up/i });
+    const submitBtn = screen.getByRole("button", {
+      name: /(?:sign up|create account)/i,
+    });
     await userEvent.click(submitBtn);
 
     // Expect a POST to the signup API
@@ -93,10 +96,12 @@ describe("SignUpForm integration", () => {
       "existing@example.com",
     );
     const passwordFields = screen.getAllByLabelText(/Password/i);
-    await userEvent.type(passwordFields[0], "password123");
-    await userEvent.type(passwordFields[1], "password123");
+    await userEvent.type(passwordFields[0], "Password123");
+    await userEvent.type(passwordFields[1], "Password123");
 
-    const submitBtn = screen.getByRole("button", { name: /Sign Up/i });
+    const submitBtn = screen.getByRole("button", {
+      name: /(?:sign up|create account)/i,
+    });
     await userEvent.click(submitBtn);
 
     // Server error should be shown and verification view should NOT be present

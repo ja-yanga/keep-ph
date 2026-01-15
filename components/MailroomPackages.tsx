@@ -2,8 +2,9 @@
 
 import "mantine-datatable/styles.layer.css";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
+import dynamic from "next/dynamic";
 import {
   ActionIcon,
   Alert,
@@ -44,9 +45,21 @@ import {
   IconRestore,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { DataTable } from "mantine-datatable";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+
+// Dynamic import for DataTable to reduce initial bundle size
+const DataTable = dynamic(
+  () => import("mantine-datatable").then((mod) => mod.DataTable),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ padding: "2rem", textAlign: "center" }}>
+        Loading table...
+      </div>
+    ),
+  },
+);
 
 type Registration = {
   id: string;
@@ -140,6 +153,7 @@ export default function MailroomPackages() {
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false);
   const [packageToDelete, setPackageToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
     package_name: "",
@@ -226,6 +240,8 @@ export default function MailroomPackages() {
 
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [serverTotalCount, setServerTotalCount] = useState(0);
+  const [counts, setCounts] = useState<Record<string, number>>({});
 
   const searchParams = useSearchParams();
 
@@ -241,8 +257,36 @@ export default function MailroomPackages() {
     "Empty" | "Normal" | "Near Full" | "Full"
   >("Normal");
 
-  // Single SWR key for combined endpoint
-  const packagesKey = API_ENDPOINTS.admin.mailroom.packages;
+  // Build SWR key with filters and pagination
+  const packagesKey = useMemo(() => {
+    const baseUrl = API_ENDPOINTS.admin.mailroom.packages;
+    if (activeTab === "archive") return null;
+
+    const params = new URLSearchParams();
+    params.set("page", page.toString());
+    params.set("limit", pageSize.toString());
+
+    let statusFilter: string[] = [];
+    if (activeTab === "active") statusFilter = ["STORED"];
+    else if (activeTab === "requests")
+      statusFilter = [
+        "REQUEST_TO_RELEASE",
+        "REQUEST_TO_DISPOSE",
+        "REQUEST_TO_SCAN",
+      ];
+    else if (activeTab === "released") statusFilter = ["RELEASED", "RETRIEVED"];
+    else if (activeTab === "disposed") statusFilter = ["DISPOSED"];
+
+    // Override with explicit status filter if set (Inventory tab)
+    if (activeTab === "active" && filterStatus) statusFilter = [filterStatus];
+
+    if (statusFilter.length > 0) {
+      params.set("status", statusFilter.join(","));
+    }
+
+    return `${baseUrl}?${params.toString()}`;
+  }, [page, pageSize, search, activeTab, filterStatus]);
+
   const fetcher = async (url: string) => {
     // avoid stale cached responses when revalidating
     const res = await fetch(url, { cache: "no-store" });
@@ -292,6 +336,13 @@ export default function MailroomPackages() {
     setLockers(lks);
     setAssignedLockers(assigned);
 
+    if (payload.meta?.total !== undefined) {
+      setServerTotalCount(payload.meta.total);
+    }
+    if (payload.counts) {
+      setCounts(payload.counts);
+    }
+
     if (archivedData) {
       setArchivedPackages(archivedData.packages || []);
       setArchivedTotalCount(archivedData.total_count || 0);
@@ -336,16 +387,19 @@ export default function MailroomPackages() {
   }, [opened, scanModalOpen, releaseModalOpen, disposeModalOpen]);
 
   // Fetch recipient options asynchronously with search (performance optimization for large datasets)
+  // Only search when user types at least 2 characters - no default dropdown
   useEffect(() => {
+    const searchQuery = debouncedRecipientSearch.trim();
+
+    // Clear options if search is less than 2 characters
+    if (searchQuery.length < 2) {
+      setRecipientOptions([]);
+      setSearchingRecipients(false);
+      return;
+    }
+
+    // Only fetch if user has typed at least 2 characters
     const fetchRecipients = async () => {
-      const searchQuery = debouncedRecipientSearch.trim();
-
-      // Only search if user typed at least 2 characters, or if empty (load initial 50)
-      if (searchQuery.length > 0 && searchQuery.length < 2) {
-        setRecipientOptions([]);
-        return;
-      }
-
       setSearchingRecipients(true);
       try {
         const url = new URL(
@@ -353,7 +407,8 @@ export default function MailroomPackages() {
           window.location.origin,
         );
         url.searchParams.set("q", searchQuery);
-        url.searchParams.set("limit", "50");
+        // Request more results when searching to ensure we find all matches
+        url.searchParams.set("limit", "200");
 
         const res = await fetch(url.toString());
         if (!res.ok) {
@@ -387,13 +442,17 @@ export default function MailroomPackages() {
     fetchRecipients();
   }, [debouncedRecipientSearch]);
 
-  const clearFilters = () => {
+  // Memoize clearFilters callback to prevent unnecessary re-renders
+  const clearFilters = useCallback(() => {
     setSearch("");
     setFilterStatus(null);
     setFilterType(null);
-  };
+  }, []);
 
-  const hasFilters = search || filterStatus || filterType;
+  const hasFilters = useMemo(
+    () => !!(search || filterStatus || filterType),
+    [search, filterStatus, filterType],
+  );
 
   const handleOpenModal = (pkg?: Package) => {
     if (pkg) {
@@ -427,6 +486,15 @@ export default function MailroomPackages() {
         ? `${reg.mailroom_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
         : "";
       setRecipientSearch(regLabel);
+      // Add current recipient to options so it displays correctly (without triggering search)
+      if (reg) {
+        setRecipientOptions([
+          {
+            value: reg.id,
+            label: regLabel,
+          },
+        ]);
+      }
       // keep packagePhoto null so existing image is used unless user picks a new one
       setPackagePhoto(null);
     } else {
@@ -440,6 +508,7 @@ export default function MailroomPackages() {
         status: "STORED",
       });
       setRecipientSearch("");
+      setRecipientOptions([]); // Clear options when opening new package modal
       setPackagePhoto(null);
     }
     open();
@@ -456,8 +525,10 @@ export default function MailroomPackages() {
       return;
     }
 
-    // Find if this user has an assigned locker
-    const assignment = assignedLockers.find((a) => a.registration_id === regId);
+    // Find ALL assigned lockers for this recipient
+    const assignments = assignedLockers.filter(
+      (a) => String(a.registration_id) === String(regId),
+    );
 
     // Find the registration to check plan capabilities
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
@@ -466,10 +537,15 @@ export default function MailroomPackages() {
     // Determine default package type based on plan
     const defaultType = "Document";
 
+    // If there's exactly one assigned locker, auto-select it
+    // Otherwise, leave locker_id empty so user can choose from dropdown
+    const defaultLockerId =
+      assignments.length === 1 ? assignments[0].locker_id : "";
+
     setFormData({
       ...formData,
       registration_id: regId,
-      locker_id: assignment ? assignment.locker_id : "",
+      locker_id: defaultLockerId,
       package_type: defaultType,
     });
   };
@@ -608,6 +684,7 @@ export default function MailroomPackages() {
   const confirmDelete = async () => {
     if (!packageToDelete) return;
 
+    setIsDeleting(true);
     try {
       const res = await fetch(
         `/api/admin/mailroom/packages/${packageToDelete}`,
@@ -618,8 +695,8 @@ export default function MailroomPackages() {
 
       if (!res.ok) throw new Error("Failed to delete");
 
-      setGlobalSuccess("Package deleted successfully");
       await refreshAll();
+      closeDeleteModal();
     } catch (error) {
       console.error(error);
       notifications.show({
@@ -628,8 +705,10 @@ export default function MailroomPackages() {
         color: "red",
       });
     } finally {
-      closeDeleteModal();
+      setIsDeleting(false);
+
       setPackageToDelete(null);
+      setGlobalSuccess("Package deleted successfully");
     }
   };
 
@@ -869,55 +948,41 @@ export default function MailroomPackages() {
   };
 
   // --- FILTER LOGIC ---
-  const filteredPackages = packages.filter((p) => {
+  const filteredPackages = useMemo(() => {
     const q = (search || "").toLowerCase();
 
-    const pkgName = (p.package_name ?? "").toLowerCase();
-    const regName = (p.registration?.full_name ?? "").toLowerCase();
-    const regEmail = (p.registration?.email ?? "").toLowerCase();
-    const status = (p.status ?? "").toLowerCase();
-    const lockerCode = (p.locker?.locker_code ?? "").toLowerCase();
+    return packages.filter((p) => {
+      const pkgName = (p.package_name ?? "").toLowerCase();
+      const regName = (p.registration?.full_name ?? "").toLowerCase();
+      const regEmail = (p.registration?.email ?? "").toLowerCase();
+      const status = (p.status ?? "").toLowerCase();
+      const lockerCode = (p.locker?.locker_code ?? "").toLowerCase();
 
-    const matchesSearch =
-      pkgName.includes(q) ||
-      regName.includes(q) ||
-      regEmail.includes(q) ||
-      status.includes(q) ||
-      lockerCode.includes(q);
+      const matchesSearch =
+        pkgName.includes(q) ||
+        regName.includes(q) ||
+        regEmail.includes(q) ||
+        status.includes(q) ||
+        lockerCode.includes(q);
 
-    const matchesStatus = filterStatus ? p.status === filterStatus : true;
-    const matchesType = filterType ? p.package_type === filterType : true;
+      const matchesType = filterType ? p.package_type === filterType : true;
 
-    // Tab Logic
-    if (activeTab === "requests") {
-      return (p.status ?? "").includes("REQUEST");
-    }
-    if (activeTab === "active") {
-      return (p.status ?? "") === "STORED";
-    }
-    if (activeTab === "released") {
-      const s = p.status ?? "";
-      return s === "RELEASED" || s === "RETRIEVED";
-    }
-    if (activeTab === "disposed") {
-      return (p.status ?? "") === "DISPOSED";
-    }
-    if (activeTab === "archive") {
-      return false; // Archived packages are managed by archivedPackages state
-    }
+      return matchesSearch && matchesType;
+    });
+  }, [packages, search, filterType]);
 
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  // Memoize paginated packages
+  const paginatedPackages = useMemo(() => {
+    return activeTab === "archive" ? archivedPackages : filteredPackages;
+  }, [activeTab, archivedPackages, filteredPackages]);
 
-  const paginatedPackages =
-    activeTab === "archive"
-      ? archivedPackages
-      : filteredPackages.slice((page - 1) * pageSize, page * pageSize);
+  const totalRecords = useMemo(
+    () => (activeTab === "archive" ? archivedTotalCount : serverTotalCount),
+    [activeTab, archivedTotalCount, serverTotalCount],
+  );
 
-  const totalRecords =
-    activeTab === "archive" ? archivedTotalCount : filteredPackages.length;
-
-  const getStatusColor = (status: string) => {
+  // Memoize status color function to prevent recreation on each render
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case "STORED":
         return "blue";
@@ -929,12 +994,218 @@ export default function MailroomPackages() {
       default:
         return "orange";
     }
-  };
+  }, []);
 
-  // Count requests for badge
-  const requestCount = packages.filter((p) =>
-    p.status.includes("REQUEST"),
-  ).length;
+  // Count requests for badge - memoized to prevent recalculation
+  const requestCount = useMemo(() => counts.requests || 0, [counts]);
+
+  // Memoize DataTable columns to prevent recreation on each render
+  const tableColumns = useMemo(
+    () => [
+      {
+        accessor: "package_name",
+        title: "Package",
+        width: 200,
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return (
+            <Text fw={500} size="sm">
+              {pkg.package_name}
+            </Text>
+          );
+        },
+      },
+      {
+        accessor: "registration.full_name",
+        title: "Recipient",
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return (
+            <Stack gap={0}>
+              <Text size="sm" fw={500}>
+                {pkg.registration?.full_name || "Unknown"}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {pkg.registration?.email}
+              </Text>
+            </Stack>
+          );
+        },
+      },
+      {
+        accessor: "locker.locker_code",
+        title: "Locker",
+        width: 120,
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return pkg.locker ? (
+            <Badge
+              variant="outline"
+              color="gray"
+              leftSection={<IconLock size={12} aria-hidden="true" />}
+            >
+              {pkg.locker.locker_code}
+            </Badge>
+          ) : (
+            <Text size="sm" c="dimmed">
+              —
+            </Text>
+          );
+        },
+      },
+      {
+        accessor: "package_type",
+        title: "Type",
+        width: 120,
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return (
+            <Badge
+              variant="light"
+              color="gray"
+              leftSection={
+                pkg.package_type === "Document" ? (
+                  <IconFileText size={12} aria-hidden="true" />
+                ) : (
+                  <IconPackage size={12} aria-hidden="true" />
+                )
+              }
+            >
+              {pkg.package_type}
+            </Badge>
+          );
+        },
+      },
+      {
+        accessor: "status",
+        title: "Status",
+        width: 180,
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return (
+            <Badge color={getStatusColor(pkg.status)} variant="light">
+              {pkg.status.replace(/_/g, " ")}
+            </Badge>
+          );
+        },
+      },
+      {
+        accessor: "received_at",
+        title: activeTab === "archive" ? "Deleted At" : "Received",
+        width: 150,
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return dayjs(pkg.received_at).format("MMM D, YYYY");
+        },
+      },
+      {
+        accessor: "actions",
+        title: "Actions",
+        width: activeTab !== "requests" ? 120 : 165,
+        textAlign: "right" as const,
+        render: (record: unknown) => {
+          const pkg = record as Package;
+          return (
+            <Group gap="xs" justify="flex-end">
+              {/* Archive Actions */}
+              {activeTab === "archive" && (
+                <>
+                  <Tooltip label="Restore package">
+                    <Button
+                      size="compact-xs"
+                      color="green"
+                      w={100}
+                      leftSection={<IconRestore size={14} aria-hidden="true" />}
+                      onClick={() => handleOpenRestore(pkg)}
+                      aria-label={`Restore package ${pkg.package_name}`}
+                    >
+                      Restore
+                    </Button>
+                  </Tooltip>
+                </>
+              )}
+
+              {/* Standard Actions (Non-Archive) */}
+              {activeTab !== "archive" && (
+                <>
+                  {/* Action Buttons based on Status (Requests Only) */}
+                  {pkg.status === "REQUEST_TO_SCAN" && (
+                    <Tooltip label="Upload Scanned PDF">
+                      <Button
+                        size="compact-xs"
+                        w={100}
+                        color="violet"
+                        leftSection={<IconScan size={14} aria-hidden="true" />}
+                        onClick={() => handleOpenScan(pkg)}
+                        aria-label={`Upload scanned PDF for package ${pkg.package_name}`}
+                      >
+                        Scan
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {pkg.status === "REQUEST_TO_RELEASE" && (
+                    <Tooltip label="Confirm Release">
+                      <Button
+                        size="compact-xs"
+                        w={100}
+                        color="teal"
+                        leftSection={
+                          <IconTruckDelivery size={14} aria-hidden="true" />
+                        }
+                        onClick={() => handleOpenRelease(pkg)}
+                        aria-label={`Release package ${pkg.package_name}`}
+                      >
+                        Release
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {pkg.status === "REQUEST_TO_DISPOSE" && (
+                    <Tooltip label="Confirm Disposal">
+                      <Button
+                        size="compact-xs"
+                        w={100}
+                        color="red"
+                        leftSection={<IconTrash size={14} aria-hidden="true" />}
+                        onClick={() => handleConfirmDisposal(pkg)}
+                        aria-label={`Dispose package ${pkg.package_name}`}
+                      >
+                        Dispose
+                      </Button>
+                    </Tooltip>
+                  )}
+
+                  {/* Standard Edit/Delete */}
+                  {activeTab === "active" && (
+                    <Tooltip label="Edit package">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        onClick={() => handleOpenModal(pkg)}
+                        aria-label={`Edit package ${pkg.package_name}`}
+                      >
+                        <IconEdit size={16} aria-hidden="true" />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                  <Tooltip label="Delete package">
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      onClick={() => handleDelete(pkg.id)}
+                      aria-label={`Delete package ${pkg.package_name}`}
+                    >
+                      <IconTrash size={16} aria-hidden="true" />
+                    </ActionIcon>
+                  </Tooltip>
+                </>
+              )}
+            </Group>
+          );
+        },
+      },
+    ],
+    [activeTab, getStatusColor],
+  );
 
   // helper to extract phone for release snapshot
   const getSnapshotPhone = (pkg: Package | null) => {
@@ -1035,13 +1306,14 @@ export default function MailroomPackages() {
           <Group style={{ flex: 1 }}>
             <TextInput
               placeholder="Search packages..."
-              leftSection={<IconSearch size={16} />}
+              leftSection={<IconSearch size={16} aria-hidden="true" />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
               style={{ width: 250 }}
+              aria-label="Search packages by name, recipient, email, status, or locker code"
             />
-            {/* Only show status filter on Inventory tab */}
-            {activeTab === "inventory" && (
+            {/* Only show status filter on active tab */}
+            {activeTab === "active" && (
               <Select
                 placeholder="Filter by Status"
                 data={STATUSES.filter((s) => !s.includes("REQUEST")).map(
@@ -1054,6 +1326,7 @@ export default function MailroomPackages() {
                 onChange={setFilterStatus}
                 clearable
                 style={{ width: 200 }}
+                aria-label="Filter packages by status"
               />
             )}
             <Select
@@ -1063,6 +1336,7 @@ export default function MailroomPackages() {
               onChange={setFilterType}
               clearable
               style={{ width: 150 }}
+              aria-label="Filter packages by type"
             />
             {hasFilters && (
               <Button
@@ -1070,30 +1344,44 @@ export default function MailroomPackages() {
                 color="red"
                 size="sm"
                 onClick={clearFilters}
+                aria-label="Clear all filters"
               >
                 Clear Filters
               </Button>
             )}
           </Group>
           <Button
-            leftSection={<IconPlus size={16} />}
+            leftSection={<IconPlus size={16} aria-hidden="true" />}
             onClick={() => handleOpenModal()}
+            aria-label="Add new package"
           >
             Add Package
           </Button>
         </Group>
 
-        <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+        <Tabs
+          value={activeTab}
+          onChange={setActiveTab}
+          mb="md"
+          aria-label="Package status tabs"
+        >
           <Tabs.List>
-            <Tabs.Tab value="active" leftSection={<IconPackage size={16} />}>
+            <Tabs.Tab
+              value="active"
+              leftSection={<IconPackage size={16} aria-hidden="true" />}
+            >
               Active Inventory
             </Tabs.Tab>
             <Tabs.Tab
               value="requests"
-              leftSection={<IconAlertCircle size={16} />}
+              leftSection={<IconAlertCircle size={16} aria-hidden="true" />}
               rightSection={
                 requestCount > 0 && (
-                  <Badge size="xs" circle color="red">
+                  <Badge
+                    size="xs"
+                    color="red"
+                    aria-label={`${requestCount} pending requests`}
+                  >
                     {requestCount}
                   </Badge>
                 )
@@ -1101,13 +1389,22 @@ export default function MailroomPackages() {
             >
               Pending Requests
             </Tabs.Tab>
-            <Tabs.Tab value="released" leftSection={<IconCheck size={16} />}>
+            <Tabs.Tab
+              value="released"
+              leftSection={<IconCheck size={16} aria-hidden="true" />}
+            >
               Released
             </Tabs.Tab>
-            <Tabs.Tab value="disposed" leftSection={<IconTrash size={16} />}>
+            <Tabs.Tab
+              value="disposed"
+              leftSection={<IconTrash size={16} aria-hidden="true" />}
+            >
               Disposed
             </Tabs.Tab>
-            <Tabs.Tab value="archive" leftSection={<IconArchive size={16} />}>
+            <Tabs.Tab
+              value="archive"
+              leftSection={<IconArchive size={16} aria-hidden="true" />}
+            >
               Archive
             </Tabs.Tab>
           </Tabs.List>
@@ -1128,178 +1425,8 @@ export default function MailroomPackages() {
           onPageChange={(p) => setPage(p)}
           recordsPerPageOptions={[10, 20, 50]}
           onRecordsPerPageChange={setPageSize}
-          columns={[
-            {
-              accessor: "package_name",
-              title: "Package",
-              width: 200,
-              render: ({ package_name }) => (
-                <Text fw={500} size="sm">
-                  {package_name}
-                </Text>
-              ),
-            },
-            {
-              accessor: "registration.full_name",
-              title: "Recipient",
-              render: ({ registration }: Package) => (
-                <Stack gap={0}>
-                  <Text size="sm" fw={500}>
-                    {registration?.full_name || "Unknown"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {registration?.email}
-                  </Text>
-                </Stack>
-              ),
-            },
-            {
-              accessor: "locker.locker_code",
-              title: "Locker",
-              width: 120,
-              render: ({ locker }: Package) =>
-                locker ? (
-                  <Badge
-                    variant="outline"
-                    color="gray"
-                    leftSection={<IconLock size={12} />}
-                  >
-                    {locker.locker_code}
-                  </Badge>
-                ) : (
-                  <Text size="sm" c="dimmed">
-                    —
-                  </Text>
-                ),
-            },
-            {
-              accessor: "package_type",
-              title: "Type",
-              width: 120,
-              render: ({ package_type }: Package) => (
-                <Badge
-                  variant="light"
-                  color="gray"
-                  leftSection={
-                    package_type === "Document" ? (
-                      <IconFileText size={12} />
-                    ) : (
-                      <IconPackage size={12} />
-                    )
-                  }
-                >
-                  {package_type}
-                </Badge>
-              ),
-            },
-            {
-              accessor: "status",
-              title: "Status",
-              width: 180,
-              render: ({ status }: Package) => (
-                <Badge color={getStatusColor(status)} variant="light">
-                  {status.replace(/_/g, " ")}
-                </Badge>
-              ),
-            },
-            {
-              accessor: "received_at",
-              title: activeTab === "archive" ? "Deleted At" : "Received",
-              width: 150,
-              render: ({ received_at }: Package) =>
-                dayjs(received_at).format("MMM D, YYYY"),
-            },
-            {
-              accessor: "actions",
-              title: "Actions",
-              width: 180,
-              textAlign: "right",
-              render: (pkg: Package) => (
-                <Group gap="xs" justify="flex-end">
-                  {/* Archive Actions */}
-                  {activeTab === "archive" && (
-                    <>
-                      <Tooltip label="Restore">
-                        <Button
-                          size="compact-xs"
-                          color="green"
-                          variant="light"
-                          leftSection={<IconRestore size={14} />}
-                          onClick={() => handleOpenRestore(pkg)}
-                        >
-                          Restore
-                        </Button>
-                      </Tooltip>
-                    </>
-                  )}
-
-                  {/* Standard Actions (Non-Archive) */}
-                  {activeTab !== "archive" && (
-                    <>
-                      {/* Action Buttons based on Status (Requests Only) */}
-                      {pkg.status === "REQUEST_TO_SCAN" && (
-                        <Tooltip label="Upload Scanned PDF">
-                          <Button
-                            size="compact-xs"
-                            color="violet"
-                            leftSection={<IconScan size={14} />}
-                            onClick={() => handleOpenScan(pkg)}
-                          >
-                            Scan
-                          </Button>
-                        </Tooltip>
-                      )}
-                      {pkg.status === "REQUEST_TO_RELEASE" && (
-                        <Tooltip label="Confirm Release">
-                          <Button
-                            size="compact-xs"
-                            color="teal"
-                            leftSection={<IconTruckDelivery size={14} />}
-                            onClick={() => handleOpenRelease(pkg)}
-                          >
-                            Release
-                          </Button>
-                        </Tooltip>
-                      )}
-                      {pkg.status === "REQUEST_TO_DISPOSE" && (
-                        <Tooltip label="Confirm Disposal">
-                          <Button
-                            size="compact-xs"
-                            color="red"
-                            variant="light"
-                            leftSection={<IconTrash size={14} />}
-                            onClick={() => handleConfirmDisposal(pkg)}
-                          >
-                            Dispose
-                          </Button>
-                        </Tooltip>
-                      )}
-
-                      {/* Standard Edit/Delete */}
-                      <Tooltip label="Edit">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => handleOpenModal(pkg)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Delete">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => handleDelete(pkg.id)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </>
-                  )}
-                </Group>
-              ),
-            },
-          ]}
+          columns={tableColumns}
+          aria-label="Packages data table"
           noRecordsText={
             activeTab === "requests"
               ? "No pending requests"
@@ -1351,10 +1478,14 @@ export default function MailroomPackages() {
             undone.
           </Text>
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={closeDeleteModal}>
+            <Button
+              variant="default"
+              onClick={closeDeleteModal}
+              loading={isDeleting}
+            >
               Cancel
             </Button>
-            <Button color="red" onClick={confirmDelete}>
+            <Button color="red" onClick={confirmDelete} loading={isDeleting}>
               Delete
             </Button>
           </Group>
@@ -1396,7 +1527,7 @@ export default function MailroomPackages() {
           />
           <Autocomplete
             label="Recipient"
-            placeholder="Type to search recipients (min 2 characters)..."
+            placeholder="Type at least 2 characters to search recipients..."
             required
             data={recipientOptions}
             value={
@@ -1412,6 +1543,7 @@ export default function MailroomPackages() {
                 handleRegistrationChange(matched.value);
               } else if (!val) {
                 handleRegistrationChange(null);
+                setRecipientOptions([]); // Clear options when cleared
               }
             }}
             onOptionSubmit={(val) => {
@@ -1426,12 +1558,20 @@ export default function MailroomPackages() {
                 </Text>
               ) : undefined
             }
-            description={
-              recipientSearch.length > 0 && recipientSearch.length < 2
-                ? "Type at least 2 characters to search"
-                : undefined
-            }
-            limit={50}
+            description={(() => {
+              if (recipientSearch.length > 0 && recipientSearch.length < 2) {
+                return "Type at least 2 characters to search";
+              }
+              if (
+                recipientSearch.length >= 2 &&
+                recipientOptions.length === 0 &&
+                !searchingRecipients
+              ) {
+                return "No recipients found";
+              }
+              return undefined;
+            })()}
+            limit={200}
           />
           <Select
             label="Assign Locker"
@@ -1448,10 +1588,12 @@ export default function MailroomPackages() {
                 if (!formData.registration_id) return false;
 
                 // Find the assignment for this locker and user
+                // Use String() to ensure proper comparison (handles UUID string vs string)
                 const assignment = assignedLockers.find(
                   (a) =>
-                    a.locker_id === l.id &&
-                    a.registration_id === formData.registration_id,
+                    String(a.locker_id) === String(l.id) &&
+                    String(a.registration_id) ===
+                      String(formData.registration_id),
                 );
 
                 // Must be assigned to this user
@@ -1460,12 +1602,13 @@ export default function MailroomPackages() {
               .map((l) => {
                 const assignment = assignedLockers.find(
                   (a) =>
-                    a.locker_id === l.id &&
-                    a.registration_id === formData.registration_id,
+                    String(a.locker_id) === String(l.id) &&
+                    String(a.registration_id) ===
+                      String(formData.registration_id),
                 );
 
                 const isFull = assignment?.status === "Full";
-                const isCurrent = l.id === formData.locker_id;
+                const isCurrent = String(l.id) === String(formData.locker_id);
 
                 return {
                   value: l.id,

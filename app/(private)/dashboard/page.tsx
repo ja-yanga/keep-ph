@@ -1,8 +1,9 @@
-import DashboardContent from "@/components/DashboardContent";
+// import DashboardContent from "@/components/DashboardContent";
 // import { getAuthenticatedUser } from "@/lib/supabase/server";
 import { fetchFromAPI } from "@/utils/fetcher";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
+import Dashboard from "@/components/pages/customer/Dashboard";
 
 type RegistrationsResponse = {
   data: unknown[];
@@ -29,7 +30,7 @@ export default async function DashboardPage() {
 
   return (
     <PrivateMainLayout>
-      <DashboardContent initialRegistrations={registrations} />
+      <Dashboard initialRegistrations={registrations} />
     </PrivateMainLayout>
   );
 }

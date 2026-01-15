@@ -1287,7 +1287,6 @@ export default function UserPackages({
                 fullWidth
                 size="xs"
                 leftSection={<IconTruckDelivery size={14} />}
-                disabled={isStorageFull}
                 onClick={() => handleActionClick(pkg, "RELEASE")}
               >
                 Release
@@ -1298,7 +1297,6 @@ export default function UserPackages({
                 fullWidth
                 size="xs"
                 leftSection={<IconTrash size={14} />}
-                disabled={isStorageFull}
                 onClick={() => handleActionClick(pkg, "DISPOSE")}
               >
                 Dispose

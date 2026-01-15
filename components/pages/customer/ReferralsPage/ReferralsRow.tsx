@@ -35,7 +35,7 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
     accessor: "email",
     title: tableCopy.columns.email,
     render: ({ email }) => (
-      <Text size="sm" c="dimmed">
+      <Text size="sm" c="#313131">
         {email}
       </Text>
     ),
@@ -44,7 +44,7 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
     accessor: "dateText",
     title: tableCopy.columns.dateJoined,
     render: ({ dateText }) => (
-      <Text size="sm" c="dimmed">
+      <Text size="sm" c="#313131">
         {dateText}
       </Text>
     ),
@@ -54,7 +54,7 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
     title: tableCopy.columns.status,
     textAlign: "right",
     render: ({ status }) => (
-      <Badge color="green" variant="light" size="sm">
+      <Badge color="#017e01" variant="light" size="sm">
         {status}
       </Badge>
     ),
@@ -159,7 +159,7 @@ export const ReferralsTable = ({
         setPageSize(value);
         setPage(1);
       }}
-      noRecordsText={tableCopy.empty}
+      noRecordsText=""
     />
   );
 };
