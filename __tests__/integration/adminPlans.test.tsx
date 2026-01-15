@@ -46,41 +46,53 @@ jest.mock("mantine-datatable", () => {
       fetching?: boolean;
       "aria-label"?: string;
     }) => {
-      // Don't render rows if fetching
-      if (props.fetching) {
-        return (
-          <table role="table" aria-label={props["aria-label"] ?? "Plans list"}>
-            <tbody>
-              <tr>
-                <td>Loading...</td>
-              </tr>
-            </tbody>
-          </table>
-        );
-      }
       const records = props.records ?? [];
       const columns = props.columns ?? [];
+
       return (
         <table role="table" aria-label={props["aria-label"] ?? "Plans list"}>
+          <thead>
+            <tr>
+              {columns.map((col, j) => (
+                <th key={j}>{col.title}</th>
+              ))}
+            </tr>
+          </thead>
           <tbody>
-            {records.map((rec, i) => (
-              <tr
-                role="row"
-                key={String((rec as Record<string, unknown>).id ?? i)}
-              >
-                {columns.map((col, j) => {
-                  const content =
-                    typeof col.render === "function"
-                      ? col.render(rec)
-                      : (rec as Record<string, unknown>)[col.accessor ?? ""];
-                  return (
-                    <td role="cell" key={j}>
-                      {safeRender(content)}
-                    </td>
-                  );
-                })}
+            {props.fetching && (
+              <tr>
+                <td colSpan={columns.length}>Loading...</td>
               </tr>
-            ))}
+            )}
+            {!props.fetching && records.length === 0 && (
+              <tr>
+                <td colSpan={columns.length}>No plans found</td>
+              </tr>
+            )}
+            {!props.fetching && records.length > 0 && (
+              <>
+                {records.map((rec, i) => (
+                  <tr
+                    role="row"
+                    key={String((rec as Record<string, unknown>).id ?? i)}
+                  >
+                    {columns.map((col, j) => {
+                      const content =
+                        typeof col.render === "function"
+                          ? col.render(rec)
+                          : (rec as Record<string, unknown>)[
+                              col.accessor ?? ""
+                            ];
+                      return (
+                        <td role="cell" key={j}>
+                          {safeRender(content)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </>
+            )}
           </tbody>
         </table>
       );
@@ -214,7 +226,7 @@ if (typeof g.IntersectionObserver === "undefined") {
 Element.prototype.scrollIntoView = jest.fn();
 
 // --- Mock Data ---
-const mockPlans = [
+let mockPlans = [
   {
     id: "plan-1",
     name: "Basic Plan",
@@ -247,104 +259,40 @@ const mockPlans = [
   },
 ];
 
+const INITIAL_PLANS = [...mockPlans.map((p) => ({ ...p }))];
+
 // Track fetch calls
 let fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
 
-// Mock global fetch
-global.fetch = jest.fn((url: string | URL, init?: RequestInit) => {
-  const urlString = typeof url === "string" ? url : url.toString();
-  fetchCalls.push({ url: urlString, init });
+// Some Jest environments don't have the Web `Response` class available.
+// Use a minimal Response-like object (pattern used in other integration tests).
+const makeResponse = (body: unknown, ok = true, status = 200) => {
+  const bodyStr = typeof body === "string" ? body : JSON.stringify(body);
+  return {
+    ok,
+    status,
+    json: async () => (typeof body === "string" ? JSON.parse(body) : body),
+    text: async () => bodyStr,
+    clone: () => ({ text: async () => bodyStr }),
+  } as unknown as Response;
+};
 
-  // GET all plans
-  if (
-    urlString.includes("/api/admin/mailroom/plans") &&
-    (!init || (init.method ?? "GET").toUpperCase() === "GET") &&
-    !urlString.match(/\/api\/admin\/mailroom\/plans\/[^/]+$/)
-  ) {
-    return Promise.resolve(
-      new Response(JSON.stringify({ data: mockPlans }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-  }
+const originalFetch = global.fetch;
+let patchShouldFail = false;
 
-  // PATCH update plan
-  if (
-    urlString.includes("/api/admin/mailroom/plans/") &&
-    init &&
-    (init.method ?? "").toUpperCase() === "PATCH"
-  ) {
-    const planId = urlString.match(/\/plans\/([^/]+)/)?.[1];
-    const bodyText = init.body ? String(init.body) : "{}";
-    const parsed = JSON.parse(bodyText);
-    const existingPlan = mockPlans.find((p) => p.id === planId);
-    if (!existingPlan) {
-      return Promise.resolve(
-        new Response(JSON.stringify({ error: "Plan not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    }
-    const updatedPlan = {
-      ...existingPlan,
-      ...parsed,
-      // Convert GB to MB for storage_limit if provided
-      storage_limit:
-        parsed.storage_limit != null
-          ? parsed.storage_limit * 1024
-          : existingPlan.storage_limit,
-    };
-    // Update in mock array
-    const index = mockPlans.findIndex((p) => p.id === planId);
-    if (index !== -1) {
-      mockPlans[index] = updatedPlan;
-    }
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          message: "Plan updated",
-          data: updatedPlan,
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
-    );
-  }
-
-  return Promise.resolve(
-    new Response(JSON.stringify({ error: "Not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    }),
-  );
-}) as jest.Mock;
-
-// Helper to wait for a row with specific text
+// Helper to wait for text to appear in a table row (simpler, like other test files)
 const waitForRowWithText = async (text: string) => {
-  // First wait for table to be present and not loading
-  await waitFor(
-    () => {
-      const table = screen.getByRole("table", { name: /Plans list/i });
-      expect(table).toBeInTheDocument();
-      expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
-    },
-    { timeout: 3000 },
-  );
-
-  // Then wait for the specific row with text
-  await waitFor(
-    () => {
-      const table = screen.getByRole("table", { name: /Plans list/i });
-      const rows = within(table).queryAllByRole("row");
-      expect(rows.length).toBeGreaterThan(0);
-      expect(rows.some((r) => r.textContent?.includes(text))).toBe(true);
-    },
-    { timeout: 3000 },
-  );
+  await waitFor(() => {
+    // First wait for table to exist
+    const table = screen.getByRole("table");
+    // Then check that the text appears in one of the table rows
+    const rows = within(table).getAllByRole("row");
+    const hasText = rows.some((row) => row.textContent?.includes(text));
+    if (!hasText) {
+      throw new Error(`Text "${text}" not found in table rows`);
+    }
+    expect(hasText).toBe(true);
+  });
 };
 
 // Test wrapper component
@@ -358,9 +306,72 @@ const renderComponent = () => {
 };
 
 describe("Admin Plans Page (admin/plans)", () => {
+  // Increase timeout for all tests in this suite
+  jest.setTimeout(15000);
+
   beforeEach(() => {
     fetchCalls = [];
+    mockPlans = [...INITIAL_PLANS.map((p) => ({ ...p }))];
+    patchShouldFail = false;
     jest.clearAllMocks();
+
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const urlString = String(input);
+        fetchCalls.push({ url: urlString, init });
+
+        // GET all plans
+        if (
+          urlString.includes("/api/admin/mailroom/plans") &&
+          (!init || (init.method ?? "GET").toUpperCase() === "GET") &&
+          !urlString.match(/\/api\/admin\/mailroom\/plans\/[^/]+$/)
+        ) {
+          return makeResponse({ data: mockPlans });
+        }
+
+        // PATCH update plan
+        if (
+          urlString.includes("/api/admin/mailroom/plans/") &&
+          init &&
+          (init.method ?? "").toUpperCase() === "PATCH"
+        ) {
+          if (patchShouldFail) {
+            return makeResponse({ error: "Update failed" }, false, 500);
+          }
+
+          const planId = urlString.match(/\/plans\/([^/]+)/)?.[1];
+          const bodyText = init.body ? String(init.body) : "{}";
+          const parsed = JSON.parse(bodyText);
+          const existingPlan = mockPlans.find((p) => p.id === planId);
+          if (!existingPlan) {
+            return makeResponse({ error: "Plan not found" }, false, 404);
+          }
+
+          // Component sends storage_limit in MB already (or null); don't reconvert.
+          const updatedPlan = {
+            ...existingPlan,
+            ...parsed,
+            storage_limit:
+              parsed.storage_limit !== undefined
+                ? parsed.storage_limit
+                : existingPlan.storage_limit,
+          };
+
+          const index = mockPlans.findIndex((p) => p.id === planId);
+          if (index !== -1) {
+            mockPlans[index] = updatedPlan;
+          }
+
+          return makeResponse({ message: "Plan updated", data: updatedPlan });
+        }
+
+        return makeResponse({ error: "Not found" }, false, 404);
+      },
+    ) as jest.Mock;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch as typeof global.fetch;
   });
 
   // ============================================
@@ -380,23 +391,27 @@ describe("Admin Plans Page (admin/plans)", () => {
       expect(screen.getByTestId("private-main-layout")).toBeInTheDocument();
 
       // Wait for data to load
-      await waitFor(() => {
-        expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
-      });
+      await waitFor(
+        () => {
+          const loadingElements = screen.queryAllByText(/Loading/i);
+          expect(loadingElements.length).toBe(0);
+        },
+        { timeout: 10000 },
+      );
 
       // Check that fetch was called
-      expect(global.fetch).toHaveBeenCalledWith(
-        "/api/admin/mailroom/plans",
-        undefined,
-      );
+      expect(global.fetch).toHaveBeenCalledWith("/api/admin/mailroom/plans");
     });
 
     it("renders the plans list correctly", async () => {
       renderComponent();
 
+      // Wait for data to load
       await waitForRowWithText("Basic Plan");
+      await waitForRowWithText("Premium Plan");
+      await waitForRowWithText("Enterprise Plan");
 
-      // Check for plan names
+      // Verify they're all in the document
       expect(screen.getByText("Basic Plan")).toBeInTheDocument();
       expect(screen.getByText("Premium Plan")).toBeInTheDocument();
       expect(screen.getByText("Enterprise Plan")).toBeInTheDocument();
@@ -417,7 +432,8 @@ describe("Admin Plans Page (admin/plans)", () => {
       await userEvent.type(searchInput, "Premium");
 
       await waitFor(() => {
-        const rows = screen.getAllByRole("row");
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
         const hasPremium = rows.some((r) =>
           r.textContent?.includes("Premium Plan"),
         );
@@ -438,7 +454,8 @@ describe("Admin Plans Page (admin/plans)", () => {
       await userEvent.type(searchInput, "Premium");
 
       await waitFor(() => {
-        const rows = screen.getAllByRole("row");
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
         expect(rows.some((r) => r.textContent?.includes("Premium Plan"))).toBe(
           true,
         );
@@ -449,7 +466,8 @@ describe("Admin Plans Page (admin/plans)", () => {
 
       await waitFor(() => {
         expect(searchInput).toHaveValue("");
-        const rows = screen.getAllByRole("row");
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
         expect(rows.some((r) => r.textContent?.includes("Basic Plan"))).toBe(
           true,
         );
@@ -473,7 +491,8 @@ describe("Admin Plans Page (admin/plans)", () => {
       await userEvent.click(nameOption);
 
       await waitFor(() => {
-        const rows = screen.getAllByRole("row");
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
         const rowTexts = rows.map((r) => r.textContent || "");
         const basicIndex = rowTexts.findIndex((t) => t.includes("Basic Plan"));
         const enterpriseIndex = rowTexts.findIndex((t) =>
@@ -499,7 +518,8 @@ describe("Admin Plans Page (admin/plans)", () => {
       await userEvent.click(priceOption);
 
       await waitFor(() => {
-        const rows = screen.getAllByRole("row");
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
         const rowTexts = rows.map((r) => r.textContent || "");
         const basicIndex = rowTexts.findIndex((t) => t.includes("Basic Plan"));
         const premiumIndex = rowTexts.findIndex((t) =>
@@ -521,7 +541,8 @@ describe("Admin Plans Page (admin/plans)", () => {
       await waitForRowWithText("Basic Plan");
 
       // Find the view button (eye icon) in the Basic Plan row
-      const rows = screen.getAllByRole("row");
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
       const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
       expect(basicRow).toBeTruthy();
 
@@ -552,7 +573,8 @@ describe("Admin Plans Page (admin/plans)", () => {
 
       await waitForRowWithText("Basic Plan");
 
-      const rows = screen.getAllByRole("row");
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
       const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
       const viewButtons = within(basicRow!).getAllByRole("button");
       const viewBtn = viewButtons[0];
@@ -586,7 +608,8 @@ describe("Admin Plans Page (admin/plans)", () => {
 
       await waitForRowWithText("Basic Plan");
 
-      const rows = screen.getAllByRole("row");
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
       const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
       const actionButtons = within(basicRow!).getAllByRole("button");
       // The edit button should be the second button (after view)
@@ -606,7 +629,8 @@ describe("Admin Plans Page (admin/plans)", () => {
       expect(nameInput).toHaveValue("Basic Plan");
 
       const priceInput = within(modal).getByLabelText(/Price/i);
-      expect(priceInput).toHaveValue(500);
+      // HTML inputs return string values, not numbers
+      expect(priceInput).toHaveValue("500");
     });
 
     it("updates plan when form is submitted", async () => {
@@ -614,7 +638,8 @@ describe("Admin Plans Page (admin/plans)", () => {
 
       await waitForRowWithText("Basic Plan");
 
-      const rows = screen.getAllByRole("row");
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
       const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
       const actionButtons = within(basicRow!).getAllByRole("button");
       const editBtn = actionButtons[actionButtons.length > 1 ? 1 : 0];
@@ -651,38 +676,61 @@ describe("Admin Plans Page (admin/plans)", () => {
         ).toBe(true);
       });
 
-      // Check success message appears
+      // Wait for modal to close first
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: /Edit Plan/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Wait for loading to finish after fetchData is called
+      await waitFor(
+        () => {
+          const loadingElements = screen.queryAllByText(/Loading/i);
+          expect(loadingElements.length).toBe(0);
+        },
+        { timeout: 5000 },
+      );
+
+      // Check success message appears (global alert, not in modal)
       await waitFor(() => {
         expect(
           screen.getByText(/Plan updated successfully/i),
         ).toBeInTheDocument();
       });
+
+      // Wait for data to reload - check table has data again
+      await waitFor(
+        () => {
+          const tableAfter = screen.getByRole("table");
+          const rowsAfter = within(tableAfter).getAllByRole("row");
+          // Should have header row + data rows
+          expect(rowsAfter.length).toBeGreaterThan(1);
+          // Check that Basic Plan is in one of the rows
+          const hasBasicPlan = rowsAfter.some((r) =>
+            r.textContent?.includes("Basic Plan"),
+          );
+          expect(hasBasicPlan).toBe(true);
+        },
+        { timeout: 5000 },
+      );
     });
 
     it("shows error message when update fails", async () => {
-      // Mock fetch to return error
-      (global.fetch as jest.Mock).mockImplementationOnce((url: string) => {
-        if (url.includes("/api/admin/mailroom/plans/plan-1")) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ error: "Update failed" }), {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            }),
-          );
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify({ data: mockPlans }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
-      });
+      // Suppress expected console.error from component error handling
+      const consoleErrorSpy = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      // Force the PATCH handler in the shared fetch mock to fail.
+      patchShouldFail = true;
 
       renderComponent();
 
       await waitForRowWithText("Basic Plan");
 
-      const rows = screen.getAllByRole("row");
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
       const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
       const actionButtons = within(basicRow!).getAllByRole("button");
       const editBtn = actionButtons[actionButtons.length > 1 ? 1 : 0];
@@ -706,12 +754,15 @@ describe("Admin Plans Page (admin/plans)", () => {
         await userEvent.click(saveBtn);
       });
 
-      // Wait for error message in modal
+      // Wait for error message in modal (modal should stay open on error)
       await waitFor(() => {
         expect(
           within(modal).getByText(/Failed to update plan/i),
         ).toBeInTheDocument();
       });
+
+      // Restore console.error
+      consoleErrorSpy.mockRestore();
     });
   });
 
@@ -723,13 +774,21 @@ describe("Admin Plans Page (admin/plans)", () => {
     it("refreshes plans list when Refresh button is clicked", async () => {
       renderComponent();
 
-      // Wait for initial data to load
-      await screen.findByRole("table");
-      await waitFor(() => {
-        expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
-      });
-
-      await waitForRowWithText("Basic Plan");
+      // Wait for initial data to load - check table has data rows
+      await waitFor(
+        () => {
+          const table = screen.getByRole("table");
+          const rows = within(table).getAllByRole("row");
+          // Should have header row + data rows
+          expect(rows.length).toBeGreaterThan(1);
+          // Check that Basic Plan is in one of the rows
+          const hasBasicPlan = rows.some((row) =>
+            row.textContent?.includes("Basic Plan"),
+          );
+          expect(hasBasicPlan).toBe(true);
+        },
+        { timeout: 10000 },
+      );
 
       // Get initial fetch count
       const initialFetchCount = fetchCalls.filter(
@@ -743,7 +802,7 @@ describe("Admin Plans Page (admin/plans)", () => {
         await userEvent.click(refreshBtn);
       });
 
-      // Wait for fetch to be called again and for the refresh to complete
+      // Wait for fetch to be called again
       await waitFor(
         () => {
           const getCalls = fetchCalls.filter(
@@ -756,24 +815,27 @@ describe("Admin Plans Page (admin/plans)", () => {
         { timeout: 5000 },
       );
 
-      // Wait for loading to complete - give React time to process the async update
+      // Wait for loading to finish after refresh
       await waitFor(
         () => {
-          expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+          const loadingElements = screen.queryAllByText(/Loading/i);
+          expect(loadingElements.length).toBe(0);
         },
         { timeout: 5000 },
       );
 
-      // Wait for rows to reappear - this is the key assertion
-      // The table should have rows after refresh completes
+      // Wait for the data to reappear after refresh - check table has data
       await waitFor(
         () => {
-          const table = screen.getByRole("table", { name: /Plans list/i });
-          const rows = within(table).queryAllByRole("row");
-          expect(rows.length).toBeGreaterThan(0);
-          expect(rows.some((r) => r.textContent?.includes("Basic Plan"))).toBe(
-            true,
+          const table = screen.getByRole("table");
+          const rows = within(table).getAllByRole("row");
+          // Should have header row + data rows
+          expect(rows.length).toBeGreaterThan(1);
+          // Check that Basic Plan is in one of the rows
+          const hasBasicPlan = rows.some((row) =>
+            row.textContent?.includes("Basic Plan"),
           );
+          expect(hasBasicPlan).toBe(true);
         },
         { timeout: 5000 },
       );

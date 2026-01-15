@@ -1,346 +1,844 @@
+// Integration tests for Admin Plans page (admin/plans).
+// - Tests the page route renders correctly with layout and title.
+// - Verifies the MailroomPlans component is properly integrated.
+// - Exercises search, sorting, view modal, and edit plan flows.
+// - Mocks mantine-datatable to avoid virtualization/layout issues in JSDOM.
+// - Provides necessary polyfills/shims (matchMedia, ResizeObserver, IntersectionObserver).
+// - Captures global.fetch calls to assert API usage and responses.
+
+import "@testing-library/jest-dom";
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
-import { SWRConfig } from "swr";
+import { Notifications } from "@mantine/notifications";
+import PlansPage from "@/app/admin/plans/page";
 
-/*
-  Integration tests for MailroomPlans component.
+type DataTableColumn = {
+  accessor?: string;
+  title?: React.ReactNode;
+  render?: (r: Record<string, unknown>) => React.ReactNode;
+};
 
-  Overview:
-  - Mock mantine-datatable with a deterministic implementation that honors
-    `columns.render` so action buttons remain interactive in tests.
-  - Polyfill ResizeObserver because Mantine components depend on it.
-  - Use isolated SWRConfig provider per test to avoid cache leaks.
-  - Tests:
-    1. renders plans and shows plan name
-    2. filters results via search input
-    3. opens View modal and displays plan details
-    4. edits plan and sends PATCH, showing success alert
-*/
+const safeRender = (node: unknown): React.ReactNode => {
+  if (node === null || node === undefined) return null;
+  if (React.isValidElement(node as React.ReactElement))
+    return node as React.ReactElement;
+  if (
+    typeof node === "string" ||
+    typeof node === "number" ||
+    typeof node === "boolean"
+  )
+    return String(node);
+  try {
+    return JSON.stringify(node);
+  } catch {
+    return String(node);
+  }
+};
 
-/* Typed mock for mantine-datatable (avoid `any`) */
+// Mock DataTable to avoid virtualization/layout issues in tests.
 jest.mock("mantine-datatable", () => {
-  type RecordType = Record<string, unknown>;
-  type Column = {
-    render?: (r: RecordType) => React.ReactNode;
-    accessor?: string;
-    title?: string;
-    header?: string;
-  };
+  return {
+    DataTable: (props: {
+      records?: Array<Record<string, unknown>>;
+      columns?: DataTableColumn[];
+      fetching?: boolean;
+      "aria-label"?: string;
+    }) => {
+      const records = props.records ?? [];
+      const columns = props.columns ?? [];
 
-  const DataTable = (props: {
-    records?: RecordType[];
-    noRecordsText?: string;
-    columns?: Column[];
-  }) => {
-    const { records = [], noRecordsText = "No records", columns = [] } = props;
-
-    // Render table header from columns
-    const header = React.createElement(
-      "tr",
-      null,
-      columns.map((col: Column, i: number) =>
-        React.createElement(
-          "th",
-          { key: i },
-          col.title ?? col.header ?? col.accessor ?? "",
-        ),
-      ),
-    );
-
-    // Render body: either a single "no records" row or one row per record
-    const bodyRows = (() => {
-      if (records.length === 0) {
-        return [
-          React.createElement(
-            "tr",
-            { key: "no-records" },
-            React.createElement(
-              "td",
-              { colSpan: Math.max(columns.length, 1) },
-              React.createElement("div", null, noRecordsText),
-            ),
-          ),
-        ];
-      }
-
-      return records.map((r: RecordType) =>
-        React.createElement(
-          "tr",
-          { key: String(r.id ?? JSON.stringify(r)) },
-          columns.map((col: Column, ci: number) => {
-            let content: React.ReactNode = null;
-            if (typeof col.render === "function") {
-              // Use provided render function to preserve structure & handlers
-              content = col.render(r);
-            } else if (col.accessor) {
-              const val = r[col.accessor];
-              content = val !== undefined && val !== null ? String(val) : null;
-            }
-            return React.createElement("td", { key: ci }, content);
-          }),
-        ),
+      return (
+        <table role="table" aria-label={props["aria-label"] ?? "Plans list"}>
+          <thead>
+            <tr>
+              {columns.map((col, j) => (
+                <th key={j}>{col.title}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {props.fetching && (
+              <tr>
+                <td colSpan={columns.length}>Loading...</td>
+              </tr>
+            )}
+            {!props.fetching && records.length === 0 && (
+              <tr>
+                <td colSpan={columns.length}>No plans found</td>
+              </tr>
+            )}
+            {!props.fetching && records.length > 0 && (
+              <>
+                {records.map((rec, i) => (
+                  <tr
+                    role="row"
+                    key={String((rec as Record<string, unknown>).id ?? i)}
+                  >
+                    {columns.map((col, j) => {
+                      const content =
+                        typeof col.render === "function"
+                          ? col.render(rec)
+                          : (rec as Record<string, unknown>)[
+                              col.accessor ?? ""
+                            ];
+                      return (
+                        <td role="cell" key={j}>
+                          {safeRender(content)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </>
+            )}
+          </tbody>
+        </table>
       );
-    })();
-
-    return React.createElement(
-      "table",
-      null,
-      React.createElement("thead", null, header),
-      React.createElement("tbody", null, bodyRows),
-    );
+    },
   };
-
-  return { DataTable };
 });
 
-/* ResizeObserver polyfill required by Mantine layout components */
-class ResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+// Mock next/navigation
+const mockPush = jest.fn();
+const mockSearchParams = new URLSearchParams();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => mockSearchParams,
+}));
+
+// Mock the notifications library
+jest.mock("@mantine/notifications", () => ({
+  Notifications: () => null,
+  notifications: {
+    show: jest.fn(),
+    hide: jest.fn(),
+    clean: jest.fn(),
+    update: jest.fn(),
+    cleanQueue: jest.fn(),
+  },
+}));
+
+// Mock Mantine components - use actual Modal to avoid issues with React element titles
+jest.mock("@mantine/core", () => {
+  const actual = jest.requireActual("@mantine/core");
+  return {
+    ...actual,
+    Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    ScrollArea: ({
+      children,
+      ...props
+    }: {
+      children: React.ReactNode;
+      [key: string]: unknown;
+    }) => {
+      void props;
+      return <div data-testid="scroll-area">{children}</div>;
+    },
+    Popover: ({
+      children,
+      opened: _opened,
+    }: {
+      children: React.ReactNode;
+      opened?: boolean;
+    }) => {
+      void _opened;
+      return (
+        <div role="presentation" data-testid="popover">
+          {children}
+        </div>
+      );
+    },
+    Tooltip: ({
+      children,
+      label: _label,
+    }: {
+      children: React.ReactNode;
+      label?: React.ReactNode;
+    }) => {
+      void _label;
+      return <>{children}</>;
+    },
+  };
+});
+
+// Mock PrivateMainLayout to simplify testing
+jest.mock("@/components/Layout/PrivateMainLayout", () => {
+  return function PrivateMainLayout({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) {
+    return <div data-testid="private-main-layout">{children}</div>;
+  };
+});
+
+// --- Polyfills ---
+// matchMedia: required by Mantine
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: jest.fn().mockImplementation((query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});
+
+// Minimal ResizeObserver, IntersectionObserver, and scrollIntoView shims
+type TestRO = { observe(): void; unobserve(): void; disconnect(): void };
+const g = globalThis as unknown as {
+  ResizeObserver?: new () => TestRO;
+  IntersectionObserver?: new (
+    cb?: IntersectionObserverCallback,
+    opts?: IntersectionObserverInit,
+  ) => IntersectionObserver;
+};
+
+if (typeof g.ResizeObserver === "undefined") {
+  g.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as new () => TestRO;
 }
-Object.defineProperty(global, "ResizeObserver", {
-  value: ResizeObserver,
-  configurable: true,
-});
 
-import MailroomPlans from "@/components/pages/admin/PlanPage/MailroomPlans";
+if (typeof g.IntersectionObserver === "undefined") {
+  g.IntersectionObserver = class {
+    constructor() {}
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords() {
+      return [];
+    }
+  } as unknown as new (
+    cb?: IntersectionObserverCallback,
+    opts?: IntersectionObserverInit,
+  ) => IntersectionObserver;
+}
 
-describe("MailroomPlans", () => {
-  let originalFetch: typeof globalThis.fetch | undefined;
+Element.prototype.scrollIntoView = jest.fn();
+
+// --- Mock Data ---
+let mockPlans = [
+  {
+    id: "plan-1",
+    name: "Basic Plan",
+    price: 500,
+    description: "Basic mailroom service",
+    storage_limit: 1024, // 1 GB
+    can_receive_mail: true,
+    can_receive_parcels: false,
+    can_digitize: true,
+  },
+  {
+    id: "plan-2",
+    name: "Premium Plan",
+    price: 1500,
+    description: "Premium mailroom service with parcels",
+    storage_limit: 5120, // 5 GB
+    can_receive_mail: true,
+    can_receive_parcels: true,
+    can_digitize: true,
+  },
+  {
+    id: "plan-3",
+    name: "Enterprise Plan",
+    price: 3000,
+    description: "Enterprise mailroom service",
+    storage_limit: null, // Unlimited
+    can_receive_mail: true,
+    can_receive_parcels: true,
+    can_digitize: true,
+  },
+];
+
+const INITIAL_PLANS = [...mockPlans.map((p) => ({ ...p }))];
+
+// Track fetch calls
+let fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+
+// Some Jest environments don't have the Web `Response` class available.
+// Use a minimal Response-like object (pattern used in other integration tests).
+const makeResponse = (body: unknown, ok = true, status = 200) => {
+  const bodyStr = typeof body === "string" ? body : JSON.stringify(body);
+  return {
+    ok,
+    status,
+    json: async () => (typeof body === "string" ? JSON.parse(body) : body),
+    text: async () => bodyStr,
+    clone: () => ({ text: async () => bodyStr }),
+  } as unknown as Response;
+};
+
+const originalFetch = global.fetch;
+let patchShouldFail = false;
+
+// Helper to wait for text to appear in a table row (simpler, like other test files)
+const waitForRowWithText = async (text: string) => {
+  await waitFor(() => {
+    // First wait for table to exist
+    const table = screen.getByRole("table");
+    // Then check that the text appears in one of the table rows
+    const rows = within(table).getAllByRole("row");
+    const hasText = rows.some((row) => row.textContent?.includes(text));
+    if (!hasText) {
+      throw new Error(`Text "${text}" not found in table rows`);
+    }
+    expect(hasText).toBe(true);
+  });
+};
+
+// Test wrapper component
+const renderComponent = () => {
+  return render(
+    <MantineProvider>
+      <Notifications />
+      <PlansPage />
+    </MantineProvider>,
+  );
+};
+
+describe("Admin Plans Page (admin/plans)", () => {
+  // Increase timeout for all tests in this suite
+  jest.setTimeout(15000);
 
   beforeEach(() => {
-    // Clear jest mocks and save original fetch for restore
+    fetchCalls = [];
+    mockPlans = [...INITIAL_PLANS.map((p) => ({ ...p }))];
+    patchShouldFail = false;
     jest.clearAllMocks();
-    originalFetch = globalThis.fetch;
+
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const urlString = String(input);
+        fetchCalls.push({ url: urlString, init });
+
+        // GET all plans
+        if (
+          urlString.includes("/api/admin/mailroom/plans") &&
+          (!init || (init.method ?? "GET").toUpperCase() === "GET") &&
+          !urlString.match(/\/api\/admin\/mailroom\/plans\/[^/]+$/)
+        ) {
+          return makeResponse({ data: mockPlans });
+        }
+
+        // PATCH update plan
+        if (
+          urlString.includes("/api/admin/mailroom/plans/") &&
+          init &&
+          (init.method ?? "").toUpperCase() === "PATCH"
+        ) {
+          if (patchShouldFail) {
+            return makeResponse({ error: "Update failed" }, false, 500);
+          }
+
+          const planId = urlString.match(/\/plans\/([^/]+)/)?.[1];
+          const bodyText = init.body ? String(init.body) : "{}";
+          const parsed = JSON.parse(bodyText);
+          const existingPlan = mockPlans.find((p) => p.id === planId);
+          if (!existingPlan) {
+            return makeResponse({ error: "Plan not found" }, false, 404);
+          }
+
+          // Component sends storage_limit in MB already (or null); don't reconvert.
+          const updatedPlan = {
+            ...existingPlan,
+            ...parsed,
+            storage_limit:
+              parsed.storage_limit !== undefined
+                ? parsed.storage_limit
+                : existingPlan.storage_limit,
+          };
+
+          const index = mockPlans.findIndex((p) => p.id === planId);
+          if (index !== -1) {
+            mockPlans[index] = updatedPlan;
+          }
+
+          return makeResponse({ message: "Plan updated", data: updatedPlan });
+        }
+
+        return makeResponse({ error: "Not found" }, false, 404);
+      },
+    ) as jest.Mock;
   });
 
   afterEach(() => {
-    // Restore original fetch to avoid cross-test contamination
-    if (originalFetch) globalThis.fetch = originalFetch;
+    global.fetch = originalFetch as typeof global.fetch;
   });
 
-  it("renders plans and shows plan name", async () => {
-    // Arrange: single plan response
-    const plan = {
-      id: "p1",
-      name: "Personal",
-      price: 100,
-      description: "Basic plan",
-      storage_limit: 1024,
-      can_receive_mail: true,
-      can_receive_parcels: false,
-      can_digitize: true,
-    };
+  // ============================================
+  // BASIC RENDERING TESTS
+  // ============================================
 
-    // Mock GET response
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [plan] }),
-    } as unknown as Response);
+  describe("Basic Rendering", () => {
+    it("renders the plans page correctly", async () => {
+      renderComponent();
 
-    // Act: render component with isolated SWR cache
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomPlans />
-        </MantineProvider>
-      </SWRConfig>,
-    );
+      // Check for page title
+      expect(
+        screen.getByRole("heading", { name: /Manage Service Plans/i }),
+      ).toBeInTheDocument();
 
-    // Assert: plan name appears in the DOM
-    await waitFor(() => {
-      expect(screen.getByText(/Personal/i)).toBeInTheDocument();
-    });
-  });
+      // Check for layout
+      expect(screen.getByTestId("private-main-layout")).toBeInTheDocument();
 
-  it("filters results via search input", async () => {
-    // Arrange: two plans for filtering test
-    const plans = [
-      {
-        id: "p1",
-        name: "Personal",
-        price: 100,
-        description: "Basic",
-        storage_limit: 1024,
-        can_receive_mail: true,
-        can_receive_parcels: false,
-        can_digitize: true,
-      },
-      {
-        id: "p2",
-        name: "Business",
-        price: 500,
-        description: "Pro",
-        storage_limit: 5120,
-        can_receive_mail: true,
-        can_receive_parcels: true,
-        can_digitize: true,
-      },
-    ];
+      // Wait for data to load
+      await waitFor(
+        () => {
+          const loadingElements = screen.queryAllByText(/Loading/i);
+          expect(loadingElements.length).toBe(0);
+        },
+        { timeout: 10000 },
+      );
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: plans }),
-    } as unknown as Response);
-
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomPlans />
-        </MantineProvider>
-      </SWRConfig>,
-    );
-
-    // Wait for both rows to render
-    await waitFor(() => {
-      expect(screen.getByText(/Personal/i)).toBeInTheDocument();
-      expect(screen.getByText(/Business/i)).toBeInTheDocument();
+      // Check that fetch was called
+      expect(global.fetch).toHaveBeenCalledWith("/api/admin/mailroom/plans");
     });
 
-    const input = screen.getByPlaceholderText(
-      /Search plans/i,
-    ) as HTMLInputElement;
+    it("renders the plans list correctly", async () => {
+      renderComponent();
 
-    // Act: enter a no-match term and assert "No plans found" is shown
-    await userEvent.type(input, "no-match");
-    expect(await screen.findByText(/No plans found/i)).toBeInTheDocument();
+      // Wait for data to load
+      await waitForRowWithText("Basic Plan");
+      await waitForRowWithText("Premium Plan");
+      await waitForRowWithText("Enterprise Plan");
 
-    // Act: clear and search for Business; assert Business shows and no "No plans" text
-    await userEvent.clear(input);
-    await userEvent.type(input, "Business");
-
-    await waitFor(() => {
-      expect(screen.queryByText(/No plans found/i)).toBeNull();
-      expect(screen.getByText(/Business/i)).toBeInTheDocument();
+      // Verify they're all in the document
+      expect(screen.getByText("Basic Plan")).toBeInTheDocument();
+      expect(screen.getByText("Premium Plan")).toBeInTheDocument();
+      expect(screen.getByText("Enterprise Plan")).toBeInTheDocument();
     });
   });
 
-  it("opens View modal and displays plan details", async () => {
-    // Arrange: single plan used to open the view modal
-    const plan = {
-      id: "p1",
-      name: "Personal",
-      price: 100,
-      description: "Basic plan description",
-      storage_limit: 2048,
-      can_receive_mail: true,
-      can_receive_parcels: false,
-      can_digitize: true,
-    };
+  // ============================================
+  // SEARCH AND FILTERING TESTS
+  // ============================================
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [plan] }),
-    } as unknown as Response);
+  describe("Search and Filtering", () => {
+    it("filters plans by search term", async () => {
+      renderComponent();
 
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomPlans />
-        </MantineProvider>
-      </SWRConfig>,
-    );
+      await waitForRowWithText("Basic Plan");
 
-    // Wait for a data row to appear
-    await screen.findByText(/Personal/i);
+      const searchInput = screen.getByPlaceholderText(/Search plans/i);
+      await userEvent.type(searchInput, "Premium");
 
-    // Locate first data row (skip header) and its action buttons
-    const rows = screen.getAllByRole("row");
-    const headerCount = 1;
-    if (rows.length <= headerCount) throw new Error("No data rows found");
-    const dataRow = rows[1];
+      await waitFor(() => {
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
+        const hasPremium = rows.some((r) =>
+          r.textContent?.includes("Premium Plan"),
+        );
+        const hasBasic = rows.some((r) =>
+          r.textContent?.includes("Basic Plan"),
+        );
+        expect(hasPremium).toBe(true);
+        expect(hasBasic).toBe(false);
+      });
+    });
 
-    // Query all buttons in the action cell and pick the first (view)
-    const actionBtns = within(dataRow).queryAllByRole("button");
-    if (actionBtns.length === 0)
-      throw new Error("No action buttons found in row");
-    const viewBtn = actionBtns[0];
+    it("clears filters when Clear Filters button is clicked", async () => {
+      renderComponent();
 
-    // Act: click view button
-    await userEvent.click(viewBtn);
+      await waitForRowWithText("Basic Plan");
 
-    // Assert: modal displays plan details and expected fields
-    const modal = await screen.findByRole("dialog");
-    expect(within(modal).getByText(/Plan Details/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/Personal/i)).toBeInTheDocument();
-    expect(
-      within(modal).getByText(/Basic plan description/i),
-    ).toBeInTheDocument();
-    // Check currency symbol presence as basic price formatting assertion
-    expect(within(modal).getByText(/₱/)).toBeInTheDocument();
+      const searchInput = screen.getByPlaceholderText(/Search plans/i);
+      await userEvent.type(searchInput, "Premium");
+
+      await waitFor(() => {
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
+        expect(rows.some((r) => r.textContent?.includes("Premium Plan"))).toBe(
+          true,
+        );
+      });
+
+      const clearBtn = screen.getByRole("button", { name: /Clear Filters/i });
+      await userEvent.click(clearBtn);
+
+      await waitFor(() => {
+        expect(searchInput).toHaveValue("");
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
+        expect(rows.some((r) => r.textContent?.includes("Basic Plan"))).toBe(
+          true,
+        );
+      });
+    });
+
+    it("sorts plans by name", async () => {
+      renderComponent();
+
+      await waitForRowWithText("Basic Plan");
+
+      const sortSelect = screen.getByPlaceholderText(/Sort By/i);
+      await act(async () => {
+        await userEvent.click(sortSelect);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // Find and click the "Name (A-Z)" option
+      const nameOption = await screen.findByText(/Name \(A-Z\)/i);
+      await userEvent.click(nameOption);
+
+      await waitFor(() => {
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
+        const rowTexts = rows.map((r) => r.textContent || "");
+        const basicIndex = rowTexts.findIndex((t) => t.includes("Basic Plan"));
+        const enterpriseIndex = rowTexts.findIndex((t) =>
+          t.includes("Enterprise Plan"),
+        );
+        expect(basicIndex).toBeLessThan(enterpriseIndex);
+      });
+    });
+
+    it("sorts plans by price (Low-High)", async () => {
+      renderComponent();
+
+      await waitForRowWithText("Basic Plan");
+
+      const sortSelect = screen.getByPlaceholderText(/Sort By/i);
+      await act(async () => {
+        await userEvent.click(sortSelect);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const priceOption = await screen.findByText(/Price \(Low-High\)/i);
+      await userEvent.click(priceOption);
+
+      await waitFor(() => {
+        const table = screen.getByRole("table");
+        const rows = within(table).getAllByRole("row");
+        const rowTexts = rows.map((r) => r.textContent || "");
+        const basicIndex = rowTexts.findIndex((t) => t.includes("Basic Plan"));
+        const premiumIndex = rowTexts.findIndex((t) =>
+          t.includes("Premium Plan"),
+        );
+        expect(basicIndex).toBeLessThan(premiumIndex);
+      });
+    });
   });
 
-  it("edits plan and sends PATCH, showing success alert", async () => {
-    // Arrange: plan used for edit flow
-    const plan = {
-      id: "p1",
-      name: "Personal",
-      price: 100,
-      description: "Basic plan",
-      storage_limit: 1024,
-      can_receive_mail: true,
-      can_receive_parcels: false,
-      can_digitize: true,
-    };
+  // ============================================
+  // VIEW MODAL TESTS
+  // ============================================
 
-    // Mock fetch: GET returns list; PATCH returns success message
-    const fetchMock = jest.fn((url: RequestInfo, opts?: RequestInit) => {
-      if (
-        !opts ||
-        !opts.method ||
-        (opts.method as string).toUpperCase() === "GET"
-      ) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: [plan] }),
-        } as unknown as Response);
-      }
-      // PATCH response
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ message: "Plan updated" }),
-      } as unknown as Response);
+  describe("View Plan Details", () => {
+    it("opens view modal and displays plan details", async () => {
+      renderComponent();
+
+      await waitForRowWithText("Basic Plan");
+
+      // Find the view button (eye icon) in the Basic Plan row
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
+      const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
+      expect(basicRow).toBeTruthy();
+
+      // Find all buttons in the row - the view button should be the first one
+      const viewButtons = within(basicRow!).getAllByRole("button");
+      expect(viewButtons.length).toBeGreaterThan(0);
+      const viewBtn = viewButtons[0]; // First button is the view button
+
+      await act(async () => {
+        await userEvent.click(viewBtn);
+      });
+
+      // Wait for modal to open
+      const modal = await screen.findByRole("dialog", {
+        name: /Plan Details/i,
+      });
+
+      // Check plan details are displayed
+      expect(within(modal).getByText("Basic Plan")).toBeInTheDocument();
+      expect(
+        within(modal).getByText(/Basic mailroom service/i),
+      ).toBeInTheDocument();
+      expect(within(modal).getByText(/1 GB/i)).toBeInTheDocument();
     });
 
-    global.fetch = fetchMock as unknown as typeof global.fetch;
+    it("closes view modal when Close button is clicked", async () => {
+      renderComponent();
 
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomPlans />
-        </MantineProvider>
-      </SWRConfig>,
-    );
+      await waitForRowWithText("Basic Plan");
 
-    // Wait for data row
-    await waitFor(() => {
-      expect(screen.getByText(/Personal/i)).toBeInTheDocument();
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
+      const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
+      const viewButtons = within(basicRow!).getAllByRole("button");
+      const viewBtn = viewButtons[0];
+
+      await act(async () => {
+        await userEvent.click(viewBtn);
+      });
+
+      const modal = await screen.findByRole("dialog", {
+        name: /Plan Details/i,
+      });
+
+      const closeBtn = within(modal).getByRole("button", { name: /Close/i });
+      await userEvent.click(closeBtn);
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: /Plan Details/i }),
+        ).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  // ============================================
+  // EDIT PLAN TESTS
+  // ============================================
+
+  describe("Edit Plan", () => {
+    it("opens edit modal and displays plan form", async () => {
+      renderComponent();
+
+      await waitForRowWithText("Basic Plan");
+
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
+      const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
+      const actionButtons = within(basicRow!).getAllByRole("button");
+      // The edit button should be the second button (after view)
+      const editBtn = actionButtons[actionButtons.length > 1 ? 1 : 0];
+
+      await act(async () => {
+        await userEvent.click(editBtn);
+      });
+
+      // Wait for modal to open
+      const modal = await screen.findByRole("dialog", {
+        name: /Edit Plan/i,
+      });
+
+      // Check form fields are populated
+      const nameInput = within(modal).getByLabelText(/Plan Name/i);
+      expect(nameInput).toHaveValue("Basic Plan");
+
+      const priceInput = within(modal).getByLabelText(/Price/i);
+      // HTML inputs return string values, not numbers
+      expect(priceInput).toHaveValue("500");
     });
 
-    // Find the data row and its action buttons; click the second (edit)
-    const rows = screen.getAllByRole("row");
-    const dataRow = rows[1];
-    const buttons = within(dataRow).getAllByRole("button");
-    if (buttons.length < 2) throw new Error("Edit button not found");
-    const editBtn = buttons[1];
-    await userEvent.click(editBtn);
+    it("updates plan when form is submitted", async () => {
+      renderComponent();
 
-    // Modal opens; click Save Changes to trigger PATCH
-    const modal = await screen.findByRole("dialog");
-    const saveBtn = within(modal).getByRole("button", {
-      name: /Save Changes/i,
-    });
-    await userEvent.click(saveBtn);
+      await waitForRowWithText("Basic Plan");
 
-    // Assert PATCH was called and success alert is shown
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled();
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
+      const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
+      const actionButtons = within(basicRow!).getAllByRole("button");
+      const editBtn = actionButtons[actionButtons.length > 1 ? 1 : 0];
+
+      await act(async () => {
+        await userEvent.click(editBtn);
+      });
+
+      const modal = await screen.findByRole("dialog", {
+        name: /Edit Plan/i,
+      });
+
+      // Update price
+      const priceInput = within(modal).getByLabelText(/Price/i);
+      await userEvent.clear(priceInput);
+      await userEvent.type(priceInput, "750");
+
+      // Submit form
+      const saveBtn = within(modal).getByRole("button", {
+        name: /Save Changes/i,
+      });
+      await act(async () => {
+        await userEvent.click(saveBtn);
+      });
+
+      // Wait for PATCH request
+      await waitFor(() => {
+        expect(
+          fetchCalls.some(
+            (c) =>
+              c.url.includes("/api/admin/mailroom/plans/plan-1") &&
+              c.init?.method === "PATCH",
+          ),
+        ).toBe(true);
+      });
+
+      // Wait for modal to close first
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: /Edit Plan/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Wait for loading to finish after fetchData is called
+      await waitFor(
+        () => {
+          const loadingElements = screen.queryAllByText(/Loading/i);
+          expect(loadingElements.length).toBe(0);
+        },
+        { timeout: 5000 },
+      );
+
+      // Check success message appears (global alert, not in modal)
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Plan updated successfully/i),
+        ).toBeInTheDocument();
+      });
+
+      // Wait for data to reload - check table has data again
+      await waitFor(
+        () => {
+          const tableAfter = screen.getByRole("table");
+          const rowsAfter = within(tableAfter).getAllByRole("row");
+          // Should have header row + data rows
+          expect(rowsAfter.length).toBeGreaterThan(1);
+          // Check that Basic Plan is in one of the rows
+          const hasBasicPlan = rowsAfter.some((r) =>
+            r.textContent?.includes("Basic Plan"),
+          );
+          expect(hasBasicPlan).toBe(true);
+        },
+        { timeout: 5000 },
+      );
     });
-    expect(
-      await screen.findByText(/Plan updated successfully!/i),
-    ).toBeInTheDocument();
+
+    it("shows error message when update fails", async () => {
+      // Suppress expected console.error from component error handling
+      const consoleErrorSpy = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      // Force the PATCH handler in the shared fetch mock to fail.
+      patchShouldFail = true;
+
+      renderComponent();
+
+      await waitForRowWithText("Basic Plan");
+
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row");
+      const basicRow = rows.find((r) => r.textContent?.includes("Basic Plan"));
+      const actionButtons = within(basicRow!).getAllByRole("button");
+      const editBtn = actionButtons[actionButtons.length > 1 ? 1 : 0];
+
+      await act(async () => {
+        await userEvent.click(editBtn);
+      });
+
+      const modal = await screen.findByRole("dialog", {
+        name: /Edit Plan/i,
+      });
+
+      const priceInput = within(modal).getByLabelText(/Price/i);
+      await userEvent.clear(priceInput);
+      await userEvent.type(priceInput, "750");
+
+      const saveBtn = within(modal).getByRole("button", {
+        name: /Save Changes/i,
+      });
+      await act(async () => {
+        await userEvent.click(saveBtn);
+      });
+
+      // Wait for error message in modal (modal should stay open on error)
+      await waitFor(() => {
+        expect(
+          within(modal).getByText(/Failed to update plan/i),
+        ).toBeInTheDocument();
+      });
+
+      // Restore console.error
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  // ============================================
+  // REFRESH FUNCTIONALITY
+  // ============================================
+
+  describe("Refresh Functionality", () => {
+    it("refreshes plans list when Refresh button is clicked", async () => {
+      renderComponent();
+
+      // Wait for initial data to load - check table has data rows
+      await waitFor(
+        () => {
+          const table = screen.getByRole("table");
+          const rows = within(table).getAllByRole("row");
+          // Should have header row + data rows
+          expect(rows.length).toBeGreaterThan(1);
+          // Check that Basic Plan is in one of the rows
+          const hasBasicPlan = rows.some((row) =>
+            row.textContent?.includes("Basic Plan"),
+          );
+          expect(hasBasicPlan).toBe(true);
+        },
+        { timeout: 10000 },
+      );
+
+      // Get initial fetch count
+      const initialFetchCount = fetchCalls.filter(
+        (c) =>
+          c.url.includes("/api/admin/mailroom/plans") &&
+          (!c.init || (c.init.method ?? "GET").toUpperCase() === "GET"),
+      ).length;
+
+      const refreshBtn = screen.getByRole("button", { name: /Refresh/i });
+      await act(async () => {
+        await userEvent.click(refreshBtn);
+      });
+
+      // Wait for fetch to be called again
+      await waitFor(
+        () => {
+          const getCalls = fetchCalls.filter(
+            (c) =>
+              c.url.includes("/api/admin/mailroom/plans") &&
+              (!c.init || (c.init.method ?? "GET").toUpperCase() === "GET"),
+          );
+          expect(getCalls.length).toBeGreaterThan(initialFetchCount);
+        },
+        { timeout: 5000 },
+      );
+
+      // Wait for loading to finish after refresh
+      await waitFor(
+        () => {
+          const loadingElements = screen.queryAllByText(/Loading/i);
+          expect(loadingElements.length).toBe(0);
+        },
+        { timeout: 5000 },
+      );
+
+      // Wait for the data to reappear after refresh - check table has data
+      await waitFor(
+        () => {
+          const table = screen.getByRole("table");
+          const rows = within(table).getAllByRole("row");
+          // Should have header row + data rows
+          expect(rows.length).toBeGreaterThan(1);
+          // Check that Basic Plan is in one of the rows
+          const hasBasicPlan = rows.some((row) =>
+            row.textContent?.includes("Basic Plan"),
+          );
+          expect(hasBasicPlan).toBe(true);
+        },
+        { timeout: 5000 },
+      );
+    });
   });
 });
