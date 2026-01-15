@@ -240,6 +240,8 @@ export default function MailroomPackages() {
 
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [serverTotalCount, setServerTotalCount] = useState(0);
+  const [counts, setCounts] = useState<Record<string, number>>({});
 
   const searchParams = useSearchParams();
 
@@ -255,8 +257,36 @@ export default function MailroomPackages() {
     "Empty" | "Normal" | "Near Full" | "Full"
   >("Normal");
 
-  // Single SWR key for combined endpoint
-  const packagesKey = API_ENDPOINTS.admin.mailroom.packages;
+  // Build SWR key with filters and pagination
+  const packagesKey = useMemo(() => {
+    const baseUrl = API_ENDPOINTS.admin.mailroom.packages;
+    if (activeTab === "archive") return null;
+
+    const params = new URLSearchParams();
+    params.set("page", page.toString());
+    params.set("limit", pageSize.toString());
+
+    let statusFilter: string[] = [];
+    if (activeTab === "active") statusFilter = ["STORED"];
+    else if (activeTab === "requests")
+      statusFilter = [
+        "REQUEST_TO_RELEASE",
+        "REQUEST_TO_DISPOSE",
+        "REQUEST_TO_SCAN",
+      ];
+    else if (activeTab === "released") statusFilter = ["RELEASED", "RETRIEVED"];
+    else if (activeTab === "disposed") statusFilter = ["DISPOSED"];
+
+    // Override with explicit status filter if set (Inventory tab)
+    if (activeTab === "active" && filterStatus) statusFilter = [filterStatus];
+
+    if (statusFilter.length > 0) {
+      params.set("status", statusFilter.join(","));
+    }
+
+    return `${baseUrl}?${params.toString()}`;
+  }, [page, pageSize, search, activeTab, filterStatus]);
+
   const fetcher = async (url: string) => {
     // avoid stale cached responses when revalidating
     const res = await fetch(url, { cache: "no-store" });
@@ -305,6 +335,13 @@ export default function MailroomPackages() {
     setRegistrations(regs);
     setLockers(lks);
     setAssignedLockers(assigned);
+
+    if (payload.meta?.total !== undefined) {
+      setServerTotalCount(payload.meta.total);
+    }
+    if (payload.counts) {
+      setCounts(payload.counts);
+    }
 
     if (archivedData) {
       setArchivedPackages(archivedData.packages || []);
@@ -910,7 +947,7 @@ export default function MailroomPackages() {
     }
   };
 
-  // --- FILTER LOGIC --- Optimized with useMemo to prevent unnecessary recalculations
+  // --- FILTER LOGIC ---
   const filteredPackages = useMemo(() => {
     const q = (search || "").toLowerCase();
 
@@ -928,62 +965,20 @@ export default function MailroomPackages() {
         status.includes(q) ||
         lockerCode.includes(q);
 
-      const matchesStatus = filterStatus ? p.status === filterStatus : true;
       const matchesType = filterType ? p.package_type === filterType : true;
 
-      // Tab Logic - apply filters after tab filtering
-      if (activeTab === "requests") {
-        return (
-          (p.status ?? "").includes("REQUEST") &&
-          matchesSearch &&
-          matchesStatus &&
-          matchesType
-        );
-      }
-      if (activeTab === "active") {
-        return (
-          (p.status ?? "") === "STORED" &&
-          matchesSearch &&
-          matchesStatus &&
-          matchesType
-        );
-      }
-      if (activeTab === "released") {
-        const s = p.status ?? "";
-        return (
-          (s === "RELEASED" || s === "RETRIEVED") &&
-          matchesSearch &&
-          matchesStatus &&
-          matchesType
-        );
-      }
-      if (activeTab === "disposed") {
-        return (
-          (p.status ?? "") === "DISPOSED" &&
-          matchesSearch &&
-          matchesStatus &&
-          matchesType
-        );
-      }
-      if (activeTab === "archive") {
-        return false; // Archived packages are managed by archivedPackages state
-      }
-
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch && matchesType;
     });
-  }, [packages, search, filterStatus, filterType, activeTab]);
+  }, [packages, search, filterType]);
 
-  // Memoize paginated packages to prevent unnecessary recalculations
+  // Memoize paginated packages
   const paginatedPackages = useMemo(() => {
-    return activeTab === "archive"
-      ? archivedPackages
-      : filteredPackages.slice((page - 1) * pageSize, page * pageSize);
-  }, [activeTab, archivedPackages, filteredPackages, page, pageSize]);
+    return activeTab === "archive" ? archivedPackages : filteredPackages;
+  }, [activeTab, archivedPackages, filteredPackages]);
 
   const totalRecords = useMemo(
-    () =>
-      activeTab === "archive" ? archivedTotalCount : filteredPackages.length,
-    [activeTab, archivedTotalCount, filteredPackages.length],
+    () => (activeTab === "archive" ? archivedTotalCount : serverTotalCount),
+    [activeTab, archivedTotalCount, serverTotalCount],
   );
 
   // Memoize status color function to prevent recreation on each render
@@ -1002,10 +997,7 @@ export default function MailroomPackages() {
   }, []);
 
   // Count requests for badge - memoized to prevent recalculation
-  const requestCount = useMemo(
-    () => packages.filter((p) => p.status.includes("REQUEST")).length,
-    [packages],
-  );
+  const requestCount = useMemo(() => counts.requests || 0, [counts]);
 
   // Memoize DataTable columns to prevent recreation on each render
   const tableColumns = useMemo(
@@ -1109,7 +1101,7 @@ export default function MailroomPackages() {
       {
         accessor: "actions",
         title: "Actions",
-        width: 180,
+        width: activeTab !== "requests" ? 120 : 165,
         textAlign: "right" as const,
         render: (record: unknown) => {
           const pkg = record as Package;
@@ -1122,7 +1114,7 @@ export default function MailroomPackages() {
                     <Button
                       size="compact-xs"
                       color="green"
-                      variant="light"
+                      w={100}
                       leftSection={<IconRestore size={14} aria-hidden="true" />}
                       onClick={() => handleOpenRestore(pkg)}
                       aria-label={`Restore package ${pkg.package_name}`}
@@ -1141,6 +1133,7 @@ export default function MailroomPackages() {
                     <Tooltip label="Upload Scanned PDF">
                       <Button
                         size="compact-xs"
+                        w={100}
                         color="violet"
                         leftSection={<IconScan size={14} aria-hidden="true" />}
                         onClick={() => handleOpenScan(pkg)}
@@ -1154,6 +1147,7 @@ export default function MailroomPackages() {
                     <Tooltip label="Confirm Release">
                       <Button
                         size="compact-xs"
+                        w={100}
                         color="teal"
                         leftSection={
                           <IconTruckDelivery size={14} aria-hidden="true" />
@@ -1169,8 +1163,8 @@ export default function MailroomPackages() {
                     <Tooltip label="Confirm Disposal">
                       <Button
                         size="compact-xs"
+                        w={100}
                         color="red"
-                        variant="light"
                         leftSection={<IconTrash size={14} aria-hidden="true" />}
                         onClick={() => handleConfirmDisposal(pkg)}
                         aria-label={`Dispose package ${pkg.package_name}`}
@@ -1181,16 +1175,18 @@ export default function MailroomPackages() {
                   )}
 
                   {/* Standard Edit/Delete */}
-                  <Tooltip label="Edit package">
-                    <ActionIcon
-                      variant="subtle"
-                      color="blue"
-                      onClick={() => handleOpenModal(pkg)}
-                      aria-label={`Edit package ${pkg.package_name}`}
-                    >
-                      <IconEdit size={16} aria-hidden="true" />
-                    </ActionIcon>
-                  </Tooltip>
+                  {activeTab === "active" && (
+                    <Tooltip label="Edit package">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        onClick={() => handleOpenModal(pkg)}
+                        aria-label={`Edit package ${pkg.package_name}`}
+                      >
+                        <IconEdit size={16} aria-hidden="true" />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
                   <Tooltip label="Delete package">
                     <ActionIcon
                       variant="subtle"
@@ -1316,8 +1312,8 @@ export default function MailroomPackages() {
               style={{ width: 250 }}
               aria-label="Search packages by name, recipient, email, status, or locker code"
             />
-            {/* Only show status filter on Inventory tab */}
-            {activeTab === "inventory" && (
+            {/* Only show status filter on active tab */}
+            {activeTab === "active" && (
               <Select
                 placeholder="Filter by Status"
                 data={STATUSES.filter((s) => !s.includes("REQUEST")).map(
@@ -1383,7 +1379,6 @@ export default function MailroomPackages() {
                 requestCount > 0 && (
                   <Badge
                     size="xs"
-                    circle
                     color="red"
                     aria-label={`${requestCount} pending requests`}
                   >
