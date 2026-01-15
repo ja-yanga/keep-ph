@@ -4,14 +4,19 @@ import { getUserKYC, submitKYC } from "@/app/actions/post";
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // parse form and auth in parallel to reduce total latency
+    const formPromise = req.formData();
+    const authPromise = (async () => {
+      const supabase = await createClient();
+      return supabase.auth.getUser();
+    })();
+
+    const [form, authRes] = await Promise.all([formPromise, authPromise]);
+
+    const user = authRes?.data?.user;
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const form = await req.formData();
     const result = await submitKYC(form, user.id);
     return NextResponse.json(result);
   } catch (err: unknown) {
