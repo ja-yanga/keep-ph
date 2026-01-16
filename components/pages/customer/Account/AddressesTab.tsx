@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Stack,
   Title,
@@ -20,10 +20,21 @@ import {
 } from "@mantine/core";
 import { IconPlus, IconTrash, IconEdit, IconMapPin } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { Address } from "@/utils/types";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { useSession } from "@/components/SessionProvider";
+import { useAppDispatch, useAppSelector } from "@/store";
+import {
+  setAddressDetails,
+  setAddressDetailsLoading,
+} from "@/store/slices/userSlice";
+import { normalizeAddresses } from "@/utils/normalize-data/addresses";
+import {
+  T_Address,
+  T_TransformedAddress,
+  transformAddress,
+} from "@/utils/transform/address";
 
-const initialFormState: Address = {
+const initialFormState: Omit<T_TransformedAddress, "userId" | "createdAt"> = {
   id: "",
   label: "",
   line1: "",
@@ -31,50 +42,61 @@ const initialFormState: Address = {
   city: "",
   region: "",
   postal: "",
-  is_default: false,
+  isDefault: false,
 };
 
-export default function AccountAddressesTab({ userId }: { userId: string }) {
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function AccountAddressesTab() {
+  const dispatch = useAppDispatch();
+  const { addressDetails } = useAppSelector((state) => state.user);
+  const { addresses, loading } = addressDetails;
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Address | null>(null);
-  const [editing, setEditing] = useState<Address | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Omit<
+    T_TransformedAddress,
+    "userId" | "createdAt"
+  > | null>(null);
+  const [editing, setEditing] = useState<Omit<
+    T_TransformedAddress,
+    "userId" | "createdAt"
+  > | null>(null);
+
+  const { session } = useSession();
+  const userId = useMemo(
+    () => (session?.user?.id as string) || "",
+    [session?.user?.id],
+  );
+
   // Using the typed initialFormState ensures consistency
-  const [form, setForm] = useState<Address>(initialFormState);
+  const [form, setForm] =
+    useState<Omit<T_TransformedAddress, "userId" | "createdAt">>(
+      initialFormState,
+    );
 
   const load = async () => {
     console.time("addresses.load.total");
-    setLoading(true);
+    dispatch(setAddressDetailsLoading(true));
     const t0 = performance.now();
     try {
       const res = await fetch(API_ENDPOINTS.user.addresses());
       const json = await res.json();
-      // Normalize API shape to internal Address shape (avoid nested ternary)
-      let rows: Record<string, unknown>[] = [];
-      if (Array.isArray(json?.data)) {
-        rows = json.data as Record<string, unknown>[];
-      } else if (Array.isArray(json)) {
-        rows = json as Record<string, unknown>[];
-      } else {
-        rows = [];
-      }
-      const mapped = rows.map((row: Record<string, unknown>) => ({
-        id: String(row.user_address_id ?? row.id ?? ""),
-        label: String(row.user_address_label ?? row.label ?? ""),
-        line1: String(row.user_address_line1 ?? row.line1 ?? ""),
-        line2: String(row.user_address_line2 ?? row.line2 ?? ""),
-        city: String(row.user_address_city ?? row.city ?? ""),
-        region: String(row.user_address_region ?? row.region ?? ""),
-        postal: String(row.user_address_postal ?? row.postal ?? ""),
-        is_default: Boolean(
-          row.user_address_is_default ?? row.is_default ?? false,
-        ),
-        user_id: String(row.user_id ?? ""),
-      })) as Address[];
-
-      React.startTransition(() => setAddresses(mapped));
+      // Ensure only items with required T_Address properties get transformed
+      const data = normalizeAddresses(json.data);
+      const transformed = data
+        .filter(
+          (item): item is T_Address =>
+            typeof item === "object" &&
+            item !== null &&
+            "id" in item &&
+            "label" in item &&
+            "line1" in item &&
+            "city" in item &&
+            "region" in item &&
+            "postal" in item &&
+            "isDefault" in item,
+        )
+        .map((item) => transformAddress(item));
+      // React.startTransition(() => dispatch(setAddressDetails(transformed)));
+      dispatch(setAddressDetails(transformed));
 
       const t1 = performance.now();
       console.log("addresses.fetch.ms", Math.round(t1 - t0));
@@ -86,7 +108,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
         color: "red",
       });
     } finally {
-      setLoading(false);
+      dispatch(setAddressDetailsLoading(false));
       console.timeEnd("addresses.load.total");
     }
   };
@@ -101,7 +123,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
     setModalOpen(true);
   };
 
-  const openEdit = (a: Address) => {
+  const openEdit = (a: Omit<T_TransformedAddress, "userId" | "createdAt">) => {
     setEditing(a);
     // Use spread to copy all properties
     setForm({ ...a });
@@ -119,7 +141,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
       return;
     }
 
-    setLoading(true);
+    dispatch(setAddressDetailsLoading(true));
 
     try {
       const payload: Record<string, unknown> = {
@@ -130,7 +152,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
         city: form.city,
         region: form.region,
         postal: form.postal,
-        is_default: addresses.length === 0 ? true : !!form.is_default,
+        is_default: addresses.length === 0 ? true : !!form.isDefault,
         user_id: userId,
       };
 
@@ -192,7 +214,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
         color: "red",
       });
     } finally {
-      setLoading(false);
+      dispatch(setAddressDetailsLoading(false));
     }
   };
 
@@ -260,7 +282,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
                     shadow="sm"
                     // Highlight the default address
                     style={{
-                      borderLeft: a.is_default
+                      borderLeft: a.isDefault
                         ? "4px solid var(--mantine-color-blue-6)"
                         : undefined,
                     }}
@@ -276,7 +298,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
                           <Text fw={700} style={{ fontSize: "1.1rem" }}>
                             {a.label || "Unnamed Address"}
                           </Text>
-                          {a.is_default && (
+                          {a.isDefault && (
                             <Badge color="blue" variant="light" size="sm">
                               DEFAULT
                             </Badge>
@@ -317,9 +339,9 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
                             setDeleteModalOpen(true);
                           }}
                           aria-label="Delete address"
-                          disabled={a.is_default} // Prevent deleting the default address easily
+                          disabled={a.isDefault} // Prevent deleting the default address easily
                           title={
-                            a.is_default
+                            a.isDefault
                               ? "Cannot delete default address"
                               : "Delete address"
                           }
@@ -369,7 +391,7 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
               <TextInput
                 label="Address Line 2 (Unit/Landmark/Subdivision)"
                 placeholder="Building/Unit Name, Landmark (Optional)"
-                value={form.line2}
+                value={form.line2 ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, line2: e.currentTarget.value })
                 }
@@ -418,9 +440,9 @@ export default function AccountAddressesTab({ userId }: { userId: string }) {
               {addresses?.length > 0 && (
                 <Checkbox
                   label="Set as default delivery address"
-                  checked={form.is_default}
+                  checked={form.isDefault}
                   onChange={(e) =>
-                    setForm({ ...form, is_default: e.currentTarget.checked })
+                    setForm({ ...form, isDefault: e.currentTarget.checked })
                   }
                   mt="xs"
                 />
