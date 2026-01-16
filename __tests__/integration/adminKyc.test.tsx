@@ -1,336 +1,332 @@
+// Polyfill ResizeObserver and IntersectionObserver for JSDOM
+const g = globalThis as unknown as {
+  ResizeObserver: new () => ResizeObserver;
+  IntersectionObserver: new (
+    callback: IntersectionObserverCallback,
+    options?: IntersectionObserverInit,
+  ) => IntersectionObserver;
+};
+if (typeof g.ResizeObserver === "undefined") {
+  g.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}
+if (typeof g.IntersectionObserver === "undefined") {
+  g.IntersectionObserver = class {
+    constructor() {}
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords() {
+      return [];
+    }
+    readonly root: Element | null = null;
+    readonly rootMargin: string = "";
+    readonly thresholds: ReadonlyArray<number> = [];
+  } as unknown as new (
+    callback: IntersectionObserverCallback,
+    options?: IntersectionObserverInit,
+  ) => IntersectionObserver;
+}
+
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
-import { SWRConfig } from "swr";
+import AdminKycPage from "@/app/admin/kyc/page";
+import useSWR from "swr";
+import { notifications } from "@mantine/notifications";
 
-/*
-  Test file for AdminUserKyc component.
+// Mocking dependencies
+jest.mock("swr");
+jest.mock("@mantine/notifications", () => ({
+  notifications: {
+    show: jest.fn(),
+  },
+}));
 
-  Notes:
-  - We mock mantine-datatable to provide a deterministic table implementation
-    that respects `columns` and `render` so the component's action buttons
-    and cell renderers remain functional in JSDOM.
-  - ResizeObserver is polyfilled because Mantine components expect it.
-  - Each test uses SWRConfig with an isolated provider so SWR cache doesn't leak.
-  - Tests are ordered: render badge, filtering behavior, modal detail display,
-    and finally the "Mark Verified" POST flow.
-*/
-
-/* Mock mantine-datatable with typed props (avoid `any`) */
+// Mock DataTable
 jest.mock("mantine-datatable", () => {
-  type RecordType = Record<string, unknown>;
-  type Column = {
-    render?: (r: RecordType) => React.ReactNode;
-    accessor?: string;
-    title?: string;
-    header?: string;
-  };
-
-  const DataTable = (props: {
-    records?: RecordType[];
+  type MockDataTableProps<T> = {
+    records: T[];
+    columns: {
+      accessor: string;
+      title: React.ReactNode;
+      render?: (record: T) => React.ReactNode;
+    }[];
     noRecordsText?: string;
-    columns?: Column[];
-  }) => {
-    const { records = [], noRecordsText = "No records", columns = [] } = props;
-
-    // Header row: render column titles in table header
-    const headerRow = React.createElement(
-      "tr",
-      null,
-      columns.map((col: Column, i: number) =>
-        React.createElement(
-          "th",
-          { key: i },
-          col.title ?? col.header ?? col.accessor ?? "",
-        ),
-      ),
-    );
-
-    // Body rows: either a single "no records" row or one row per record.
-    const bodyRows = (() => {
-      if (records.length === 0) {
-        return [
-          React.createElement(
-            "tr",
-            { key: "no-records" },
-            React.createElement(
-              "td",
-              { colSpan: Math.max(columns.length, 1) },
-              React.createElement("div", null, noRecordsText),
-            ),
-          ),
-        ];
-      }
-
-      return records.map((r: RecordType) =>
-        React.createElement(
-          "tr",
-          { key: String((r as RecordType).id ?? JSON.stringify(r)) },
-          columns.map((col: Column, ci: number) => {
-            let cellContent: React.ReactNode = null;
-            if (typeof col.render === "function") {
-              // Use the provided render function to preserve button handlers and structure
-              cellContent = col.render(r);
-            } else if (col.accessor) {
-              const val = r[col.accessor];
-              cellContent =
-                val !== undefined && val !== null ? String(val) : null;
-            }
-            return React.createElement("td", { key: ci }, cellContent);
-          }),
-        ),
-      );
-    })();
-
-    return React.createElement(
-      "table",
-      null,
-      React.createElement("thead", null, headerRow),
-      React.createElement("tbody", null, bodyRows),
-    );
   };
 
-  return { DataTable };
+  const MockDataTable = <T extends Record<string, unknown>>({
+    records,
+    columns,
+    noRecordsText,
+  }: MockDataTableProps<T>) => (
+    <div data-testid="mock-data-table">
+      {records.length === 0 ? (
+        <div>{noRecordsText}</div>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.accessor}>{col.title}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((rec, recIdx) => (
+              <tr key={(rec.id as string) ?? recIdx}>
+                {columns.map((col, idx) => (
+                  <td key={col.accessor ?? idx}>
+                    {col.render
+                      ? col.render(rec)
+                      : (rec[col.accessor] as React.ReactNode)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+  return {
+    __esModule: true,
+    DataTable: MockDataTable,
+  };
 });
 
-/* Polyfill for Mantine ResizeObserver used in layout components */
-class ResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-Object.defineProperty(global, "ResizeObserver", {
-  value: ResizeObserver,
-  configurable: true,
-});
+// Mock next/dynamic to be synchronous and handle loader results
+jest.mock("next/dynamic", () => ({
+  __esModule: true,
+  default: (
+    loader: () => Promise<
+      React.ComponentType<unknown> | { default: React.ComponentType<unknown> }
+    >,
+  ) => {
+    const MockDynamic = (props: Record<string, unknown>) => {
+      const [Component, setComponent] =
+        React.useState<React.ComponentType<unknown> | null>(null);
+      React.useEffect(() => {
+        const load = async () => {
+          const mod = await loader();
+          setComponent(() => ("default" in mod ? mod.default : mod));
+        };
+        load();
+      }, []);
+      return Component ? <Component {...props} /> : null;
+    };
+    return MockDynamic;
+  },
+}));
 
-import AdminUserKyc from "@/components/pages/admin/KycPage/AdminUserKyc";
+// Mock SessionProvider
+jest.mock("@/components/SessionProvider", () => ({
+  useSession: () => ({
+    session: {
+      user: { id: "admin-123", email: "admin@example.com", role: "admin" },
+    },
+    status: "authenticated",
+  }),
+}));
 
-describe("AdminUserKyc", () => {
-  let originalFetch: typeof globalThis.fetch | undefined;
+// Mock PrivateMainLayout to simplify
+jest.mock("@/components/Layout/PrivateMainLayout", () => ({
+  __esModule: true,
+  default: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
 
+// Mock next/navigation
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+  }),
+  usePathname: () => "/admin/kyc",
+}));
+
+const mockKycData = [
+  {
+    id: "1",
+    user_id: "user-1",
+    status: "SUBMITTED",
+    full_name: "John Submitted",
+    id_document_type: "PASSPORT",
+    submitted_at: "2024-01-01T10:00:00Z",
+  },
+  {
+    id: "2",
+    user_id: "user-2",
+    status: "VERIFIED",
+    full_name: "Jane Verified",
+    id_document_type: "DRIVER_LICENSE",
+    submitted_at: "2024-01-01T10:00:00Z",
+    verified_at: "2024-01-02T10:00:00Z",
+  },
+  {
+    id: "3",
+    user_id: "user-3",
+    status: "REJECTED",
+    full_name: "Bob Rejected",
+    id_document_type: "NATIONAL_ID",
+    submitted_at: "2024-01-01T10:00:00Z",
+  },
+];
+
+describe("Admin KYC Workflow", () => {
   beforeEach(() => {
-    // Reset mocks and preserve original fetch for restoration after tests
     jest.clearAllMocks();
-    originalFetch = globalThis.fetch;
-  });
+    (useSWR as jest.Mock).mockReturnValue({
+      data: { data: mockKycData, total_count: 3 },
+      error: null,
+      isValidating: false,
+    });
 
-  afterEach(() => {
-    // Restore original fetch to avoid cross-test interference
-    if (originalFetch) globalThis.fetch = originalFetch;
-  });
-
-  it("renders KYC records and shows count badge", async () => {
-    // Provide a single-row response for the listing endpoint
-    const rows = [
-      {
-        id: "r1",
-        user_id: "u1",
-        status: "SUBMITTED",
-        first_name: "John",
-        last_name: "Doe",
-        full_name: "John Doe",
-      },
-    ];
-
-    // Mock global.fetch for the component's GET request
+    // Mock global fetch for actions
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: rows, total_count: rows.length }),
+      json: async () => ({ success: true }),
     } as unknown as Response);
-
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <AdminUserKyc />
-        </MantineProvider>
-      </SWRConfig>,
-    );
-
-    // Wait for the table to render and assert there's at least a header + one row
-    await screen.findByRole("table");
-    expect(screen.getAllByRole("row").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("filters results via search input", async () => {
-    // Two test rows to exercise filtering
-    const testRows = [
-      {
-        id: "r1",
-        user_id: "u1",
-        status: "SUBMITTED",
-        first_name: "John",
-        last_name: "Doe",
-        full_name: "John Doe",
-      },
-      {
-        id: "r2",
-        user_id: "u2",
-        status: "SUBMITTED",
-        first_name: "Jane",
-        last_name: "Smith",
-        full_name: "Jane Smith",
-      },
-    ];
+  const renderWithProviders = (ui: React.ReactElement) => {
+    return render(<MantineProvider>{ui}</MantineProvider>);
+  };
 
-    global.fetch = jest.fn().mockImplementation((url: string) => {
-      const searchParams = new URL(url, "http://localhost").searchParams;
-      const query = searchParams.get("q") || "";
-      const filtered = testRows.filter(
-        (r) =>
-          r.full_name.toLowerCase().includes(query.toLowerCase()) ||
-          r.user_id.toLowerCase().includes(query.toLowerCase()),
-      );
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: filtered, total_count: filtered.length }),
-      } as unknown as Response);
-    });
-
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <AdminUserKyc />
-        </MantineProvider>
-      </SWRConfig>,
-    );
-
-    // Wait for table to ensure data loaded
-    await screen.findByRole("table");
-
-    // Ensure table rows were rendered (header + data rows)
-    await waitFor(() => {
-      expect(screen.getAllByRole("row").length).toBeGreaterThanOrEqual(2);
-    });
-
-    const input = screen.getByPlaceholderText(
-      /Search by name or user id/i,
-    ) as HTMLInputElement;
-
-    // Type a query that matches nothing -> expect the "no records" text
-    await userEvent.type(input, "no-match-value{enter}");
-    expect(
-      await screen.findByText(/No records found/i, {}, { timeout: 2000 }),
-    ).toBeInTheDocument();
-
-    // Clear and type a query that should match Jane -> assert filtering applied
-    await userEvent.clear(input);
-    await userEvent.type(input, "Jane{enter}");
-
-    // Wait until "No records found" disappears (indicates filtering applied)
-    await waitFor(
-      () => {
-        expect(screen.queryByText(/No records found/i)).toBeNull();
-      },
-      { timeout: 2000 },
-    );
-
-    // Ensure the input reflects the search term (confirmation that filtering triggered)
-    expect((input as HTMLInputElement).value).toBe("Jane");
+  it("should find KYC Verification title", async () => {
+    renderWithProviders(<AdminKycPage />);
+    expect(screen.getByText(/KYC Verification/i)).toBeInTheDocument();
   });
 
-  it("opens Manage modal and displays selected user's details", async () => {
-    // Single row used to open modal and verify details rendering
-    const row = {
-      id: "r1",
-      user_id: "u1",
-      status: "SUBMITTED",
-      first_name: "Alice",
-      last_name: "Admin",
-      full_name: "Alice Admin",
-      id_document_type: "Government ID",
-      submitted_at: "2024-01-01T00:00:00Z",
-    };
+  it("should fetch and display data in All, submitted, verified, rejected tabs", async () => {
+    renderWithProviders(<AdminKycPage />);
 
-    // Mock GET listing response
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [row], total_count: 1 }),
-    } as unknown as Response);
+    // Initially "All" is active (mocked data has 3 records)
+    expect(await screen.findByText("John Submitted")).toBeInTheDocument();
+    expect(screen.getByText("Jane Verified")).toBeInTheDocument();
+    expect(screen.getByText("Bob Rejected")).toBeInTheDocument();
 
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <AdminUserKyc />
-        </MantineProvider>
-      </SWRConfig>,
+    // Click "Submitted" tab
+    const submittedTab = screen.getByLabelText("Submitted");
+    fireEvent.click(submittedTab);
+
+    // SWR key should have changed to include status=SUBMITTED
+    expect(useSWR).toHaveBeenLastCalledWith(
+      expect.stringContaining("status=SUBMITTED"),
+      expect.any(Function),
+      expect.any(Object),
     );
 
-    // Wait for rows to load
-    await screen.findByRole("table");
+    // Click "Verified" tab
+    const verifiedTab = screen.getByLabelText("Verified");
+    fireEvent.click(verifiedTab);
+    expect(useSWR).toHaveBeenLastCalledWith(
+      expect.stringContaining("status=VERIFIED"),
+      expect.any(Function),
+      expect.any(Object),
+    );
 
-    // Find and click the Manage button for the first row
-    const manageBtns = await screen.findAllByRole("button", {
+    // Click "Rejected" tab
+    const rejectedTab = screen.getByLabelText("Rejected");
+    fireEvent.click(rejectedTab);
+    expect(useSWR).toHaveBeenLastCalledWith(
+      expect.stringContaining("status=REJECTED"),
+      expect.any(Function),
+      expect.any(Object),
+    );
+  });
+
+  it("should fetch data when searching", async () => {
+    renderWithProviders(<AdminKycPage />);
+
+    const searchInput = screen.getByPlaceholderText(
+      /Search by name or user id\.\.\./i,
+    );
+    await userEvent.type(searchInput, "John");
+
+    const searchButton = screen.getByLabelText(/Submit search/i);
+    await userEvent.click(searchButton);
+
+    expect(useSWR).toHaveBeenLastCalledWith(
+      expect.stringContaining("q=John"),
+      expect.any(Function),
+      expect.any(Object),
+    );
+  });
+
+  it("should show modal when clicking Manage", async () => {
+    renderWithProviders(<AdminKycPage />);
+
+    const manageButtons = await screen.findAllByRole("button", {
       name: /Manage/i,
     });
-    if (manageBtns.length === 0) throw new Error("No Manage buttons found");
-    await userEvent.click(manageBtns[0]);
+    await userEvent.click(manageButtons[0]);
 
-    // Locate the modal and assert selected user's details are displayed within it
-    const modal = await screen.findByRole("dialog");
-    expect(within(modal).getByText(/KYC Details/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/Alice Admin/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/Government ID/i)).toBeInTheDocument();
-    // Note: user_id is not displayed in modal UI so it's intentionally not asserted.
-  });
-
-  it("opens Manage modal and posts Mark Verified", async () => {
-    // Row used to test POST action triggered by "Mark Verified"
-    const row = {
-      id: "r1",
-      user_id: "u1",
-      status: "SUBMITTED",
-      first_name: "Alice",
-      last_name: "Admin",
-      id_document_type: "Government ID",
-    };
-
-    // Mock fetch to return the list for GET and a success for POST
-    const fetchMock = jest.fn((url: RequestInfo, opts?: RequestInit) => {
-      if (
-        !opts ||
-        !opts.method ||
-        (opts.method as string).toUpperCase() === "GET"
-      ) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: [row], total_count: 1 }),
-        } as unknown as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ success: true, ok: true }),
-      } as unknown as Response);
-    });
-
-    global.fetch = fetchMock as unknown as typeof global.fetch;
-
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <AdminUserKyc />
-        </MantineProvider>
-      </SWRConfig>,
-    );
-
-    // Wait for data to render
-    await screen.findByRole("table");
-
-    // Click the first Manage button then "Mark Verified"
-    const manageBtns = await screen.findAllByRole("button", {
-      name: /Manage/i,
-    });
-    if (manageBtns.length === 0) throw new Error("No Manage buttons found");
-    await userEvent.click(manageBtns[0]);
-
-    // Modal opens
     expect(await screen.findByText(/KYC Details/i)).toBeInTheDocument();
+    expect(screen.getAllByText("John Submitted")[0]).toBeInTheDocument();
+  });
 
-    // Click "Mark Verified" and assert a POST was made
-    const markBtn = screen.getByRole("button", { name: /Mark Verified/i });
-    await userEvent.click(markBtn);
+  it("should mark as verified", async () => {
+    renderWithProviders(<AdminKycPage />);
 
-    expect(fetchMock).toHaveBeenCalled();
+    const manageButtons = await screen.findAllByRole("button", {
+      name: /Manage/i,
+    });
+    await userEvent.click(manageButtons[0]); // John Submitted
+
+    const verifyButton = await screen.findByRole("button", {
+      name: /Mark Verified/i,
+    });
+    await userEvent.click(verifyButton);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("user-1"),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ action: "VERIFIED" }),
+        }),
+      );
+    });
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Success",
+        color: "green",
+      }),
+    );
+  });
+
+  it("should reject kyc", async () => {
+    renderWithProviders(<AdminKycPage />);
+
+    const manageButtons = await screen.findAllByRole("button", {
+      name: /Manage/i,
+    });
+    await userEvent.click(manageButtons[0]); // John Submitted
+
+    const rejectButton = await screen.findByRole("button", { name: /Reject/i });
+    await userEvent.click(rejectButton);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("user-1"),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ action: "REJECTED" }),
+        }),
+      );
+    });
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Success",
+        color: "green",
+      }),
+    );
   });
 });

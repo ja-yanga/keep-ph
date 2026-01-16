@@ -15,10 +15,25 @@ import {
   ActionIcon,
   Badge,
   Button,
-  SegmentedControl,
+  Tabs,
 } from "@mantine/core";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import {
+  IconSearch,
+  IconArrowRight,
+  IconX,
+  IconLayoutGrid,
+  IconFileDescription,
+  IconCircleCheck,
+  IconCircleX,
+} from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import dayjs from "dayjs";
+import { getStatusFormat, fetcher } from "@/utils/helper";
+import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { FormattedKycRow, KycRow } from "@/utils/types";
+
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
   {
@@ -64,12 +79,6 @@ const DataTable = dynamic(
     ),
   },
 ) as <T>(props: DataTableProps<T>) => React.ReactElement;
-import { IconSearch, IconArrowRight, IconX } from "@tabler/icons-react";
-import { notifications } from "@mantine/notifications";
-import dayjs from "dayjs";
-import { getStatusFormat, fetcher } from "@/utils/helper";
-import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { FormattedKycRow, KycRow } from "@/utils/types";
 
 const KycDetails = dynamic(() => import("./KycDetails"), {
   ssr: false,
@@ -187,6 +196,7 @@ const KycTable = memo(
   }) => {
     return (
       <DataTable
+        striped
         withTableBorder={false}
         borderRadius="lg"
         verticalSpacing="md"
@@ -281,7 +291,7 @@ export default function AdminUserKyc() {
       setProcessing(true);
       try {
         const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
-          method: "POST",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: status }),
         });
@@ -428,29 +438,55 @@ export default function AdminUserKyc() {
           </Badge> */}
         </Group>
 
-        <SegmentedControl
+        <Tabs
           value={statusFilter}
           onChange={(v) => setStatusFilter(v as StatusTab)}
-          data={[
-            { label: "All", value: "ALL" },
-            { label: "Submitted", value: "SUBMITTED" },
-            { label: "Verified", value: "VERIFIED" },
-            { label: "Rejected", value: "REJECTED" },
-          ]}
-          size="sm"
-        />
+          variant="default"
+          mb="md"
+        >
+          <Tabs.List>
+            <Tabs.Tab
+              value="ALL"
+              leftSection={<IconLayoutGrid size={16} aria-hidden="true" />}
+            >
+              All
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="SUBMITTED"
+              leftSection={<IconFileDescription size={16} aria-hidden="true" />}
+            >
+              Submitted
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="VERIFIED"
+              leftSection={<IconCircleCheck size={16} aria-hidden="true" />}
+            >
+              Verified
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="REJECTED"
+              leftSection={<IconCircleX size={16} aria-hidden="true" />}
+            >
+              Rejected
+            </Tabs.Tab>
+          </Tabs.List>
 
-        <KycTable
-          rows={rows}
-          columns={columns}
-          page={page}
-          onPageChange={setPage}
-          pageSize={pageSize}
-          onPageSizeChange={handlePageSizeChange}
-          totalRecords={totalRecords}
-          isValidating={isValidating}
-          isSearching={isSearching}
-        />
+          <Tabs.Panel value={statusFilter}>
+            <div style={{ marginTop: "1rem" }}>
+              <KycTable
+                rows={rows}
+                columns={columns}
+                page={page}
+                onPageChange={setPage}
+                pageSize={pageSize}
+                onPageSizeChange={handlePageSizeChange}
+                totalRecords={totalRecords}
+                isValidating={isValidating}
+                isSearching={isSearching}
+              />
+            </div>
+          </Tabs.Panel>
+        </Tabs>
       </Paper>
 
       <Modal

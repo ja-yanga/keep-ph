@@ -893,16 +893,19 @@ export async function adminGetMailroomPackages(args: {
   limit?: number;
   offset?: number;
   compact?: boolean;
+  status?: string[];
 }): Promise<{
   packages: unknown[];
   registrations: unknown[];
   lockers: unknown[];
   assignedLockers: unknown[];
   totalCount: number;
+  counts?: Record<string, number>;
 }> {
   const limit = Math.min(args.limit ?? 50, 200);
   const offset = args.offset ?? 0;
   const compact = args.compact ?? false;
+  const status = args.status ?? null;
 
   const { data, error } = await supabaseAdmin.rpc(
     "get_admin_mailroom_packages",
@@ -910,6 +913,7 @@ export async function adminGetMailroomPackages(args: {
       input_limit: limit,
       input_offset: offset,
       input_compact: compact,
+      input_status: status,
     },
   );
 
@@ -942,12 +946,15 @@ export async function adminGetMailroomPackages(args: {
       ? rpcData.total_count
       : packages.length;
 
+  const counts = (rpcData.counts as Record<string, number>) || undefined;
+
   return {
     packages,
     registrations,
     lockers,
     assignedLockers,
     totalCount,
+    counts,
   };
 }
 
