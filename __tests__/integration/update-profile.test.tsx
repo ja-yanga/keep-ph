@@ -48,6 +48,7 @@ jest.mock("@/components/SessionProvider", () => ({
 }));
 
 import AccountContent from "@/components/pages/customer/Account/index";
+import { StoreProvider } from "@/store/StoreProvider";
 
 describe("AccountContent — update profile", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
@@ -60,10 +61,23 @@ describe("AccountContent — update profile", () => {
     const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/api/user/kyc")) {
-        // KYC lookup returns empty array (no KYC records)
+        // KYC lookup returns valid KYC data so the avatar section renders
         return {
           ok: true,
-          json: async () => ({ data: [] }),
+          json: async () => ({
+            data: [
+              {
+                user_kyc_id: "kyc-123",
+                user_kyc_first_name: "John",
+                user_kyc_last_name: "Doe",
+                user: {
+                  users_id: "user-123",
+                  users_email: "user@example.com",
+                  users_avatar_url: null,
+                },
+              },
+            ],
+          }),
         } as unknown as Response;
       }
       // accept either avatar upload or legacy update-profile endpoint
@@ -91,19 +105,23 @@ describe("AccountContent — update profile", () => {
     // Render component inside MantineProvider to ensure Mantine UI works
     render(
       <MantineProvider>
-        <AccountContent />
+        <StoreProvider>
+          <AccountContent />
+        </StoreProvider>
       </MantineProvider>,
     );
 
-    // The UI now exposes avatar upload controls. Locate the hidden file input and
-    // simulate selecting a file to trigger the same upload flow.
-    const fileInput = (document.querySelector('input[type="file"]') ||
-      (await screen
-        .findByLabelText("Change avatar")
-        .then(() =>
-          document.querySelector('input[type="file"]'),
-        ))) as HTMLInputElement | null;
-    expect(fileInput).toBeTruthy();
+    // Wait for KYC data to load and the avatar section to render
+    await waitFor(async () => {
+      const fileInput = document.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement | null;
+      expect(fileInput).toBeTruthy();
+      return fileInput;
+    });
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
     const file = new File(["dummy"], "avatar.png", { type: "image/png" });
     // fire change to simulate selecting a file
     await userEvent.upload(fileInput!, file);
@@ -135,9 +153,23 @@ describe("AccountContent — update profile", () => {
       async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.includes("/api/user/kyc")) {
+          // KYC lookup returns valid KYC data so the avatar section renders
           return {
             ok: true,
-            json: async () => ({ data: [] }),
+            json: async () => ({
+              data: [
+                {
+                  user_kyc_id: "kyc-123",
+                  user_kyc_first_name: "John",
+                  user_kyc_last_name: "Doe",
+                  user: {
+                    users_id: "user-123",
+                    users_email: "user@example.com",
+                    users_avatar_url: null,
+                  },
+                },
+              ],
+            }),
           } as unknown as Response;
         }
         if (
@@ -156,18 +188,23 @@ describe("AccountContent — update profile", () => {
 
     render(
       <MantineProvider>
-        <AccountContent />
+        <StoreProvider>
+          <AccountContent />
+        </StoreProvider>
       </MantineProvider>,
     );
 
-    // Trigger the avatar upload error path like the success test
-    const fileInput = (document.querySelector('input[type="file"]') ||
-      (await screen
-        .findByLabelText("Change avatar")
-        .then(() =>
-          document.querySelector('input[type="file"]'),
-        ))) as HTMLInputElement | null;
-    expect(fileInput).toBeTruthy();
+    // Wait for KYC data to load and the avatar section to render
+    await waitFor(async () => {
+      const fileInput = document.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement | null;
+      expect(fileInput).toBeTruthy();
+      return fileInput;
+    });
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
     const file = new File(["dummy"], "avatar.png", { type: "image/png" });
     await userEvent.upload(fileInput!, file);
 
