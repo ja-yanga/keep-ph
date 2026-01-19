@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 // Import Mantine CSS - Next.js will optimize this automatically
 import "@mantine/core/styles.css";
 import "mantine-datatable/styles.css";
-
+import "nprogress/nprogress.css";
 import {
   ColorSchemeScript,
   MantineProvider,
@@ -11,6 +11,7 @@ import {
 } from "@mantine/core";
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import TopLoaderProvider from "@/components/provider/TopLoaderProvider";
 
 // CRITICAL: Use only ONE font to minimize render-blocking
 const inter = Inter({
@@ -66,9 +67,11 @@ export default function RootLayout({
         {process.env.NEXT_PUBLIC_GA_ID && (
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
-
         <MantineProvider>
-          <ServerSessionProvider>{children}</ServerSessionProvider>
+          <ServerSessionProvider>
+            <TopLoaderProvider />
+            {children}
+          </ServerSessionProvider>
         </MantineProvider>
       </body>
     </html>
