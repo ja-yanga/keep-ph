@@ -1,3 +1,4 @@
+import { startRouteProgress } from "@/lib/route-progress";
 import Link from "next/link";
 
 // StatCard as a pure HTML/CSS Server Component - Zero external dependencies
@@ -22,6 +23,7 @@ export function StatCard({
 }) {
   return (
     <Link
+      onClick={() => startRouteProgress()}
       href={href}
       aria-label={
         ariaLabel || `${title}: ${value ?? description ?? "View details"}`
