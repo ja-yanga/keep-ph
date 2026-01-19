@@ -78,8 +78,10 @@ export async function POST(req: NextRequest) {
       .eq("users_id", user.id);
 
     if (updateError) throw updateError;
-
-    return NextResponse.json({ message: "Profile Avatar upload successfully" });
+    return NextResponse.json({
+      data: updatePayload,
+      message: "Profile Avatar upload successfully",
+    });
   } catch (err: unknown) {
     console.error("Update profile error:", err);
     const errorMessage =
