@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { doneRouteProgress } from "@/lib/route-progress";
-import "./TopLoaderProvder.css";
+import "./TopLoaderProvider.css";
 
 export default function TopLoaderProvider() {
   const pathname = usePathname();
