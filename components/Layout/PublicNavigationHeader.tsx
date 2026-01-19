@@ -1,10 +1,10 @@
 "use client";
 
+import { startRouteProgress } from "@/lib/route-progress";
 import {
   Container,
   Title,
   Group,
-  Anchor,
   Button,
   Box,
   Burger,
@@ -19,6 +19,11 @@ export default function PublicNavigationHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const [opened, { toggle, close }] = useDisclosure(false);
+
+  const handleRouteLogin = () => {
+    startRouteProgress();
+    close();
+  };
 
   const handleScroll = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
     e.preventDefault();
@@ -37,31 +42,27 @@ export default function PublicNavigationHeader() {
   // Turn this into a constant variable instead of a nested component function
   const navLinks = (
     <>
-      <Anchor
+      <Link
         href="/#services"
         onClick={(e) => handleScroll(e, "services")}
-        style={{ color: "#1A237E", fontWeight: 500 }}
-        underline="hover"
+        style={{ color: "#1A237E", fontWeight: 500, textDecoration: "none" }}
       >
         Services
-      </Anchor>
-      <Anchor
+      </Link>
+      <Link
         href="/#pricing"
         onClick={(e) => handleScroll(e, "pricing")}
-        style={{ color: "#1A237E", fontWeight: 500 }}
-        underline="hover"
+        style={{ color: "#1A237E", fontWeight: 500, textDecoration: "none" }}
       >
         Pricing
-      </Anchor>
-      <Anchor
-        component={Link}
+      </Link>
+      <Link
         href="/signin"
-        onClick={close}
-        style={{ color: "#1A237E", fontWeight: 500 }}
-        underline="hover"
+        onClick={handleRouteLogin}
+        style={{ color: "#1A237E", fontWeight: 500, textDecoration: "none" }}
       >
         Login
-      </Anchor>
+      </Link>
     </>
   );
 
@@ -113,6 +114,7 @@ export default function PublicNavigationHeader() {
           <Button
             component={Link}
             href="/signup"
+            onClick={() => startRouteProgress()}
             style={{
               minWidth: 100,
               backgroundColor: "#1A237E",

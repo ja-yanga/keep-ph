@@ -50,6 +50,7 @@ import { StatCard } from "./StatCard";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 import { AdminDashboardStats } from "@/utils/types";
+import { startRouteProgress } from "@/lib/route-progress";
 
 export default function AdminDashboard({
   initialData,
@@ -177,6 +178,11 @@ export default function AdminDashboard({
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handleViewFullInventory = () => {
+    startRouteProgress();
+    router.push("/admin/packages");
   };
 
   let pageContent: React.ReactNode;
@@ -405,7 +411,7 @@ export default function AdminDashboard({
               size="xs"
               radius="md"
               rightSection={<IconArrowRight size={14} aria-hidden="true" />}
-              onClick={() => router.push("/admin/packages")}
+              onClick={handleViewFullInventory}
               aria-label="View all packages"
             >
               View Full Inventory

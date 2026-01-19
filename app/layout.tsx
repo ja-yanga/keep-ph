@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import "@mantine/core/styles.css";
 import "mantine-datatable/styles.css";
 import "nprogress/nprogress.css";
+import "@/app/globals.css";
 import {
   ColorSchemeScript,
   MantineProvider,
