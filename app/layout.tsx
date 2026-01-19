@@ -13,6 +13,7 @@ import {
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import TopLoaderProvider from "@/components/provider/TopLoaderProvider";
+import { StoreProvider } from "@/store/StoreProvider";
 
 // CRITICAL: Use only ONE font to minimize render-blocking
 const inter = Inter({
@@ -69,10 +70,12 @@ export default function RootLayout({
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
         <MantineProvider>
-          <ServerSessionProvider>
-            <TopLoaderProvider />
-            {children}
-          </ServerSessionProvider>
+          <StoreProvider>
+            <ServerSessionProvider>
+              <TopLoaderProvider />
+              {children}
+            </ServerSessionProvider>
+          </StoreProvider>
         </MantineProvider>
       </body>
     </html>
