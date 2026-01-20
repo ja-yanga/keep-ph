@@ -84,7 +84,13 @@ export async function GET(req: Request) {
           totalPages: Math.ceil(count / pageSize),
         },
       },
-      { status: 200 },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control":
+            "private, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      },
     );
   } catch (err: unknown) {
     const message =

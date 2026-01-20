@@ -1,7 +1,6 @@
 "use client";
 
 import "mantine-datatable/styles.layer.css";
-
 import React, { useEffect, useState, useMemo } from "react";
 import useSWR from "swr";
 import {
@@ -39,6 +38,7 @@ import {
 } from "@tabler/icons-react";
 import dynamic from "next/dynamic";
 import { type DataTableProps } from "mantine-datatable";
+
 // Lazy load DataTable to reduce initial bundle
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
@@ -581,144 +581,151 @@ export default function MailroomLocations() {
           </Group>
         )}
 
-        <DataTable
-          striped
-          aria-label="Mailroom locations list"
-          withTableBorder={false}
-          borderRadius="lg"
-          withColumnBorders={false}
-          verticalSpacing="md"
-          highlightOnHover
-          records={locations}
-          fetching={isLoading}
-          minHeight={minTableHeight(pageSize)}
-          totalRecords={totalRecords}
-          recordsPerPage={pageSize}
-          page={page}
-          onPageChange={(p) => setPage(p)}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={setPageSize}
-          paginationText={({ from, to, totalRecords }) =>
-            `Showing ${from}–${to} of ${totalRecords}`
-          }
-          recordsPerPageLabel="Locations per page"
-          columns={[
-            {
-              accessor: "name",
-              title: "Name",
-              width: 200,
-              render: ({ name }: Location) => (
-                <Text fw={700} c="dark.7" size="sm">
-                  {name}
-                </Text>
-              ),
-            },
-            {
-              accessor: "code",
-              title: "Code",
-              width: 100,
-              render: ({ code }: Location) =>
-                code ? (
+        <div
+          style={{
+            contentVisibility: "auto",
+            containIntrinsicSize: "400px",
+          }}
+        >
+          <DataTable<Location>
+            striped
+            aria-label="Mailroom locations list"
+            withTableBorder={false}
+            borderRadius="lg"
+            withColumnBorders={false}
+            verticalSpacing="md"
+            highlightOnHover
+            records={locations}
+            fetching={isLoading}
+            minHeight={minTableHeight(pageSize)}
+            totalRecords={totalRecords}
+            recordsPerPage={pageSize}
+            page={page}
+            onPageChange={(p) => setPage(p)}
+            recordsPerPageOptions={[10, 20, 50]}
+            onRecordsPerPageChange={setPageSize}
+            paginationText={({ from, to, totalRecords }) =>
+              `Showing ${from}–${to} of ${totalRecords}`
+            }
+            recordsPerPageLabel="Locations per page"
+            columns={[
+              {
+                accessor: "name",
+                title: "Name",
+                width: 200,
+                render: ({ name }: Location) => (
                   <Text fw={700} c="dark.7" size="sm">
-                    {code}
-                  </Text>
-                ) : (
-                  <Text size="sm" c="dark.7">
-                    —
+                    {name}
                   </Text>
                 ),
-            },
-            {
-              accessor: "region",
-              title: "Region",
-              render: ({ region }: Location) => (
-                <Text size="sm" c="dark.7" fw={500}>
-                  {region ?? "—"}
-                </Text>
-              ),
-            },
-            {
-              accessor: "city",
-              title: "City",
-              render: ({ city }: Location) => (
-                <Text size="sm" c="dark.7" fw={500}>
-                  {city ?? "—"}
-                </Text>
-              ),
-            },
-            {
-              accessor: "barangay",
-              title: "Barangay",
-              render: ({ barangay }: Location) => (
-                <Text size="sm" c="dark.7" fw={500}>
-                  {barangay ?? "—"}
-                </Text>
-              ),
-            },
-            {
-              accessor: "zip",
-              title: "Zip",
-              width: 100,
-              render: ({ zip }: Location) => (
-                <Text size="sm" c="dark.7">
-                  {zip ?? "—"}
-                </Text>
-              ),
-            },
-            {
-              accessor: "total_lockers",
-              title: "Total Lockers",
-              width: 140,
-              textAlign: "center",
-              render: ({ total_lockers }: Location) => (
-                <Badge
-                  color="blue"
-                  variant="light"
-                  size="md"
-                  aria-label={`${total_lockers ?? 0} total lockers`}
-                >
-                  {total_lockers ?? 0}
-                </Badge>
-              ),
-            },
-            {
-              accessor: "actions",
-              title: "Actions",
-              width: 100,
-              textAlign: "right",
-              render: (loc: Location) => (
-                <Group gap="xs" justify="flex-end">
-                  <Tooltip label="View">
-                    <ActionIcon
-                      variant="subtle"
-                      color="dark.7"
-                      size="lg"
-                      onClick={() => openView(loc)}
-                      aria-label={`View details of ${loc.name}`}
-                    >
-                      <IconEye size={16} aria-hidden="true" />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Edit">
-                    <ActionIcon
-                      variant="subtle"
-                      color="blue.7"
-                      size="lg"
-                      onClick={() => {
-                        openEdit(loc);
-                        setGlobalSuccess(null);
-                      }}
-                      aria-label={`Edit ${loc.name}`}
-                    >
-                      <IconEdit size={16} aria-hidden="true" />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-              ),
-            },
-          ]}
-          noRecordsText="No locations found"
-        />
+              },
+              {
+                accessor: "code",
+                title: "Code",
+                width: 100,
+                render: ({ code }: Location) =>
+                  code ? (
+                    <Text fw={700} c="dark.7" size="sm">
+                      {code}
+                    </Text>
+                  ) : (
+                    <Text size="sm" c="dark.7">
+                      —
+                    </Text>
+                  ),
+              },
+              {
+                accessor: "region",
+                title: "Region",
+                render: ({ region }: Location) => (
+                  <Text size="sm" c="dark.7" fw={500}>
+                    {region ?? "—"}
+                  </Text>
+                ),
+              },
+              {
+                accessor: "city",
+                title: "City",
+                render: ({ city }: Location) => (
+                  <Text size="sm" c="dark.7" fw={500}>
+                    {city ?? "—"}
+                  </Text>
+                ),
+              },
+              {
+                accessor: "barangay",
+                title: "Barangay",
+                render: ({ barangay }: Location) => (
+                  <Text size="sm" c="dark.7" fw={500}>
+                    {barangay ?? "—"}
+                  </Text>
+                ),
+              },
+              {
+                accessor: "zip",
+                title: "Zip",
+                width: 100,
+                render: ({ zip }: Location) => (
+                  <Text size="sm" c="dark.7">
+                    {zip ?? "—"}
+                  </Text>
+                ),
+              },
+              {
+                accessor: "total_lockers",
+                title: "Total Lockers",
+                width: 140,
+                textAlign: "center",
+                render: ({ total_lockers }: Location) => (
+                  <Badge
+                    color="blue"
+                    variant="light"
+                    size="md"
+                    aria-label={`${total_lockers ?? 0} total lockers`}
+                  >
+                    {total_lockers ?? 0}
+                  </Badge>
+                ),
+              },
+              {
+                accessor: "actions",
+                title: "Actions",
+                width: 100,
+                textAlign: "right" as const,
+                render: (loc: Location) => (
+                  <Group gap="xs" justify="flex-end">
+                    <Tooltip label="View">
+                      <ActionIcon
+                        variant="subtle"
+                        color="dark.7"
+                        size="lg"
+                        onClick={() => openView(loc)}
+                        aria-label={`View details of ${loc.name}`}
+                      >
+                        <IconEye size={16} aria-hidden="true" />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Edit">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue.7"
+                        size="lg"
+                        onClick={() => {
+                          openEdit(loc);
+                          setGlobalSuccess(null);
+                        }}
+                        aria-label={`Edit ${loc.name}`}
+                      >
+                        <IconEdit size={16} aria-hidden="true" />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                ),
+              },
+            ]}
+            noRecordsText="No locations found"
+          />
+        </div>
       </Paper>
 
       <Modal

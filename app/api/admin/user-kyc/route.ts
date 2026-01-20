@@ -73,7 +73,8 @@ export async function GET(req: Request) {
       { data: processed, total_count },
       {
         headers: {
-          "Cache-Control": "no-cache, must-revalidate",
+          "Cache-Control":
+            "private, max-age=30, s-maxage=30, stale-while-revalidate=60",
         },
       },
     );

@@ -131,7 +131,13 @@ export async function GET(req: Request) {
           totalPages: Math.ceil((count ?? 0) / pageSize),
         },
       },
-      { status: 200 },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control":
+            "private, max-age=60, s-maxage=60, stale-while-revalidate=300",
+        },
+      },
     );
   } catch (err: unknown) {
     console.error("admin.mailroom.lockers.GET:", err);

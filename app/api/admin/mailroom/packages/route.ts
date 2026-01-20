@@ -35,7 +35,7 @@ export async function GET(req?: Request) {
       {
         headers: {
           "Cache-Control":
-            "private, max-age=0, s-maxage=30, stale-while-revalidate=60",
+            "private, max-age=60, s-maxage=60, stale-while-revalidate=300",
         },
       },
     );

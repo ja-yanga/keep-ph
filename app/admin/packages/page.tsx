@@ -12,7 +12,7 @@ const MailroomPackages = dynamic(
         <Loader size="lg" color="violet" type="dots" />
       </Center>
     ),
-    ssr: true, // Enable SSR for better initial load
+    ssr: false, // Disable SSR since component uses useSearchParams
   },
 );
 

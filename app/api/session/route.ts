@@ -38,7 +38,7 @@ export async function GET(_request: Request) {
         role: string | null;
       });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       user,
       profile,
@@ -47,6 +47,15 @@ export async function GET(_request: Request) {
       // isKycVerified: kyc.status === "VERIFIED",
       needs_onboarding: false,
     });
+
+    // Allow short caching to enable bfcache on pages
+    // Session data changes infrequently, so 10 seconds is safe
+    response.headers.set(
+      "Cache-Control",
+      "private, max-age=10, stale-while-revalidate=30",
+    );
+
+    return response;
   } catch (err: unknown) {
     console.error("session GET error:", err);
     return NextResponse.json(

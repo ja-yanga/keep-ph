@@ -5,13 +5,11 @@ export async function GET() {
   try {
     const claims = await getAdminRewardClaims();
     const response = NextResponse.json(claims);
-    // Prevent caching of admin data for security
+    // Allow short private caching to improve performance while maintaining security
     response.headers.set(
       "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "private, max-age=30, s-maxage=30, stale-while-revalidate=60",
     );
-    response.headers.set("Pragma", "no-cache");
-    response.headers.set("Expires", "0");
     return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
