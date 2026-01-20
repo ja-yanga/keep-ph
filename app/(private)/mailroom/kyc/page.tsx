@@ -18,7 +18,6 @@ import {
   Alert,
   Modal,
   Grid,
-  rem,
   Divider,
   Center,
   Loader,
@@ -262,14 +261,22 @@ export default function KycPage() {
 
   const StatusIconComponent = getStatusIcon(status);
 
+  // Styles to fix FileInput placeholder contrast
+  const fileInputStyles = {
+    placeholder: {
+      color: "var(--mantine-color-gray-7)", // Ensure sufficient contrast for "Choose ... image" text
+      opacity: 1,
+    },
+  };
+
   return (
     <PrivateMainLayout>
       {initialLoading ? (
-        <Center h="90vh">
+        <Center h="90vh" component="main">
           <Loader />
         </Center>
       ) : (
-        <Container size="sm" py="xl">
+        <Container size="sm" py="xl" component="main">
           <Stack gap="xl">
             <Group
               justify="space-between"
@@ -283,7 +290,7 @@ export default function KycPage() {
                 </Group>
               </Title>
               <Button
-                variant="subtle"
+                variant="default" // Changed from 'subtle' for better contrast
                 leftSection={<IconArrowLeft size={16} />}
                 onClick={() => router.back()}
                 aria-label="Go back"
@@ -295,18 +302,21 @@ export default function KycPage() {
             {/* === STATUS SECTION === */}
             <Paper withBorder p="lg" radius="md">
               <Stack gap="md">
-                <Text>
+                <Text size="md">
                   {IDENTITY_VERIFICATION_KYC.section_header.sub_title}
                 </Text>
 
                 <Group justify="space-between" align="center">
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" fw={600} c="gray.9">
+                    {/* Darker color (gray.9) */}
                     {IDENTITY_VERIFICATION_KYC.section_header.status}
                   </Text>
                   <Badge
-                    color={getStatusFormat(status)}
+                    color={
+                      status === "NONE" ? "gray.8" : getStatusFormat(status)
+                    }
                     size="lg"
-                    variant="light"
+                    variant="filled" // filled with gray.8 passes contrast
                     leftSection={<StatusIconComponent size={14} />}
                   >
                     {statusTextMap[status as keyof typeof statusTextMap]}
@@ -329,15 +339,15 @@ export default function KycPage() {
                   <Alert
                     icon={<IconAlertCircle size={18} />}
                     color="blue"
-                    variant="light"
+                    variant="outline"
                   >
-                    <Text size="sm" fw={600}>
+                    <Text size="sm" fw={700} c="blue.9">
                       {
                         IDENTITY_VERIFICATION_KYC.section_form.section_header
                           .alert_title
                       }
                     </Text>
-                    <Text size="sm">
+                    <Text size="sm" c="gray.9" mt={4}>
                       {
                         IDENTITY_VERIFICATION_KYC.section_form.section_header
                           .alert_description
@@ -390,7 +400,7 @@ export default function KycPage() {
                           value={firstName}
                           onChange={(e) => setFirstName(e.currentTarget.value)}
                           required
-                          leftSection={<IconUser size={rem(16)} />}
+                          leftSection={<IconUser size={16} />}
                           disabled={isLocked}
                         />
                         <TextInput
@@ -416,7 +426,10 @@ export default function KycPage() {
                         labelPosition="left"
                         label={
                           <Group gap="xs">
-                            <IconMapPin size={16} /> Address
+                            <IconMapPin size={16} />
+                            <Text size="sm" c="gray.8" fw={500}>
+                              Address
+                            </Text>
                           </Group>
                         }
                         my="xs"
@@ -488,9 +501,10 @@ export default function KycPage() {
                             accept="image/*"
                             value={frontFile}
                             onChange={setFrontFile}
-                            leftSection={<IconArrowRight size={rem(14)} />}
+                            leftSection={<IconArrowRight size={14} />}
                             required
                             disabled={isLocked}
+                            styles={fileInputStyles}
                           />
                         </Grid.Col>
                         <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -500,20 +514,30 @@ export default function KycPage() {
                             accept="image/*"
                             value={backFile}
                             onChange={setBackFile}
-                            leftSection={<IconArrowLeft size={rem(14)} />}
+                            leftSection={<IconArrowLeft size={14} />}
                             required
                             disabled={isLocked}
+                            styles={fileInputStyles}
                           />
                         </Grid.Col>
                       </Grid>
 
-                      <Text size="xs" c="dimmed">
+                      <Text size="xs" c="gray.8">
+                        {/* Changed from gray.7 to gray.8 */}
                         Supported formats: JPG, PNG. Max file size: 5MB. Clear,
                         well-lit images are required.
                       </Text>
 
                       {/* Inline previews inside upload section */}
-                      <Divider my="sm" label="Previews" labelPosition="left" />
+                      <Divider
+                        my="sm"
+                        label={
+                          <Text size="sm" c="gray.8" fw={500}>
+                            Previews
+                          </Text>
+                        }
+                        labelPosition="left"
+                      />
                       <Group grow wrap="nowrap" align="flex-start">
                         {frontPreview ? (
                           <Paper
@@ -548,7 +572,8 @@ export default function KycPage() {
                             radius="md"
                             style={{ flexBasis: "50%" }}
                           >
-                            <Text c="dimmed" size="sm" ta="center">
+                            <Text c="gray.7" size="sm" ta="center">
+                              {/* Darker gray (gray.7) */}
                               Front ID preview will appear here.
                             </Text>
                           </Paper>
@@ -587,7 +612,8 @@ export default function KycPage() {
                             radius="md"
                             style={{ flexBasis: "50%" }}
                           >
-                            <Text c="dimmed" size="sm" ta="center">
+                            <Text c="gray.7" size="sm" ta="center">
+                              {/* Darker gray (gray.7) */}
                               Back ID preview will appear here.
                             </Text>
                           </Paper>
@@ -609,9 +635,8 @@ export default function KycPage() {
 
                   <Group justify="flex-end" mt="md">
                     <Button
-                      variant="outline"
+                      variant="default" // Changed from outline to default for better contrast
                       onClick={() => {
-                        // cancel / reset
                         setDocNumber("");
                         setFrontFile(null);
                         setBackFile(null);
@@ -686,18 +711,21 @@ export default function KycPage() {
                         </Group>
                         <Divider my={5} />
                         <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
+                            {/* Darker text */}
                             Type:
                           </Text>
-                          <Badge size="lg" variant="light" color="blue">
+                          <Badge size="lg" variant="filled" color="blue">
                             {docType}
                           </Badge>
                         </Group>
                         <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
                             Number:
                           </Text>
-                          <Text fw={500}>{maskId(docNumber)}</Text>
+                          <Text fw={600} c="gray.9">
+                            {maskId(docNumber)}
+                          </Text>
                         </Group>
                       </Stack>
                     </Paper>
@@ -708,7 +736,7 @@ export default function KycPage() {
                         {/* Header (Kept the same) */}
                         <Group gap="xs">
                           <IconUser size={20} />
-                          <Text fw={600} size="md">
+                          <Text fw={600} size="md" c="gray.9">
                             Personal Details
                           </Text>
                         </Group>
@@ -716,47 +744,61 @@ export default function KycPage() {
 
                         {/* Full Name Detail (Label-Top, Value-Bottom) */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
                             Full Name:
                           </Text>
-                          <Text fw={500}>
+                          <Text fw={600} c="gray.9">
                             {firstName} {lastName}
                           </Text>
                         </Stack>
 
                         {/* Address Detail (Label-Top, Value-Bottom) */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
+                          <Text
+                            size="sm"
+                            c="gray.8"
+                            fw={500}
+                            style={{ flexShrink: 0 }}
+                          >
                             Address:
                           </Text>
-                          <Text fw={500} style={{ wordBreak: "break-word" }}>
+                          <Text
+                            fw={600}
+                            c="gray.9"
+                            style={{ wordBreak: "break-word" }}
+                          >
                             {fullAddress}
                           </Text>
                         </Stack>
 
-                        {/* FIX: Date of Birth Detail (Label-Top, Value-Bottom) 
-        Replaced <Group> with <Stack> to force vertical alignment.
-    */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
                             Date of birth:
                           </Text>
-                          <Text fw={500}>{formatDobMasked(birthDate)}</Text>
+                          <Text fw={600} c="gray.9">
+                            {formatDobMasked(birthDate)}
+                          </Text>
                         </Stack>
                       </Stack>
                     </Paper>
                   </SimpleGrid>
 
                   <Divider
-                    label="Document Images"
+                    label={
+                      <Text size="sm" c="gray.8" fw={500}>
+                        Document Images
+                      </Text>
+                    }
                     labelPosition="center"
                     my="md"
                   />
 
                   {/* Images hidden from user snapshot for privacy */}
                   <Paper withBorder p="lg" radius="md" ta="center">
-                    <Text fw={600}>Document images are hidden for privacy</Text>
-                    <Text size="sm" c="dimmed" mt="xs">
+                    <Text fw={700} c="gray.9">
+                      Document images are hidden for privacy
+                    </Text>
+                    <Text size="sm" c="gray.8" mt="xs">
                       If you need to view or update your documents, contact
                       support or wait for verification.
                     </Text>

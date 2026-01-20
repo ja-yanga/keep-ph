@@ -10,7 +10,6 @@ import {
   TextInput,
   PasswordInput,
   Button,
-  Anchor,
   Center,
   Alert,
   rem,
@@ -31,6 +30,8 @@ import {
 } from "@tabler/icons-react";
 import { createClient } from "@/lib/supabase/client";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import Link from "next/link";
+import { startRouteProgress } from "@/lib/route-progress";
 
 export default function SignUpForm() {
   const [email, setEmail] = useState("");
@@ -267,14 +268,19 @@ export default function SignUpForm() {
                       : "Resend Email"}
                   </Button>
 
-                  <Anchor
+                  <Link
                     href="/signin"
-                    size="sm"
-                    style={{ color: colors.textMuted }}
-                    mt="xs"
+                    onClick={() => startRouteProgress()}
+                    style={{
+                      color: colors.textMuted,
+                      fontWeight: 600,
+                      fontSize: "sm",
+                      marginTop: "1rem",
+                      textDecoration: "none",
+                    }}
                   >
                     Back to Login
-                  </Anchor>
+                  </Link>
                 </Stack>
               </Paper>
             </Stack>
@@ -431,6 +437,7 @@ export default function SignUpForm() {
                     size="md"
                     radius="md"
                     loading={loading}
+                    onClick={() => startRouteProgress()}
                     style={{
                       backgroundColor: colors.primaryBlue,
                       fontWeight: 600,
@@ -475,9 +482,17 @@ export default function SignUpForm() {
                 style={{ color: colors.textMuted }}
               >
                 Already have an account?{" "}
-                <Anchor href="/signin" fw={600} c={colors.primaryBlue}>
+                <Link
+                  href="/signin"
+                  onClick={() => startRouteProgress()}
+                  style={{
+                    fontWeight: 600,
+                    color: colors.primaryBlue,
+                    textDecoration: "none",
+                  }}
+                >
                   Log In
-                </Anchor>
+                </Link>
               </Text>
             </Paper>
           </Stack>

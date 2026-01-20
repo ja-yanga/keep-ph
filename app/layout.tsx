@@ -5,6 +5,9 @@ import "@mantine/core/styles.css";
 // Moved mantine-datatable styles to components using them to reduce initial CSS bundle
 // import "mantine-datatable/styles.css";
 
+import "mantine-datatable/styles.css";
+import "nprogress/nprogress.css";
+import "@/app/globals.css";
 import {
   ColorSchemeScript,
   MantineProvider,
@@ -12,6 +15,8 @@ import {
 } from "@mantine/core";
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import TopLoaderProvider from "@/components/provider/TopLoaderProvider";
+import { StoreProvider } from "@/store/StoreProvider";
 
 // CRITICAL: Use only ONE font to minimize render-blocking
 const inter = Inter({
@@ -61,9 +66,13 @@ export default function RootLayout({
         {process.env.NEXT_PUBLIC_GA_ID && (
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
-
         <MantineProvider>
-          <ServerSessionProvider>{children}</ServerSessionProvider>
+          <StoreProvider>
+            <ServerSessionProvider>
+              <TopLoaderProvider />
+              {children}
+            </ServerSessionProvider>
+          </StoreProvider>
         </MantineProvider>
       </body>
     </html>
