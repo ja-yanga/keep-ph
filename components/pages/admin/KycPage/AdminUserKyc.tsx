@@ -195,7 +195,7 @@ const KycTable = memo(
     isSearching: boolean;
   }) => {
     return (
-      <DataTable
+      <DataTable<FormattedKycRow>
         striped
         withTableBorder={false}
         borderRadius="lg"
@@ -397,7 +397,7 @@ export default function AdminUserKyc() {
       {
         accessor: "actions",
         title: "Actions",
-        textAlign: "right",
+        textAlign: "right" as const,
         width: 100,
         render: (r: FormattedKycRow) => (
           <Button

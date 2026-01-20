@@ -1,5 +1,6 @@
 "use client";
 
+import "mantine-datatable/styles.layer.css";
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import useSWRInfinite from "swr/infinite";
@@ -537,7 +538,7 @@ export default function MailroomLockers() {
         accessor: "actions",
         title: "Actions",
         width: 100,
-        textAlign: "right",
+        textAlign: "right" as const,
         render: (locker: Locker) => (
           <Group gap="xs" justify="flex-end" wrap="nowrap">
             <Tooltip label="Edit locker details">
@@ -696,8 +697,14 @@ export default function MailroomLockers() {
           </Tabs.List>
 
           <Tabs.Panel value={activeTab}>
-            <div style={{ marginTop: "1rem" }}>
-              <DataTable
+            <div
+              style={{
+                marginTop: "1rem",
+                contentVisibility: "auto",
+                containIntrinsicSize: "400px",
+              }}
+            >
+              <DataTable<Locker>
                 striped
                 aria-label="Lockers list"
                 withTableBorder={false}

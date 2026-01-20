@@ -1,7 +1,6 @@
 "use client";
 
 import "mantine-datatable/styles.layer.css";
-
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import dynamic from "next/dynamic";
@@ -47,6 +46,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
 
 // Dynamic import for DataTable to reduce initial bundle size
 const DataTable = dynamic(
@@ -59,7 +59,7 @@ const DataTable = dynamic(
       </div>
     ),
   },
-);
+) as <T>(props: DataTableProps<T>) => React.ReactElement;
 
 type Registration = {
   id: string;
@@ -230,7 +230,7 @@ export default function MailroomPackages() {
   const [isDisposing, setIsDisposing] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<string | null>("active");
+  const [activeTab, setActiveTab] = useState<string>("active");
 
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [packageToRestore, setPackageToRestore] = useState<Package | null>(
@@ -247,9 +247,9 @@ export default function MailroomPackages() {
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
+    if (!tabParam) return;
+    const allowed = ["active", "requests", "released", "disposed", "archive"];
+    if (allowed.includes(tabParam)) setActiveTab(tabParam);
   }, [searchParams]);
 
   // New state for locker capacity
@@ -311,9 +311,8 @@ export default function MailroomPackages() {
     fetcher,
   );
 
-  // sync SWR combined response into local state
-  useEffect(() => {
-    setLoading(!!isValidating || !!isArchivedValidating);
+  // sync SWR combined response into local state using useMemo to reduce main-thread work
+  const normalizedData = useMemo(() => {
     const payload = combinedData ?? {};
     let pkgs: Package[];
     if (Array.isArray(payload.packages)) {
@@ -331,23 +330,38 @@ export default function MailroomPackages() {
       ? payload.assignedLockers
       : [];
 
-    setPackages(pkgs);
-    setRegistrations(regs);
-    setLockers(lks);
-    setAssignedLockers(assigned);
+    return {
+      pkgs,
+      regs,
+      lks,
+      assigned,
+      total: payload.meta?.total,
+      counts: payload.counts,
+    };
+  }, [combinedData]);
 
-    if (payload.meta?.total !== undefined) {
-      setServerTotalCount(payload.meta.total);
-    }
-    if (payload.counts) {
-      setCounts(payload.counts);
+  useEffect(() => {
+    setLoading(!!isValidating || !!isArchivedValidating);
+
+    if (normalizedData.pkgs) {
+      setPackages(normalizedData.pkgs);
+      setRegistrations(normalizedData.regs);
+      setLockers(normalizedData.lks);
+      setAssignedLockers(normalizedData.assigned);
+
+      if (normalizedData.total !== undefined) {
+        setServerTotalCount(normalizedData.total);
+      }
+      if (normalizedData.counts) {
+        setCounts(normalizedData.counts);
+      }
     }
 
     if (archivedData) {
       setArchivedPackages(archivedData.packages || []);
       setArchivedTotalCount(archivedData.total_count || 0);
     }
-  }, [combinedData, isValidating, archivedData, isArchivedValidating]);
+  }, [normalizedData, isValidating, archivedData, isArchivedValidating]);
 
   // helper to refresh combined data (used after mutations)
   const refreshAll = async () => {
@@ -1000,7 +1014,7 @@ export default function MailroomPackages() {
   const requestCount = useMemo(() => counts.requests || 0, [counts]);
 
   // Memoize DataTable columns to prevent recreation on each render
-  const tableColumns = useMemo(
+  const tableColumns: DataTableColumn<Package>[] = useMemo(
     () => [
       {
         accessor: "package_name",
@@ -1025,7 +1039,7 @@ export default function MailroomPackages() {
               <Text size="sm" fw={500}>
                 {pkg.registration?.full_name || "Unknown"}
               </Text>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="#4A5568">
                 {pkg.registration?.email}
               </Text>
             </Stack>
@@ -1047,7 +1061,7 @@ export default function MailroomPackages() {
               {pkg.locker.locker_code}
             </Badge>
           ) : (
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="#4A5568">
               —
             </Text>
           );
@@ -1061,7 +1075,7 @@ export default function MailroomPackages() {
           const pkg = record as Package;
           return (
             <Badge
-              variant="light"
+              variant="filled"
               color="gray"
               leftSection={
                 pkg.package_type === "Document" ? (
@@ -1083,7 +1097,7 @@ export default function MailroomPackages() {
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
-            <Badge color={getStatusColor(pkg.status)} variant="light">
+            <Badge color={getStatusColor(pkg.status)} variant="filled">
               {pkg.status.replace(/_/g, " ")}
             </Badge>
           );
@@ -1114,7 +1128,7 @@ export default function MailroomPackages() {
                     <Button
                       size="compact-xs"
                       color="green"
-                      w={100}
+                      variant="filled"
                       leftSection={<IconRestore size={14} aria-hidden="true" />}
                       onClick={() => handleOpenRestore(pkg)}
                       aria-label={`Restore package ${pkg.package_name}`}
@@ -1165,6 +1179,7 @@ export default function MailroomPackages() {
                         size="compact-xs"
                         w={100}
                         color="red"
+                        variant="filled"
                         leftSection={<IconTrash size={14} aria-hidden="true" />}
                         onClick={() => handleConfirmDisposal(pkg)}
                         aria-label={`Dispose package ${pkg.package_name}`}
@@ -1283,6 +1298,37 @@ export default function MailroomPackages() {
     }
   };
 
+  const packagesTable = (
+    <div
+      style={{
+        contentVisibility: "auto",
+        containIntrinsicSize: "400px",
+      }}
+    >
+      <DataTable<Package>
+        withTableBorder
+        borderRadius="sm"
+        withColumnBorders
+        striped
+        highlightOnHover
+        records={paginatedPackages}
+        fetching={loading}
+        minHeight={400} // Increased min-height to reduce layout shift
+        totalRecords={totalRecords}
+        recordsPerPage={pageSize}
+        page={page}
+        onPageChange={(p) => setPage(p)}
+        recordsPerPageOptions={[10, 20, 50]}
+        onRecordsPerPageChange={setPageSize}
+        columns={tableColumns}
+        aria-label="Packages data table"
+        noRecordsText={
+          activeTab === "requests" ? "No pending requests" : "No packages found"
+        }
+      />
+    </div>
+  );
+
   return (
     <Stack align="center">
       {/* GLOBAL SUCCESS ALERT */}
@@ -1361,9 +1407,10 @@ export default function MailroomPackages() {
 
         <Tabs
           value={activeTab}
-          onChange={setActiveTab}
+          onChange={(value) => setActiveTab(value || "active")}
           mb="md"
           aria-label="Package status tabs"
+          keepMounted={false}
         >
           <Tabs.List>
             <Tabs.Tab
@@ -1408,31 +1455,15 @@ export default function MailroomPackages() {
               Archive
             </Tabs.Tab>
           </Tabs.List>
-        </Tabs>
 
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
-          highlightOnHover
-          records={paginatedPackages}
-          fetching={loading}
-          minHeight={200}
-          totalRecords={totalRecords}
-          recordsPerPage={pageSize}
-          page={page}
-          onPageChange={(p) => setPage(p)}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={setPageSize}
-          columns={tableColumns}
-          aria-label="Packages data table"
-          noRecordsText={
-            activeTab === "requests"
-              ? "No pending requests"
-              : "No packages found"
-          }
-        />
+          {(
+            ["active", "requests", "released", "disposed", "archive"] as const
+          ).map((tab) => (
+            <Tabs.Panel key={tab} value={tab} pt="xs">
+              {packagesTable}
+            </Tabs.Panel>
+          ))}
+        </Tabs>
       </Paper>
 
       <Modal
@@ -1502,7 +1533,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}
@@ -1553,7 +1584,7 @@ export default function MailroomPackages() {
             }}
             rightSection={
               searchingRecipients ? (
-                <Text size="xs" c="dimmed">
+                <Text size="xs" c="#4A5568">
                   Searching...
                 </Text>
               ) : undefined
@@ -1721,7 +1752,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}
@@ -1769,7 +1800,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}
@@ -1811,7 +1842,7 @@ export default function MailroomPackages() {
 
                         {/* Delivery Address (Label on top, Value below) */}
                         <Stack gap={2}>
-                          <Text fw={700} size="sm" c="dimmed">
+                          <Text fw={700} size="sm" c="#4A5568">
                             Delivery Address
                           </Text>
                           <Text size="sm" fw={500}>
@@ -1823,7 +1854,7 @@ export default function MailroomPackages() {
                         <Group grow mt="xs">
                           {packageToRelease.release_to_name && (
                             <Stack gap={2}>
-                              <Text fw={700} size="sm" c="dimmed">
+                              <Text fw={700} size="sm" c="#4A5568">
                                 Recipient Name
                               </Text>
                               <Text size="sm" fw={500}>
@@ -1833,7 +1864,7 @@ export default function MailroomPackages() {
                           )}
                           {phone && (
                             <Stack gap={2}>
-                              <Text fw={700} size="sm" c="dimmed">
+                              <Text fw={700} size="sm" c="#4A5568">
                                 Contact Phone
                               </Text>
                               <Text size="sm" fw={500}>
@@ -1858,7 +1889,7 @@ export default function MailroomPackages() {
                               </Text>
                               {/* Details as label: value pairs */}
                               {pickup.name && (
-                                <Text size="sm" c="dimmed">
+                                <Text size="sm" c="#4A5568">
                                   Name:{" "}
                                   <Text span fw={500} c="dark">
                                     {pickup.name}
@@ -1866,7 +1897,7 @@ export default function MailroomPackages() {
                                 </Text>
                               )}
                               {pickup.mobile && (
-                                <Text size="sm" c="dimmed">
+                                <Text size="sm" c="#4A5568">
                                   Mobile:{" "}
                                   <Text span fw={500} c="dark">
                                     {pickup.mobile}
@@ -1874,7 +1905,7 @@ export default function MailroomPackages() {
                                 </Text>
                               )}
                               {pickup.contact_mode && (
-                                <Text size="sm" c="dimmed">
+                                <Text size="sm" c="#4A5568">
                                   Contact via:{" "}
                                   <Text span fw={500} c="dark">
                                     {String(pickup.contact_mode).toUpperCase()}
@@ -1903,7 +1934,7 @@ export default function MailroomPackages() {
                               {def.label || "Unnamed Address"}
                             </Text>
                             {def.is_default && (
-                              <Badge size="sm" color="blue" variant="light">
+                              <Badge size="sm" color="blue" variant="filled">
                                 Default
                               </Badge>
                             )}
@@ -1912,7 +1943,7 @@ export default function MailroomPackages() {
 
                           {/* Recipient (Label on top, Value below) */}
                           <Stack gap={2}>
-                            <Text fw={700} size="sm" c="dimmed">
+                            <Text fw={700} size="sm" c="#4A5568">
                               Recipient Name
                             </Text>
                             <Text size="sm" fw={500}>
@@ -1925,7 +1956,7 @@ export default function MailroomPackages() {
                           {/* Address and Phone (Side by side) */}
                           <Group grow mt="xs">
                             <Stack gap={2}>
-                              <Text fw={700} size="sm" c="dimmed">
+                              <Text fw={700} size="sm" c="#4A5568">
                                 Address
                               </Text>
                               <Stack gap={0}>
@@ -1943,7 +1974,7 @@ export default function MailroomPackages() {
 
                             {def.contact_phone && (
                               <Stack gap={2}>
-                                <Text fw={700} size="sm" c="dimmed">
+                                <Text fw={700} size="sm" c="#4A5568">
                                   Contact Phone
                                 </Text>
                                 <Text size="sm" fw={500}>
@@ -1957,7 +1988,7 @@ export default function MailroomPackages() {
                     );
                   }
                   return (
-                    <Text c="dimmed">
+                    <Text c="#4A5568">
                       No shipping address on file for this user.
                     </Text>
                   );
@@ -2002,7 +2033,7 @@ export default function MailroomPackages() {
                 return "blue";
               })()}
             />
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="#4A5568">
               Since items are being removed, you might want to set this to
               &quot;Normal&quot; or &quot;Empty&quot;.
             </Text>
@@ -2038,7 +2069,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}

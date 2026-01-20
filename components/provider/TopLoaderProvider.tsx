@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { doneRouteProgress } from "@/lib/route-progress";
 import "./TopLoaderProvider.css";
 
-export default function TopLoaderProvider() {
+function TopLoaderProviderInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -16,4 +16,12 @@ export default function TopLoaderProvider() {
   }, [pathname, searchParams]);
 
   return null;
+}
+
+export default function TopLoaderProvider() {
+  return (
+    <Suspense fallback={null}>
+      <TopLoaderProviderInner />
+    </Suspense>
+  );
 }

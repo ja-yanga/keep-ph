@@ -11,11 +11,10 @@ import {
   Stack,
   Select,
   ThemeIcon,
-  Loader,
-  Center,
   Alert,
   Skeleton,
 } from "@mantine/core";
+import { useIntersection } from "@mantine/hooks";
 import {
   IconUsers,
   IconEye,
@@ -26,8 +25,8 @@ import {
   IconActivity,
 } from "@tabler/icons-react";
 
-// Import all recharts components in a single dynamic import to reduce chunk count
-// This creates one bundle instead of three, improving load performance
+// Separate dynamic imports for each chart to avoid "undefined" element errors
+// while still benefiting from lazy loading and consolidated chunking
 const TrafficChart = dynamic(
   () =>
     import("recharts").then((mod) => {
@@ -40,22 +39,18 @@ const TrafficChart = dynamic(
         CartesianGrid,
         Tooltip,
       } = mod;
-      return {
-        default: ({
-          data,
-        }: {
-          data: Array<{ date: string; visitors: number; pageviews: number }>;
-        }) => (
+
+      return function Traffic({
+        data,
+      }: {
+        data: Array<{ date: string; visitors: number; pageviews: number }>;
+      }) {
+        return (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} aria-label="Traffic overview line chart">
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="date"
-                axisLine={false}
-                tickLine={false}
-                aria-label="Date"
-              />
-              <YAxis axisLine={false} tickLine={false} aria-label="Count" />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} />
+              <YAxis axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{
                   borderRadius: 8,
@@ -71,7 +66,6 @@ const TrafficChart = dynamic(
                 dot={{ r: 4, fill: "#228BE6" }}
                 activeDot={{ r: 6 }}
                 name="Visitors"
-                aria-label="Visitors line"
               />
               <Line
                 type="monotone"
@@ -80,11 +74,10 @@ const TrafficChart = dynamic(
                 strokeWidth={3}
                 dot={false}
                 name="Page Views"
-                aria-label="Page views line"
               />
             </LineChart>
           </ResponsiveContainer>
-        ),
+        );
       };
     }),
   { ssr: false, loading: () => <Skeleton height={300} /> },
@@ -102,18 +95,18 @@ const TopPagesChart = dynamic(
         CartesianGrid,
         Tooltip,
       } = mod;
-      return {
-        default: ({
-          data,
-        }: {
-          data: Array<{ name: string; views: number }>;
-        }) => (
+
+      return function TopPages({
+        data,
+      }: {
+        data: Array<{ name: string; views: number }>;
+      }) {
+        return (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               layout="vertical"
               data={data}
               margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-              aria-label="Top pages bar chart"
             >
               <CartesianGrid
                 strokeDasharray="3 3"
@@ -126,7 +119,6 @@ const TopPagesChart = dynamic(
                 type="category"
                 width={120}
                 tick={{ fontSize: 11 }}
-                aria-label="Page name"
               />
               <Tooltip cursor={{ fill: "transparent" }} />
               <Bar
@@ -135,11 +127,10 @@ const TopPagesChart = dynamic(
                 radius={[0, 4, 4, 0]}
                 barSize={20}
                 name="Views"
-                aria-label="Page views"
               />
             </BarChart>
           </ResponsiveContainer>
-        ),
+        );
       };
     }),
   { ssr: false, loading: () => <Skeleton height={250} /> },
@@ -149,14 +140,15 @@ const DeviceChart = dynamic(
   () =>
     import("recharts").then((mod) => {
       const { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } = mod;
-      return {
-        default: ({
-          data,
-        }: {
-          data: Array<{ name: string; value: number; color: string }>;
-        }) => (
+
+      return function Device({
+        data,
+      }: {
+        data: Array<{ name: string; value: number; color: string }>;
+      }) {
+        return (
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart aria-label="Device usage pie chart">
+            <PieChart>
               <Pie
                 data={data}
                 cx="50%"
@@ -166,7 +158,6 @@ const DeviceChart = dynamic(
                 paddingAngle={5}
                 dataKey="value"
                 nameKey="name"
-                aria-label="Device category"
               >
                 {data.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
@@ -175,13 +166,26 @@ const DeviceChart = dynamic(
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
-        ),
+        );
       };
     }),
   { ssr: false, loading: () => <Skeleton height={160} width={160} circle /> },
 );
 
 export default function AnalyticsDashboard() {
+  const { ref: trafficRef, entry: trafficEntry } = useIntersection({
+    rootMargin: "200px",
+    threshold: 0.1,
+  });
+  const { ref: topPagesRef, entry: topPagesEntry } = useIntersection({
+    rootMargin: "200px",
+    threshold: 0.1,
+  });
+  const { ref: deviceRef, entry: deviceEntry } = useIntersection({
+    rootMargin: "200px",
+    threshold: 0.1,
+  });
+
   const [timeRange, setTimeRange] = useState<string>("7d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -310,19 +314,6 @@ export default function AnalyticsDashboard() {
     [data?.stats],
   );
 
-  if (loading) {
-    return (
-      <Center
-        h={300}
-        role="status"
-        aria-live="polite"
-        aria-label="Loading analytics data"
-      >
-        <Loader size="md" />
-      </Center>
-    );
-  }
-
   return (
     <Stack gap="lg" role="region" aria-labelledby="analytics-heading">
       <Group justify="space-between" align="center">
@@ -366,30 +357,38 @@ export default function AnalyticsDashboard() {
           p="md"
           radius="md"
           role="listitem"
-          aria-label={`Active users: ${stats.activeNow} users currently on site`}
+          aria-label={
+            loading
+              ? "Loading active users"
+              : `Active users: ${stats.activeNow} users currently on site`
+          }
         >
           <Group>
             <ThemeIcon
               size="xl"
               radius="md"
-              variant="light"
+              variant="filled"
               color="green"
               aria-hidden="true"
             >
               <IconActivity size={28} />
             </ThemeIcon>
-            <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+            <div style={{ flex: 1 }}>
+              <Text c="#2D3748" size="xs" tt="uppercase" fw={700}>
                 Active Now
               </Text>
-              <Text
-                fw={700}
-                size="xl"
-                c="green"
-                aria-label={`${stats.activeNow} active users`}
-              >
-                {stats.activeNow}
-              </Text>
+              {loading ? (
+                <Skeleton height={24} width="40%" mt={4} />
+              ) : (
+                <Text
+                  fw={700}
+                  size="xl"
+                  c="green"
+                  aria-label={`${stats.activeNow} active users`}
+                >
+                  {stats.activeNow}
+                </Text>
+              )}
               <Text c="dimmed" size="xs">
                 users on site
               </Text>
@@ -402,29 +401,37 @@ export default function AnalyticsDashboard() {
           p="md"
           radius="md"
           role="listitem"
-          aria-label={`Total visitors: ${stats.totalVisitors.toLocaleString()} visitors in the last 7 days`}
+          aria-label={
+            loading
+              ? "Loading total visitors"
+              : `Total visitors: ${stats.totalVisitors.toLocaleString()} visitors in the last 7 days`
+          }
         >
           <Group>
             <ThemeIcon
               size="xl"
               radius="md"
-              variant="light"
+              variant="filled"
               color="blue"
               aria-hidden="true"
             >
               <IconUsers size={28} />
             </ThemeIcon>
-            <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+            <div style={{ flex: 1 }}>
+              <Text c="#2D3748" size="xs" tt="uppercase" fw={700}>
                 Total Visitors (7d)
               </Text>
-              <Text
-                fw={700}
-                size="xl"
-                aria-label={`${stats.totalVisitors.toLocaleString()} total visitors`}
-              >
-                {stats.totalVisitors.toLocaleString()}
-              </Text>
+              {loading ? (
+                <Skeleton height={24} width="60%" mt={4} />
+              ) : (
+                <Text
+                  fw={700}
+                  size="xl"
+                  aria-label={`${stats.totalVisitors.toLocaleString()} total visitors`}
+                >
+                  {stats.totalVisitors.toLocaleString()}
+                </Text>
+              )}
             </div>
           </Group>
         </Paper>
@@ -434,29 +441,37 @@ export default function AnalyticsDashboard() {
           p="md"
           radius="md"
           role="listitem"
-          aria-label={`Page views: ${stats.totalPageViews.toLocaleString()} page views in the last 7 days`}
+          aria-label={
+            loading
+              ? "Loading page views"
+              : `Page views: ${stats.totalPageViews.toLocaleString()} page views in the last 7 days`
+          }
         >
           <Group>
             <ThemeIcon
               size="xl"
               radius="md"
-              variant="light"
+              variant="filled"
               color="violet"
               aria-hidden="true"
             >
               <IconEye size={28} />
             </ThemeIcon>
-            <div>
-              <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+            <div style={{ flex: 1 }}>
+              <Text c="#2D3748" size="xs" tt="uppercase" fw={700}>
                 Page Views (7d)
               </Text>
-              <Text
-                fw={700}
-                size="xl"
-                aria-label={`${stats.totalPageViews.toLocaleString()} total page views`}
-              >
-                {stats.totalPageViews.toLocaleString()}
-              </Text>
+              {loading ? (
+                <Skeleton height={24} width="60%" mt={4} />
+              ) : (
+                <Text
+                  fw={700}
+                  size="xl"
+                  aria-label={`${stats.totalPageViews.toLocaleString()} total page views`}
+                >
+                  {stats.totalPageViews.toLocaleString()}
+                </Text>
+              )}
             </div>
           </Group>
         </Paper>
@@ -474,13 +489,22 @@ export default function AnalyticsDashboard() {
           Traffic Overview
         </Text>
         <div
+          ref={trafficRef}
           style={{ height: 300, width: "100%" }}
           role="img"
-          aria-label={`Traffic chart showing ${visitorData.length} data points for visitors and page views over time`}
+          aria-label={
+            loading
+              ? "Loading traffic chart"
+              : `Traffic chart showing ${visitorData.length} data points for visitors and page views over time`
+          }
         >
-          <Suspense fallback={<Skeleton height={300} />}>
-            <TrafficChart data={visitorData} />
-          </Suspense>
+          {loading || !trafficEntry?.isIntersecting ? (
+            <Skeleton height={300} />
+          ) : (
+            <Suspense fallback={<Skeleton height={300} />}>
+              <TrafficChart data={visitorData} />
+            </Suspense>
+          )}
         </div>
       </Paper>
 
@@ -500,13 +524,22 @@ export default function AnalyticsDashboard() {
             <IconChartBar size={18} color="gray" aria-hidden="true" />
           </Group>
           <div
+            ref={topPagesRef}
             style={{ height: 250, width: "100%" }}
             role="img"
-            aria-label={`Bar chart showing top ${topPages.length} pages by views`}
+            aria-label={
+              loading
+                ? "Loading top pages chart"
+                : `Bar chart showing top ${topPages.length} pages by views`
+            }
           >
-            <Suspense fallback={<Skeleton height={250} />}>
-              <TopPagesChart data={topPages} />
-            </Suspense>
+            {loading || !topPagesEntry?.isIntersecting ? (
+              <Skeleton height={250} />
+            ) : (
+              <Suspense fallback={<Skeleton height={250} />}>
+                <TopPagesChart data={topPages} />
+              </Suspense>
+            )}
           </div>
         </Paper>
 
@@ -523,43 +556,66 @@ export default function AnalyticsDashboard() {
           </Text>
           <Group justify="center" gap={40}>
             <div
+              ref={deviceRef}
               style={{ width: 160, height: 160 }}
               role="img"
-              aria-label={`Pie chart showing device usage distribution: ${deviceData.map((d) => `${d.name} ${d.value} users`).join(", ")}`}
+              aria-label={
+                loading
+                  ? "Loading device usage chart"
+                  : `Pie chart showing device usage distribution`
+              }
             >
-              <Suspense fallback={<Skeleton height={160} width={160} circle />}>
-                <DeviceChart data={deviceData} />
-              </Suspense>
+              {loading || !deviceEntry?.isIntersecting ? (
+                <Skeleton height={160} width={160} circle />
+              ) : (
+                <Suspense
+                  fallback={<Skeleton height={160} width={160} circle />}
+                >
+                  <DeviceChart data={deviceData} />
+                </Suspense>
+              )}
             </div>
             <Stack gap="xs" role="list" aria-label="Device usage breakdown">
-              {deviceData.map((d) => (
-                <Group key={d.name} role="listitem">
-                  <ThemeIcon
-                    color={d.color}
-                    variant="light"
-                    size="sm"
-                    aria-hidden="true"
-                  >
-                    {d.name === "mobile" ? (
-                      <IconDeviceMobile size={14} />
-                    ) : (
-                      <IconDeviceDesktop size={14} />
-                    )}
-                  </ThemeIcon>
-                  <div>
-                    <Text size="sm" fw={500} tt="capitalize">
-                      {d.name}
-                    </Text>
-                    <Text
-                      size="xs"
-                      c="dimmed"
-                      aria-label={`${d.value} ${d.name} users`}
-                    >
-                      {d.value} users
-                    </Text>
-                  </div>
-                </Group>
-              ))}
+              {loading
+                ? Array(3)
+                    .fill(0)
+                    .map((_, i) => (
+                      <Group key={i}>
+                        <Skeleton height={24} width={24} radius="sm" />
+                        <div>
+                          <Skeleton height={14} width={60} mb={4} />
+                          <Skeleton height={10} width={40} />
+                        </div>
+                      </Group>
+                    ))
+                : deviceData.map((d) => (
+                    <Group key={d.name} role="listitem">
+                      <ThemeIcon
+                        color={d.color}
+                        variant="filled"
+                        size="sm"
+                        aria-hidden="true"
+                      >
+                        {d.name === "mobile" ? (
+                          <IconDeviceMobile size={14} />
+                        ) : (
+                          <IconDeviceDesktop size={14} />
+                        )}
+                      </ThemeIcon>
+                      <div>
+                        <Text size="sm" fw={500} tt="capitalize">
+                          {d.name}
+                        </Text>
+                        <Text
+                          size="xs"
+                          c="#2D3748"
+                          aria-label={`${d.value} ${d.name} users`}
+                        >
+                          {d.value} users
+                        </Text>
+                      </div>
+                    </Group>
+                  ))}
             </Stack>
           </Group>
         </Paper>

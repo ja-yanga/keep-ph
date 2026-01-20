@@ -152,7 +152,7 @@ export default function AdminDashboard({
       {
         accessor: "received_at",
         title: "Received",
-        textAlign: "right",
+        textAlign: "right" as const,
         render: (pkg) => (
           <Text size="sm" fw={600} c="dark.7">
             {pkg.received_at ? (
@@ -421,13 +421,13 @@ export default function AdminDashboard({
           <div aria-live="polite" aria-atomic="true">
             {/* On mobile, only render if it was visible in viewport. On desktop, follow the idle callback readiness. */}
             {(isMobile ? wasTableVisible : true) && isTableReady ? (
-              <DataTable
+              <DataTable<AdminDashboardStats["recentPackages"][0]>
                 striped
                 withTableBorder={false}
                 borderRadius="lg"
                 verticalSpacing="md"
                 highlightOnHover
-                minHeight={150}
+                minHeight={300} // Increased min-height to reduce layout shift
                 records={recent}
                 aria-label="Recent packages"
                 columns={tableColumns}

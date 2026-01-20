@@ -138,7 +138,6 @@ const Notifications = () => {
         },
       )
       .subscribe((status, err) => {
-        console.log("📡 Subscription status:", status);
         if (err) console.error("❌ Subscription error:", err);
       });
 
