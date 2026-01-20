@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Modal, Stack, Text, Paper, Group, Button } from "@mantine/core";
 import { IconCreditCardOff } from "@tabler/icons-react";
 
@@ -8,7 +9,7 @@ type CancelSubscriptionModalProps = {
   loading: boolean;
 };
 
-export function CancelSubscriptionModal({
+function CancelSubscriptionModalComponent({
   opened,
   onClose,
   onConfirm,
@@ -47,3 +48,5 @@ export function CancelSubscriptionModal({
     </Modal>
   );
 }
+
+export const CancelSubscriptionModal = memo(CancelSubscriptionModalComponent);

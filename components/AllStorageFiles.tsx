@@ -7,9 +7,11 @@ import React, {
   ElementType,
   useCallback,
   useTransition,
+  lazy,
+  Suspense,
 } from "react";
 import Image from "next/image";
-import { useMediaQuery, useDebouncedValue } from "@mantine/hooks";
+import { useDebouncedValue } from "@mantine/hooks";
 import useSWR, { useSWRConfig } from "swr";
 import {
   Badge,
@@ -21,7 +23,6 @@ import {
   Text,
   Title,
   ActionIcon,
-  Modal,
   Loader,
   Center,
   Box,
@@ -51,6 +52,11 @@ import {
 } from "@tabler/icons-react";
 import type { IconProps } from "@tabler/icons-react";
 import { useSession } from "@/components/SessionProvider";
+
+// Lazy load Modal component - only load when needed
+const Modal = lazy(() =>
+  import("@mantine/core").then((mod) => ({ default: mod.Modal })),
+);
 
 // --- Configuration ---
 const ITEMS_PER_PAGE = 10;
@@ -92,10 +98,13 @@ const SortControl: React.FC<SortControlProps> = React.memo(
       return isAsc ? IconArrowUp : IconArrowDown;
     }, [isSorted, isAsc, sortKey]);
 
-    let sortLabel = `Sort by ${label}`;
-    if (isSorted) {
-      sortLabel += isAsc ? " descending" : " ascending";
-    }
+    const sortLabel = useMemo(
+      () =>
+        isSorted
+          ? `Sort by ${label} ${isAsc ? "descending" : "ascending"}`
+          : `Sort by ${label}`,
+      [isSorted, isAsc, label],
+    );
 
     const handleClick = useCallback(() => onClick(sortKey), [onClick, sortKey]);
 
@@ -123,6 +132,12 @@ const SortControl: React.FC<SortControlProps> = React.memo(
       </UnstyledButton>
     );
   },
+  (prevProps, nextProps) =>
+    prevProps.currentSort === nextProps.currentSort &&
+    prevProps.currentDir === nextProps.currentDir &&
+    prevProps.sortKey === nextProps.sortKey &&
+    prevProps.label === nextProps.label &&
+    prevProps.onClick === nextProps.onClick,
 );
 
 SortControl.displayName = "SortControl";
@@ -143,11 +158,17 @@ const fetcher = async (url: string) => {
 const formatFileSize = (mb: number) =>
   mb < 1 ? `${(mb * 1024).toFixed(0)} KB` : `${mb.toFixed(2)} MB`;
 
-// Memoized date formatter - cached for performance
+// Memoized date formatter - cached for performance with Intl.DateTimeFormat for better performance
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
 const formatDate = (dateString: string | null | undefined): string => {
   if (!dateString) return "—";
   try {
-    return new Date(dateString).toLocaleDateString();
+    return dateFormatter.format(new Date(dateString));
   } catch {
     return "—";
   }
@@ -445,8 +466,11 @@ export default function AllUserScans() {
       }
     | undefined
   >(swrKey, fetcher, {
-    revalidateOnFocus: true,
-    dedupingInterval: 2000,
+    revalidateOnFocus: false, // Disable to reduce unnecessary requests
+    revalidateOnReconnect: true,
+    dedupingInterval: 5000, // Increase to reduce duplicate requests
+    keepPreviousData: true, // Prevent loading states during pagination
+    focusThrottleInterval: 10000, // Throttle focus revalidation
   });
 
   // Extract data from API response
@@ -457,11 +481,14 @@ export default function AllUserScans() {
   // Optimized loading state - only show loading on initial load
   const loading = isLoading && scans.length === 0;
 
-  // Reset to Page 1 when searching or sorting changes
+  // Reset to Page 1 when searching or sorting changes - debounced to prevent rapid resets
   useEffect(() => {
-    startTransition(() => {
-      setActivePage(1);
-    });
+    const timeoutId = setTimeout(() => {
+      startTransition(() => {
+        setActivePage(1);
+      });
+    }, 100);
+    return () => clearTimeout(timeoutId);
   }, [debouncedSearch, sortBy, sortDir]);
 
   const handlePreview = useCallback((scan: Scan) => {
@@ -473,11 +500,12 @@ export default function AllUserScans() {
     if (!swrKey) return;
     setRefreshing(true);
     try {
-      await mutate(swrKey);
+      await mutate(swrKey, undefined, { revalidate: true });
     } finally {
-      setRefreshing(false);
+      // Use setTimeout to prevent blocking UI
+      setTimeout(() => setRefreshing(false), 0);
     }
-  }, [swrKey]);
+  }, [swrKey, mutate]);
 
   const handleSortClick = useCallback(
     (key: "uploaded_at" | "file_name" | "file_size_mb") => {
@@ -514,62 +542,106 @@ export default function AllUserScans() {
 
       if (!res.ok) throw new Error("Delete failed");
 
-      // Invalidate SWR cache to refetch with updated data
+      // Optimistically update cache instead of refetching immediately
       if (swrKey) {
-        await mutate(swrKey);
+        await mutate(
+          swrKey,
+          (current: typeof apiData) => {
+            if (!current) return current;
+            return {
+              ...current,
+              scans: current.scans.filter((s) => s.id !== scanId),
+              pagination: {
+                ...current.pagination,
+                total: Math.max(0, current.pagination.total - 1),
+              },
+            };
+          },
+          { revalidate: false }, // Don't refetch immediately
+        );
+        // Revalidate in background after a short delay
+        setTimeout(() => {
+          mutate(swrKey, undefined, { revalidate: true });
+        }, 100);
       }
     } catch (e: unknown) {
-      console.error("delete failed", e);
+      // Only log in development
+      if (process.env.NODE_ENV === "development") {
+        console.error("delete failed", e);
+      }
     } finally {
       setDeletingId(null);
       setToDelete(null);
     }
-  }, [toDelete, swrKey]);
+  }, [toDelete, swrKey, mutate, apiData]);
 
   // Server-side filtering, sorting, and pagination - no client-side processing needed
   // scans are already filtered, sorted, and paginated by the API
 
-  // Calculate total pages from server pagination data
-  const totalPages = pagination
-    ? Math.ceil(pagination.total / pagination.limit)
-    : 0;
+  // Calculate total pages from server pagination data - memoized
+  const totalPages = useMemo(
+    () => (pagination ? Math.ceil(pagination.total / pagination.limit) : 0),
+    [pagination],
+  );
 
-  const isMobile = useMediaQuery("(max-width: 768px)");
+  // Use CSS-based responsive design instead of JS media query to prevent layout shifts
+  // This is more performant and doesn't cause hydration mismatches
+  const [isMobile, setIsMobile] = useState(false);
 
-  // --- RENDERING MAIN CONTENT ---
-  let mainContent: React.ReactNode;
-  if (loading) {
-    mainContent = (
-      <Center py="xl" h={200}>
-        <Loader size="sm" aria-label="Loading files" />
-      </Center>
-    );
-  } else if (isMobile) {
-    mainContent = (
-      <Stack
-        gap="md"
-        component="ul"
-        style={{ listStyle: "none", padding: 0, margin: 0 }}
-      >
-        {scans.length > 0 ? (
-          scans.map((s) => (
-            <MobileCard
-              key={s.id}
-              scan={s}
-              onPreview={handlePreview}
-              onDelete={handleDelete}
-              isDeleting={deletingId === s.id}
-            />
-          ))
-        ) : (
-          <Center py="xl" component="li">
-            <Text c="gray.7">No files match your criteria.</Text>
-          </Center>
-        )}
-      </Stack>
-    );
-  } else {
-    mainContent = (
+  useEffect(() => {
+    // Only run on client side - use matchMedia for better performance
+    const mediaQuery = window.matchMedia("(max-width: 768px)");
+    const updateMobile = (e: MediaQueryList | MediaQueryListEvent) => {
+      setIsMobile(e.matches);
+    };
+    // Set initial value
+    updateMobile(mediaQuery);
+    // Listen for changes
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", updateMobile);
+      return () => mediaQuery.removeEventListener("change", updateMobile);
+    } else {
+      // Fallback for older browsers
+      mediaQuery.addListener(updateMobile);
+      return () => mediaQuery.removeListener(updateMobile);
+    }
+  }, []);
+
+  // --- RENDERING MAIN CONTENT --- Memoized to prevent unnecessary re-renders
+  const mainContent = useMemo(() => {
+    if (loading) {
+      return (
+        <Center py="xl" h={200}>
+          <Loader size="sm" aria-label="Loading files" />
+        </Center>
+      );
+    }
+    if (isMobile) {
+      return (
+        <Stack
+          gap="md"
+          component="ul"
+          style={{ listStyle: "none", padding: 0, margin: 0 }}
+        >
+          {scans.length > 0 ? (
+            scans.map((s) => (
+              <MobileCard
+                key={s.id}
+                scan={s}
+                onPreview={handlePreview}
+                onDelete={handleDelete}
+                isDeleting={deletingId === s.id}
+              />
+            ))
+          ) : (
+            <Center py="xl" component="li">
+              <Text c="gray.7">No files match your criteria.</Text>
+            </Center>
+          )}
+        </Stack>
+      );
+    }
+    return (
       <Table
         stickyHeader
         striped
@@ -632,7 +704,17 @@ export default function AllUserScans() {
         </Table.Tbody>
       </Table>
     );
-  }
+  }, [
+    loading,
+    isMobile,
+    scans,
+    handlePreview,
+    handleDelete,
+    deletingId,
+    sortBy,
+    sortDir,
+    handleSortClick,
+  ]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -653,7 +735,7 @@ export default function AllUserScans() {
     <Box
       p={isMobile ? "xs" : "md"}
       bg="gray.0"
-      style={{ minHeight: "100dvh" }}
+      style={{ minHeight: "100dvh", contain: "layout style paint" }}
       component="main"
     >
       <Paper p={isMobile ? "sm" : "lg"} radius="md" withBorder shadow="sm">
@@ -706,6 +788,7 @@ export default function AllUserScans() {
           <ScrollArea
             h={isMobile ? "calc(100vh - 300px)" : 550}
             offsetScrollbars
+            type="hover"
           >
             {mainContent}
           </ScrollArea>
@@ -738,94 +821,113 @@ export default function AllUserScans() {
         </Stack>
       </Paper>
 
-      {/* Preview Modal */}
-      <Modal
-        opened={previewOpen}
-        onClose={handleClosePreview}
-        title={selected?.file_name ?? "Preview"}
-        size="xl"
-        centered
-        fullScreen={isMobile}
-      >
-        {selected ? (
-          <Box>
-            {selected.mime_type?.startsWith("image") ||
-            /\.(jpe?g|png|gif|webp)$/i.test(selected.file_url) ? (
-              <Box
-                pos="relative"
-                w="100%"
-                h={{ base: "60vh", sm: "70vh" }}
-                style={{ overflow: "hidden", borderRadius: rem(8) }}
-              >
-                <Image
-                  src={selected.file_url}
-                  alt={`Preview of ${selected.file_name}`}
-                  fill
-                  sizes="(max-width: 768px) 100vw, 900px"
-                  style={{ objectFit: "contain" }}
-                  loading="eager"
-                  priority={previewOpen}
-                  quality={90}
-                  unoptimized={
-                    selected.file_url.startsWith("blob:") ||
-                    selected.file_url.startsWith("data:")
-                  }
-                />
+      {/* Preview Modal - Lazy loaded */}
+      {previewOpen && (
+        <Suspense
+          fallback={
+            <Center h={200}>
+              <Loader size="sm" />
+            </Center>
+          }
+        >
+          <Modal
+            opened={previewOpen}
+            onClose={handleClosePreview}
+            title={selected?.file_name ?? "Preview"}
+            size="xl"
+            centered
+            fullScreen={isMobile}
+          >
+            {selected ? (
+              <Box>
+                {selected.mime_type?.startsWith("image") ||
+                /\.(jpe?g|png|gif|webp)$/i.test(selected.file_url) ? (
+                  <Box
+                    pos="relative"
+                    w="100%"
+                    h={isMobile ? "60vh" : "70vh"}
+                    style={{ overflow: "hidden", borderRadius: rem(8) }}
+                  >
+                    <Image
+                      src={selected.file_url}
+                      alt={`Preview of ${selected.file_name}`}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 900px"
+                      style={{ objectFit: "contain" }}
+                      loading="lazy"
+                      quality={85}
+                      unoptimized={
+                        selected.file_url.startsWith("blob:") ||
+                        selected.file_url.startsWith("data:")
+                      }
+                    />
+                  </Box>
+                ) : (
+                  <Box w="100%" h={isMobile ? "80vh" : "70vh"}>
+                    <iframe
+                      src={selected.file_url}
+                      title={`Preview of ${selected.file_name}`}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        borderRadius: rem(8),
+                      }}
+                      loading="lazy"
+                    />
+                  </Box>
+                )}
               </Box>
             ) : (
-              <Box w="100%" h={isMobile ? "80vh" : "70vh"}>
-                <iframe
-                  src={selected.file_url}
-                  title={`Preview of ${selected.file_name}`}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    border: "none",
-                    borderRadius: rem(8),
-                  }}
-                  loading="lazy"
-                />
-              </Box>
+              <Center h={200}>
+                <Text c="gray.7">No file selected</Text>
+              </Center>
             )}
-          </Box>
-        ) : (
-          <Center h={200}>
-            <Text c="gray.7">No file selected</Text>
-          </Center>
-        )}
-      </Modal>
+          </Modal>
+        </Suspense>
+      )}
 
-      {/* Delete Confirmation */}
-      <Modal
-        opened={confirmOpen}
-        onClose={handleCloseConfirm}
-        title="Confirm Delete"
-        centered
-        size="sm"
-      >
-        <Stack gap="md">
-          <Text size="sm" id="delete-description">
-            Permanently delete{" "}
-            <Text component="span" fw={700}>
-              {toDelete?.name}
-            </Text>
-            ?
-          </Text>
-          <Group justify="flex-end" gap="xs">
-            <Button variant="default" onClick={handleCloseConfirm}>
-              Cancel
-            </Button>
-            <Button
-              color="red"
-              onClick={() => void performDelete()}
-              loading={!!deletingId}
-              aria-describedby="delete-description"
-            >
-              Delete
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      {/* Delete Confirmation - Lazy loaded */}
+      {confirmOpen && (
+        <Suspense
+          fallback={
+            <Center h={200}>
+              <Loader size="sm" />
+            </Center>
+          }
+        >
+          <Modal
+            opened={confirmOpen}
+            onClose={handleCloseConfirm}
+            title="Confirm Delete"
+            centered
+            size="sm"
+          >
+            <Stack gap="md">
+              <Text size="sm" id="delete-description">
+                Permanently delete{" "}
+                <Text component="span" fw={700}>
+                  {toDelete?.name}
+                </Text>
+                ?
+              </Text>
+              <Group justify="flex-end" gap="xs">
+                <Button variant="default" onClick={handleCloseConfirm}>
+                  Cancel
+                </Button>
+                <Button
+                  color="red"
+                  onClick={() => void performDelete()}
+                  loading={!!deletingId}
+                  aria-describedby="delete-description"
+                >
+                  Delete
+                </Button>
+              </Group>
+            </Stack>
+          </Modal>
+        </Suspense>
+      )}
     </Box>
   );
 }
