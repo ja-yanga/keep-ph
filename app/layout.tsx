@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 // Import Mantine CSS - Next.js will optimize this automatically
 import "@mantine/core/styles.css";
-import "mantine-datatable/styles.css";
+// Moved mantine-datatable styles to components using them to reduce initial CSS bundle
+// import "mantine-datatable/styles.css";
 
 import {
   ColorSchemeScript,
@@ -16,7 +17,7 @@ import GoogleAnalytics from "@/components/GoogleAnalytics";
 const inter = Inter({
   subsets: ["latin"],
   display: "swap", // Prevent FOIT (Flash of Invisible Text)
-  preload: false, // Let Next.js optimize font loading to reduce critical path latency
+  preload: true, // Let Next.js optimize font loading to reduce critical path latency
   fallback: ["system-ui", "arial"],
 });
 
@@ -50,13 +51,6 @@ export default function RootLayout({
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript />
-        {/* DNS Prefetch for external resources */}
-        <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-        {/* Use dns-prefetch instead of preconnect for Supabase - connections happen after page load */}
-        <link
-          rel="dns-prefetch"
-          href="https://rqdyfadbeafmunvmlqcp.supabase.co"
-        />
       </head>
       <body
         className={inter.className}

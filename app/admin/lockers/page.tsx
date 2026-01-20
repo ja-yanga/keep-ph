@@ -1,6 +1,7 @@
 "use client";
+import { Suspense } from "react";
 import MailroomLockers from "@/components/MailroomLockers";
-import { Container, Group, Title, Text } from "@mantine/core";
+import { Container, Group, Title, Text, Loader, Center } from "@mantine/core";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 export default function LockersPage() {
@@ -24,7 +25,15 @@ export default function LockersPage() {
               </Text>
             </div>
           </Group>
-          <MailroomLockers />
+          <Suspense
+            fallback={
+              <Center h={400}>
+                <Loader size="lg" />
+              </Center>
+            }
+          >
+            <MailroomLockers />
+          </Suspense>
         </Container>
       </main>
     </PrivateMainLayout>

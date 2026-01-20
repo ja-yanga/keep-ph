@@ -2,7 +2,13 @@
 
 import Script from "next/script";
 
-export default function GoogleAnalytics({ gaId }: { gaId: string }) {
+export default function GoogleAnalytics({
+  gaId,
+}: {
+  gaId: string | undefined;
+}) {
+  if (!gaId) return null;
+
   return (
     <>
       <Script
@@ -37,9 +43,15 @@ export default function GoogleAnalytics({ gaId }: { gaId: string }) {
             cookie_flags: 'SameSite=Lax;Secure',
             // Anonymize IP addresses for privacy compliance
             anonymize_ip: true,
-            // Disable advertising features to reduce cookie usage
+            // Disable advertising features to reduce cookie usage and prevent third-party cookies
             allow_google_signals: false,
             allow_ad_personalization_signals: false,
+            restricted_data_processing: true,
+            // Consent Mode v2 settings to explicitly deny advertising storage
+            ads_storage: 'denied',
+            ad_user_data: 'denied',
+            ad_personalization: 'denied',
+            analytics_storage: 'granted',
             // Respect Do Not Track header
             respect_dnt: true,
             // Use first-party data collection only

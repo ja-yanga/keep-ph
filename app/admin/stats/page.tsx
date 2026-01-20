@@ -9,10 +9,10 @@ import { Loader, Center } from "@mantine/core";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 // Dynamically import AnalyticsDashboard to reduce initial bundle size
+// We keep SSR enabled for the main layout to improve LCP
 const AnalyticsDashboard = dynamic(
   () => import("@/components/AnalyticsDashboard"),
   {
-    ssr: false,
     loading: () => (
       <Center h={400}>
         <Loader size="lg" />

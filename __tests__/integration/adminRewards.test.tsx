@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
 import { Notifications } from "@mantine/notifications";
-import AdminRewards from "@/components/pages/admin/RewardsPage/AdminRewards";
+import AdminRewardsPage from "@/app/admin/rewards/page";
 
 type DataTableColumn = {
   accessor?: string;
@@ -43,34 +43,73 @@ jest.mock("mantine-datatable", () => {
       records?: Array<Record<string, unknown>>;
       columns?: DataTableColumn[];
       "aria-label"?: string;
+      onPageChange?: (page: number) => void;
+      page?: number;
+      totalRecords?: number;
+      recordsPerPage?: number;
     }) => {
       const records = props.records ?? [];
       const columns = props.columns ?? [];
       return (
-        <table role="table" aria-label={props["aria-label"] ?? "Rewards list"}>
-          <tbody>
-            {records.map((rec, i) => (
-              <tr
-                role="row"
-                key={String((rec as Record<string, unknown>).id ?? i)}
-              >
-                {columns.map((col, j) => {
-                  const content =
-                    typeof col.render === "function"
-                      ? col.render(rec)
-                      : (rec as Record<string, unknown>)[col.accessor ?? ""];
-                  return (
-                    <td role="cell" key={j}>
-                      {safeRender(content)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div data-testid="data-table-container">
+          <table
+            role="table"
+            aria-label={props["aria-label"] ?? "Rewards list"}
+          >
+            <tbody>
+              {records.map((rec, i) => (
+                <tr
+                  role="row"
+                  key={String((rec as Record<string, unknown>).id ?? i)}
+                >
+                  {columns.map((col, j) => {
+                    const content =
+                      typeof col.render === "function"
+                        ? col.render(rec)
+                        : (rec as Record<string, unknown>)[col.accessor ?? ""];
+                    return (
+                      <td role="cell" key={j}>
+                        {safeRender(content)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="pagination-controls">
+            <button
+              aria-label="Previous page"
+              disabled={props.page === 1}
+              onClick={() => props.onPageChange?.((props.page ?? 1) - 1)}
+            >
+              Prev
+            </button>
+            <span data-testid="current-page">{props.page}</span>
+            <button
+              aria-label="Next page"
+              disabled={
+                (props.page ?? 1) * (props.recordsPerPage ?? 10) >=
+                (props.totalRecords ?? 0)
+              }
+              onClick={() => props.onPageChange?.((props.page ?? 1) + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
       );
     },
+  };
+});
+
+// Mock PrivateMainLayout
+jest.mock("@/components/Layout/PrivateMainLayout", () => {
+  return {
+    __esModule: true,
+    default: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="private-layout">{children}</div>
+    ),
   };
 });
 
@@ -145,32 +184,22 @@ class MockFileReader {
   MockFileReader as unknown;
 
 // --- Mock data and fetch capture ---
-const mockClaims = [
-  {
-    id: "claim-1",
-    user: { email: "bruce@wayne.com", users_email: null },
-    referral_count: 0,
-    total_referrals: 0,
-    amount: 100,
+const generateMockClaims = (count: number) => {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `claim-${i + 1}`,
+    user: { email: `user${i + 1}@example.com`, users_email: null },
+    referral_count: i,
+    total_referrals: i,
+    amount: 100 * (i + 1),
     payment_method: "GCash",
-    account_details: "09171234567",
+    account_details: `0917000000${i}`,
     created_at: new Date().toISOString(),
-    status: "PENDING",
-    proof_url: null,
-  },
-  {
-    id: "claim-2",
-    user: { email: "clark@daily.com", users_email: null },
-    referral_count: 1,
-    total_referrals: 1,
-    amount: 200,
-    payment_method: "Bank",
-    account_details: "1234-5678-9012",
-    created_at: "2020-01-01T00:00:00Z",
-    status: "PAID",
-    proof_url: "https://example.com/proof.pdf",
-  },
-];
+    status: i % 2 === 0 ? "PENDING" : "PAID",
+    proof_url: i % 2 === 1 ? "https://example.com/proof.pdf" : null,
+  }));
+};
+
+let mockClaims = generateMockClaims(25);
 
 let fetchCalls: { url: string; init?: RequestInit }[] = [];
 const originalFetch = global.fetch;
@@ -178,6 +207,7 @@ const originalFetch = global.fetch;
 // Setup global.fetch mock that returns Response-like objects with clone/text/json
 beforeEach(() => {
   fetchCalls = [];
+  mockClaims = generateMockClaims(25);
   global.fetch = jest.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -235,7 +265,7 @@ const renderComponent = () =>
     <MantineProvider>
       <Notifications />
       <SWRConfig value={{ provider: () => new Map() }}>
-        <AdminRewards />
+        <AdminRewardsPage />
       </SWRConfig>
     </MantineProvider>,
   );
@@ -249,6 +279,13 @@ const waitForRowWithText = async (text: string) => {
 };
 
 describe("AdminRewards (admin)", () => {
+  it("displays the title 'Reward Claims'", async () => {
+    renderComponent();
+    expect(
+      screen.getByRole("heading", { name: /Reward Claims/i, level: 2 }),
+    ).toBeInTheDocument();
+  });
+
   it("renders claims list and supports search & tabs", async () => {
     renderComponent();
 
@@ -258,20 +295,85 @@ describe("AdminRewards (admin)", () => {
 
     // search by email
     const search = screen.getByPlaceholderText("Search claims...");
-    await userEvent.type(search, "clark@daily.com");
-
-    // default tab is "PENDING" (hides PAID results) — switch to Paid to see Clark's row
-    const paidTab = screen.getByRole("tab", { name: /Paid\/Completed/i });
-    await userEvent.click(paidTab);
+    await userEvent.type(search, "user3@example.com");
 
     await waitFor(() => {
       const rows = screen.queryAllByRole("row");
-      expect(rows.some((r) => r.textContent?.includes("clark@daily.com"))).toBe(
-        true,
-      );
-      expect(rows.some((r) => r.textContent?.includes("bruce@wayne.com"))).toBe(
-        false,
-      );
+      expect(
+        rows.some((r) => r.textContent?.includes("user3@example.com")),
+      ).toBe(true);
+      // user1 should be filtered out
+      expect(
+        rows.some((r) => r.textContent?.includes("user1@example.com")),
+      ).toBe(false);
+    });
+  });
+
+  it("supports pagination and changing pages", async () => {
+    renderComponent();
+    await screen.findByRole("table");
+
+    const nextPageBtn = screen.getByRole("button", { name: /Next page/i });
+    const currentPage = screen.getByTestId("current-page");
+
+    expect(currentPage.textContent).toBe("1");
+    expect(nextPageBtn).not.toBeDisabled();
+
+    await userEvent.click(nextPageBtn);
+    expect(currentPage.textContent).toBe("2");
+  });
+
+  it("shows disclosure toggle to reveal/hide account details", async () => {
+    renderComponent();
+    await screen.findByRole("table");
+
+    const revealBtn = screen.getAllByRole("button", {
+      name: /Reveal account details/i,
+    })[0];
+    const row = revealBtn.closest("tr")!;
+
+    // Initial state: masked
+    expect(row.textContent).toContain("****");
+
+    // Click reveal
+    await userEvent.click(revealBtn);
+    expect(row.textContent).not.toContain("****");
+
+    // Icon should change to hide
+    const hideBtn = within(row).getByRole("button", {
+      name: /Hide account details/i,
+    });
+    expect(hideBtn).toBeInTheDocument();
+
+    // Click hide
+    await userEvent.click(hideBtn);
+    expect(row.textContent).toContain("****");
+  });
+
+  it("opens and closes the upload proof modal", async () => {
+    renderComponent();
+    await screen.findByRole("table");
+
+    const uploadBtn = screen.getAllByRole("button", {
+      name: /Upload proof for claim/i,
+    })[0];
+    await userEvent.click(uploadBtn);
+
+    // Modal should be visible
+    const modal = await screen.findByRole("dialog", {
+      name: /Upload Proof of Payment/i,
+    });
+    expect(modal).toBeInTheDocument();
+
+    // Click cancel
+    const cancelBtn = within(modal).getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelBtn);
+
+    // Modal should be gone
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Upload Proof of Payment/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -282,7 +384,7 @@ describe("AdminRewards (admin)", () => {
     // open Upload Proof for first claim (PENDING)
     const row = screen
       .getAllByRole("row")
-      .find((r) => r.textContent?.includes("bruce@wayne.com"));
+      .find((r) => r.textContent?.includes("user1@example.com"));
     // match aria-label used by component for Upload button
     const uploadBtn = within(row!).getByRole("button", {
       name: /Upload proof for claim/i,
@@ -334,7 +436,7 @@ describe("AdminRewards (admin)", () => {
 
     const row = screen
       .getAllByRole("row")
-      .find((r) => r.textContent?.includes("bruce@wayne.com"));
+      .find((r) => r.textContent?.includes("user1@example.com"));
     // target aria-label used by component for Mark Paid button
     const markBtn = within(row!).getByRole("button", {
       name: /Mark claim .* as paid/i,

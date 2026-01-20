@@ -535,7 +535,8 @@ export default function MailroomPackageView({
 
     const map = new Map<string, LocalScan>();
     for (const sc of [...fromPackages, ...fromApi]) {
-      const key = sc.file_url || sc.id;
+      // Deduplicate by id first (file_url can repeat across many files in API response)
+      const key = sc.id || sc.file_url;
       if (!map.has(key)) map.set(key, sc);
     }
     return Array.from(map.values());

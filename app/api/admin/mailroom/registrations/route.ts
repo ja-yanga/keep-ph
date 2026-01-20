@@ -160,6 +160,20 @@ export async function GET() {
       assignedCountMap[regId] = (assignedCountMap[regId] ?? 0) + 1;
     }
 
+    const plansMap: Record<string, string> = {};
+    for (const p of plans) {
+      const rec = p as Record<string, unknown>;
+      const id = String(rec.mailroom_plan_id ?? "");
+      if (id) plansMap[id] = String(rec.mailroom_plan_name ?? "");
+    }
+
+    const locationsMap: Record<string, string> = {};
+    for (const l of locations) {
+      const rec = l as Record<string, unknown>;
+      const id = String(rec.mailroom_location_id ?? "");
+      if (id) locationsMap[id] = String(rec.mailroom_location_name ?? "");
+    }
+
     const normalizedRegs = regs.map((r) => {
       const row = r as Record<string, unknown>;
       const id = String(row.mailroom_registration_id ?? "");
@@ -189,21 +203,37 @@ export async function GET() {
         months = Math.max(0, expires.diff(started, "month"));
       }
 
+      const plan_id = row.mailroom_plan_id
+        ? String(row.mailroom_plan_id)
+        : null;
+      const location_id = row.mailroom_location_id
+        ? String(row.mailroom_location_id)
+        : null;
+
+      const mailroom_status = Boolean(row.mailroom_registration_status ?? true);
+      const expiresAt = dayjs(createdAt).add(months, "month");
+      const is_active = mailroom_status && dayjs().isBefore(expiresAt);
+
       return {
         id,
         user_id: uid,
-        mailroom_code: String(row.mailroom_registration_code ?? ""),
+        mailroom_code: row.mailroom_registration_code
+          ? String(row.mailroom_registration_code)
+          : null,
         full_name: fullName,
-        mobile,
+        phone_number: mobile,
         kyc_first_name: kycRec?.first ?? null,
         kyc_last_name: kycRec?.last ?? null,
         email,
         created_at: createdAt,
         months,
         locker_qty: assignedCountMap[id] ?? 0,
-        location_id: String(row.mailroom_location_id ?? ""),
-        plan_id: String(row.mailroom_plan_id ?? ""),
-        mailroom_status: Boolean(row.mailroom_registration_status ?? true),
+        location_id,
+        plan_id,
+        mailroom_status,
+        is_active,
+        plan_name: plan_id ? plansMap[plan_id] : null,
+        location_name: location_id ? locationsMap[location_id] : null,
       };
     });
 
@@ -262,7 +292,7 @@ export async function GET() {
       {
         headers: {
           "Cache-Control":
-            "private, max-age=0, s-maxage=30, stale-while-revalidate=60",
+            "private, max-age=60, s-maxage=60, stale-while-revalidate=300",
         },
       },
     );

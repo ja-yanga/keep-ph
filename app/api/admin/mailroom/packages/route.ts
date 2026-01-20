@@ -10,11 +10,13 @@ export async function GET(req?: Request) {
     const page = Math.max(Number(url.searchParams.get("page") ?? 1), 1);
     const offset = (page - 1) * limit;
     const compact = url.searchParams.get("compact") === "1";
+    const status = url.searchParams.get("status")?.split(",") ?? undefined;
 
     const result = await adminGetMailroomPackages({
       limit,
       offset,
       compact,
+      status,
     });
 
     return NextResponse.json(
@@ -23,6 +25,7 @@ export async function GET(req?: Request) {
         registrations: result.registrations,
         lockers: result.lockers,
         assignedLockers: result.assignedLockers,
+        counts: result.counts,
         meta: {
           total: result.totalCount,
           page,
@@ -32,7 +35,7 @@ export async function GET(req?: Request) {
       {
         headers: {
           "Cache-Control":
-            "private, max-age=0, s-maxage=30, stale-while-revalidate=60",
+            "private, max-age=60, s-maxage=60, stale-while-revalidate=300",
         },
       },
     );
