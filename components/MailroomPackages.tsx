@@ -47,6 +47,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import { minTableHeight } from "@/utils/helper";
 
 // Dynamic import for DataTable to reduce initial bundle size
 const DataTable = dynamic(
@@ -2143,8 +2144,4 @@ export default function MailroomPackages() {
       </Modal>
     </Stack>
   );
-}
-
-function minTableHeight(pageSize: number) {
-  return 52 * pageSize + 50;
 }

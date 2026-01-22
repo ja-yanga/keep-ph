@@ -30,7 +30,7 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
-import { getStatusFormat, fetcher } from "@/utils/helper";
+import { getStatusFormat, fetcher, minTableHeight } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { FormattedKycRow, KycRow } from "@/utils/types";
 
@@ -505,8 +505,4 @@ export default function AdminUserKyc() {
       </Modal>
     </Stack>
   );
-}
-
-function minTableHeight(pageSize: number) {
-  return 52 * pageSize + 50;
 }

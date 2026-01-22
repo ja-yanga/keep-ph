@@ -40,6 +40,7 @@ import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
 import dayjs from "dayjs";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { minTableHeight } from "@/utils/helper";
 
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
@@ -760,8 +761,4 @@ export default function MailroomRegistrations() {
       </Modal>
     </Stack>
   );
-}
-
-function minTableHeight(pageSize: number) {
-  return 52 * pageSize + 50;
 }

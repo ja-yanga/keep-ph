@@ -38,7 +38,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
-import { getStatusFormat } from "@/utils/helper";
+import { getStatusFormat, minTableHeight } from "@/utils/helper";
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
   {
@@ -860,8 +860,4 @@ export default function MailroomLockers() {
       </Modal>
     </Stack>
   );
-}
-
-function minTableHeight(pageSize: number) {
-  return 52 * pageSize + 50;
 }

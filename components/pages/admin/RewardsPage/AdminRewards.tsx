@@ -38,7 +38,7 @@ import type {
   ClaimStatusTab,
   ConfirmTarget,
 } from "@/utils/types";
-import { getStatusFormat, maskAccount } from "@/utils/helper";
+import { getStatusFormat, maskAccount, minTableHeight } from "@/utils/helper";
 import { type DataTableProps } from "mantine-datatable";
 
 // Dynamically import DataTable to reduce initial bundle size
@@ -812,8 +812,4 @@ export default function AdminRewards() {
       </Modal>
     </Stack>
   );
-}
-
-function minTableHeight(pageSize: number) {
-  return 52 * pageSize + 50;
 }
