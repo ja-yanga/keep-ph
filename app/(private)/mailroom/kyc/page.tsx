@@ -40,7 +40,6 @@ import {
 } from "@tabler/icons-react";
 
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
-import { getStatusFormat } from "@/utils/helper";
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
@@ -261,6 +260,12 @@ export default function KycPage() {
 
   const StatusIconComponent = getStatusIcon(status);
 
+  const getStatusBadgeColor = (s: typeof status) => {
+    if (s === "VERIFIED") return "green.9";
+    if (s === "SUBMITTED") return "blue.9";
+    return "gray.9";
+  };
+
   // Styles to fix FileInput placeholder contrast
   const fileInputStyles = {
     placeholder: {
@@ -312,11 +317,10 @@ export default function KycPage() {
                     {IDENTITY_VERIFICATION_KYC.section_header.status}
                   </Text>
                   <Badge
-                    color={
-                      status === "NONE" ? "gray.8" : getStatusFormat(status)
-                    }
+                    color={getStatusBadgeColor(status)}
                     size="lg"
-                    variant="filled" // filled with gray.8 passes contrast
+                    variant="filled"
+                    c="white" // Explicitly ensure text is white for contrast
                     leftSection={<StatusIconComponent size={14} />}
                   >
                     {statusTextMap[status as keyof typeof statusTextMap]}
@@ -679,11 +683,14 @@ export default function KycPage() {
 
                   {/* Status Alert */}
                   <Alert
-                    color={status === "VERIFIED" ? "green" : "yellow"}
+                    color={status === "VERIFIED" ? "green" : "orange"} // Use orange for review state -> better contrast than yellow
+                    variant="light"
                     title={
-                      status === "VERIFIED"
-                        ? "Verification Complete"
-                        : "Documents Under Review"
+                      <Text span fw={700} c="gray.9">
+                        {status === "VERIFIED"
+                          ? "Verification Complete"
+                          : "Documents Under Review"}
+                      </Text>
                     }
                     icon={
                       status === "VERIFIED" ? (
@@ -693,9 +700,11 @@ export default function KycPage() {
                       )
                     }
                   >
-                    {status === "VERIFIED"
-                      ? "Your identity is verified. You can now access all services."
-                      : "We are currently reviewing your submitted documents. Please check back later."}
+                    <Text size="sm" c="gray.9">
+                      {status === "VERIFIED"
+                        ? "Your identity is verified. You can now access all services."
+                        : "We are currently reviewing your submitted documents. Please check back later."}
+                    </Text>
                   </Alert>
 
                   {/* SimpleGrid for Snapshot Details */}
@@ -715,7 +724,8 @@ export default function KycPage() {
                             {/* Darker text */}
                             Type:
                           </Text>
-                          <Badge size="lg" variant="filled" color="blue">
+                          <Badge size="lg" variant="filled" color="blue.9">
+                            {/* Changed to blue.9 for better contrast */}
                             {docType}
                           </Badge>
                         </Group>

@@ -54,7 +54,11 @@ const columns: DataTableColumn<NormalizedReferral>[] = [
     title: tableCopy.columns.status,
     textAlign: "right",
     render: ({ status }) => (
-      <Badge color="#017e01" variant="light" size="sm">
+      <Badge
+        variant="filled"
+        size="sm"
+        styles={{ root: { backgroundColor: "#166534", color: "#ffffff" } }}
+      >
         {status}
       </Badge>
     ),

@@ -42,13 +42,13 @@ export default function MailroomSidebar({
         </Group>
         <Stack gap="sm">
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Full Name
             </Text>
             <Text fw={500}>{String(fullNameValue ?? "—")}</Text>
           </Box>
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Email
             </Text>
             <Text fw={500} style={{ wordBreak: "break-all" }}>
@@ -69,7 +69,7 @@ export default function MailroomSidebar({
           </Box>
           <Group grow>
             <Box>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="gray.8">
                 Mobile
               </Text>
               <Text fw={500}>
@@ -111,7 +111,7 @@ export default function MailroomSidebar({
         </Group>
         <Stack gap="sm">
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Mailroom Code
             </Text>
             <Text fw={500} ff="monospace">
@@ -123,7 +123,7 @@ export default function MailroomSidebar({
             </Text>
           </Box>
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Location Name
             </Text>
             <Text fw={500}>
@@ -139,7 +139,7 @@ export default function MailroomSidebar({
             </Text>
           </Box>
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Full Address
             </Text>
             <Text fw={500} size="sm" style={{ wordBreak: "break-word" }}>
@@ -166,7 +166,7 @@ export default function MailroomSidebar({
         </Group>
         <Stack gap="sm">
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Plan Name
             </Text>
             <Text fw={500}>
@@ -179,7 +179,7 @@ export default function MailroomSidebar({
             </Text>
           </Box>
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Date Created
             </Text>
             <Text fw={500}>
@@ -192,7 +192,7 @@ export default function MailroomSidebar({
           </Box>
 
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.8">
               Billing
             </Text>
             <Text fw={500}>
@@ -219,7 +219,7 @@ export default function MailroomSidebar({
 
           <Group grow>
             <Box>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="gray.8">
                 Registration Location
               </Text>
               <Text fw={500}>
@@ -235,7 +235,7 @@ export default function MailroomSidebar({
               </Text>
             </Box>
             <Box>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="gray.8">
                 Expiry Date
               </Text>
               <Text fw={500}>
@@ -248,7 +248,7 @@ export default function MailroomSidebar({
             Boolean(plan.can_receive_parcels) ||
             Boolean(plan.can_digitize)) && (
             <Box mt="xs">
-              <Text size="xs" c="dimmed" mb={6}>
+              <Text size="xs" c="gray.8" mb={6}>
                 Included Features
               </Text>
               <Group gap="xs">

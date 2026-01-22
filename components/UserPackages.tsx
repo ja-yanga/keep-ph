@@ -99,6 +99,19 @@ export default function UserPackages({
   scans: providedScans,
 }: UserPackagesProps) {
   const theme = useMantineTheme();
+
+  // Helper to map status colors to accessible hex values for badges
+  const mapTokenToHex = (token?: string | null) => {
+    if (!token) return "#374151"; // gray-700
+    const t = String(token).toLowerCase();
+    if (t.includes("green")) return "#166534";
+    if (t.includes("blue") || t.includes("violet") || t.includes("indigo"))
+      return "#1e3a8a";
+    if (t.includes("red")) return "#991b1b";
+    if (t.includes("orange") || t.includes("amber")) return "#b45309";
+    return "#374151";
+  };
+
   const [localPackages, setLocalPackages] = useState<PackageShape[]>(() =>
     normalizeIncomingPackages(packages),
   );
@@ -126,6 +139,9 @@ export default function UserPackages({
   const [inboxPage, setInboxPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const perPage = 3;
+
+  // Controlled state for Tabs to handle conditional styling cleanly
+  const [activeTab, setActiveTab] = useState<string | null>("inbox");
 
   // addresses / release fields
   const [addresses, setAddresses] = useState<
@@ -1215,12 +1231,22 @@ export default function UserPackages({
               <Text fw={600} size="sm" lh={1.2}>
                 {packageName}
               </Text>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="gray.7">
+                {" "}
+                {/* Changed from dimmed */}
                 {type}
               </Text>
             </Box>
           </Group>
-          <Badge color={statusColor} variant="light">
+          <Badge
+            variant="filled"
+            styles={{
+              root: {
+                backgroundColor: mapTokenToHex(statusColor),
+                color: "#ffffff",
+              },
+            }}
+          >
             {status.replace(/_/g, " ")}
           </Badge>
         </Group>
@@ -1256,7 +1282,9 @@ export default function UserPackages({
 
         <Group justify="space-between" mb="md">
           <Box>
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.7">
+              {" "}
+              {/* Changed from dimmed */}
               Locker
             </Text>
             <Group gap={4}>
@@ -1267,7 +1295,9 @@ export default function UserPackages({
             </Group>
           </Box>
           <Box ta="right">
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="gray.7">
+              {" "}
+              {/* Changed from dimmed */}
               Received
             </Text>
             <Text size="sm" fw={500}>
@@ -1282,8 +1312,8 @@ export default function UserPackages({
           <Stack gap="xs">
             <SimpleGrid cols={2} spacing="xs">
               <Button
-                variant="light"
-                color="blue"
+                variant="filled" // Restore color separation (Blue bg)
+                color="blue.9" // Distinct dark blue
                 fullWidth
                 size="xs"
                 leftSection={<IconTruckDelivery size={14} />}
@@ -1292,8 +1322,8 @@ export default function UserPackages({
                 Release
               </Button>
               <Button
-                variant="light"
-                color="red"
+                variant="filled" // Restore color separation (Red bg)
+                color="red.9" // Distinct dark red
                 fullWidth
                 size="xs"
                 leftSection={<IconTrash size={14} />}
@@ -1304,7 +1334,7 @@ export default function UserPackages({
             </SimpleGrid>
 
             {isPending && (
-              <Text size="xs" c="orange" ta="center" mt="xs">
+              <Text size="xs" c="orange.8" ta="center" mt="xs">
                 Request is being processed by admin.
               </Text>
             )}
@@ -1313,8 +1343,8 @@ export default function UserPackages({
               <Stack gap="xs">
                 {scanUrl && (
                   <Button
-                    variant="default"
-                    color="violet"
+                    variant="outline" // Keep "View" distinct from actions
+                    color="violet.9"
                     fullWidth
                     size="xs"
                     leftSection={<IconEye size={14} />}
@@ -1331,8 +1361,8 @@ export default function UserPackages({
                 )}
                 {!isPending && (
                   <Button
-                    variant="light"
-                    color="violet"
+                    variant="filled" // Restore color separation (Violet bg)
+                    color="violet.9" // Distinct dark violet
                     fullWidth
                     size="xs"
                     leftSection={<IconScan size={14} />}
@@ -1352,7 +1382,7 @@ export default function UserPackages({
             <Button
               size="sm"
               variant="filled"
-              color="green"
+              color="green.9" // Darker green
               leftSection={<IconCheck size={14} />}
               onClick={() => handleActionClick(pkg, "CONFIRM_RECEIVED")}
               style={{ whiteSpace: "nowrap", minWidth: 130 }}
@@ -1381,7 +1411,9 @@ export default function UserPackages({
         )}
 
         {(String(status).includes("REQUEST") || isPending) && (
-          <Text size="xs" c="orange" ta="center" mt="xs">
+          <Text size="xs" c="orange.8" ta="center" mt="xs">
+            {" "}
+            {/* Darker orange */}
             Request is being processed by admin.
           </Text>
         )}
@@ -1396,17 +1428,40 @@ export default function UserPackages({
   return (
     <>
       <Paper p="lg" radius="md" withBorder shadow="sm">
-        <Tabs defaultValue="inbox" variant="pills" radius="md">
+        <Tabs
+          value={activeTab}
+          onChange={setActiveTab}
+          variant="pills"
+          radius="md"
+          color="blue"
+          style={
+            {
+              "--mantine-color-blue-filled": "#1e3a8a",
+              "--mantine-color-blue-filled-hover": "#172554", // slightly darker on hover
+            } as React.CSSProperties
+          }
+        >
           <Group justify="space-between" mb="md">
             <Group gap="xs">
               <IconPackage size={20} color="gray" />
-              <Title order={4}>Packages</Title>
+              <Title order={3}>Packages</Title>
             </Group>
             <Tabs.List>
-              <Tabs.Tab value="inbox" leftSection={<IconInbox size={14} />}>
+              <Tabs.Tab
+                value="inbox"
+                leftSection={<IconInbox size={14} />}
+                c={activeTab === "inbox" ? "white" : "gray.7"}
+                fw={600}
+              >
                 Inbox ({filteredActivePackages.length})
               </Tabs.Tab>
-              <Tabs.Tab value="history" leftSection={<IconHistory size={14} />}>
+
+              <Tabs.Tab
+                value="history"
+                leftSection={<IconHistory size={14} />}
+                c={activeTab === "history" ? "white" : "gray.7"}
+                fw={600}
+              >
                 History
               </Tabs.Tab>
             </Tabs.List>
@@ -1451,7 +1506,9 @@ export default function UserPackages({
                           align="center"
                           style={{ width: "100%" }}
                         >
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.7">
+                            {" "}
+                            {/* Changed from dimmed */}
                             Showing {Math.min(start + 1, total)}–
                             {Math.min(start + pageItems.length, total)} of{" "}
                             {total}
@@ -1459,7 +1516,7 @@ export default function UserPackages({
                           <Group>
                             <Button
                               size="xs"
-                              variant="outline"
+                              variant="default" // improved contrast while preserving theme
                               disabled={inboxPage === 1}
                               onClick={() =>
                                 setInboxPage((p) => Math.max(1, p - 1))
@@ -1469,7 +1526,7 @@ export default function UserPackages({
                             </Button>
                             <Button
                               size="xs"
-                              variant="outline"
+                              variant="default" // improved contrast while preserving theme
                               disabled={start + perPage >= total}
                               onClick={() => setInboxPage((p) => p + 1)}
                             >
@@ -1490,7 +1547,8 @@ export default function UserPackages({
                 style={{ borderRadius: 8 }}
               >
                 <IconInbox size={40} color="gray" />
-                <Text c="dimmed">No matching packages found.</Text>
+                <Text c="gray.7">No matching packages found.</Text>{" "}
+                {/* Changed from dimmed */}
               </Stack>
             )}
           </Tabs.Panel>
@@ -1519,7 +1577,9 @@ export default function UserPackages({
                           align="center"
                           style={{ width: "100%" }}
                         >
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.7">
+                            {" "}
+                            {/* Changed from dimmed */}
                             Showing {Math.min(start + 1, total)}–
                             {Math.min(start + pageItems.length, total)} of{" "}
                             {total}
@@ -1558,7 +1618,8 @@ export default function UserPackages({
                 style={{ borderRadius: 8 }}
               >
                 <IconHistory size={40} color="gray" />
-                <Text c="dimmed">No matching history packages found.</Text>
+                <Text c="gray.7">No matching history packages found.</Text>{" "}
+                {/* Changed from dimmed */}
               </Stack>
             )}
           </Tabs.Panel>
@@ -1646,7 +1707,7 @@ export default function UserPackages({
             </Group>
           </>
         ) : (
-          <Text c="dimmed">No preview available</Text>
+          <Text c="gray.7">No preview available</Text> // Changed from dimmed
         )}
       </Modal>
     </>

@@ -216,6 +216,11 @@ const ProfileTab = () => {
                         src={kyc?.user?.avatarUrl as string}
                         size={150}
                         radius={150}
+                        alt={
+                          kyc?.firstName || kyc?.lastName
+                            ? `${kyc?.firstName ?? ""} ${kyc?.lastName ?? ""}`.trim()
+                            : "User avatar"
+                        }
                         style={{
                           border: "4px solid white",
                           boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
