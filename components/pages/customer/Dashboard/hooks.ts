@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import { useSession } from "@/components/SessionProvider";
 import type { RawRow } from "@/utils/types";
@@ -103,8 +103,13 @@ export const useRegistrations = (
       ? ([url, params]) => fetcher(url, params)
       : () => Promise.resolve(undefined),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false, // Disable to reduce unnecessary re-fetches on mobile
+      revalidateOnReconnect: false, // Disable to reduce blocking
+      revalidateIfStale: false, // Use fallback data if available
       fallbackData: fallbackDataObj,
+      // Reduce polling and background updates
+      dedupingInterval: 2000, // Dedupe requests within 2 seconds
+      focusThrottleInterval: 5000, // Throttle focus revalidation
     },
   );
 
@@ -195,21 +200,21 @@ export const useStats = (
 
 /**
  * Hook for loading user's first name from KYC data
+ * Optimized with SWR for caching and better performance
  */
 export const useKycFirstName = () => {
   const { session } = useSession();
-  const [firstName, setFirstName] = useState<string | null>(null);
+  const userId = session?.user?.id;
 
-  useEffect(() => {
-    let mounted = true;
-    const loadKyc = async (): Promise<void> => {
-      if (!session?.user?.id) return;
+  const { data: firstName } = useSWR<string | null>(
+    userId ? `/api/user/kyc?userId=${encodeURIComponent(userId)}` : null,
+    async (url: string) => {
       try {
-        const res = await fetch(
-          `/api/user/kyc?userId=${encodeURIComponent(session.user.id)}`,
-          { method: "GET", credentials: "include" },
-        );
-        if (!res.ok) return;
+        const res = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+        });
+        if (!res.ok) return null;
 
         const json = await res.json();
         let payload = json?.data ?? json;
@@ -225,17 +230,17 @@ export const useKycFirstName = () => {
           (payload && (payload as Record<string, unknown>)?.firstName) ??
           null;
 
-        if (mounted) setFirstName(first ? String(first) : null);
+        return first ? String(first) : null;
       } catch {
-        /* ignore errors */
+        return null;
       }
-    };
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000, // Cache for 1 minute
+    },
+  );
 
-    void loadKyc();
-    return () => {
-      mounted = false;
-    };
-  }, [session?.user?.id]);
-
-  return firstName;
+  return firstName ?? null;
 };

@@ -86,17 +86,18 @@ export default function AccountAddressesTab() {
           (item): item is T_Address =>
             typeof item === "object" &&
             item !== null &&
-            "id" in item &&
-            "label" in item &&
-            "line1" in item &&
-            "city" in item &&
-            "region" in item &&
-            "postal" in item &&
-            "isDefault" in item,
+            "user_address_id" in item &&
+            "user_address_label" in item &&
+            "user_address_line1" in item &&
+            "user_address_city" in item &&
+            "user_address_region" in item &&
+            "user_address_postal" in item &&
+            "user_address_is_default" in item,
         )
         .map((item) => transformAddress(item));
-      // React.startTransition(() => dispatch(setAddressDetails(transformed)));
-      dispatch(setAddressDetails(transformed));
+      React.startTransition(() => {
+        dispatch(setAddressDetails(transformed));
+      });
 
       const t1 = performance.now();
       console.log("addresses.fetch.ms", Math.round(t1 - t0));

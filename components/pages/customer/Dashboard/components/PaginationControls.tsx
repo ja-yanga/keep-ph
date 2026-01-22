@@ -1,3 +1,4 @@
+import { memo, useMemo, useCallback } from "react";
 import { Stack, Group, Text, Button } from "@mantine/core";
 
 type PaginationControlsProps = {
@@ -8,16 +9,41 @@ type PaginationControlsProps = {
   onPageChange: (page: number) => void;
 };
 
-export function PaginationControls({
+function PaginationControlsComponent({
   currentPage,
   totalItems,
   itemsPerPage,
   isMobile,
   onPageChange,
 }: PaginationControlsProps) {
-  const start = (currentPage - 1) * itemsPerPage;
-  const end = Math.min(start + itemsPerPage, totalItems);
-  const startIndex = Math.min(start + 1, totalItems);
+  const { start, end, startIndex } = useMemo(() => {
+    const s = (currentPage - 1) * itemsPerPage;
+    const e = Math.min(s + itemsPerPage, totalItems);
+    const si = Math.min(s + 1, totalItems);
+    return { start: s, end: e, startIndex: si };
+  }, [currentPage, itemsPerPage, totalItems]);
+
+  const handlePrevious = useCallback(() => {
+    onPageChange(Math.max(1, currentPage - 1));
+  }, [onPageChange, currentPage]);
+
+  const handleNext = useCallback(() => {
+    onPageChange(currentPage + 1);
+  }, [onPageChange, currentPage]);
+
+  const previousButtonStyle = useMemo(
+    () => (isMobile ? { flex: 1 } : undefined),
+    [isMobile],
+  );
+
+  const nextButtonStyle = useMemo(
+    () => ({
+      whiteSpace: "nowrap" as const,
+      border: "1px solid #26316D",
+      ...(isMobile ? { flex: 1 } : {}),
+    }),
+    [isMobile],
+  );
 
   return (
     <Stack gap="sm" mt="md" w="100%">
@@ -35,8 +61,8 @@ export function PaginationControls({
             size="xs"
             variant="outline"
             disabled={currentPage === 1}
-            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-            style={isMobile ? { flex: 1 } : undefined}
+            onClick={handlePrevious}
+            style={previousButtonStyle}
           >
             Previous
           </Button>
@@ -44,12 +70,8 @@ export function PaginationControls({
             size="xs"
             variant="outline"
             disabled={start + itemsPerPage >= totalItems}
-            onClick={() => onPageChange(currentPage + 1)}
-            style={{
-              whiteSpace: "nowrap",
-              border: "1px solid #26316D",
-              ...(isMobile ? { flex: 1 } : {}),
-            }}
+            onClick={handleNext}
+            style={nextButtonStyle}
             c="#26316D"
           >
             Next
@@ -59,3 +81,5 @@ export function PaginationControls({
     </Stack>
   );
 }
+
+export const PaginationControls = memo(PaginationControlsComponent);
