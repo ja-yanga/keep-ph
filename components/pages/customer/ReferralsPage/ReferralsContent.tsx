@@ -37,6 +37,15 @@ import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 export default function ReferralsContent() {
   const { session } = useSession();
+  // helper to pick accessible badge colors
+  // accept null as well to match latestClaim?.status (string | null | undefined)
+  // return explicit hex colors (dark) to guarantee WCAG contrast with white text
+  const getStatusBadgeColor = (s?: string | null) => {
+    if (!s) return "#374151"; // gray-700
+    if (s === "PAID") return "#166534"; // green-700
+    if (s === "PROCESSING" || s === "PENDING") return "#1e3a8a"; // indigo-800 / blue-800
+    return "#374151";
+  };
 
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
@@ -303,13 +312,20 @@ export default function ReferralsContent() {
                 <Group justify="space-between" align="center" wrap="wrap">
                   <Stack gap="xs">
                     <Group gap="sm" align="center">
-                      <Title order={4} c="dark.7" style={{ margin: 0 }}>
+                      <Title order={4} c="dark.9" style={{ margin: 0 }}>
                         {REFERRALS_UI.summaryCard.title}
                       </Title>
                       <Badge
-                        color={
-                          latestClaim?.status === "PAID" ? "green" : "orange"
-                        }
+                        variant="filled"
+                        size="sm"
+                        styles={{
+                          root: {
+                            backgroundColor: getStatusBadgeColor(
+                              latestClaim?.status,
+                            ),
+                            color: "#ffffff",
+                          },
+                        }}
                       >
                         {latestClaim?.status ?? "—"}
                       </Badge>
@@ -388,16 +404,29 @@ export default function ReferralsContent() {
                     </Title>
                     <Group gap="xs">
                       <Badge
-                        style={{
-                          color: "#1e1e1e", // very dark text (near 100% contrast)
-                          backgroundColor: "#c7d2fe", // light indigo background (~50% lightness)
+                        variant="filled"
+                        size="sm"
+                        styles={{
+                          root: {
+                            backgroundColor: "#1e3a8a",
+                            color: "#ffffff",
+                          },
                         }}
                       >
                         Lifetime Referrals: {referralCount}
                       </Badge>
 
                       {rewardStatus?.claimedMilestones ? (
-                        <Badge color="green" variant="light">
+                        <Badge
+                          variant="filled"
+                          size="sm"
+                          styles={{
+                            root: {
+                              backgroundColor: "#166534",
+                              color: "#ffffff",
+                            },
+                          }}
+                        >
                           Total Rewards Claimed:{" "}
                           {rewardStatus.claimedMilestones}
                         </Badge>
@@ -537,7 +566,13 @@ export default function ReferralsContent() {
                 >
                   {REFERRALS_UI.table.heading}
                 </Title>
-                <Badge variant="light" color="gray" size="lg">
+                <Badge
+                  variant="filled"
+                  size="lg"
+                  styles={{
+                    root: { backgroundColor: "#374151", color: "#ffffff" },
+                  }}
+                >
                   {referralCount}
                 </Badge>
               </Group>

@@ -599,7 +599,13 @@ export default function MailroomPackageView({
     { title: "Dashboard", href: "/dashboard" },
     { title: "Mailroom Details", href: "#" },
   ].map((it, index) => (
-    <Anchor href={it.href} key={index} component={Link} size="sm">
+    <Anchor
+      href={it.href}
+      key={index}
+      component={Link}
+      size="sm"
+      c="gray.8" // ensure sufficient contrast
+    >
       {it.title}
     </Anchor>
   ));
@@ -648,10 +654,10 @@ export default function MailroomPackageView({
               <Breadcrumbs>{items}</Breadcrumbs>
               <Group justify="space-between" align="flex-start">
                 <Box>
-                  <Title order={2} c="dark.8">
+                  <Title order={2} c="dark.9">
                     {planName}
                   </Title>
-                  <Text c="dimmed" size="sm" mt={4}>
+                  <Text c="gray.8" size="sm" mt={4}>
                     Account #: {accountNumber}
                   </Text>
                 </Box>
@@ -661,6 +667,8 @@ export default function MailroomPackageView({
                       variant="light"
                       size="lg"
                       onClick={handleRefresh}
+                      aria-label="Refresh data"
+                      title="Refresh data"
                     >
                       <IconRefresh size={20} />
                     </ActionIcon>

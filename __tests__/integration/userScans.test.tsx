@@ -97,7 +97,6 @@ describe("UserScans component", () => {
     render(
       <MantineProvider>
         <UserScans
-          registrationId="reg-1"
           scans={sampleScans}
           usage={{ used_mb: 2.7, limit_mb: 10, percentage: 27 }}
         />
@@ -107,18 +106,15 @@ describe("UserScans component", () => {
     // Badge shows files count
     expect(await screen.findByText(/2 Files/i)).toBeInTheDocument();
 
-    // Rows rendered (wait for rows)
-    const rows = await screen.findAllByRole("row");
-    expect(rows.some((r) => r.textContent?.includes("photo1.png"))).toBe(true);
-    expect(rows.some((r) => r.textContent?.includes("doc1.pdf"))).toBe(true);
+    // wait for table to render (loading false)
+    const table = await screen.findByRole("table");
 
-    // use userEvent.setup() for reliable async interactions
+    // find the preview ActionIcon button by its accessible name (global)
+    const previewBtn = within(table).getByRole("button", {
+      name: /preview photo1\.png/i,
+    });
     const user = userEvent.setup();
-
-    // In first scan row: click Preview button (first action)
-    const firstRow = rows.find((r) => r.textContent?.includes("photo1.png"))!;
-    const buttons = within(firstRow).getAllByRole("button");
-    await user.click(buttons[0]);
+    await user.click(previewBtn);
 
     // wait for modal titled with file name and image inside it
     const modal = await screen.findByRole("dialog", { name: /photo1\.png/i });
@@ -134,23 +130,19 @@ describe("UserScans component", () => {
 
     render(
       <MantineProvider>
-        <UserScans
-          registrationId="reg-1"
-          scans={[...sampleScans]}
-          usage={null}
-        />
+        <UserScans scans={[...sampleScans]} usage={null} />
       </MantineProvider>,
     );
 
-    // ensure rows present (wait)
-    const rows = await screen.findAllByRole("row");
-    const row = rows.find((r) => r.textContent?.includes("doc1.pdf"))!;
-    // buttons in row: [Preview, Download, Delete] - find the delete button by icon presence
-    const btns = within(row).getAllByRole("button");
-    const deleteBtn =
-      btns.find((b) => b.innerHTML.includes("tabler-icon-trash")) ??
-      btns[btns.length - 1];
-    await userEvent.click(deleteBtn);
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table");
+
+    // find delete ActionIcon button by accessible name (global)
+    const deleteBtn = within(table).getByRole("button", {
+      name: /delete doc1\.pdf/i,
+    });
+    await user.click(deleteBtn);
 
     // expect DELETE call to have been made
     await waitFor(() => {
@@ -161,12 +153,9 @@ describe("UserScans component", () => {
       ).toBe(true);
     });
 
-    // after delete, doc1.pdf row should be gone
+    // after delete, doc1.pdf text should be gone
     await waitFor(() => {
-      const remaining = screen.queryAllByRole("row");
-      expect(remaining.some((r) => r.textContent?.includes("doc1.pdf"))).toBe(
-        false,
-      );
+      expect(screen.queryByText(/doc1\.pdf/i)).toBeNull();
     });
 
     // restore confirm
