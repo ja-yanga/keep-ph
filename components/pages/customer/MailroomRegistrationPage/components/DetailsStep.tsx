@@ -142,7 +142,7 @@ export function DetailsStep({
           labelProps={{ fw: 700, size: "xs", tt: "uppercase", mb: 5 }}
           value={email}
           onChange={(e) => setEmailAction(e.target.value)}
-          placeholder="you@example.com"
+          placeholder="user@email.com"
           leftSection={<IconMail size={16} color="#adb5bd" />}
           radius="md"
         />

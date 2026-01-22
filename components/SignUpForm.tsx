@@ -339,7 +339,7 @@ export default function SignUpForm() {
 
                   <TextInput
                     label="Email"
-                    placeholder="you@example.com"
+                    placeholder="user@email.com"
                     required
                     aria-required="true"
                     value={email}
