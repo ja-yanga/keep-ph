@@ -1,6 +1,14 @@
 "use client";
 import dynamic from "next/dynamic";
-import { Container, Title, Skeleton, Stack, Box } from "@mantine/core";
+import {
+  Container,
+  Title,
+  Skeleton,
+  Stack,
+  Box,
+  Text,
+  Group,
+} from "@mantine/core";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 import { useEffect } from "react";
 
@@ -33,9 +41,22 @@ export default function MailroomRegistrationsPage() {
     <PrivateMainLayout>
       <main style={{ flex: 1, minHeight: "calc(100vh - 200px)" }}>
         <Container size="xl" py="xl">
-          <Title order={2} mb="lg">
-            Mailrooms
-          </Title>
+          <Group
+            justify="space-between"
+            mb="xl"
+            align="flex-end"
+            w="100%"
+            maw={1200}
+          >
+            <div>
+              <Title order={1} fw={900} c="dark.5" lts="-0.02em">
+                Mailroom Registrations
+              </Title>
+              <Text c="dark.3" size="sm" fw={500}>
+                View and manage user subscriptions and locker assignments.
+              </Text>
+            </div>
+          </Group>
           {/* Reserve space to prevent layout shift */}
           <Box style={{ minHeight: "500px" }}>
             <MailroomRegistrations />

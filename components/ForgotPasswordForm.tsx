@@ -145,7 +145,7 @@ export default function ForgotPasswordForm() {
 
                     <TextInput
                       label="Email"
-                      placeholder="you@example.com"
+                      placeholder="user@email.com"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}

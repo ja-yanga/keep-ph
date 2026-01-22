@@ -31,7 +31,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import Link from "next/link";
-import { startRouteProgress } from "@/lib/route-progress";
+import { doneRouteProgress, startRouteProgress } from "@/lib/route-progress";
 
 export default function SignUpForm() {
   const [email, setEmail] = useState("");
@@ -120,8 +120,8 @@ export default function SignUpForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
       const data = await res.json();
+      startRouteProgress();
 
       if (!res.ok) {
         setError(data?.error || "Signup failed");
@@ -137,6 +137,7 @@ export default function SignUpForm() {
       setError(message);
     } finally {
       setLoading(false);
+      doneRouteProgress();
     }
   };
 
@@ -339,7 +340,7 @@ export default function SignUpForm() {
 
                   <TextInput
                     label="Email"
-                    placeholder="you@example.com"
+                    placeholder="user@email.com"
                     required
                     aria-required="true"
                     value={email}
@@ -437,7 +438,6 @@ export default function SignUpForm() {
                     size="md"
                     radius="md"
                     loading={loading}
-                    onClick={() => startRouteProgress()}
                     style={{
                       backgroundColor: colors.primaryBlue,
                       fontWeight: 600,

@@ -47,6 +47,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import { minTableHeight } from "@/utils/helper";
 
 // Dynamic import for DataTable to reduce initial bundle size
 const DataTable = dynamic(
@@ -1306,14 +1307,14 @@ export default function MailroomPackages() {
       }}
     >
       <DataTable<Package>
-        withTableBorder
-        borderRadius="sm"
-        withColumnBorders
+        withTableBorder={false}
+        borderRadius="lg"
         striped
         highlightOnHover
         records={paginatedPackages}
         fetching={loading}
-        minHeight={400} // Increased min-height to reduce layout shift
+        verticalSpacing="md"
+        minHeight={minTableHeight(pageSize)}
         totalRecords={totalRecords}
         recordsPerPage={pageSize}
         page={page}
@@ -1330,7 +1331,7 @@ export default function MailroomPackages() {
   );
 
   return (
-    <Stack align="center">
+    <Stack align="center" gap="lg" w="100%">
       {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
@@ -1341,21 +1342,26 @@ export default function MailroomPackages() {
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
           w="100%"
-          maw={1200}
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        <Group
+          justify="space-between"
+          mb="md"
+          gap="xs"
+          align="center"
+          wrap="nowrap"
+        >
+          <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
             <TextInput
               placeholder="Search packages..."
               leftSection={<IconSearch size={16} aria-hidden="true" />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 250 }}
+              style={{ flex: 1 }}
               aria-label="Search packages by name, recipient, email, status, or locker code"
             />
             {/* Only show status filter on active tab */}
@@ -1371,7 +1377,7 @@ export default function MailroomPackages() {
                 value={filterStatus}
                 onChange={setFilterStatus}
                 clearable
-                style={{ width: 200 }}
+                style={{ width: 180 }}
                 aria-label="Filter packages by status"
               />
             )}
@@ -1381,7 +1387,7 @@ export default function MailroomPackages() {
               value={filterType}
               onChange={setFilterType}
               clearable
-              style={{ width: 150 }}
+              style={{ width: 140 }}
               aria-label="Filter packages by type"
             />
             {hasFilters && (
@@ -1399,6 +1405,7 @@ export default function MailroomPackages() {
           <Button
             leftSection={<IconPlus size={16} aria-hidden="true" />}
             onClick={() => handleOpenModal()}
+            color="#1e3a8a"
             aria-label="Add new package"
           >
             Add Package

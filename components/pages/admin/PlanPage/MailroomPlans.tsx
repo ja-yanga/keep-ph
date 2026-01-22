@@ -44,6 +44,7 @@ import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { Plan } from "@/utils/types";
+import { minTableHeight } from "@/utils/helper";
 
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
@@ -391,7 +392,7 @@ export default function MailroomPlans() {
   );
 
   return (
-    <Stack>
+    <Stack align="center" gap="lg" w="100%">
       {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
@@ -401,20 +402,27 @@ export default function MailroomPlans() {
           icon={<IconCheck size={16} />}
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
+          w="100%"
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm">
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        <Group
+          justify="space-between"
+          mb="md"
+          gap="xs"
+          align="center"
+          wrap="nowrap"
+        >
+          <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
             <TextInput
               placeholder="Search plans..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 250 }}
+              style={{ flex: 1 }}
             />
             <Select
               placeholder="Sort By"
@@ -444,6 +452,7 @@ export default function MailroomPlans() {
               variant="filled"
               leftSection={<IconRefresh size={16} />}
               onClick={fetchData}
+              color="#1e3a8a"
               aria-label="Refresh plans list"
             >
               Refresh
@@ -458,14 +467,14 @@ export default function MailroomPlans() {
           }}
         >
           <DataTable<Plan>
-            withTableBorder
-            borderRadius="sm"
-            withColumnBorders
+            withTableBorder={false}
+            borderRadius="lg"
             striped
             highlightOnHover
+            verticalSpacing="md"
             records={paginatedPlans}
             fetching={loading}
-            minHeight={400}
+            minHeight={minTableHeight(pageSize)}
             totalRecords={filteredPlans.length}
             recordsPerPage={pageSize}
             page={page}

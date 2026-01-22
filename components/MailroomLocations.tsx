@@ -54,6 +54,7 @@ const DataTable = dynamic(
   },
 ) as <T>(props: DataTableProps<T>) => React.ReactElement;
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { minTableHeight } from "@/utils/helper";
 
 type Location = {
   id: string;
@@ -993,8 +994,4 @@ export default function MailroomLocations() {
       </Modal>
     </Stack>
   );
-}
-
-function minTableHeight(pageSize: number) {
-  return 52 * pageSize + 50;
 }

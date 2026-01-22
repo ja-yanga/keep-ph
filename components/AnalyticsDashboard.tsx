@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import {
   Paper,
-  Title,
   Text,
   SimpleGrid,
   Group,
@@ -13,6 +12,7 @@ import {
   ThemeIcon,
   Alert,
   Skeleton,
+  Title,
 } from "@mantine/core";
 import { useIntersection } from "@mantine/hooks";
 import {
@@ -316,10 +316,15 @@ export default function AnalyticsDashboard() {
 
   return (
     <Stack gap="lg" role="region" aria-labelledby="analytics-heading">
-      <Group justify="space-between" align="center">
-        <Title order={2} id="analytics-heading">
-          Website Analytics
-        </Title>
+      <Group justify="space-between" align="flex-start" mb="xl">
+        <div>
+          <Title order={1} fw={900} c="dark.5" lts="-0.02em">
+            Website Analytics
+          </Title>
+          <Text c="dark.3" size="sm" fw={500}>
+            View website traffic and user engagement metrics.
+          </Text>
+        </div>
         <Select
           value={timeRange}
           onChange={(v) => setTimeRange(v ?? "7d")}
@@ -354,8 +359,9 @@ export default function AnalyticsDashboard() {
       >
         <Paper
           withBorder
-          p="md"
-          radius="md"
+          p="xl"
+          radius="lg"
+          shadow="sm"
           role="listitem"
           aria-label={
             loading
@@ -398,8 +404,9 @@ export default function AnalyticsDashboard() {
 
         <Paper
           withBorder
-          p="md"
-          radius="md"
+          p="xl"
+          radius="lg"
+          shadow="sm"
           role="listitem"
           aria-label={
             loading
@@ -438,8 +445,9 @@ export default function AnalyticsDashboard() {
 
         <Paper
           withBorder
-          p="md"
-          radius="md"
+          p="xl"
+          radius="lg"
+          shadow="sm"
           role="listitem"
           aria-label={
             loading
@@ -480,8 +488,9 @@ export default function AnalyticsDashboard() {
       {/* 2. Traffic Chart */}
       <Paper
         withBorder
-        p="md"
-        radius="md"
+        p="xl"
+        radius="lg"
+        shadow="sm"
         role="region"
         aria-labelledby="traffic-chart-heading"
       >
@@ -512,8 +521,9 @@ export default function AnalyticsDashboard() {
         {/* 3. Top Pages */}
         <Paper
           withBorder
-          p="md"
-          radius="md"
+          p="xl"
+          radius="lg"
+          shadow="sm"
           role="region"
           aria-labelledby="top-pages-heading"
         >
@@ -546,8 +556,9 @@ export default function AnalyticsDashboard() {
         {/* 4. Device Breakdown */}
         <Paper
           withBorder
-          p="md"
-          radius="md"
+          p="xl"
+          radius="lg"
+          shadow="sm"
           role="region"
           aria-labelledby="device-usage-heading"
         >

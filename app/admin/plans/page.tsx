@@ -1,40 +1,50 @@
 "use client";
 import dynamic from "next/dynamic";
-import { Container, Title, Skeleton, Stack, Box } from "@mantine/core";
+import {
+  Container,
+  Title,
+  Text,
+  Group,
+  Box,
+  Center,
+  Loader,
+} from "@mantine/core";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
-import { useEffect } from "react";
 
 const MailroomPlans = dynamic(
   () => import("@/components/pages/admin/PlanPage/MailroomPlans"),
   {
-    ssr: false,
     loading: () => (
-      <Stack gap="md">
-        <Skeleton height={40} width={300} radius="sm" />
-        <Skeleton height={400} radius="sm" />
-      </Stack>
+      <Center h={400}>
+        <Loader size="lg" color="violet" type="dots" />
+      </Center>
     ),
+    ssr: false,
   },
 );
 
 export default function PlansPage() {
-  useEffect(() => {
-    // Prefetch API endpoint once component mounts
-    fetch("/api/admin/mailroom/plans", {
-      method: "GET",
-      priority: "high",
-    } as RequestInit).catch(() => {
-      // Silent fail for prefetch
-    });
-  }, []);
-
   return (
     <PrivateMainLayout>
       <main style={{ flex: 1, minHeight: "calc(100vh - 200px)" }}>
         <Container size="xl" py="xl">
-          <Title order={2} mb="lg">
-            Manage Service Plans
-          </Title>
+          <Group
+            justify="space-between"
+            mb="xl"
+            align="flex-end"
+            w="100%"
+            maw={1200}
+          >
+            <div>
+              <Title order={1} fw={900} c="dark.5" lts="-0.02em">
+                Subscription Plans
+              </Title>
+              <Text c="dark.3" size="sm" fw={500}>
+                Configure and manage service tiers and pricing.
+              </Text>
+            </div>
+          </Group>
+
           {/* Reserve space to prevent layout shift */}
           <Box style={{ minHeight: "500px" }}>
             <MailroomPlans />
