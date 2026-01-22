@@ -75,7 +75,6 @@ function SignInContent() {
   }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    startRouteProgress();
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -96,6 +95,7 @@ function SignInContent() {
         return;
       }
 
+      startRouteProgress();
       const supabase = createClient();
       await supabase.auth.getSession();
       await refresh();
@@ -204,7 +204,7 @@ function SignInContent() {
 
                   <TextInput
                     label="Email"
-                    placeholder="you@example.com"
+                    placeholder="user@email.com"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
