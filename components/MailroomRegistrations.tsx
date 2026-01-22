@@ -39,7 +39,7 @@ import { notifications } from "@mantine/notifications";
 import dynamic from "next/dynamic";
 import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
 import dayjs from "dayjs";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 
 const DataTable = dynamic(
   () => import("mantine-datatable").then((m) => m.DataTable),
@@ -116,6 +116,7 @@ export default function MailroomRegistrations() {
   const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   // Tab state (must always be a valid tab value to keep ARIA correct)
   const [activeTab, setActiveTab] = useState<string>("all");
@@ -334,7 +335,6 @@ export default function MailroomRegistrations() {
       {
         accessor: "full_name",
         title: "User Details",
-        width: 250,
         render: (r: Registration) => (
           <Group gap="sm" wrap="nowrap">
             <Avatar color="blue" radius="xl" size="sm">
@@ -396,6 +396,7 @@ export default function MailroomRegistrations() {
       {
         accessor: "location",
         title: "Location",
+        width: 200,
         render: (r: Registration) => {
           const name = r.location_name || "Main Branch";
           return (
@@ -411,7 +412,7 @@ export default function MailroomRegistrations() {
       {
         accessor: "actions",
         title: "Actions",
-        width: 160,
+        width: 120,
         textAlign: "right" as const,
         render: (r: Registration) => (
           <Group gap="xs" justify="flex-end" wrap="nowrap">
@@ -448,33 +449,69 @@ export default function MailroomRegistrations() {
   };
 
   return (
-    <Stack align="center">
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
-        <Group justify="space-between" mb="md">
-          <Group>
+    <Stack align="center" gap="lg" w="100%">
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        {isMobile ? (
+          <Stack mb="md">
             <TextInput
               placeholder="Search users..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 300 }}
+              style={{ flex: 1 }}
             />
-            <Tooltip label="Force check for expired subscriptions">
-              <Button
-                variant="filled"
-                color="orange.9"
-                onClick={handleRefreshStatus}
-                loading={refreshingStatus}
-                leftSection={<IconRefresh size={16} />}
-              >
-                Sync Statuses
-              </Button>
-            </Tooltip>
+            <Group grow>
+              <Tooltip label="Force check for expired subscriptions">
+                <Button
+                  variant="filled"
+                  color="orange.9"
+                  onClick={handleRefreshStatus}
+                  loading={refreshingStatus}
+                  leftSection={<IconRefresh size={16} />}
+                >
+                  Sync Statuses
+                </Button>
+              </Tooltip>
+            </Group>
+          </Stack>
+        ) : (
+          <Group
+            justify="space-between"
+            mb="md"
+            gap="xs"
+            align="center"
+            wrap="nowrap"
+          >
+            <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
+              <TextInput
+                placeholder="Search users..."
+                leftSection={<IconSearch size={16} />}
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                style={{ flex: 1 }}
+              />
+              <Tooltip label="Force check for expired subscriptions">
+                <Button
+                  variant="filled"
+                  color="orange.9"
+                  onClick={handleRefreshStatus}
+                  loading={refreshingStatus}
+                  leftSection={<IconRefresh size={16} />}
+                >
+                  Sync Statuses
+                </Button>
+              </Tooltip>
+            </Group>
+            <Badge
+              size="lg"
+              variant="filled"
+              color="violet.9"
+              style={{ flexShrink: 0 }}
+            >
+              {registrations.length} Registered Users
+            </Badge>
           </Group>
-          <Badge size="lg" variant="filled" color="violet.9">
-            {registrations.length} Registered Users
-          </Badge>
-        </Group>
+        )}
 
         {/* NEW: Tabs Component */}
         <Tabs
@@ -505,23 +542,25 @@ export default function MailroomRegistrations() {
             </Tabs.Tab>
           </Tabs.List>
           {(["all", "active", "inactive"] as const).map((tab) => (
-            <Tabs.Panel key={tab} value={tab} pt="xs">
+            <Tabs.Panel key={tab} value={tab}>
               {tab === activeTab && (
                 <div
                   style={{
+                    marginTop: "1rem",
                     contentVisibility: "auto",
                     containIntrinsicSize: "400px",
                   }}
                 >
                   <DataTable<Registration>
-                    withTableBorder
-                    borderRadius="sm"
-                    withColumnBorders
+                    aria-label="Registrations list"
+                    withTableBorder={false}
+                    borderRadius="lg"
                     striped
+                    verticalSpacing="md"
                     highlightOnHover
                     records={paginatedRegistrations}
                     fetching={loading}
-                    minHeight={400}
+                    minHeight={minTableHeight(pageSize)}
                     totalRecords={filteredRegistrations.length}
                     recordsPerPage={pageSize}
                     page={page}
@@ -530,10 +569,6 @@ export default function MailroomRegistrations() {
                     onRecordsPerPageChange={setPageSize}
                     columns={tableColumns}
                     noRecordsText="No registrations found"
-                    styles={{
-                      root: { willChange: "auto" },
-                      table: { tableLayout: "fixed" },
-                    }}
                   />
                 </div>
               )}
@@ -725,4 +760,8 @@ export default function MailroomRegistrations() {
       </Modal>
     </Stack>
   );
+}
+
+function minTableHeight(pageSize: number) {
+  return 52 * pageSize + 50;
 }

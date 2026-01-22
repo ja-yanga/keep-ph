@@ -1,9 +1,8 @@
 "use client";
 
-import { Container } from "@mantine/core";
+import { Container, Center, Loader } from "@mantine/core";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
-import { Loader, Center } from "@mantine/core";
 
 // Components
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
@@ -33,7 +32,7 @@ export default function AdminStatsPage() {
           <Suspense
             fallback={
               <Center h={400}>
-                <Loader size="lg" />
+                <Loader size="lg" color="violet" type="dots" />
               </Center>
             }
           >

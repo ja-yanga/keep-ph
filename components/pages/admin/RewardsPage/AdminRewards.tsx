@@ -22,6 +22,7 @@ import {
   FileInput,
   Tabs,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   IconSearch,
   IconCheck,
@@ -59,6 +60,8 @@ export default function AdminRewards() {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const toggleReveal = (id: string) =>
     setRevealed((s) => ({ ...s, [id]: !s[id] }));
+
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const { data, error, isValidating } = useSWR("/api/admin/rewards", fetcher, {
     revalidateOnFocus: false, // Reduce unnecessary revalidations
@@ -376,35 +379,49 @@ export default function AdminRewards() {
   }
 
   return (
-    <Stack align="center" w="100%" gap="md">
+    <Stack align="center" w="100%" gap="lg">
       {globalSuccess && (
         <Alert
-          variant="filled"
+          variant="light"
           color="green"
           title="Success"
+          icon={<IconCheck size={16} />}
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
           w="100%"
-          maw={1200}
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
+      <Paper
+        p={isMobile ? "md" : "xl"}
+        radius="lg"
+        withBorder
+        shadow="sm"
+        w="100%"
+      >
         <Stack gap="md" mb="md">
-          <Group gap="sm" wrap="nowrap" w="100%">
-            <TextInput
-              placeholder="Search claims..."
-              leftSection={<IconSearch size={16} aria-hidden="true" />}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.currentTarget.value);
-                setPage(1); // Reset page on search
-              }}
-              style={{ flexGrow: 1, maxWidth: 400 }}
-              aria-label="Search reward claims"
-            />
+          <Group
+            justify="space-between"
+            gap="xs"
+            align="center"
+            wrap="nowrap"
+            w="100%"
+          >
+            <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
+              <TextInput
+                placeholder="Search claims..."
+                leftSection={<IconSearch size={16} aria-hidden="true" />}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.currentTarget.value);
+                  setPage(1); // Reset page on search
+                }}
+                style={{ flex: 1 }}
+                aria-label="Search reward claims"
+              />
+            </Group>
           </Group>
 
           <Tabs
@@ -420,17 +437,11 @@ export default function AdminRewards() {
               <Tabs.Tab
                 value="PENDING"
                 rightSection={
-                  <Badge
-                    w={16}
-                    h={16}
-                    bg="transparent"
-                    c="blue.9"
-                    p={0}
-                    variant="filled"
-                    radius="sm"
-                  >
-                    {pendingCount}
-                  </Badge>
+                  activeTab === "PENDING" && pendingCount > 0 ? (
+                    <Badge size="xs" color="blue" variant="filled">
+                      {pendingCount}
+                    </Badge>
+                  ) : null
                 }
               >
                 Pending Action
@@ -438,17 +449,11 @@ export default function AdminRewards() {
               <Tabs.Tab
                 value="PAID"
                 rightSection={
-                  <Badge
-                    w={16}
-                    h={16}
-                    bg="transparent"
-                    c="green.9"
-                    p={0}
-                    variant="filled"
-                    radius="sm"
-                  >
-                    {paidCount}
-                  </Badge>
+                  activeTab === "PAID" && paidCount > 0 ? (
+                    <Badge size="xs" color="green" variant="filled">
+                      {paidCount}
+                    </Badge>
+                  ) : null
                 }
               >
                 Paid/Completed
@@ -475,11 +480,12 @@ export default function AdminRewards() {
             }}
           >
             <DataTable<AdminClaimApprove>
-              withTableBorder
-              borderRadius="sm"
-              withColumnBorders
+              withTableBorder={false}
+              borderRadius="lg"
               striped
               highlightOnHover
+              verticalSpacing="md"
+              minHeight={minTableHeight(pageSize)}
               records={paginated}
               totalRecords={filtered.length}
               recordsPerPage={pageSize}
@@ -490,12 +496,11 @@ export default function AdminRewards() {
                 setPageSize(r);
                 setPage(1);
               }}
-              minHeight={400} // Increased min-height to reduce layout shift
               columns={[
                 {
                   accessor: "id",
                   title: "Claim",
-                  width: 120,
+                  width: 100,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
                     return <Text fw={700}>{String(row.id).slice(0, 8)}</Text>;
@@ -504,6 +509,7 @@ export default function AdminRewards() {
                 {
                   accessor: "user",
                   title: "User",
+                  width: 250,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
                     return (
@@ -524,8 +530,8 @@ export default function AdminRewards() {
                 },
                 {
                   accessor: "referral_count",
-                  title: "Claim Referrals",
-                  width: 130,
+                  title: "Claim Ref",
+                  width: 100,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
                     return <Text>{row.referral_count ?? "—"}</Text>;
@@ -533,8 +539,8 @@ export default function AdminRewards() {
                 },
                 {
                   accessor: "total_referrals",
-                  title: "Total Referrals",
-                  width: 130,
+                  title: "Total Ref",
+                  width: 90,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
                     return <Text>{row.total_referrals ?? "—"}</Text>;
@@ -543,7 +549,7 @@ export default function AdminRewards() {
                 {
                   accessor: "amount",
                   title: "Amount",
-                  width: 120,
+                  width: 110,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
                     return <Text fw={700}>PHP {row.amount ?? "—"}</Text>;
@@ -552,14 +558,19 @@ export default function AdminRewards() {
                 {
                   accessor: "method_account",
                   title: "Method / Account",
+                  width: 250,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
                     return (
                       <Stack gap={2}>
-                        <Text size="sm" fw={500}>
+                        <Text
+                          style={{ textTransform: "uppercase" }}
+                          size="sm"
+                          fw={700}
+                        >
                           {row.payment_method ?? "—"}
                         </Text>
-                        <Group gap={8} align="center">
+                        <Group gap={8} align="center" justify="space-between">
                           <Text
                             size="xs"
                             c="#2D3748"
@@ -610,7 +621,7 @@ export default function AdminRewards() {
                 {
                   accessor: "status_display",
                   title: "Status",
-                  width: 100,
+                  width: 150,
                   textAlign: "center",
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
@@ -619,7 +630,12 @@ export default function AdminRewards() {
                     const badgeColor = `${color}.9`;
                     return (
                       <Center>
-                        <Badge color={badgeColor} variant="filled" size="md">
+                        <Badge
+                          color={badgeColor}
+                          variant="filled"
+                          size="md"
+                          w={100}
+                        >
                           {row.status ?? "—"}
                         </Badge>
                       </Center>
@@ -629,7 +645,7 @@ export default function AdminRewards() {
                 {
                   accessor: "actions",
                   title: "Actions",
-                  width: 180,
+                  width: 160,
                   textAlign: "right" as const,
                   render: (record: unknown) => {
                     const row = record as AdminClaimApprove;
@@ -647,6 +663,7 @@ export default function AdminRewards() {
                             leftSection={
                               <IconUpload size={16} aria-hidden="true" />
                             }
+                            w={140}
                             aria-label={`Upload proof for claim ${row.id}`}
                           >
                             Upload Proof
@@ -662,6 +679,7 @@ export default function AdminRewards() {
                               setConfirmOpen(true);
                             }}
                             loading={loadingAction === row.id}
+                            w={140}
                             aria-label={`Mark claim ${row.id} as paid`}
                           >
                             Mark Paid
@@ -678,6 +696,7 @@ export default function AdminRewards() {
                             leftSection={
                               <IconEye size={14} aria-hidden="true" />
                             }
+                            w={140}
                             aria-label={`View proof for claim ${row.id}`}
                           >
                             View Proof
@@ -793,4 +812,8 @@ export default function AdminRewards() {
       </Modal>
     </Stack>
   );
+}
+
+function minTableHeight(pageSize: number) {
+  return 52 * pageSize + 50;
 }
