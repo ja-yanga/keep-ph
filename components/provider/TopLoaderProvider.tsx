@@ -2,7 +2,7 @@
 
 import { useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { doneRouteProgress } from "@/lib/route-progress";
+import { resetRouteProgress } from "@/lib/route-progress";
 import "./TopLoaderProvider.css";
 
 function TopLoaderProviderInner() {
@@ -11,7 +11,7 @@ function TopLoaderProviderInner() {
 
   useEffect(() => {
     setTimeout(() => {
-      doneRouteProgress();
+      resetRouteProgress();
     }, 0);
   }, [pathname, searchParams]);
 
