@@ -1,3 +1,4 @@
+import { memo, useMemo, useCallback } from "react";
 import {
   Card,
   Group,
@@ -18,6 +19,7 @@ import {
   IconPackage,
 } from "@tabler/icons-react";
 import Link from "next/link";
+import dayjs from "dayjs";
 import { getStatusColor } from "@/utils/get-color";
 import { MailroomRow } from "@/utils/types";
 
@@ -28,32 +30,66 @@ type SubscriptionCardProps = {
   onCancelRenewal: (id: string) => void;
 };
 
-export function SubscriptionCard({
+const cardStyle = { display: "flex", flexDirection: "column" as const };
+const badgeStyles = {
+  root: {
+    backgroundColor: "#b2dfdb",
+    color: "#004d40",
+  },
+};
+const cancelButtonStyles = {
+  root: {
+    backgroundColor: "#d32f2f",
+    color: "#ffffff",
+    "&:hover": {
+      backgroundColor: "#b71c1c",
+    },
+  },
+};
+
+function SubscriptionCardComponent({
   row,
   isMobile,
   onCopyAddress,
   onCancelRenewal,
 }: SubscriptionCardProps) {
-  const handleCopyAddress = () => {
+  const handleCopyAddress = useCallback(() => {
     onCopyAddress(row);
-  };
+  }, [onCopyAddress, row]);
+
+  const handleCancelRenewal = useCallback(() => {
+    onCancelRenewal(row.id);
+  }, [onCancelRenewal, row.id]);
+
+  const formattedDate = useMemo(() => {
+    if (!row.expiry_at) return "N/A";
+    return dayjs(row.expiry_at).format("MMM D, YYYY");
+  }, [row.expiry_at]);
+
+  const pendingText = useMemo(() => {
+    return `${row.stats.pending} request${row.stats.pending !== 1 ? "s" : ""}`;
+  }, [row.stats.pending]);
+
+  const textAlignStyle = useMemo(
+    () => ({ textAlign: isMobile ? "left" : ("right" as "left" | "right") }),
+    [isMobile],
+  );
+  const groupStyle = useMemo(() => ({ flex: 1, minWidth: 0 }), []);
+  const textStyle = useMemo(() => ({ flex: 1 }), []);
+  const lineHeightStyle = useMemo(() => ({ lineHeight: 1.2 }), []);
+  const smallStyle = useMemo(() => ({ fontWeight: 400, color: "#313131" }), []);
+  const stackStyle = useMemo(() => ({ flex: 1 }), []);
 
   return (
-    <Card
-      shadow="sm"
-      padding="lg"
-      radius="md"
-      withBorder
-      style={{ display: "flex", flexDirection: "column" }}
-    >
+    <Card shadow="sm" padding="lg" radius="md" withBorder style={cardStyle}>
       {/* Header Section */}
       <Card.Section withBorder inheritPadding py="xs" bg="gray.0">
         <Group justify="space-between" align="center">
-          <Group gap="xs" align="center" style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="xs" align="center" style={groupStyle}>
             <ThemeIcon color="violet" variant="light" size="sm">
               <IconMapPin size={14} />
             </ThemeIcon>
-            <Text fw={600} size="sm" truncate style={{ flex: 1 }}>
+            <Text fw={600} size="sm" truncate style={textStyle}>
               {row.location ?? "Unknown Location"}
             </Text>
             <ActionIcon
@@ -75,7 +111,7 @@ export function SubscriptionCard({
         </Group>
       </Card.Section>
 
-      <Stack mt="md" gap="sm" style={{ flex: 1 }}>
+      <Stack mt="md" gap="sm" style={stackStyle}>
         {/* Code and Plan */}
         <Group justify="space-between" align="flex-start">
           <Box>
@@ -87,13 +123,13 @@ export function SubscriptionCard({
               fw={800}
               ff="monospace"
               c="violet.9"
-              style={{ lineHeight: 1.2 }}
+              style={lineHeightStyle}
             >
               {row.mailroom_code ?? "PENDING"}
             </Text>
           </Box>
 
-          <Box style={{ textAlign: isMobile ? "left" : "right" }}>
+          <Box style={textAlignStyle}>
             <Text size="xs" c="#313131" tt="uppercase" fw={700}>
               Plan
             </Text>
@@ -128,35 +164,23 @@ export function SubscriptionCard({
               </Text>
             </Group>
             <Text fw={700} size="lg">
-              {row.stats.stored}{" "}
-              <small style={{ fontWeight: 400, color: "#313131" }}>items</small>
+              {row.stats.stored} <small style={smallStyle}>items</small>
             </Text>
           </Box>
 
-          <Box style={{ textAlign: isMobile ? "left" : "right" }}>
+          <Box style={textAlignStyle}>
             <Text size="xs" c="#313131" tt="uppercase" fw={700}>
               {row.auto_renew ? "Renews On" : "Expires On"}
             </Text>
             <Text fw={500} size="sm" c={row.auto_renew ? "dark" : "red"}>
-              {row.expiry_at
-                ? new Date(row.expiry_at).toLocaleDateString()
-                : "N/A"}
+              {formattedDate}
             </Text>
           </Box>
         </SimpleGrid>
 
         {/* Stats Badges */}
         <Group mt="xs" gap={8}>
-          <Badge
-            size="sm"
-            variant="light"
-            styles={{
-              root: {
-                backgroundColor: "#b2dfdb",
-                color: "#004d40",
-              },
-            }}
-          >
+          <Badge size="sm" variant="light" styles={badgeStyles}>
             Released: {row.stats.released}
           </Badge>
 
@@ -165,7 +189,7 @@ export function SubscriptionCard({
             color={row.stats.pending > 0 ? "orange" : "#313131"}
             variant={row.stats.pending > 0 ? "filled" : "light"}
           >
-            {row.stats.pending} request{row.stats.pending !== 1 ? "s" : ""}
+            {pendingText}
           </Badge>
         </Group>
       </Stack>
@@ -189,16 +213,8 @@ export function SubscriptionCard({
             radius="md"
             fullWidth
             size="sm"
-            styles={{
-              root: {
-                backgroundColor: "#d32f2f",
-                color: "#ffffff",
-                "&:hover": {
-                  backgroundColor: "#b71c1c",
-                },
-              },
-            }}
-            onClick={() => onCancelRenewal(row.id)}
+            styles={cancelButtonStyles}
+            onClick={handleCancelRenewal}
           >
             Cancel Renewal
           </Button>
@@ -207,3 +223,5 @@ export function SubscriptionCard({
     </Card>
   );
 }
+
+export const SubscriptionCard = memo(SubscriptionCardComponent);

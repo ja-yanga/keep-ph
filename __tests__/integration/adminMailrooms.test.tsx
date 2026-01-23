@@ -222,6 +222,7 @@ const mockRegistrations = [
     mailroom_status: true,
     location_name: "Main Office",
     plan_name: "Basic Plan",
+    is_active: true,
   },
   {
     id: "reg-2",
@@ -237,6 +238,7 @@ const mockRegistrations = [
     mailroom_status: false,
     location_name: "Main Office",
     plan_name: "Basic Plan",
+    is_active: false,
   },
 ];
 
@@ -410,7 +412,7 @@ describe("Admin Mailrooms Page (admin/mailrooms)", () => {
 
       // Check that the page title is rendered
       await waitFor(() => {
-        expect(screen.getByText("Mailrooms")).toBeInTheDocument();
+        expect(screen.getByText(/Mailroom Registrations/i)).toBeInTheDocument();
       });
 
       // Check that the layout is rendered

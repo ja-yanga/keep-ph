@@ -1,10 +1,37 @@
 "use client";
 
+import { useMemo } from "react";
+import dynamic from "next/dynamic";
 import { Box, Center, Loader } from "@mantine/core";
 
 import { useSession } from "@/components/SessionProvider";
-import DashboardContentWithMailRoom from "./components/DashboardContentWithMailRoom";
-import DashboardContentNoMailRoom from "./components/DashboardContentNoMailRoom";
+import type { RawRow } from "@/utils/types";
+
+// Lazily load heavy dashboard content to reduce initial JS on mobile
+// Disable SSR for client-only components to improve performance
+const DashboardContentWithMailRoom = dynamic(
+  () => import("./components/DashboardContentWithMailRoom"),
+  {
+    loading: () => (
+      <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
+        <Loader />
+      </Center>
+    ),
+    ssr: false,
+  },
+);
+
+const DashboardContentNoMailRoom = dynamic(
+  () => import("./components/DashboardContentNoMailRoom"),
+  {
+    loading: () => (
+      <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
+        <Loader />
+      </Center>
+    ),
+    ssr: false,
+  },
+);
 
 export default function Dashboard({
   initialRegistrations = [],
@@ -13,31 +40,45 @@ export default function Dashboard({
 }) {
   const { session, loading } = useSession();
   const firstName = session?.profile?.first_name ?? null;
-  const displayName = firstName ?? session?.user?.email ?? "User";
-  const hasMailroom = Array.isArray(initialRegistrations)
-    ? initialRegistrations.length > 0
-    : false;
-
-  let content: React.ReactNode;
+  const displayName = useMemo(
+    () => firstName ?? session?.user?.email ?? "User",
+    [firstName, session?.user?.email],
+  );
+  const hasMailroom = useMemo(
+    () =>
+      Array.isArray(initialRegistrations) && initialRegistrations.length > 0,
+    [initialRegistrations],
+  );
 
   if (loading) {
-    content = (
-      <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
-        <Loader />
-      </Center>
+    return (
+      <Box style={{ flex: 1, paddingTop: 32, paddingBottom: 32 }}>
+        <main id="main" tabIndex={-1}>
+          <Center style={{ paddingTop: 64, paddingBottom: 64 }}>
+            <Loader />
+          </Center>
+        </main>
+      </Box>
     );
-  } else if (!hasMailroom) {
-    content = (
-      <DashboardContentNoMailRoom displayName={displayName} loading={loading} />
-    );
-  } else {
-    content = <DashboardContentWithMailRoom />;
   }
 
   return (
     <Box style={{ flex: 1, paddingTop: 32, paddingBottom: 32 }}>
       <main id="main" tabIndex={-1}>
-        {content}
+        {hasMailroom ? (
+          <DashboardContentWithMailRoom
+            initialData={
+              Array.isArray(initialRegistrations)
+                ? (initialRegistrations as RawRow[])
+                : null
+            }
+          />
+        ) : (
+          <DashboardContentNoMailRoom
+            displayName={displayName}
+            loading={loading}
+          />
+        )}
       </main>
     </Box>
   );

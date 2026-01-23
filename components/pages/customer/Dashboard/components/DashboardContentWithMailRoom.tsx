@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState, useMemo, startTransition } from "react";
+import dynamic from "next/dynamic";
 import {
   Stack,
   Loader,
@@ -23,26 +24,60 @@ import {
 import { getFullAddressFromRaw } from "@/utils/get-full-address-from-raw";
 import { DashboardFilters } from "@/utils/types";
 import { DashboardHeader } from "./DashboardHeader";
-import { StatsCards } from "./StatsCards";
 import { SubscriptionCard } from "./SubscriptionCard";
 import { PaginationControls } from "./PaginationControls";
-import { CancelSubscriptionModal } from "./CancelSubscriptionModal";
+
+// Lazy load non-critical components to reduce initial bundle and TBT
+const StatsCards = dynamic(
+  () => import("./StatsCards").then((m) => ({ default: m.StatsCards })),
+  {
+    ssr: false,
+    loading: () => (
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{ height: 100, background: "#f0f0f0", borderRadius: 8 }}
+          />
+        ))}
+      </SimpleGrid>
+    ),
+  },
+);
+
+const CancelSubscriptionModal = dynamic(
+  () =>
+    import("./CancelSubscriptionModal").then((m) => ({
+      default: m.CancelSubscriptionModal,
+    })),
+  { ssr: false },
+);
 
 const ITEMS_PER_PAGE = 2;
+
+// Memoize filters object to prevent unnecessary re-renders
+const DEFAULT_FILTERS: DashboardFilters = {
+  plan: null,
+  location: null,
+  mailroomStatus: null,
+};
+
+const dividerStyles = {
+  label: {
+    color: "#313131",
+  },
+};
 
 export default function DashboardContentWithMailRoom({
   initialData,
 }: {
   initialData?: RawRow[] | null;
 }) {
-  const isMobile = useMediaQuery("(max-width: 48em)");
+  // Optimize media query - disable initial value in effect for better SSR performance
+  const isMobile = useMediaQuery("(max-width: 48em)", false);
   const [page, setPage] = useState<number>(1);
   const [search, setSearch] = useState("");
-  const [filters] = useState<DashboardFilters>({
-    plan: null,
-    location: null,
-    mailroomStatus: null,
-  });
+  const [filters] = useState<DashboardFilters>(DEFAULT_FILTERS);
 
   // Modal state
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -56,18 +91,20 @@ export default function DashboardContentWithMailRoom({
   const { storedCount, pendingCount, releasedCount } = useStats(totals, rows);
   const firstName = useKycFirstName();
 
-  // Handlers
-  const handleSearchChange = (value: string) => {
-    setSearch(value);
-    setPage(1); // Reset to first page when searching
-  };
+  // Handlers - use startTransition for non-urgent updates to reduce TBT
+  const handleSearchChange = useCallback((value: string) => {
+    startTransition(() => {
+      setSearch(value);
+      setPage(1); // Reset to first page when searching
+    });
+  }, []);
 
-  const handleCancelRenewal = (id: string) => {
+  const handleCancelRenewal = useCallback((id: string) => {
     setSelectedSubId(id);
     setCancelModalOpen(true);
-  };
+  }, []);
 
-  const handleCancelSubscription = async (): Promise<void> => {
+  const handleCancelSubscription = useCallback(async (): Promise<void> => {
     if (!selectedSubId) return;
     setCanceling(true);
     try {
@@ -100,42 +137,66 @@ export default function DashboardContentWithMailRoom({
     } finally {
       setCanceling(false);
     }
-  };
+  }, [refresh, rows, selectedSubId]);
 
-  const copyFullShippingAddress = async (
-    row: (typeof filtered)[0],
-  ): Promise<void> => {
-    const code = row.mailroom_code ?? null;
-    const full = getFullAddressFromRaw(row.raw) ?? row.location ?? null;
-    const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
+  const copyFullShippingAddress = useCallback(
+    async (row: (typeof filtered)[0]): Promise<void> => {
+      const code = row.mailroom_code ?? null;
+      const full = getFullAddressFromRaw(row.raw) ?? row.location ?? null;
+      const txt = `${code ? `${code} ` : ""}${full ?? ""}`.trim();
 
-    if (!txt) {
-      notifications.show({
-        title: "Nothing to copy",
-        message: "No full address available",
-        color: "yellow",
-      });
-      return;
-    }
+      if (!txt) {
+        notifications.show({
+          title: "Nothing to copy",
+          message: "No full address available",
+          color: "yellow",
+        });
+        return;
+      }
 
-    try {
-      await navigator.clipboard.writeText(txt);
-      notifications.show({
-        title: "Copied",
-        message: "Full shipping address copied to clipboard",
-        color: "teal",
-      });
-    } catch (e: unknown) {
-      console.error("copy failed", e);
-      notifications.show({
-        title: "Copy failed",
-        message: (e as Error).message ?? String(e),
-        color: "red",
-      });
-    }
-  };
+      try {
+        await navigator.clipboard.writeText(txt);
+        notifications.show({
+          title: "Copied",
+          message: "Full shipping address copied to clipboard",
+          color: "teal",
+        });
+      } catch (e: unknown) {
+        console.error("copy failed", e);
+        notifications.show({
+          title: "Copy failed",
+          message: (e as Error).message ?? String(e),
+          color: "red",
+        });
+      }
+    },
+    [],
+  );
 
-  // Error state
+  // Backend handles pagination, so we use filtered rows directly
+  const pageItems = filtered;
+
+  // All hooks must be called before any early returns
+  const hasData = useMemo(() => Boolean(rows && rows.length > 0), [rows]);
+
+  const handlePageChange = useCallback((newPage: number) => {
+    startTransition(() => {
+      setPage(newPage);
+    });
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setCancelModalOpen(false);
+  }, []);
+
+  const totalItems = useMemo(() => pagination?.total ?? 0, [pagination?.total]);
+
+  const showPagination = useMemo(
+    () => pagination && pagination.total > ITEMS_PER_PAGE,
+    [pagination],
+  );
+
+  // Error state - must be after all hooks
   if (error) {
     return (
       <Stack align="center" py="xl">
@@ -150,9 +211,6 @@ export default function DashboardContentWithMailRoom({
     );
   }
 
-  // Backend handles pagination, so we use filtered rows directly
-  const pageItems = filtered;
-
   return (
     <Container size="xl" py="xl">
       <Stack gap="xl">
@@ -166,17 +224,13 @@ export default function DashboardContentWithMailRoom({
           stored={storedCount}
           pending={pendingCount}
           released={releasedCount}
-          hasData={Boolean(rows && rows.length > 0)}
+          hasData={hasData}
         />
 
         <Divider
           label="Your Active Subscriptions"
           labelPosition="center"
-          styles={{
-            label: {
-              color: "#313131",
-            },
-          }}
+          styles={dividerStyles}
         />
         {loading && (
           <Stack align="center" py="xl">
@@ -196,21 +250,19 @@ export default function DashboardContentWithMailRoom({
           ))}
         </SimpleGrid>
 
-        {pagination && pagination?.total > ITEMS_PER_PAGE && (
+        {showPagination && (
           <PaginationControls
             currentPage={page}
-            totalItems={pagination?.total ?? 0}
+            totalItems={totalItems}
             itemsPerPage={ITEMS_PER_PAGE}
             isMobile={isMobile}
-            onPageChange={(newPage) => {
-              setPage(newPage);
-            }}
+            onPageChange={handlePageChange}
           />
         )}
 
         <CancelSubscriptionModal
           opened={cancelModalOpen}
-          onClose={() => setCancelModalOpen(false)}
+          onClose={handleCloseModal}
           onConfirm={handleCancelSubscription}
           loading={canceling}
         />

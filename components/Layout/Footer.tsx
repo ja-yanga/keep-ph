@@ -1,22 +1,22 @@
 "use client";
 
-import { Box, Center, Text, useMantineTheme } from "@mantine/core";
+import { memo, useMemo } from "react";
+import { Box, Center, Text } from "@mantine/core";
 
-export default function Footer() {
-  const theme = useMantineTheme();
+const FOOTER_STYLE = { borderTop: "1px solid #dee2e6" };
+
+function FooterComponent() {
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
 
   return (
-    <Box
-      component="footer"
-      py="md"
-      role="contentinfo"
-      style={{ borderTop: `1px solid ${theme.colors.gray[3]}` }}
-    >
+    <Box component="footer" py="md" role="contentinfo" style={FOOTER_STYLE}>
       <Center>
         <Text size="sm" c="gray.8">
-          © {new Date().getFullYear()} Keep PH. All rights reserved.
+          © {currentYear} Keep PH. All rights reserved.
         </Text>
       </Center>
     </Box>
   );
 }
+
+export default memo(FooterComponent);

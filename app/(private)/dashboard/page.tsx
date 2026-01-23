@@ -30,7 +30,9 @@ export default async function DashboardPage() {
 
   return (
     <PrivateMainLayout>
-      <Dashboard initialRegistrations={registrations} />
+      <Dashboard
+        initialRegistrations={Array.isArray(registrations) ? registrations : []}
+      />
     </PrivateMainLayout>
   );
 }

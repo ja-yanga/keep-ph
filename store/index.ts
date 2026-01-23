@@ -3,12 +3,10 @@ import { useDispatch, useSelector } from "react-redux";
 import type { TypedUseSelectorHook } from "react-redux";
 
 // Import slices
-import authReducer from "./slices/authSlice";
 import userReducer from "./slices/userSlice";
 // Configure the store
 export const store = configureStore({
   reducer: {
-    auth: authReducer,
     user: userReducer,
   },
   // Enable Redux DevTools in development

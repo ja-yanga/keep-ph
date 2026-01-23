@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Paper, Group, Text, ThemeIcon, SimpleGrid } from "@mantine/core";
 import {
   IconBox,
@@ -12,7 +13,7 @@ type StatsCardsProps = {
   hasData: boolean;
 };
 
-export function StatsCards({
+function StatsCardsComponent({
   stored,
   pending,
   released,
@@ -76,3 +77,5 @@ export function StatsCards({
     </SimpleGrid>
   );
 }
+
+export const StatsCards = memo(StatsCardsComponent);

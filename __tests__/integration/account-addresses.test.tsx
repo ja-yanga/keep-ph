@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 
 /*
-  Integration tests for AccountAddresses component.
+  Integration tests for AccountAddressesTab component.
 
   Purpose:
   - Verify UI flows for listing, creating, editing, and deleting user addresses.
@@ -14,7 +14,7 @@ import { MantineProvider } from "@mantine/core";
   - Mock SessionProvider to provide a stable authenticated session.
   - Mock @mantine/notifications so tests can assert notifications were shown.
   - Mock global.fetch per-test to return deterministic responses; some mocks are stateful to simulate server state changes.
-  - Render the component inside MantineProvider to match runtime styling and behavior.
+  - Render the component inside MantineProvider and StoreProvider to match runtime styling and behavior.
 */
 
 jest.mock("@/components/SessionProvider", () => ({
@@ -30,9 +30,10 @@ jest.mock("@mantine/notifications", () => ({
 }));
 
 import { notifications } from "@mantine/notifications";
-import AccountAddresses from "@/components/pages/customer/Account/AddressesTab";
+import AccountAddressesTab from "@/components/pages/customer/Account/AddressesTab";
+import { StoreProvider } from "@/store/StoreProvider";
 
-describe("AccountAddresses integration", () => {
+describe("AccountAddressesTab integration", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
 
   beforeEach(() => {
@@ -42,7 +43,7 @@ describe("AccountAddresses integration", () => {
   });
 
   afterEach(() => {
-    // Restore global.fetch to avopsid leaking mocks between tests
+    // Restore global.fetch to avoid leaking mocks between tests
     if (originalFetch) globalThis.fetch = originalFetch;
   });
 
@@ -66,13 +67,17 @@ describe("AccountAddresses integration", () => {
 
     render(
       <MantineProvider>
-        <AccountAddresses userId="user-123" />
+        <StoreProvider>
+          <AccountAddressesTab />
+        </StoreProvider>
       </MantineProvider>,
     );
 
     // Confirm empty state is shown
     expect(
-      await screen.findByText(/You haven't saved any addresses yet/i),
+      await screen.findByText(
+        /You haven't saved any addresses yet. Click "Add New Address" to get started./i,
+      ),
     ).toBeInTheDocument();
 
     // Open the Add modal and assert Save is disabled when required inputs are empty
@@ -91,9 +96,10 @@ describe("AccountAddresses integration", () => {
   });
 
   it("creates a new address (POST) and reloads list", async () => {
-    // Simulated created address payload (shape matches API)
+    // Simulated created address payload (shape matches API - snake_case)
     const created = {
       user_address_id: "addr-1",
+      user_id: "user-123",
       user_address_label: "Home",
       user_address_line1: "123 Street",
       user_address_line2: "Unit 4",
@@ -101,6 +107,7 @@ describe("AccountAddresses integration", () => {
       user_address_region: "Metro Manila",
       user_address_postal: "1100",
       user_address_is_default: true,
+      user_address_created_at: "2024-01-01T00:00:00Z",
     };
 
     // Stateful fetch mock: POST populates `current`, subsequent GET returns it
@@ -108,14 +115,14 @@ describe("AccountAddresses integration", () => {
     const fetchMock = jest.fn(
       async (input: RequestInfo, init?: RequestInit) => {
         const url = String(input);
-        if (url.includes("/api/user/addresses") && init?.method === "POST") {
+        if (url === "/api/user/addresses" && init?.method === "POST") {
           current = [created];
           return {
             ok: true,
             json: async () => ({ data: created }),
           } as unknown as Response;
         }
-        if (url.includes("/api/user/addresses")) {
+        if (url === "/api/user/addresses" && (!init || init.method === "GET")) {
           return {
             ok: true,
             json: async () => ({ data: current }),
@@ -128,25 +135,34 @@ describe("AccountAddresses integration", () => {
 
     render(
       <MantineProvider>
-        <AccountAddresses userId="user-123" />
+        <StoreProvider>
+          <AccountAddressesTab />
+        </StoreProvider>
       </MantineProvider>,
     );
+
+    // Wait for initial load (GET request with no options)
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/user/addresses");
+    });
 
     // Open modal, fill inputs, and save
     await userEvent.click(
       await screen.findByRole("button", { name: /Add New Address/i }),
     );
     await userEvent.type(
-      await screen.findByLabelText(/Address Label/i),
+      await screen.findByLabelText(/Address Label \(e\.g\., Home, Office\)/i),
       "Home",
     );
     await userEvent.type(
-      await screen.findByLabelText(/Address Line 1/i),
+      await screen.findByLabelText(
+        /Address Line 1 \(Street\/Brgy\/House No\.\)/i,
+      ),
       "123 Street",
     );
     await userEvent.type(await screen.findByLabelText(/City/i), "Quezon City");
     await userEvent.type(
-      await screen.findByLabelText(/Region/i),
+      await screen.findByLabelText(/Region\/Province/i),
       "Metro Manila",
     );
     await userEvent.type(await screen.findByLabelText(/Postal Code/i), "1100");
@@ -154,13 +170,14 @@ describe("AccountAddresses integration", () => {
       await screen.findByRole("button", { name: /Save Address/i }),
     );
 
-    // Assert POST request was made with JSON header
+    // Assert POST request was made with JSON header and camelCase body
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/user/addresses",
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          body: expect.stringContaining('"label":"Home"'),
         }),
       );
     });
@@ -181,43 +198,45 @@ describe("AccountAddresses integration", () => {
   });
 
   it("edits an existing address (PUT) and reloads list", async () => {
-    const existing = {
-      id: "addr-2",
-      label: "Office",
-      line1: "5 Office Rd",
-      line2: "",
-      city: "Makati",
-      region: "Metro Manila",
-      postal: "1200",
-      is_default: false,
+    // API format (snake_case) for GET response
+    const existingApi = {
+      user_address_id: "addr-2",
+      user_id: "user-123",
+      user_address_label: "Office",
+      user_address_line1: "5 Office Rd",
+      user_address_line2: null,
+      user_address_city: "Makati",
+      user_address_region: "Metro Manila",
+      user_address_postal: "1200",
+      user_address_is_default: false,
+      user_address_created_at: "2024-01-01T00:00:00Z",
     };
 
-    const updated = { ...existing, label: "Office HQ" };
+    const updatedApi = {
+      ...existingApi,
+      user_address_label: "Office HQ",
+    };
 
     // Stateful fetch: initial GET returns existing; PUT updates `current` to updated
-    let current: Record<string, unknown>[] = [existing];
+    let current: Record<string, unknown>[] = [existingApi];
     const fetchMock = jest.fn(
       async (input: RequestInfo, init?: RequestInit) => {
         const url = String(input);
-        if (
-          url.includes("/api/user/addresses") &&
-          (!init || init.method === "GET")
-        ) {
+        if (url === "/api/user/addresses" && (!init || init.method === "GET")) {
           return {
             ok: true,
             json: async () => ({ data: current }),
           } as unknown as Response;
         }
         if (
-          url.includes(
-            `/api/user/addresses/${encodeURIComponent(existing.id)}`,
-          ) &&
+          url ===
+            `/api/user/addresses/${encodeURIComponent(existingApi.user_address_id)}` &&
           init?.method === "PUT"
         ) {
-          current = [updated];
+          current = [updatedApi];
           return {
             ok: true,
-            json: async () => ({ data: updated }),
+            json: async () => ({ data: updatedApi }),
           } as unknown as Response;
         }
         return { ok: false, json: async () => ({}) } as unknown as Response;
@@ -227,15 +246,24 @@ describe("AccountAddresses integration", () => {
 
     render(
       <MantineProvider>
-        <AccountAddresses userId="user-123" />
+        <StoreProvider>
+          <AccountAddressesTab />
+        </StoreProvider>
       </MantineProvider>,
     );
+
+    // Wait for initial load - use a unique part of the address line to avoid ambiguity
+    await waitFor(() => {
+      expect(screen.getByText(/5 Office Rd/i)).toBeInTheDocument();
+    });
 
     // Click edit on the rendered address and update the label
     const editBtns = await screen.findAllByLabelText("Edit address");
     await userEvent.click(editBtns[0]);
 
-    const labelInput = await screen.findByLabelText(/Address Label/i);
+    const labelInput = await screen.findByLabelText(
+      /Address Label \(e\.g\., Home, Office\)/i,
+    );
     expect((labelInput as HTMLInputElement).value).toBe("Office");
 
     await userEvent.clear(labelInput);
@@ -244,15 +272,38 @@ describe("AccountAddresses integration", () => {
       await screen.findByRole("button", { name: /Save Address/i }),
     );
 
-    // Assert PUT to the specific id was called
+    // Assert PUT to the specific id was called without id/created_at/user_id in body
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        `/api/user/addresses/${encodeURIComponent(existing.id)}`,
+        `/api/user/addresses/${encodeURIComponent(existingApi.user_address_id)}`,
         expect.objectContaining({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          body: expect.stringContaining('"label":"Office HQ"'),
         }),
       );
+      // Ensure id, created_at, and user_id are NOT in the PUT body
+      const putCall = (global.fetch as jest.Mock).mock.calls.find(
+        (call: unknown[]) =>
+          Array.isArray(call) &&
+          call[0] ===
+            `/api/user/addresses/${encodeURIComponent(existingApi.user_address_id)}` &&
+          typeof call[1] === "object" &&
+          call[1] !== null &&
+          "method" in call[1] &&
+          (call[1] as RequestInit).method === "PUT",
+      );
+      if (
+        putCall &&
+        typeof putCall[1] === "object" &&
+        putCall[1] !== null &&
+        "body" in putCall[1]
+      ) {
+        const body = JSON.parse((putCall[1] as RequestInit).body as string);
+        expect(body).not.toHaveProperty("id");
+        expect(body).not.toHaveProperty("created_at");
+        expect(body).not.toHaveProperty("user_id");
+      }
     });
 
     // Notification and updated list entry should appear
@@ -265,33 +316,34 @@ describe("AccountAddresses integration", () => {
   });
 
   it("deletes an address (DELETE) and reloads list", async () => {
-    const addr = {
-      id: "addr-3",
-      label: "Old Place",
-      line1: "77 Old St",
-      line2: "",
-      city: "Pasig",
-      region: "Metro Manila",
-      postal: "1600",
-      is_default: false,
+    // API format (snake_case) for GET response
+    const addrApi = {
+      user_address_id: "addr-3",
+      user_id: "user-123",
+      user_address_label: "Old Place",
+      user_address_line1: "77 Old St",
+      user_address_line2: null,
+      user_address_city: "Pasig",
+      user_address_region: "Metro Manila",
+      user_address_postal: "1600",
+      user_address_is_default: false,
+      user_address_created_at: "2024-01-01T00:00:00Z",
     };
 
     // Stateful fetch: initial GET returns addr; DELETE clears current
-    let current: Record<string, unknown>[] = [addr];
+    let current: Record<string, unknown>[] = [addrApi];
     const fetchMock = jest.fn(
       async (input: RequestInfo, init?: RequestInit) => {
         const url = String(input);
-        if (
-          url.includes("/api/user/addresses") &&
-          (!init || init.method === "GET")
-        ) {
+        if (url === "/api/user/addresses" && (!init || init.method === "GET")) {
           return {
             ok: true,
             json: async () => ({ data: current }),
           } as unknown as Response;
         }
         if (
-          url.includes(`/api/user/addresses/${encodeURIComponent(addr.id)}`) &&
+          url ===
+            `/api/user/addresses/${encodeURIComponent(addrApi.user_address_id)}` &&
           init?.method === "DELETE"
         ) {
           current = [];
@@ -307,23 +359,30 @@ describe("AccountAddresses integration", () => {
 
     render(
       <MantineProvider>
-        <AccountAddresses userId="user-123" />
+        <StoreProvider>
+          <AccountAddressesTab />
+        </StoreProvider>
       </MantineProvider>,
     );
 
-    // Ensure address shows, then trigger delete flow and confirm
-    expect(await screen.findByText(/Old Place/i)).toBeInTheDocument();
+    // Wait for initial load - same pattern as edit test
+    await waitFor(() => {
+      expect(screen.getByText(/Old Place/i)).toBeInTheDocument();
+    });
 
-    const deleteBtns = screen.getAllByLabelText("Delete address");
+    // Find and click the delete button
+    const deleteBtns = await screen.findAllByLabelText("Delete address");
+    expect(deleteBtns.length).toBeGreaterThan(0);
     await userEvent.click(deleteBtns[0]);
 
+    // Confirm deletion in the modal
     const delBtn = await screen.findByRole("button", { name: /^Delete$/i });
     await userEvent.click(delBtn);
 
     // Assert DELETE request and Deleted notification
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        `/api/user/addresses/${encodeURIComponent(addr.id)}`,
+        `/api/user/addresses/${encodeURIComponent(addrApi.user_address_id)}`,
         expect.objectContaining({ method: "DELETE" }),
       );
       expect(notifications.show).toHaveBeenCalledWith(
@@ -333,7 +392,9 @@ describe("AccountAddresses integration", () => {
 
     // Verify the list reloaded and empty state is shown
     expect(
-      await screen.findByText(/You haven't saved any addresses yet/i),
+      await screen.findByText(
+        /You haven't saved any addresses yet. Click "Add New Address" to get started./i,
+      ),
     ).toBeInTheDocument();
   });
 });
