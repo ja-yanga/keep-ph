@@ -2,19 +2,14 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
+import { Provider } from "react-redux";
+import { configureStore, EnhancedStore } from "@reduxjs/toolkit";
 
 /*
   Integration tests for AccountContent -> change password flow.
 
-  What is tested:
-  - Successful password change: validates fields, opens confirm modal, calls change-password API,
-    shows success message and clears inputs.
-  - Failed password change: server returns non-ok, show error alert.
-
-  Strategy:
-  - Render AccountContent inside MantineProvider so Mantine UI works.
-  - Mock global.fetch to return controlled responses for /api/auth/change-password.
-  - Restore original fetch after each test.
+  - Wrap AccountContent with a minimal Redux provider so components using
+    useAppSelector / useAppDispatch do not throw in tests.
 */
 
 jest.mock("@/components/SessionProvider", () => ({
@@ -29,12 +24,43 @@ jest.mock("@/components/SessionProvider", () => ({
 
 import AccountContent from "@/components/pages/customer/Account/index";
 
+const initialUserState = {
+  kycDetails: {
+    kyc: null,
+    error: null,
+    success: null,
+    loading: false,
+  },
+  addressDetails: {
+    addresses: [],
+    loading: false,
+    error: null,
+  },
+};
+
+function userReducer(state = initialUserState) {
+  return state;
+}
+
+function createTestStore(): EnhancedStore {
+  return configureStore({
+    reducer: {
+      user: userReducer,
+    },
+    preloadedState: {
+      user: initialUserState,
+    },
+  });
+}
+
 describe("AccountContent — change password", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
+  let store: EnhancedStore;
 
   beforeEach(() => {
     jest.clearAllMocks();
     originalFetch = globalThis.fetch;
+    store = createTestStore();
   });
 
   afterEach(() => {
@@ -42,7 +68,6 @@ describe("AccountContent — change password", () => {
   });
 
   it("validates, confirms and successfully updates password", async () => {
-    // mock successful change-password response
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ message: "Password updated successfully" }),
@@ -50,42 +75,37 @@ describe("AccountContent — change password", () => {
     globalThis.fetch = fetchMock;
 
     render(
-      <MantineProvider>
-        <AccountContent />
-      </MantineProvider>,
+      <Provider store={store}>
+        <MantineProvider>
+          <AccountContent />
+        </MantineProvider>
+      </Provider>,
     );
 
-    // switch to Security tab
     const securityTab = screen.getByRole("tab", { name: /Security/i });
     await userEvent.click(securityTab);
 
-    // scope queries to the Security tab panel to avoid matching duplicate inputs elsewhere
     const panelId = securityTab.getAttribute("aria-controls");
     const panel = panelId ? document.getElementById(panelId) : document.body;
     const scoped = within(panel as HTMLElement);
 
-    // fill current, new, confirm (new must meet strength checks)
     await userEvent.type(
       scoped.getByLabelText(/Current Password/i),
       "old-pass-1A",
     );
-    // multiple inputs match "New Password" in this panel — use getAllByLabelText and pick indexes
     const newPwFields = scoped.getAllByLabelText(/New Password/i);
-    await userEvent.type(newPwFields[0], "NewPass1A"); // New Password
-    await userEvent.type(newPwFields[1], "NewPass1A"); // Confirm New Password
+    await userEvent.type(newPwFields[0], "NewPass1A");
+    await userEvent.type(newPwFields[1], "NewPass1A");
 
-    // click Update Password -> opens confirmation modal
     await userEvent.click(
       scoped.getByRole("button", { name: /Update Password/i }),
     );
 
-    // click confirm in modal
     const confirmBtn = await screen.findByRole("button", {
       name: /Confirm Update/i,
     });
     await userEvent.click(confirmBtn);
 
-    // assert API was called with POST and payload contains both passwords
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/auth/change-password",
@@ -97,14 +117,11 @@ describe("AccountContent — change password", () => {
       );
     });
 
-    // expect success alert shown and inputs cleared
     const successAlert = await screen.findByText(
       /Password updated successfully/i,
     );
     expect(successAlert).toBeInTheDocument();
 
-    // inputs should be cleared after success — query all password inputs in this panel
-    // and check them by order: Current, New, Confirm
     const pwInputs = scoped.getAllByLabelText(
       /Password/i,
     ) as HTMLInputElement[];
@@ -114,28 +131,26 @@ describe("AccountContent — change password", () => {
   });
 
   it("shows error alert when server returns error", async () => {
-    // mock failing change-password response
     (globalThis.fetch as jest.Mock) = jest.fn().mockResolvedValue({
       ok: false,
       json: async () => ({ error: "Current password incorrect" }),
     });
 
     render(
-      <MantineProvider>
-        <AccountContent />
-      </MantineProvider>,
+      <Provider store={store}>
+        <MantineProvider>
+          <AccountContent />
+        </MantineProvider>
+      </Provider>,
     );
 
-    // switch to Security tab
     const securityTab = screen.getByRole("tab", { name: /Security/i });
     await userEvent.click(securityTab);
 
-    // scope queries to the Security tab panel
     const panelId = securityTab.getAttribute("aria-controls");
     const panel = panelId ? document.getElementById(panelId) : document.body;
     const scoped = within(panel as HTMLElement);
 
-    // fill inputs (valid)
     await userEvent.type(
       scoped.getByLabelText(/Current Password/i),
       "bad-old-pass1A",
@@ -144,7 +159,6 @@ describe("AccountContent — change password", () => {
     await userEvent.type(newPwFields2[0], "NewPass1A");
     await userEvent.type(newPwFields2[1], "NewPass1A");
 
-    // trigger modal and confirm
     await userEvent.click(
       scoped.getByRole("button", { name: /Update Password/i }),
     );
@@ -153,28 +167,26 @@ describe("AccountContent — change password", () => {
     });
     await userEvent.click(confirmBtn);
 
-    // expect an alert with server error message
     const errAlert = await screen.findByRole("alert");
     expect(errAlert).toHaveTextContent(/Current password incorrect/i);
   });
 
   it("shows validation error when new password doesn't meet requirements", async () => {
     render(
-      <MantineProvider>
-        <AccountContent />
-      </MantineProvider>,
+      <Provider store={store}>
+        <MantineProvider>
+          <AccountContent />
+        </MantineProvider>
+      </Provider>,
     );
 
-    // switch to Security tab
     const securityTab = screen.getByRole("tab", { name: /Security/i });
     await userEvent.click(securityTab);
 
-    // scope queries to the Security tab panel
     const panelId = securityTab.getAttribute("aria-controls");
     const panel = panelId ? document.getElementById(panelId) : document.body;
     const scoped = within(panel as HTMLElement);
 
-    // fill current and weak new password (does not meet strength checks)
     await userEvent.type(
       scoped.getByLabelText(/Current Password/i),
       "old-pass-1A",
@@ -183,12 +195,10 @@ describe("AccountContent — change password", () => {
     await userEvent.type(newPwFields[0], "weak");
     await userEvent.type(newPwFields[1], "weak");
 
-    // attempt to submit
     await userEvent.click(
       scoped.getByRole("button", { name: /Update Password/i }),
     );
 
-    // expect inline validation error about password strength
     const err = await screen.findByText(/Password is too weak/i);
     expect(err).toBeInTheDocument();
   });

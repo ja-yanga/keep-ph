@@ -67,6 +67,55 @@ afterAll(() => {
   Element.prototype.scrollIntoView = _origScroll;
 });
 
+// minimal Recharts mock so dynamic imports inside the component resolve in tests
+jest.mock("recharts", () => {
+  return {
+    ResponsiveContainer: (props: { children?: React.ReactNode }) =>
+      React.createElement("div", null, props.children),
+    LineChart: (props: { children?: React.ReactNode }) =>
+      React.createElement("div", null, props.children),
+    Line: () => React.createElement("div", null),
+    XAxis: () => React.createElement("div", null),
+    YAxis: () => React.createElement("div", null),
+    CartesianGrid: () => React.createElement("div", null),
+    Tooltip: () => React.createElement("div", null),
+    BarChart: (props: { children?: React.ReactNode }) =>
+      React.createElement("div", null, props.children),
+    Bar: () => React.createElement("div", null),
+    PieChart: (props: { children?: React.ReactNode }) =>
+      React.createElement("div", null, props.children),
+    Pie: (props: { children?: React.ReactNode }) =>
+      React.createElement("div", null, props.children),
+    Cell: () => React.createElement("div", null),
+  };
+});
+
+// IntersectionObserver polyfill for @mantine/hooks useIntersection
+if (typeof global.IntersectionObserver === "undefined") {
+  class MockIntersectionObserver {
+    constructor(
+      public cb?: IntersectionObserverCallback,
+      public opts?: IntersectionObserverInit,
+    ) {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  }
+
+  type IOGlobal = {
+    IntersectionObserver?: new (
+      cb?: IntersectionObserverCallback,
+      opts?: IntersectionObserverInit,
+    ) => IntersectionObserver;
+  };
+
+  (globalThis as unknown as IOGlobal).IntersectionObserver =
+    MockIntersectionObserver as unknown as IOGlobal["IntersectionObserver"];
+}
+
 describe("AnalyticsDashboard", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
   let warnSpy: jest.SpyInstance;
