@@ -384,7 +384,7 @@ describe("Admin Plans Page (admin/plans)", () => {
 
       // Check for page title
       expect(
-        screen.getByRole("heading", { name: /Manage Service Plans/i }),
+        screen.getByRole("heading", { name: /Subscription Plans/i }),
       ).toBeInTheDocument();
 
       // Check for layout

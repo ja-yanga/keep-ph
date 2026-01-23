@@ -211,7 +211,7 @@ describe("Admin KYC Workflow", () => {
     expect(screen.getByText("Bob Rejected")).toBeInTheDocument();
 
     // Click "Submitted" tab
-    const submittedTab = screen.getByLabelText("Submitted");
+    const submittedTab = screen.getByRole("tab", { name: /Submitted/i });
     fireEvent.click(submittedTab);
 
     // SWR key should have changed to include status=SUBMITTED
@@ -222,7 +222,7 @@ describe("Admin KYC Workflow", () => {
     );
 
     // Click "Verified" tab
-    const verifiedTab = screen.getByLabelText("Verified");
+    const verifiedTab = screen.getByRole("tab", { name: /Verified/i });
     fireEvent.click(verifiedTab);
     expect(useSWR).toHaveBeenLastCalledWith(
       expect.stringContaining("status=VERIFIED"),
@@ -231,7 +231,7 @@ describe("Admin KYC Workflow", () => {
     );
 
     // Click "Rejected" tab
-    const rejectedTab = screen.getByLabelText("Rejected");
+    const rejectedTab = screen.getByRole("tab", { name: /Rejected/i });
     fireEvent.click(rejectedTab);
     expect(useSWR).toHaveBeenLastCalledWith(
       expect.stringContaining("status=REJECTED"),
