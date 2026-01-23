@@ -23,6 +23,7 @@ import {
   FileInput,
   Tabs,
   SegmentedControl,
+  Loader,
 } from "@mantine/core";
 import { useDisclosure, useDebouncedValue } from "@mantine/hooks";
 // Added useSearchParams
@@ -138,6 +139,7 @@ export default function MailroomPackages() {
     Array<{ value: string; label: string }>
   >([]);
   const [searchingRecipients, setSearchingRecipients] = useState(false);
+  const [selectedRecipientLabel, setSelectedRecipientLabel] = useState("");
 
   // New Filter States
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
@@ -413,6 +415,12 @@ export default function MailroomPackages() {
       return;
     }
 
+    // Skip search if the query is exactly the selected recipient's label
+    if (selectedRecipientLabel && searchQuery === selectedRecipientLabel) {
+      setSearchingRecipients(false);
+      return;
+    }
+
     // Only fetch if user has typed at least 2 characters
     const fetchRecipients = async () => {
       setSearchingRecipients(true);
@@ -501,6 +509,7 @@ export default function MailroomPackages() {
         ? `${reg.mailroom_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
         : "";
       setRecipientSearch(regLabel);
+      setSelectedRecipientLabel(regLabel);
       // Add current recipient to options so it displays correctly (without triggering search)
       if (reg) {
         setRecipientOptions([
@@ -523,6 +532,7 @@ export default function MailroomPackages() {
         status: "STORED",
       });
       setRecipientSearch("");
+      setSelectedRecipientLabel("");
       setRecipientOptions([]); // Clear options when opening new package modal
       setPackagePhoto(null);
     }
@@ -1071,13 +1081,14 @@ export default function MailroomPackages() {
       {
         accessor: "package_type",
         title: "Type",
-        width: 120,
+        width: 150,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
             <Badge
               variant="filled"
               color="gray"
+              w={110}
               leftSection={
                 pkg.package_type === "Document" ? (
                   <IconFileText size={12} aria-hidden="true" />
@@ -1579,22 +1590,29 @@ export default function MailroomPackages() {
               const matched = recipientOptions.find((opt) => opt.label === val);
               if (matched) {
                 handleRegistrationChange(matched.value);
+                setSelectedRecipientLabel(matched.label);
               } else if (!val) {
                 handleRegistrationChange(null);
                 setRecipientOptions([]); // Clear options when cleared
+                setSelectedRecipientLabel("");
+              } else {
+                // If user is typing and it doesn't match the current selection label, clear the selection
+                if (val !== selectedRecipientLabel) {
+                  handleRegistrationChange(null);
+                  setSelectedRecipientLabel("");
+                }
               }
             }}
             onOptionSubmit={(val) => {
-              handleRegistrationChange(val);
               const matched = recipientOptions.find((opt) => opt.value === val);
-              setRecipientSearch(matched?.label || "");
+              if (matched) {
+                handleRegistrationChange(val);
+                setRecipientSearch(matched.label);
+                setSelectedRecipientLabel(matched.label);
+              }
             }}
             rightSection={
-              searchingRecipients ? (
-                <Text size="xs" c="#4A5568">
-                  Searching...
-                </Text>
-              ) : undefined
+              searchingRecipients ? <Loader size="xs" /> : undefined
             }
             description={(() => {
               if (recipientSearch.length > 0 && recipientSearch.length < 2) {
@@ -1603,7 +1621,8 @@ export default function MailroomPackages() {
               if (
                 recipientSearch.length >= 2 &&
                 recipientOptions.length === 0 &&
-                !searchingRecipients
+                !searchingRecipients &&
+                !selectedRecipientLabel
               ) {
                 return "No recipients found";
               }
