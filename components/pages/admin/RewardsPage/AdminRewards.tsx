@@ -3,7 +3,6 @@
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState, Suspense, useMemo } from "react";
-import dynamic from "next/dynamic";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   ActionIcon,
@@ -38,21 +37,9 @@ import type {
   ClaimStatusTab,
   ConfirmTarget,
 } from "@/utils/types";
-import { getStatusFormat, maskAccount, minTableHeight } from "@/utils/helper";
-import { type DataTableProps } from "mantine-datatable";
-
-// Dynamically import DataTable to reduce initial bundle size
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((mod) => mod.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Center py="xl">
-        <Loader />
-      </Center>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { getStatusFormat, maskAccount } from "@/utils/helper";
+import { type DataTableSortStatus } from "mantine-datatable";
+import { AdminTable } from "@/components/common/AdminTable";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -79,6 +66,12 @@ export default function AdminRewards() {
   const [pageSize, setPageSize] = useState(10);
 
   const [activeTab, setActiveTab] = useState<ClaimStatusTab>("PENDING");
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<AdminClaimApprove>
+  >({
+    columnAccessor: "created_at",
+    direction: "desc",
+  });
 
   const [proofOpen, setProofOpen] = useState(false);
   const [proofTargetRow, setProofTargetRow] =
@@ -285,7 +278,7 @@ export default function AdminRewards() {
 
   // Memoize filtered and paginated data to prevent unnecessary recalculations
   const filtered = useMemo(() => {
-    return claims.filter((c) => {
+    const subset = claims.filter((c) => {
       if (activeTab === "PENDING" && c.status === "PAID") return false;
       if (activeTab === "PAID" && c.status !== "PAID") return false;
 
@@ -307,7 +300,38 @@ export default function AdminRewards() {
         .toLowerCase();
       return fields.includes(q);
     });
-  }, [claims, activeTab, search]);
+
+    return [...subset].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined;
+      let valB: string | number | boolean | null | undefined;
+
+      if (columnAccessor === "user") {
+        valA = a.user?.users_email || a.user?.email || a.user_id;
+        valB = b.user?.users_email || b.user?.email || b.user_id;
+      } else {
+        valA = a[columnAccessor as keyof AdminClaimApprove] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+        valB = b[columnAccessor as keyof AdminClaimApprove] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [claims, activeTab, search, sortStatus]);
 
   const paginated = useMemo(
     () => filtered.slice((page - 1) * pageSize, page * pageSize),
@@ -479,13 +503,7 @@ export default function AdminRewards() {
               containIntrinsicSize: "400px",
             }}
           >
-            <DataTable<AdminClaimApprove>
-              withTableBorder={false}
-              borderRadius="lg"
-              striped
-              highlightOnHover
-              verticalSpacing="md"
-              minHeight={minTableHeight(pageSize)}
+            <AdminTable<AdminClaimApprove>
               records={paginated}
               totalRecords={filtered.length}
               recordsPerPage={pageSize}
@@ -501,132 +519,115 @@ export default function AdminRewards() {
                   accessor: "id",
                   title: "Claim",
                   width: 100,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return <Text fw={700}>{String(row.id).slice(0, 8)}</Text>;
-                  },
+                  sortable: true,
+                  render: (row) => (
+                    <Text fw={700}>{String(row.id).slice(0, 8)}</Text>
+                  ),
                 },
                 {
                   accessor: "user",
                   title: "User",
                   width: 250,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return (
-                      <Stack gap={2}>
-                        <Text size="sm" fw={500}>
-                          {row.user?.users_email ??
-                            row.user?.email ??
-                            row.user_id}
-                        </Text>
-                        {/* <Text size="xs" c="dimmed">
-                    {(row.user?.first_name ?? "") +
-                      " " +
-                      (row.user?.last_name ?? "")}
-                  </Text> */}
-                      </Stack>
-                    );
-                  },
+                  sortable: true,
+                  render: (row) => (
+                    <Stack gap={2}>
+                      <Text size="sm" fw={500}>
+                        {row.user?.users_email ??
+                          row.user?.email ??
+                          row.user_id}
+                      </Text>
+                    </Stack>
+                  ),
                 },
                 {
                   accessor: "referral_count",
                   title: "Claim Ref",
                   width: 100,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return <Text>{row.referral_count ?? "—"}</Text>;
-                  },
+                  sortable: true,
+                  render: (row) => <Text>{row.referral_count ?? "—"}</Text>,
                 },
                 {
                   accessor: "total_referrals",
                   title: "Total Ref",
                   width: 90,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return <Text>{row.total_referrals ?? "—"}</Text>;
-                  },
+                  sortable: true,
+                  render: (row) => <Text>{row.total_referrals ?? "—"}</Text>,
                 },
                 {
                   accessor: "amount",
                   title: "Amount",
                   width: 110,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return <Text fw={700}>PHP {row.amount ?? "—"}</Text>;
-                  },
+                  sortable: true,
+                  render: (row) => (
+                    <Text fw={700}>PHP {row.amount ?? "—"}</Text>
+                  ),
                 },
                 {
                   accessor: "method_account",
                   title: "Method / Account",
                   width: 250,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return (
-                      <Stack gap={2}>
+                  render: (row) => (
+                    <Stack gap={2}>
+                      <Text
+                        style={{ textTransform: "uppercase" }}
+                        size="sm"
+                        fw={700}
+                      >
+                        {row.payment_method ?? "—"}
+                      </Text>
+                      <Group gap={8} align="center" justify="space-between">
                         <Text
-                          style={{ textTransform: "uppercase" }}
-                          size="sm"
-                          fw={700}
+                          size="xs"
+                          c="#2D3748"
+                          style={{ wordBreak: "break-all" }}
                         >
-                          {row.payment_method ?? "—"}
+                          {revealed[row.id]
+                            ? (row.account_details ?? "—")
+                            : maskAccount(row.account_details)}
                         </Text>
-                        <Group gap={8} align="center" justify="space-between">
-                          <Text
-                            size="xs"
-                            c="#2D3748"
-                            style={{ wordBreak: "break-all" }}
+                        <Tooltip label={revealed[row.id] ? "Hide" : "Reveal"}>
+                          <ActionIcon
+                            size="sm"
+                            onClick={() => toggleReveal(row.id)}
+                            aria-label={
+                              revealed[row.id]
+                                ? "Hide account details"
+                                : "Reveal account details"
+                            }
+                            aria-pressed={revealed[row.id]}
                           >
-                            {revealed[row.id]
-                              ? (row.account_details ?? "—")
-                              : maskAccount(row.account_details)}
-                          </Text>
-                          <Tooltip label={revealed[row.id] ? "Hide" : "Reveal"}>
-                            <ActionIcon
-                              size="sm"
-                              onClick={() => toggleReveal(row.id)}
-                              aria-label={
-                                revealed[row.id]
-                                  ? "Hide account details"
-                                  : "Reveal account details"
-                              }
-                              aria-pressed={revealed[row.id]}
-                            >
-                              {revealed[row.id] ? (
-                                <IconEyeOff size={14} aria-hidden="true" />
-                              ) : (
-                                <IconEye size={14} aria-hidden="true" />
-                              )}
-                            </ActionIcon>
-                          </Tooltip>
-                        </Group>
-                      </Stack>
-                    );
-                  },
+                            {revealed[row.id] ? (
+                              <IconEyeOff size={14} aria-hidden="true" />
+                            ) : (
+                              <IconEye size={14} aria-hidden="true" />
+                            )}
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Stack>
+                  ),
                 },
                 {
                   accessor: "created_at",
                   title: "Requested",
                   width: 180,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return (
-                      <Text size="sm">
-                        {row.created_at
-                          ? new Date(row.created_at).toLocaleString()
-                          : "—"}
-                      </Text>
-                    );
-                  },
+                  sortable: true,
+                  render: (row) => (
+                    <Text size="sm">
+                      {row.created_at
+                        ? new Date(row.created_at).toLocaleString()
+                        : "—"}
+                    </Text>
+                  ),
                 },
                 {
-                  accessor: "status_display",
+                  accessor: "status",
                   title: "Status",
                   width: 150,
                   textAlign: "center",
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
+                  sortable: true,
+                  render: (row) => {
                     const color = getStatusFormat(row.status);
-                    // Use a darker shade for better contrast
                     const badgeColor = `${color}.9`;
                     return (
                       <Center>
@@ -647,66 +648,63 @@ export default function AdminRewards() {
                   title: "Actions",
                   width: 160,
                   textAlign: "right" as const,
-                  render: (record: unknown) => {
-                    const row = record as AdminClaimApprove;
-                    return (
-                      <Group justify="flex-end" gap="xs">
-                        {row.status === "PENDING" && (
-                          <Button
-                            size="xs"
-                            onClick={() => {
-                              setProofTargetRow(row);
-                              setProofOpen(true);
-                            }}
-                            loading={loadingAction === row.id}
-                            color="blue"
-                            leftSection={
-                              <IconUpload size={16} aria-hidden="true" />
-                            }
-                            w={140}
-                            aria-label={`Upload proof for claim ${row.id}`}
-                          >
-                            Upload Proof
-                          </Button>
-                        )}
+                  render: (row) => (
+                    <Group justify="flex-end" gap="xs">
+                      {row.status === "PENDING" && (
+                        <Button
+                          size="xs"
+                          onClick={() => {
+                            setProofTargetRow(row);
+                            setProofOpen(true);
+                          }}
+                          loading={loadingAction === row.id}
+                          color="blue"
+                          leftSection={
+                            <IconUpload size={16} aria-hidden="true" />
+                          }
+                          w={140}
+                          aria-label={`Upload proof for claim ${row.id}`}
+                        >
+                          Upload Proof
+                        </Button>
+                      )}
 
-                        {row.status === "PROCESSING" && (
-                          <Button
-                            size="xs"
-                            color="green"
-                            onClick={() => {
-                              setConfirmTarget({ id: row.id, status: "PAID" });
-                              setConfirmOpen(true);
-                            }}
-                            loading={loadingAction === row.id}
-                            w={140}
-                            aria-label={`Mark claim ${row.id} as paid`}
-                          >
-                            Mark Paid
-                          </Button>
-                        )}
+                      {row.status === "PROCESSING" && (
+                        <Button
+                          size="xs"
+                          color="green"
+                          onClick={() => {
+                            setConfirmTarget({ id: row.id, status: "PAID" });
+                            setConfirmOpen(true);
+                          }}
+                          loading={loadingAction === row.id}
+                          w={140}
+                          aria-label={`Mark claim ${row.id} as paid`}
+                        >
+                          Mark Paid
+                        </Button>
+                      )}
 
-                        {row.status === "PAID" && (
-                          <Button
-                            size="xs"
-                            onClick={() => {
-                              setViewProofRow(row);
-                              setViewProofOpen(true);
-                            }}
-                            leftSection={
-                              <IconEye size={14} aria-hidden="true" />
-                            }
-                            w={140}
-                            aria-label={`View proof for claim ${row.id}`}
-                          >
-                            View Proof
-                          </Button>
-                        )}
-                      </Group>
-                    );
-                  },
+                      {row.status === "PAID" && (
+                        <Button
+                          size="xs"
+                          onClick={() => {
+                            setViewProofRow(row);
+                            setViewProofOpen(true);
+                          }}
+                          leftSection={<IconEye size={14} aria-hidden="true" />}
+                          w={140}
+                          aria-label={`View proof for claim ${row.id}`}
+                        >
+                          View Proof
+                        </Button>
+                      )}
+                    </Group>
+                  ),
                 },
               ]}
+              sortStatus={sortStatus}
+              onSortStatusChange={setSortStatus}
               noRecordsText="No reward claims"
             />
           </div>

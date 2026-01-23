@@ -3,7 +3,6 @@
 import "mantine-datatable/styles.layer.css";
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
-import dynamic from "next/dynamic";
 import {
   ActionIcon,
   Alert,
@@ -47,21 +46,11 @@ import {
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
-import { minTableHeight } from "@/utils/helper";
-
-// Dynamic import for DataTable to reduce initial bundle size
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((mod) => mod.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
-        Loading table...
-      </div>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "./common/AdminTable";
+import {
+  type DataTableColumn,
+  type DataTableSortStatus,
+} from "mantine-datatable";
 
 type Registration = {
   id: string;
@@ -148,6 +137,10 @@ export default function MailroomPackages() {
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Package>>({
+    columnAccessor: "received_at",
+    direction: "desc",
+  });
 
   // Modal state
   const [opened, { open, close }] = useDisclosure(false);
@@ -998,8 +991,42 @@ export default function MailroomPackages() {
 
   // Memoize paginated packages
   const paginatedPackages = useMemo(() => {
-    return activeTab === "archive" ? archivedPackages : filteredPackages;
-  }, [activeTab, archivedPackages, filteredPackages]);
+    const pkgs = activeTab === "archive" ? archivedPackages : filteredPackages;
+
+    return [...pkgs].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined;
+      let valB: string | number | boolean | null | undefined;
+
+      if (columnAccessor === "registration.full_name") {
+        valA = a.registration?.full_name;
+        valB = b.registration?.full_name;
+      } else if (columnAccessor === "locker.locker_code") {
+        valA = a.locker?.locker_code;
+        valB = b.locker?.locker_code;
+      } else {
+        valA = a[columnAccessor as keyof Package] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+        valB = b[columnAccessor as keyof Package] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [activeTab, archivedPackages, filteredPackages, sortStatus]);
 
   const totalRecords = useMemo(
     () => (activeTab === "archive" ? archivedTotalCount : serverTotalCount),
@@ -1031,6 +1058,7 @@ export default function MailroomPackages() {
         accessor: "package_name",
         title: "Package",
         width: 200,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
@@ -1043,6 +1071,7 @@ export default function MailroomPackages() {
       {
         accessor: "registration.full_name",
         title: "Recipient",
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
@@ -1061,6 +1090,7 @@ export default function MailroomPackages() {
         accessor: "locker.locker_code",
         title: "Locker",
         width: 120,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return pkg.locker ? (
@@ -1082,6 +1112,7 @@ export default function MailroomPackages() {
         accessor: "package_type",
         title: "Type",
         width: 150,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
@@ -1106,6 +1137,7 @@ export default function MailroomPackages() {
         accessor: "status",
         title: "Status",
         width: 180,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
@@ -1119,6 +1151,7 @@ export default function MailroomPackages() {
         accessor: "received_at",
         title: activeTab === "archive" ? "Deleted At" : "Received",
         width: 150,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return dayjs(pkg.received_at).format("MMM D, YYYY");
@@ -1317,15 +1350,9 @@ export default function MailroomPackages() {
         containIntrinsicSize: "400px",
       }}
     >
-      <DataTable<Package>
-        withTableBorder={false}
-        borderRadius="lg"
-        striped
-        highlightOnHover
+      <AdminTable<Package>
         records={paginatedPackages}
         fetching={loading}
-        verticalSpacing="md"
-        minHeight={minTableHeight(pageSize)}
         totalRecords={totalRecords}
         recordsPerPage={pageSize}
         page={page}
@@ -1333,6 +1360,8 @@ export default function MailroomPackages() {
         recordsPerPageOptions={[10, 20, 50]}
         onRecordsPerPageChange={setPageSize}
         columns={tableColumns}
+        sortStatus={sortStatus}
+        onSortStatusChange={setSortStatus}
         aria-label="Packages data table"
         noRecordsText={
           activeTab === "requests" ? "No pending requests" : "No packages found"

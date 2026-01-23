@@ -36,25 +36,9 @@ import {
   IconX,
   IconArrowRight,
 } from "@tabler/icons-react";
-import dynamic from "next/dynamic";
-import { type DataTableProps } from "mantine-datatable";
-
-// Lazy load DataTable to reduce initial bundle
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Stack gap="xs" role="progressbar" aria-label="Loading locations table">
-        {[...Array(5)].map((_, i) => (
-          <Skeleton key={i} h={40} />
-        ))}
-      </Stack>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "./common/AdminTable";
+import { type DataTableSortStatus } from "mantine-datatable";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { minTableHeight } from "@/utils/helper";
 
 type Location = {
   id: string;
@@ -164,6 +148,10 @@ export default function MailroomLocations() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Location>>({
+    columnAccessor: "name",
+    direction: "asc",
+  });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -200,8 +188,33 @@ export default function MailroomLocations() {
     }
   }, [isValidating]);
 
-  const locations = (data?.data as Location[]) ?? [];
+  const rawLocations = (data?.data as Location[]) ?? [];
   const totalRecords = data?.pagination?.totalCount ?? 0;
+
+  const locations = useMemo(() => {
+    return [...rawLocations].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      const valA = a[columnAccessor as keyof Location] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+      const valB = b[columnAccessor as keyof Location] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [rawLocations, sortStatus]);
 
   // Derive regions and cities from a separate fetch or use a subset if needed.
   // For the sake of this implementation, we'll use a subset or the user can search.
@@ -588,17 +601,9 @@ export default function MailroomLocations() {
             containIntrinsicSize: "400px",
           }}
         >
-          <DataTable<Location>
-            striped
-            aria-label="Mailroom locations list"
-            withTableBorder={false}
-            borderRadius="lg"
-            withColumnBorders={false}
-            verticalSpacing="md"
-            highlightOnHover
+          <AdminTable<Location>
             records={locations}
             fetching={isLoading}
-            minHeight={minTableHeight(pageSize)}
             totalRecords={totalRecords}
             recordsPerPage={pageSize}
             page={page}
@@ -609,11 +614,14 @@ export default function MailroomLocations() {
               `Showing ${from}–${to} of ${totalRecords}`
             }
             recordsPerPageLabel="Locations per page"
+            sortStatus={sortStatus}
+            onSortStatusChange={setSortStatus}
             columns={[
               {
                 accessor: "name",
                 title: "Name",
                 width: 200,
+                sortable: true,
                 render: ({ name }: Location) => (
                   <Text fw={700} c="dark.7" size="sm">
                     {name}
@@ -624,6 +632,7 @@ export default function MailroomLocations() {
                 accessor: "code",
                 title: "Code",
                 width: 100,
+                sortable: true,
                 render: ({ code }: Location) =>
                   code ? (
                     <Text fw={700} c="dark.7" size="sm">
@@ -638,6 +647,7 @@ export default function MailroomLocations() {
               {
                 accessor: "region",
                 title: "Region",
+                sortable: true,
                 render: ({ region }: Location) => (
                   <Text size="sm" c="dark.7" fw={500}>
                     {region ?? "—"}
@@ -647,6 +657,7 @@ export default function MailroomLocations() {
               {
                 accessor: "city",
                 title: "City",
+                sortable: true,
                 render: ({ city }: Location) => (
                   <Text size="sm" c="dark.7" fw={500}>
                     {city ?? "—"}
@@ -656,6 +667,7 @@ export default function MailroomLocations() {
               {
                 accessor: "barangay",
                 title: "Barangay",
+                sortable: true,
                 render: ({ barangay }: Location) => (
                   <Text size="sm" c="dark.7" fw={500}>
                     {barangay ?? "—"}
@@ -666,6 +678,7 @@ export default function MailroomLocations() {
                 accessor: "zip",
                 title: "Zip",
                 width: 100,
+                sortable: true,
                 render: ({ zip }: Location) => (
                   <Text size="sm" c="dark.7">
                     {zip ?? "—"}
@@ -677,6 +690,7 @@ export default function MailroomLocations() {
                 title: "Total Lockers",
                 width: 140,
                 textAlign: "center",
+                sortable: true,
                 render: ({ total_lockers }: Location) => (
                   <Badge
                     color="blue"

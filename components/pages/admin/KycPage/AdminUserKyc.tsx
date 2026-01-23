@@ -17,8 +17,10 @@ import {
   Button,
   Tabs,
 } from "@mantine/core";
-import dynamic from "next/dynamic";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import {
+  type DataTableColumn,
+  type DataTableSortStatus,
+} from "mantine-datatable";
 import {
   IconSearch,
   IconArrowRight,
@@ -30,55 +32,13 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
-import { getStatusFormat, fetcher, minTableHeight } from "@/utils/helper";
+import { getStatusFormat, fetcher } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { FormattedKycRow, KycRow } from "@/utils/types";
 
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div style={{ display: "flex", gap: "10px" }}>
-          {[...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              style={{
-                height: 40,
-                flex: 1,
-                backgroundColor: "#f1f3f5",
-                borderRadius: "4px",
-                animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-              }}
-            />
-          ))}
-        </div>
-        {[...Array(10)].map((_, i) => (
-          <div
-            key={i}
-            style={{
-              height: 52,
-              backgroundColor: "#f8f9fa",
-              borderRadius: "4px",
-              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-            }}
-          />
-        ))}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
-          }
-        `,
-          }}
-        />
-      </div>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "@/components/common/AdminTable";
+import dynamic from "next/dynamic";
+// Imports fixed above
 
 const KycDetails = dynamic(() => import("./KycDetails"), {
   ssr: false,
@@ -172,52 +132,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 type StatusTab = "ALL" | "SUBMITTED" | "VERIFIED" | "REJECTED";
 
-const KycTable = memo(
-  ({
-    rows,
-    columns,
-    page,
-    onPageChange,
-    pageSize,
-    onPageSizeChange,
-    totalRecords,
-    isValidating,
-    isSearching,
-  }: {
-    rows: FormattedKycRow[];
-    columns: DataTableColumn<FormattedKycRow>[];
-    page: number;
-    onPageChange: (p: number) => void;
-    pageSize: number;
-    onPageSizeChange: (s: number) => void;
-    totalRecords: number;
-    isValidating: boolean;
-    isSearching: boolean;
-  }) => {
-    return (
-      <DataTable<FormattedKycRow>
-        striped
-        withTableBorder={false}
-        borderRadius="lg"
-        verticalSpacing="md"
-        highlightOnHover
-        records={isSearching ? [] : rows}
-        idAccessor="id"
-        fetching={isValidating || isSearching}
-        minHeight={minTableHeight(pageSize)}
-        page={page}
-        onPageChange={onPageChange}
-        totalRecords={totalRecords}
-        recordsPerPage={pageSize}
-        recordsPerPageOptions={PAGE_SIZE_OPTIONS}
-        onRecordsPerPageChange={onPageSizeChange}
-        columns={columns}
-        noRecordsText="No records found"
-      />
-    );
-  },
-);
-KycTable.displayName = "KycTable";
+// KycTable component removed in favor of AdminTable
 
 export default function AdminUserKyc() {
   const [page, setPage] = useState<number>(1);
@@ -225,6 +140,12 @@ export default function AdminUserKyc() {
   const [query, setQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusTab>("ALL");
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<FormattedKycRow>
+  >({
+    columnAccessor: "submitted_at",
+    direction: "desc",
+  });
 
   useEffect(() => {
     setPage(1);
@@ -262,7 +183,7 @@ export default function AdminUserKyc() {
 
   const rows = useMemo<FormattedKycRow[]>(() => {
     const rawData = data?.data || [];
-    return rawData.map((r: KycRow) => ({
+    const formatted = rawData.map((r: KycRow) => ({
       ...r,
       _formattedName:
         (r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`) ||
@@ -274,7 +195,41 @@ export default function AdminUserKyc() {
         ? dayjs(r.verified_at).format("MMM D, YYYY")
         : "—",
     }));
-  }, [data]);
+
+    return [...formatted].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined;
+      let valB: string | number | boolean | null | undefined;
+
+      if (columnAccessor === "user") {
+        valA = a._formattedName;
+        valB = b._formattedName;
+      } else if (columnAccessor === "doc") {
+        valA = a.id_document_type;
+        valB = b.id_document_type;
+      } else {
+        valA = a[columnAccessor as keyof FormattedKycRow] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+        valB = b[columnAccessor as keyof FormattedKycRow] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [data, sortStatus]);
   const totalRecords = data?.total_count || 0;
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -324,6 +279,7 @@ export default function AdminUserKyc() {
       {
         accessor: "user",
         title: "User",
+        sortable: true,
         render: (r: FormattedKycRow) => {
           return (
             <Group gap="sm" wrap="nowrap">
@@ -356,6 +312,7 @@ export default function AdminUserKyc() {
       {
         accessor: "doc",
         title: "Document",
+        sortable: true,
         render: (r: FormattedKycRow) => (
           <Text size="sm" c="dark.4" fw={500}>
             {(r.id_document_type ?? "—").replace("_", " ")}
@@ -366,6 +323,7 @@ export default function AdminUserKyc() {
         accessor: "status",
         title: "Status",
         width: 140,
+        sortable: true,
         render: (r: FormattedKycRow) => (
           <Badge
             color={getStatusFormat(r.status)}
@@ -378,9 +336,10 @@ export default function AdminUserKyc() {
         ),
       },
       {
-        accessor: "dates",
+        accessor: "submitted_at",
         title: "Dates",
         width: 200,
+        sortable: true,
         render: (r: FormattedKycRow) => (
           <Stack gap={2}>
             <Text size="sm" c="dark.3">
@@ -473,16 +432,19 @@ export default function AdminUserKyc() {
 
           <Tabs.Panel value={statusFilter}>
             <div style={{ marginTop: "1rem" }}>
-              <KycTable
-                rows={rows}
+              <AdminTable<FormattedKycRow>
+                records={isSearching ? [] : rows}
                 columns={columns}
                 page={page}
                 onPageChange={setPage}
-                pageSize={pageSize}
-                onPageSizeChange={handlePageSizeChange}
                 totalRecords={totalRecords}
-                isValidating={isValidating}
-                isSearching={isSearching}
+                recordsPerPage={pageSize}
+                recordsPerPageOptions={PAGE_SIZE_OPTIONS}
+                onRecordsPerPageChange={handlePageSizeChange}
+                fetching={isValidating || isSearching}
+                sortStatus={sortStatus}
+                onSortStatusChange={setSortStatus}
+                noRecordsText="No records found"
               />
             </div>
           </Tabs.Panel>
