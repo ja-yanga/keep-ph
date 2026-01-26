@@ -22,8 +22,10 @@ import {
   Center,
   Loader,
   SimpleGrid,
+  Select,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import useSWR from "swr";
 import {
   IconId,
   IconCheck,
@@ -42,9 +44,15 @@ import {
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import {
+  getRegion,
+  getProvince,
+  getCity,
+  getBarangay,
+} from "@/app/actions/get";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
-import { AddressCascadingSelects } from "@/components/Form/AddressCascadingSelects";
+const formatLabel = (text: string) => text?.replace(/_/g, " ") || "";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -95,6 +103,50 @@ export default function KycPage() {
   // confirm modal for submit
   const [confirmOpen, { open: openConfirm, close: closeConfirm }] =
     useDisclosure(false);
+
+  // SWR Fetchers
+  const { data: regionsData } = useSWR("regions", () => getRegion());
+
+  const { data: provincesData } = useSWR(
+    addressIds.regionId ? ["provinces", addressIds.regionId] : null,
+    ([, id]) => getProvince({ regionId: id }),
+  );
+
+  const { data: citiesData } = useSWR(
+    addressIds.provinceId ? ["cities", addressIds.provinceId] : null,
+    ([, id]) => getCity({ provinceId: id }),
+  );
+
+  const { data: barangaysData } = useSWR(
+    addressIds.cityId ? ["barangays", addressIds.cityId] : null,
+    ([, id]) => getBarangay({ cityId: id }),
+  );
+
+  // Transform for Mantine Select
+  const regions =
+    regionsData?.map((r) => ({
+      label: formatLabel(r.region),
+      value: r.region_id,
+    })) || [];
+
+  const provinces =
+    provincesData?.map((p) => ({
+      label: formatLabel(p.province),
+      value: p.province_id,
+    })) || [];
+
+  const cities =
+    citiesData?.map((c) => ({
+      label: formatLabel(c.city),
+      value: c.city_id,
+    })) || [];
+
+  const barangays =
+    barangaysData?.map((b) => ({
+      label: formatLabel(b.barangay),
+      value: b.barangay_id,
+      zip: b.barangay_zip_code,
+    })) || [];
 
   // load real KYC status from API on mount
   useEffect(() => {
@@ -481,33 +533,123 @@ export default function KycPage() {
                         disabled={isLocked}
                       />
 
-                      <AddressCascadingSelects
-                        disabled={isLocked}
-                        initialData={{
-                          region,
-                          province,
-                          city,
-                          barangay,
-                          barangay_zip_code: postal,
-                          region_id: addressIds.regionId,
-                          province_id: addressIds.provinceId,
-                          city_id: addressIds.cityId,
-                          barangay_id: addressIds.barangayId,
-                        }}
-                        onChange={(data) => {
-                          setRegion(data.region);
-                          setProvince(data.province);
-                          setCity(data.city);
-                          setBarangay(data.barangay);
-                          setPostal(data.barangay_zip_code);
-                          setAddressIds({
-                            regionId: data.region_id,
-                            provinceId: data.province_id,
-                            cityId: data.city_id,
-                            barangayId: data.barangay_id,
-                          });
-                        }}
-                      />
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                        <Select
+                          data-testid="region-select"
+                          label="Region"
+                          placeholder="Select Region"
+                          data={regions}
+                          value={addressIds.regionId}
+                          onChange={(val) => {
+                            const label = regions.find(
+                              (r) => r.value === val,
+                            )?.label;
+                            setRegion(label || "");
+                            // Reset children
+                            setProvince("");
+                            setCity("");
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              regionId: val || "",
+                              provinceId: "",
+                              cityId: "",
+                              barangayId: "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="province-select"
+                          label="Province"
+                          placeholder="Select Province"
+                          data={provinces}
+                          value={addressIds.provinceId}
+                          onChange={(val) => {
+                            const label = provinces.find(
+                              (p) => p.value === val,
+                            )?.label;
+                            setProvince(label || "");
+                            // Reset children
+                            setCity("");
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              provinceId: val || "",
+                              cityId: "",
+                              barangayId: "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.regionId}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="city-select"
+                          label="City/Municipality"
+                          placeholder="Select City/Municipality"
+                          data={cities}
+                          value={addressIds.cityId}
+                          onChange={(val) => {
+                            const label = cities.find(
+                              (c) => c.value === val,
+                            )?.label;
+                            setCity(label || "");
+                            // Reset children
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              cityId: val || "",
+                              barangayId: "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.provinceId}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="barangay-select"
+                          label="Barangay"
+                          placeholder="Select Barangay"
+                          data={barangays}
+                          value={addressIds.barangayId}
+                          onChange={(val) => {
+                            const b = barangays.find(
+                              (bar) => bar.value === val,
+                            );
+                            setBarangay(b?.label || "");
+                            setPostal(b?.zip || "");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              barangayId: val || "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.cityId}
+                          searchable
+                          clearable
+                        />
+                        <TextInput
+                          label="Postal Code"
+                          placeholder="Postal Code"
+                          value={postal}
+                          onChange={(e) =>
+                            setPostal(e.currentTarget.value.replace(/\D/g, ""))
+                          }
+                          inputMode="numeric"
+                          pattern="\d*"
+                          required
+                          disabled={isLocked || !!addressIds.barangayId}
+                        />
+                      </SimpleGrid>
                     </Stack>
                   </Paper>
 

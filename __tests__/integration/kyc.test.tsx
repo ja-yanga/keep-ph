@@ -41,6 +41,33 @@ jest.mock("@/lib/supabase/client", () => ({
   }),
 }));
 
+// Mock address actions
+jest.mock("@/app/actions/get", () => ({
+  getRegion: jest
+    .fn()
+    .mockResolvedValue([
+      { region: "National Capital Region (NCR)", region_id: "reg-1" },
+    ]),
+  getProvince: jest.fn().mockResolvedValue([
+    {
+      province: "NCR, City of Manila, First District",
+      province_id: "prov-1",
+    },
+  ]),
+  getCity: jest
+    .fn()
+    .mockResolvedValue([
+      { city: "Tondo I/II, City of Manila", city_id: "city-1" },
+    ]),
+  getBarangay: jest.fn().mockResolvedValue([
+    {
+      barangay: "Barangay 1",
+      barangay_id: "brgy-1",
+      barangay_zip_code: "1013",
+    },
+  ]),
+}));
+
 import KycPage from "@/app/(private)/mailroom/kyc/page";
 
 /*
@@ -77,6 +104,12 @@ describe("KycPage — user kyc", () => {
       value: newURL,
       configurable: true,
     });
+
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
   });
 
   afterAll(() => {
@@ -207,9 +240,41 @@ describe("KycPage — user kyc", () => {
       )) as HTMLInputElement,
       "123 Street",
     );
-    await userEvent.type(screen.getByLabelText(/City/i), "Quezon City");
-    await userEvent.type(screen.getByLabelText(/Region/i), "Metro Manila");
-    await userEvent.type(screen.getByLabelText(/Postal/i), "1100");
+
+    // Cascading Address Selection
+    // 1. Select Region
+    const regionSelect = await screen.findByTestId("region-select");
+    await userEvent.click(regionSelect);
+    await userEvent.click(
+      await screen.findByText("National Capital Region (NCR)"),
+    );
+
+    // 2. Select Province (mocked to depend on Region)
+    const provinceSelect = await screen.findByTestId("province-select");
+    await waitFor(() => expect(provinceSelect).not.toBeDisabled());
+    await userEvent.click(provinceSelect);
+    await userEvent.click(
+      await screen.findByText("NCR, City of Manila, First District"),
+    );
+
+    // 3. Select City
+    const citySelect = await screen.findByTestId("city-select");
+    await waitFor(() => expect(citySelect).not.toBeDisabled());
+    await userEvent.click(citySelect);
+    await userEvent.click(
+      await screen.findByText("Tondo I/II, City of Manila"),
+    );
+
+    // 4. Select Barangay
+    const barangaySelect = await screen.findByTestId("barangay-select");
+    await waitFor(() => expect(barangaySelect).not.toBeDisabled());
+    await userEvent.click(barangaySelect);
+    await userEvent.click(await screen.findByText("Barangay 1"));
+
+    // Verify Postal Code is auto-filled
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Postal Code/i)).toHaveValue("1013");
+    });
 
     // attach files
     const frontFile = new File(["front"], "front.png", { type: "image/png" });
@@ -230,7 +295,7 @@ describe("KycPage — user kyc", () => {
     const submitBtn = screen.getByRole("button", {
       name: /Submit for Verification/i,
     });
-    expect(submitBtn).toBeEnabled();
+    await waitFor(() => expect(submitBtn).toBeEnabled());
     await userEvent.click(submitBtn);
 
     // confirm modal appears, click Confirm
