@@ -22,5 +22,23 @@ export const NAV_ITMES: Record<
     { path: "/admin/plans", key: "plans", title: "Plans" },
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },
     { path: "/admin/stats", key: "stats", title: "Stats" },
+    { path: "/admin/users", key: "users", title: "Users" },
+  ],
+  approver: [
+    { path: "/admin/kyc", key: "kyc", title: "KYC" },
+    { path: "/admin/packages", key: "packages", title: "Packages" },
+    { path: "/admin/rewards", key: "rewards", title: "Rewards" },
+  ],
+  owner: [
+    { path: "/admin/dashboard", key: "dashboard", title: "Dashboard" },
+    { path: "/admin/kyc", key: "kyc", title: "KYC" },
+    { path: "/admin/locations", key: "locations", title: "Locations" },
+    { path: "/admin/lockers", key: "lockers", title: "Lockers" },
+    { path: "/admin/mailrooms", key: "mailrooms", title: "Mailrooms" },
+    { path: "/admin/packages", key: "packages", title: "Packages" },
+    { path: "/admin/plans", key: "plans", title: "Plans" },
+    { path: "/admin/rewards", key: "rewards", title: "Rewards" },
+    { path: "/admin/stats", key: "stats", title: "Stats" },
+    { path: "/admin/users", key: "users", title: "Users" },
   ],
 };
