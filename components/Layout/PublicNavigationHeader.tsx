@@ -20,8 +20,10 @@ export default function PublicNavigationHeader() {
   const router = useRouter();
   const [opened, { toggle, close }] = useDisclosure(false);
 
-  const handleRouteLogin = () => {
-    startRouteProgress();
+  const handleRouteClick = (href: string) => {
+    if (pathname !== href) {
+      startRouteProgress();
+    }
     close();
   };
 
@@ -58,7 +60,7 @@ export default function PublicNavigationHeader() {
       </Link>
       <Link
         href="/signin"
-        onClick={handleRouteLogin}
+        onClick={() => handleRouteClick("/signin")}
         style={{ color: "#1A237E", fontWeight: 500, textDecoration: "none" }}
       >
         Login
@@ -114,7 +116,7 @@ export default function PublicNavigationHeader() {
           <Button
             component={Link}
             href="/signup"
-            onClick={() => startRouteProgress()}
+            onClick={() => handleRouteClick("/signup")}
             style={{
               minWidth: 100,
               backgroundColor: "#1A237E",

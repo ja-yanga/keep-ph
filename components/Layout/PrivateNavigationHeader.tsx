@@ -61,8 +61,10 @@ export default function PrivateNavigationHeader() {
     }
   };
 
-  const handleRouteClick = () => {
-    startRouteProgress();
+  const handleRouteClick = (href: string) => {
+    if (pathname !== href) {
+      startRouteProgress();
+    }
     close();
   };
 
@@ -71,7 +73,7 @@ export default function PrivateNavigationHeader() {
       key={key}
       href={nav.path}
       style={linkColor(nav.path)}
-      onClick={handleRouteClick} // Close drawer when link is clicked
+      onClick={() => handleRouteClick(nav.path)} // Close drawer when link is clicked
     >
       {nav.title}
     </Link>

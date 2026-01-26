@@ -27,3 +27,9 @@ export function doneRouteProgress() {
     NProgress.done();
   }
 }
+
+export function resetRouteProgress() {
+  activeNavigations = 0;
+  started = false;
+  NProgress.done();
+}

@@ -23,7 +23,6 @@ import {
   Switch,
   ThemeIcon,
   Alert,
-  Skeleton,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -40,26 +39,15 @@ import {
   IconAlertCircle,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import dynamic from "next/dynamic";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import {
+  type DataTableColumn,
+  type DataTableSortStatus,
+} from "mantine-datatable";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { Plan } from "@/utils/types";
-import { minTableHeight } from "@/utils/helper";
 
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Stack gap="md" p="xl">
-        <Skeleton height={40} />
-        <Skeleton height={60} />
-        <Skeleton height={60} />
-        <Skeleton height={60} />
-      </Stack>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "@/components/common/AdminTable";
+// Imports fixed above
 
 export default function MailroomPlans() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -71,6 +59,10 @@ export default function MailroomPlans() {
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Plan>>({
+    columnAccessor: "name",
+    direction: "asc",
+  });
 
   // View modal state
   const [viewOpen, setViewOpen] = useState(false);
@@ -282,27 +274,43 @@ export default function MailroomPlans() {
   );
 
   const filteredPlans = React.useMemo(() => {
-    return plans
-      .filter((p) => {
-        const q = search.trim().toLowerCase();
-        const matchesSearch =
-          !q ||
-          String(p.name ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(p.description ?? "")
-            .toLowerCase()
-            .includes(q);
+    const pkgs = plans.filter((p) => {
+      const q = search.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        String(p.name ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(p.description ?? "")
+          .toLowerCase()
+          .includes(q);
 
-        return matchesSearch;
-      })
-      .sort((a, b) => {
-        if (sortBy === "name_asc") return a.name.localeCompare(b.name);
-        if (sortBy === "price_asc") return a.price - b.price;
-        if (sortBy === "price_desc") return b.price - a.price;
-        return 0;
-      });
-  }, [plans, search, sortBy]);
+      return matchesSearch;
+    });
+
+    return [...pkgs].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      const valA = a[columnAccessor as keyof Plan] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+      const valB = b[columnAccessor as keyof Plan] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [plans, search, sortStatus]);
 
   const paginatedPlans = React.useMemo(() => {
     return filteredPlans.slice((page - 1) * pageSize, page * pageSize);
@@ -315,6 +323,7 @@ export default function MailroomPlans() {
         accessor: "name",
         title: "Name",
         width: 180,
+        sortable: true,
         render: ({ name }: Plan) => (
           <Text fw={500} truncate>
             {name}
@@ -331,6 +340,7 @@ export default function MailroomPlans() {
         accessor: "price",
         title: "Price",
         width: 150,
+        sortable: true,
         render: ({ price }: Plan) => (
           <Badge color="green.9" variant="filled" size="lg">
             {formatCurrency(price)}
@@ -341,6 +351,7 @@ export default function MailroomPlans() {
         accessor: "storage_limit",
         title: "Storage Limit",
         width: 150,
+        sortable: true,
         render: ({ storage_limit }: Plan) => (
           <Group gap={4} wrap="nowrap">
             <IconDatabase size={14} style={{ flexShrink: 0 }} color="gray" />
@@ -351,6 +362,7 @@ export default function MailroomPlans() {
       {
         accessor: "description",
         title: "Description",
+        sortable: true,
         render: ({ description }: Plan) => (
           <Text lineClamp={1} size="sm" c="#2D3748" truncate>
             {description ?? "—"}
@@ -466,15 +478,9 @@ export default function MailroomPlans() {
             containIntrinsicSize: "400px",
           }}
         >
-          <DataTable<Plan>
-            withTableBorder={false}
-            borderRadius="lg"
-            striped
-            highlightOnHover
-            verticalSpacing="md"
+          <AdminTable<Plan>
             records={paginatedPlans}
             fetching={loading}
-            minHeight={minTableHeight(pageSize)}
             totalRecords={filteredPlans.length}
             recordsPerPage={pageSize}
             page={page}
@@ -482,11 +488,9 @@ export default function MailroomPlans() {
             recordsPerPageOptions={[10, 20, 50]}
             onRecordsPerPageChange={setPageSize}
             columns={tableColumns}
+            sortStatus={sortStatus}
+            onSortStatusChange={setSortStatus}
             noRecordsText="No plans found"
-            styles={{
-              root: { willChange: "auto" },
-              table: { tableLayout: "fixed" },
-            }}
           />
         </div>
       </Paper>

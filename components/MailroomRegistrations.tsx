@@ -20,7 +20,6 @@ import {
   Grid,
   Table,
   Tabs,
-  Skeleton,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -36,26 +35,13 @@ import {
   IconUserOff,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import dynamic from "next/dynamic";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
+import { AdminTable } from "@/components/common/AdminTable";
+import {
+  type DataTableColumn,
+  type DataTableSortStatus,
+} from "mantine-datatable";
 import dayjs from "dayjs";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { minTableHeight } from "@/utils/helper";
-
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Stack gap="md" p="xl">
-        <Skeleton height={40} />
-        <Skeleton height={60} />
-        <Skeleton height={60} />
-        <Skeleton height={60} />
-      </Stack>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
 
 type Registration = {
   id: string;
@@ -109,6 +95,14 @@ export default function MailroomRegistrations() {
   // Pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // Sorting
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<Registration>
+  >({
+    columnAccessor: "created_at",
+    direction: "desc",
+  });
 
   // Modal State
   const [lockerModalOpen, { open: openLockerModal, close: closeLockerModal }] =
@@ -306,8 +300,35 @@ export default function MailroomRegistrations() {
   }, [registrations, search, activeTab]);
 
   const paginatedRegistrations = React.useMemo(() => {
-    return filteredRegistrations.slice((page - 1) * pageSize, page * pageSize);
-  }, [filteredRegistrations, page, pageSize]);
+    const data = [...filteredRegistrations];
+
+    // Sorting logic
+    data.sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined =
+        a[columnAccessor as keyof Registration];
+      let valB: string | number | boolean | null | undefined =
+        b[columnAccessor as keyof Registration];
+
+      // Special case for subscription expiry date
+      if (columnAccessor === "subscription") {
+        valA = dayjs(a.created_at).add(a.months, "month").valueOf();
+        valB = dayjs(b.created_at).add(b.months, "month").valueOf();
+      }
+
+      // Handle nulls
+      if (valA === null || valA === undefined)
+        return direction === "asc" ? -1 : 1;
+      if (valB === null || valB === undefined)
+        return direction === "asc" ? 1 : -1;
+
+      if (valA < valB) return direction === "asc" ? -1 : 1;
+      if (valA > valB) return direction === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return data.slice((page - 1) * pageSize, page * pageSize);
+  }, [filteredRegistrations, page, pageSize, sortStatus]);
 
   // Memoize DataTable columns to prevent forced reflows caused by re-renders
   const tableColumns: DataTableColumn<Registration>[] = React.useMemo(
@@ -316,6 +337,7 @@ export default function MailroomRegistrations() {
         accessor: "mailroom_code",
         title: "Mailroom Code",
         width: 140,
+        sortable: true,
         render: (r: Registration) =>
           r.mailroom_code ? (
             <Badge
@@ -336,6 +358,7 @@ export default function MailroomRegistrations() {
       {
         accessor: "full_name",
         title: "User Details",
+        sortable: true,
         render: (r: Registration) => (
           <Group gap="sm" wrap="nowrap">
             <Avatar color="blue" radius="xl" size="sm">
@@ -359,6 +382,7 @@ export default function MailroomRegistrations() {
         accessor: "status",
         title: "Status",
         width: 120,
+        sortable: true,
         render: (r: Registration) => (
           <Badge color={r.is_active ? "green.9" : "red.9"} variant="filled">
             {r.is_active ? "Active" : "Inactive"}
@@ -369,6 +393,7 @@ export default function MailroomRegistrations() {
         accessor: "subscription",
         title: "Subscription",
         width: 200,
+        sortable: true,
         render: (r: Registration) => {
           const expiresAt = dayjs(r.created_at).add(r.months, "month");
           const isExpired = dayjs().isAfter(expiresAt);
@@ -398,6 +423,7 @@ export default function MailroomRegistrations() {
         accessor: "location",
         title: "Location",
         width: 200,
+        sortable: true,
         render: (r: Registration) => {
           const name = r.location_name || "Main Branch";
           return (
@@ -552,16 +578,10 @@ export default function MailroomRegistrations() {
                     containIntrinsicSize: "400px",
                   }}
                 >
-                  <DataTable<Registration>
+                  <AdminTable<Registration>
                     aria-label="Registrations list"
-                    withTableBorder={false}
-                    borderRadius="lg"
-                    striped
-                    verticalSpacing="md"
-                    highlightOnHover
                     records={paginatedRegistrations}
                     fetching={loading}
-                    minHeight={minTableHeight(pageSize)}
                     totalRecords={filteredRegistrations.length}
                     recordsPerPage={pageSize}
                     page={page}
@@ -570,6 +590,8 @@ export default function MailroomRegistrations() {
                     onRecordsPerPageChange={setPageSize}
                     columns={tableColumns}
                     noRecordsText="No registrations found"
+                    sortStatus={sortStatus}
+                    onSortStatusChange={setSortStatus}
                   />
                 </div>
               )}

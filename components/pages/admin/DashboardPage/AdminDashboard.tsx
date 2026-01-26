@@ -18,22 +18,8 @@ import {
   Skeleton,
   Loader,
 } from "@mantine/core";
-import dynamic from "next/dynamic";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
-// Lazy load DataTable to reduce initial bundle
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Stack gap="xs" aria-busy="true" aria-label="Loading table">
-        {[...Array(5)].map((_, i) => (
-          <Skeleton key={i} h={40} />
-        ))}
-      </Stack>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "@/components/common/AdminTable";
+import { type DataTableColumn } from "mantine-datatable";
 import {
   IconBox,
   IconUsers,
@@ -421,17 +407,12 @@ export default function AdminDashboard({
           <div aria-live="polite" aria-atomic="true">
             {/* On mobile, only render if it was visible in viewport. On desktop, follow the idle callback readiness. */}
             {(isMobile ? wasTableVisible : true) && isTableReady ? (
-              <DataTable<AdminDashboardStats["recentPackages"][0]>
-                striped
-                withTableBorder={false}
-                borderRadius="lg"
-                verticalSpacing="md"
-                highlightOnHover
-                minHeight={300} // Increased min-height to reduce layout shift
+              <AdminTable<AdminDashboardStats["recentPackages"][0]>
                 records={recent}
                 aria-label="Recent packages"
                 columns={tableColumns}
                 noRecordsText="No recent activity found"
+                minHeight={300}
                 noRecordsIcon={
                   <IconPackage
                     size={32}

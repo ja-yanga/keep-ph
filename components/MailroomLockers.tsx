@@ -1,7 +1,7 @@
 "use client";
 
 import "mantine-datatable/styles.layer.css";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import useSWRInfinite from "swr/infinite";
 import {
@@ -36,58 +36,9 @@ import {
   IconArrowRight,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import dynamic from "next/dynamic";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
-import { getStatusFormat, minTableHeight } from "@/utils/helper";
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <div
-        style={{ display: "flex", flexDirection: "column", gap: "10px" }}
-        aria-busy="true"
-        aria-label="Loading lockers table"
-      >
-        <div style={{ display: "flex", gap: "10px" }}>
-          {[...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              style={{
-                height: 40,
-                flex: 1,
-                backgroundColor: "#f1f3f5",
-                borderRadius: "4px",
-                animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-              }}
-            />
-          ))}
-        </div>
-        {[...Array(10)].map((_, i) => (
-          <div
-            key={i}
-            style={{
-              height: 52,
-              backgroundColor: "#f8f9fa",
-              borderRadius: "4px",
-              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-            }}
-          />
-        ))}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
-          }
-        `,
-          }}
-        />
-      </div>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "./common/AdminTable";
+import { DataTableColumn, type DataTableSortStatus } from "mantine-datatable";
+import { getStatusFormat } from "@/utils/helper";
 
 const SearchInput = React.memo(
   ({
@@ -231,6 +182,10 @@ export default function MailroomLockers() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Locker>>({
+    columnAccessor: "locker_code",
+    direction: "asc",
+  });
 
   const [opened, { open, close }] = useDisclosure(false);
   const [
@@ -317,19 +272,46 @@ export default function MailroomLockers() {
     },
   );
 
-  useEffect(() => {
-    if (!isValidating) {
-      setIsSearching(false);
-    }
-  }, [isValidating]);
+  const sortedLockers = useMemo(() => {
+    const data = overviewData?.data || [];
+    return [...data].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined;
+      let valB: string | number | boolean | null | undefined;
+
+      if (columnAccessor === "location.name") {
+        valA = a.location?.name;
+        valB = b.location?.name;
+      } else if (columnAccessor === "capacity") {
+        valA = a.assigned?.status;
+        valB = b.assigned?.status;
+      } else {
+        valA = a[columnAccessor as keyof Locker] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+        valB = b[columnAccessor as keyof Locker] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [overviewData, sortStatus]);
 
   useEffect(() => {
-    if (overviewData?.data) {
-      setLockers(overviewData.data);
-    } else {
-      setLockers([]);
-    }
-  }, [overviewData]);
+    setLockers(sortedLockers);
+  }, [sortedLockers]);
 
   const refreshAll = async () => {
     try {
@@ -474,6 +456,7 @@ export default function MailroomLockers() {
         accessor: "locker_code",
         title: "Locker Code",
         width: 150,
+        sortable: true,
         render: ({ locker_code }: Locker) => (
           <Text fw={700} c="dark.4" size="sm">
             {locker_code}
@@ -483,6 +466,7 @@ export default function MailroomLockers() {
       {
         accessor: "location.name",
         title: "Location",
+        sortable: true,
         render: ({ location }: Locker) => (
           <Text size="sm" c="dark.3" fw={500}>
             {location?.name ?? "Unknown"}
@@ -493,6 +477,7 @@ export default function MailroomLockers() {
         accessor: "is_available",
         title: "Status",
         width: 150,
+        sortable: true,
         render: ({ is_available }: Locker) => (
           <Badge
             color={is_available ? "teal" : "red"}
@@ -508,6 +493,7 @@ export default function MailroomLockers() {
         accessor: "capacity",
         title: "Capacity Status",
         width: 180,
+        sortable: true,
         render: (locker: Locker) => {
           const assignment = locker.assigned;
 
@@ -704,16 +690,9 @@ export default function MailroomLockers() {
                 containIntrinsicSize: "400px",
               }}
             >
-              <DataTable<Locker>
-                striped
-                aria-label="Lockers list"
-                withTableBorder={false}
-                borderRadius="lg"
-                verticalSpacing="md"
-                highlightOnHover
+              <AdminTable<Locker>
                 records={isSearching ? [] : lockers}
                 fetching={isValidating || isSearching}
-                minHeight={minTableHeight(pageSize)}
                 totalRecords={overviewData?.pagination?.totalCount ?? 0}
                 recordsPerPage={pageSize}
                 page={page}
@@ -726,6 +705,8 @@ export default function MailroomLockers() {
                 recordsPerPageLabel="Lockers per page"
                 noRecordsText="No records found"
                 columns={columns}
+                sortStatus={sortStatus}
+                onSortStatusChange={setSortStatus}
               />
             </div>
           </Tabs.Panel>
