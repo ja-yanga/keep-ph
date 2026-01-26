@@ -44,6 +44,8 @@ import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
+import { AddressCascadingSelects } from "@/components/Form/AddressCascadingSelects";
+
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
   if (id.length <= visible) return "*".repeat(id.length);
@@ -72,6 +74,16 @@ export default function KycPage() {
   const [region, setRegion] = useState<string>("");
   const [postal, setPostal] = useState<string>("");
   const [birthDate, setBirthDate] = useState<string>(""); // YYYY-MM-DD
+  const [province, setProvince] = useState<string>("");
+  const [barangay, setBarangay] = useState<string>("");
+
+  // Selected IDs (UUIDs from DB)
+  const [addressIds, setAddressIds] = useState({
+    regionId: "",
+    provinceId: "",
+    cityId: "",
+    barangayId: "",
+  });
 
   // NEW: submission state / server error
   const [submitting, setSubmitting] = useState(false);
@@ -149,7 +161,9 @@ export default function KycPage() {
       !lastName ||
       !addressLine1 ||
       !city ||
+      !province ||
       !region ||
+      !barangay ||
       !postal ||
       !birthDate ||
       submitting
@@ -169,7 +183,9 @@ export default function KycPage() {
       fd.append("address_line1", addressLine1);
       fd.append("address_line2", addressLine2);
       fd.append("city", city);
+      fd.append("province", province);
       fd.append("region", region);
+      fd.append("barangay", barangay);
       fd.append("postal", postal);
       fd.append("birth_date", birthDate);
       fd.append("front", frontFile as Blob);
@@ -212,7 +228,9 @@ export default function KycPage() {
     !!lastName &&
     !!addressLine1 &&
     !!city &&
+    !!province &&
     !!region &&
+    !!barangay &&
     !!birthDate &&
     !!postal;
 
@@ -254,7 +272,15 @@ export default function KycPage() {
     NONE: "Not submitted",
   } as const;
 
-  const fullAddress = [addressLine1, addressLine2, city, region, postal]
+  const fullAddress = [
+    addressLine1,
+    addressLine2,
+    barangay,
+    city,
+    province,
+    region,
+    postal,
+  ]
     .filter(Boolean)
     .join(", ");
 
@@ -441,7 +467,7 @@ export default function KycPage() {
 
                       <TextInput
                         label={FORM_NAME.address_line_one}
-                        placeholder="Street, building"
+                        placeholder="House No., Street Name, Phase/Section"
                         value={addressLine1}
                         onChange={(e) => setAddressLine1(e.currentTarget.value)}
                         required
@@ -449,42 +475,39 @@ export default function KycPage() {
                       />
                       <TextInput
                         label={FORM_NAME.address_line_two}
-                        placeholder="Unit / Barangay"
+                        placeholder="Building, Floor No., Unit No. (Optional)"
                         value={addressLine2}
                         onChange={(e) => setAddressLine2(e.currentTarget.value)}
                         disabled={isLocked}
                       />
 
-                      <Group grow>
-                        <TextInput
-                          label={FORM_NAME.city}
-                          placeholder={FORM_NAME.city}
-                          value={city}
-                          onChange={(e) => setCity(e.currentTarget.value)}
-                          required
-                          disabled={isLocked}
-                        />
-                        <TextInput
-                          label={FORM_NAME.region}
-                          placeholder={FORM_NAME.region}
-                          value={region}
-                          onChange={(e) => setRegion(e.currentTarget.value)}
-                          required
-                          disabled={isLocked}
-                        />
-                        <TextInput
-                          label={FORM_NAME.postal}
-                          placeholder={FORM_NAME.postal}
-                          value={postal}
-                          onChange={(e) =>
-                            setPostal(e.currentTarget.value.replace(/\D/g, ""))
-                          }
-                          inputMode="numeric"
-                          pattern="\d*"
-                          required
-                          disabled={isLocked}
-                        />
-                      </Group>
+                      <AddressCascadingSelects
+                        disabled={isLocked}
+                        initialData={{
+                          region,
+                          province,
+                          city,
+                          barangay,
+                          barangay_zip_code: postal,
+                          region_id: addressIds.regionId,
+                          province_id: addressIds.provinceId,
+                          city_id: addressIds.cityId,
+                          barangay_id: addressIds.barangayId,
+                        }}
+                        onChange={(data) => {
+                          setRegion(data.region);
+                          setProvince(data.province);
+                          setCity(data.city);
+                          setBarangay(data.barangay);
+                          setPostal(data.barangay_zip_code);
+                          setAddressIds({
+                            regionId: data.region_id,
+                            provinceId: data.province_id,
+                            cityId: data.city_id,
+                            barangayId: data.barangay_id,
+                          });
+                        }}
+                      />
                     </Stack>
                   </Paper>
 
