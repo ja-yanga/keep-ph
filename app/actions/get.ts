@@ -5,6 +5,7 @@ import {
   toBoolean,
   toNumber,
 } from "@/utils/helper";
+import { T_RawTransaction } from "@/utils/transform/transaction";
 import {
   AdminClaim,
   AdminDashboardStats,
@@ -19,6 +20,10 @@ import {
   RpcMailroomPlan,
   UserAddressRow,
 } from "@/utils/types";
+import {
+  T_TransactionPaginationMeta,
+  T_TransactionStats,
+} from "@/utils/types/transaction";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -1341,6 +1346,191 @@ export async function checkEmailExistsAction(email: string): Promise<boolean> {
     }
 
     return !!data;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
+/**
+ * Gets payment transactions with pagination, sorting, filtering, and search capabilities.
+ * Supports both customer view (filtered by user_ids) and admin view (all transactions when user_ids is NULL).
+ * Search works across payment_transaction_reference_id, payment_transaction_reference, and payment_transaction_order_id fields.
+ * Sorting supports payment_transaction_date, payment_transaction_created_at, and payment_transaction_updated_at fields.
+ *
+ * Used in:
+ * - app/api/user/transactions/route.ts - API endpoint for user transactions
+ * - app/api/admin/transactions/route.ts - API endpoint for admin transactions
+ *
+ * @param options - Optional parameters for filtering, pagination, sorting, and search
+ * @returns Promise with transactions array and pagination metadata
+ */
+export async function getTransactions(options?: {
+  userIds?: string[] | null;
+  search?: string | null;
+  sortBy?:
+    | "payment_transaction_date"
+    | "payment_transaction_created_at"
+    | "payment_transaction_updated_at";
+  sortDir?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+  include_user_details?: boolean;
+}): Promise<{
+  transactions: T_RawTransaction[];
+  pagination: T_TransactionPaginationMeta;
+  stats: T_TransactionStats;
+}> {
+  const {
+    userIds = null,
+    search = null,
+    sortBy = "payment_transaction_date",
+    sortDir = "desc",
+    page = 1,
+    limit = 10,
+    include_user_details = true,
+  } = options || {};
+
+  // Validate and sanitize inputs
+  const validSortBy =
+    sortBy &&
+    [
+      "payment_transaction_date",
+      "payment_transaction_created_at",
+      "payment_transaction_updated_at",
+    ].includes(sortBy)
+      ? sortBy
+      : "payment_transaction_date";
+  const validSortDir =
+    sortDir && ["asc", "desc"].includes(sortDir) ? sortDir : "desc";
+  const validPage = Math.max(1, page);
+  const validLimit = Math.min(Math.max(1, limit), 100); // Max 100 items per page
+  const validOffset = (validPage - 1) * validLimit;
+
+  // Convert userIds string array to UUID array if provided
+  let userIdsArray: string[] | null = null;
+  if (userIds && Array.isArray(userIds) && userIds.length > 0) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validUserIds = userIds.filter((id) => {
+      if (!uuidRegex.test(id)) {
+        console.warn(`Invalid userId format: ${id}`);
+        return false;
+      }
+      return true;
+    });
+    userIdsArray = validUserIds.length > 0 ? validUserIds : null;
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc("get_transactions", {
+      input_user_ids: userIdsArray,
+      search_query: search || null,
+      sort_by: validSortBy,
+      sort_dir: validSortDir,
+      page_limit: validLimit,
+      page_offset: validOffset,
+      include_user_details: include_user_details,
+    });
+
+    if (error) {
+      console.error("Supabase RPC error in getTransactions:", {
+        error,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw new Error(
+        `Database error: ${error.message || "Unknown error"}${error.code ? ` (${error.code})` : ""}`,
+      );
+    }
+
+    // Handle null or undefined data
+    if (data === null || data === undefined) {
+      return {
+        transactions: [],
+        pagination: {
+          total: 0,
+          limit: validLimit,
+          offset: validOffset,
+          has_more: false,
+        },
+        stats: {
+          total_revenue: 0,
+          total_transactions: 0,
+          successful_transactions: 0,
+          avg_transaction: 0,
+        },
+      };
+    }
+
+    // Parse data if it's a string, otherwise use as is
+    let payload: unknown;
+    try {
+      payload = typeof data === "string" ? JSON.parse(data) : data;
+    } catch (parseError) {
+      console.error("Failed to parse RPC response:", {
+        data,
+        parseError,
+      });
+      throw new Error("Failed to parse transactions response");
+    }
+
+    if (!payload || typeof payload !== "object") {
+      console.error("Invalid payload structure:", { payload });
+      return {
+        transactions: [],
+        pagination: {
+          total: 0,
+          limit: validLimit,
+          offset: validOffset,
+          has_more: false,
+        },
+        stats: {
+          total_revenue: 0,
+          total_transactions: 0,
+          successful_transactions: 0,
+          avg_transaction: 0,
+        },
+      };
+    }
+
+    const payloadRecord = payload as Record<string, unknown>;
+    const transactionsArray = Array.isArray(payloadRecord.transactions)
+      ? payloadRecord.transactions
+      : [];
+    const paginationData = payloadRecord.pagination as {
+      total?: number;
+      limit?: number;
+      offset?: number;
+      has_more?: boolean;
+    } | null;
+    const statsData = payloadRecord.stats as {
+      total_revenue?: number;
+      total_transactions?: number;
+      successful_transactions?: number;
+      avg_transaction?: number;
+    } | null;
+
+    return {
+      transactions: transactionsArray,
+      pagination: {
+        total: paginationData?.total ?? 0,
+        limit: paginationData?.limit ?? validLimit,
+        offset: paginationData?.offset ?? validOffset,
+        has_more: paginationData?.has_more ?? false,
+      },
+      stats: {
+        total_revenue: statsData?.total_revenue ?? 0,
+        total_transactions: statsData?.total_transactions ?? 0,
+        successful_transactions: statsData?.successful_transactions ?? 0,
+        avg_transaction: statsData?.avg_transaction ?? 0,
+      },
+    };
   } catch (err) {
     if (err instanceof Error) {
       throw err;
