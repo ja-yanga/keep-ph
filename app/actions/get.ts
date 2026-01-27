@@ -11,6 +11,7 @@ import {
   AdminClaim,
   AdminDashboardStats,
   AdminUserKyc,
+  AdminUsersRpcResult,
   BarangayTableRow,
   CityTableRow,
   ClaimWithUrl,
@@ -1411,3 +1412,56 @@ export const getBarangay = async (params: { cityId: string }) => {
 
   return data as BarangayTableRow[];
 };
+
+export async function adminListUsers(args: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+}): Promise<{ data: AdminUsersRpcResult["data"]; total_count: number }> {
+  const {
+    search = "",
+    limit = 10,
+    offset = 0,
+    sort = "users_created_at",
+    direction = "desc",
+  } = args;
+
+  const { data, error } = await supabaseAdmin.rpc("admin_list_users", {
+    input_search: search,
+    input_limit: limit,
+    input_offset: offset,
+    input_sort: sort,
+    input_direction: direction,
+  });
+
+  if (error) {
+    console.error("admin_list_users RPC error:", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
+
+  const payload =
+    typeof data === "string" ? JSON.parse(data) : (data as unknown);
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !("total_count" in payload)
+  ) {
+    return { data: [], total_count: 0 };
+  }
+
+  const result = payload as AdminUsersRpcResult;
+
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    total_count: Number(result.total_count) || 0,
+  };
+}

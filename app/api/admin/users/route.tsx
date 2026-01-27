@@ -1,41 +1,29 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { adminListUsers } from "@/app/actions/get";
 
-export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+  const pageSize = Math.max(1, Number(searchParams.get("pageSize") ?? "10"));
+  const from = (page - 1) * pageSize;
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json(
-      { error: "Missing Supabase environment variables." },
-      { status: 500 },
-    );
+  const q = (searchParams.get("q") ?? "").trim();
+  const sort = searchParams.get("sort") ?? "users_created_at";
+  const direction = searchParams.get("direction") === "asc" ? "asc" : "desc";
+
+  try {
+    const { data, total_count } = await adminListUsers({
+      search: q,
+      limit: pageSize,
+      offset: from,
+      sort,
+      direction,
+    });
+
+    return NextResponse.json({ data, count: total_count }, { status: 200 });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to fetch users";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
-
-  const { data, error } = await supabase
-    .from("users_table")
-    .select(
-      [
-        "users_id",
-        "users_email",
-        "users_role",
-        "users_created_at",
-        "users_is_verified",
-        "user_kyc_table(user_kyc_first_name,user_kyc_last_name)",
-      ].join(","),
-    )
-    .order("users_created_at", { ascending: false });
-
-  if (error) {
-    return NextResponse.json(
-      { error: error.message, details: error },
-      { status: 500 },
-    );
-  }
-
-  return NextResponse.json({ data }, { status: 200 });
 }

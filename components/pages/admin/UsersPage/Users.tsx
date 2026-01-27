@@ -2,7 +2,7 @@
 
 import "mantine-datatable/styles.layer.css";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
 import {
   ActionIcon,
   Badge,
@@ -30,84 +30,132 @@ import {
   IconMail,
   IconId,
   IconCalendar,
+  IconArrowRight,
+  IconX,
 } from "@tabler/icons-react";
 import {
   type DataTableColumn,
   type DataTableSortStatus,
 } from "mantine-datatable";
 import { AdminTable } from "@/components/common/AdminTable";
+import type { AdminUserPage, ApiUserPage, UserRole } from "@/utils/types";
 
-type UserRole = "owner" | "admin" | "approver" | "user";
+const SearchInput = memo(
+  ({ onSearch }: { onSearch: (value: string) => void }) => {
+    const [value, setValue] = useState("");
 
-type AdminUser = {
-  id: string;
-  full_name: string;
-  email: string;
-  role: UserRole;
-  created_at: string;
-};
+    const handleSearch = () => {
+      onSearch(value);
+    };
 
-const DUMMY_USERS: AdminUser[] = [
-  {
-    id: "1",
-    full_name: "Jane Owner",
-    email: "owner@example.com",
-    role: "owner",
-    created_at: "2026-01-10",
+    const handleClear = () => {
+      setValue("");
+      onSearch("");
+    };
+
+    return (
+      <TextInput
+        placeholder="Search users..."
+        w="100%"
+        aria-label="Search users"
+        leftSection={<IconSearch size={16} />}
+        rightSectionWidth={value ? 70 : 42}
+        rightSection={
+          value ? (
+            <Group gap={4}>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="gray.5"
+                onClick={handleClear}
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                <IconX size={16} />
+              </ActionIcon>
+              <ActionIcon
+                size="sm"
+                variant="transparent"
+                c="indigo"
+                onClick={handleSearch}
+                aria-label="Submit search"
+                title="Submit search"
+              >
+                <IconArrowRight size={16} />
+              </ActionIcon>
+            </Group>
+          ) : (
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              c="gray.5"
+              onClick={handleSearch}
+              aria-label="Submit search"
+              title="Submit search"
+            >
+              <IconArrowRight size={16} />
+            </ActionIcon>
+          )
+        }
+        value={value}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSearch();
+          }
+        }}
+        style={{ width: 300 }}
+      />
+    );
   },
-  {
-    id: "2",
-    full_name: "Alex Admin",
-    email: "admin@example.com",
-    role: "admin",
-    created_at: "2026-01-12",
-  },
-  {
-    id: "3",
-    full_name: "Kim Approver",
-    email: "approver@example.com",
-    role: "approver",
-    created_at: "2026-01-18",
-  },
-  {
-    id: "4",
-    full_name: "John Customer",
-    email: "user1@example.com",
-    role: "user",
-    created_at: "2026-01-20",
-  },
-];
+);
+
+SearchInput.displayName = "SearchInput";
 
 export default function Users() {
-  const [users] = useState<AdminUser[]>(DUMMY_USERS);
+  const [users, setUsers] = useState<AdminUserPage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [search, setSearch] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<AdminUser>>({
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<AdminUserPage>
+  >({
     columnAccessor: "full_name",
     direction: "asc",
   });
 
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
-  const [viewUser, setViewUser] = useState<AdminUser | null>(null);
+  const [viewUser, setViewUser] = useState<AdminUserPage | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [editUser, setEditUser] = useState<AdminUserPage | null>(null);
   const [editRole, setEditRole] = useState<UserRole | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
 
   useEffect(() => {
     const loadSessionRole = async () => {
       try {
         const res = await fetch("/api/session", { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as { role?: string | null };
+        const data = (await res.json()) as {
+          role?: string | null;
+          user?: { id?: string | null };
+          user_id?: string | null;
+        };
         const role = String(data?.role ?? "").toLowerCase() as UserRole;
         if (role) setCurrentUserRole(role);
+        const id = data?.user?.id ?? data?.user_id ?? null;
+        if (id) setCurrentUserId(id);
       } catch {
         // no-op for debug display
       }
@@ -115,73 +163,176 @@ export default function Users() {
     loadSessionRole();
   }, []);
 
-  const openView = (u: AdminUser) => {
+  useEffect(() => {
+    if (!loading) setIsSearching(false);
+  }, [loading]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const sortMap: Record<string, string> = {
+          full_name: "full_name",
+          email: "users_email",
+          role: "users_role",
+          created_at: "users_created_at",
+        };
+        const sortField =
+          sortMap[sortStatus.columnAccessor as string] ?? "users_created_at";
+
+        const params = new URLSearchParams({
+          q: search.trim(),
+          page: String(page),
+          pageSize: String(pageSize),
+          sort: sortField,
+          direction: sortStatus.direction,
+        });
+
+        const res = await fetch(`/api/admin/users?${params.toString()}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          setLoadError("Failed to load users.");
+          setLoading(false);
+          return;
+        }
+        const json = (await res.json()) as {
+          data?: ApiUserPage[];
+          count?: number;
+        };
+        const mapped = (json.data ?? []).map((u) => {
+          const kyc = Array.isArray(u.user_kyc_table)
+            ? u.user_kyc_table[0]
+            : u.user_kyc_table;
+          const first = (kyc?.user_kyc_first_name ?? "").trim();
+          const last = (kyc?.user_kyc_last_name ?? "").trim();
+          const fullName = `${first} ${last}`.trim() || u.users_email;
+          return {
+            id: u.users_id,
+            full_name: fullName,
+            email: u.users_email,
+            role: u.users_role,
+            created_at: new Date(u.users_created_at).toISOString().slice(0, 10),
+          } as AdminUserPage;
+        });
+        setUsers(mapped);
+        setTotalRecords(json.count ?? mapped.length);
+      } catch {
+        setLoadError("Failed to load users.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadUsers();
+  }, [page, pageSize, search, sortStatus]);
+
+  const openView = (u: AdminUserPage) => {
     setViewUser(u);
     setViewOpen(true);
   };
 
-  const openEdit = (u: AdminUser) => {
+  const openEdit = (u: AdminUserPage) => {
     setEditUser(u);
     setEditRole(u.role);
     setEditError(null);
     setEditOpen(true);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editUser || !editRole) {
       setEditError("Please select a role.");
       return;
     }
-    setGlobalSuccess(`Role updated (dummy) for ${editUser.full_name}`);
-    setEditOpen(false);
-    setEditUser(null);
-    setEditRole(null);
+    if (!currentUserId) {
+      setEditError("Missing current user id (session not loaded).");
+      return;
+    }
+    setIsSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          users_role: editRole,
+          actor_user_id: currentUserId,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setEditError(json?.error ?? "Failed to update role.");
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((u) => (u.id === editUser.id ? { ...u, role: editRole } : u)),
+      );
+      setGlobalSuccess(`Role updated for ${editUser.full_name}`);
+      setEditOpen(false);
+      setEditUser(null);
+      setEditRole(null);
+    } catch {
+      setEditError("Failed to update role.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openTransfer = () => {
     setTransferOpen(true);
   };
 
-  const handleTransferConfirm = () => {
-    if (!editUser) return;
-    setGlobalSuccess(`Ownership transferred (dummy) to ${editUser.full_name}`);
-    setTransferOpen(false);
-    setEditOpen(false);
-    setEditUser(null);
-    setEditRole(null);
+  const handleTransferConfirm = async () => {
+    if (!editUser || !currentUserId) return;
+    setIsTransferring(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          users_role: "owner",
+          actor_user_id: currentUserId,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setEditError(json?.error ?? "Failed to transfer ownership.");
+        return;
+      }
+
+      // update local list
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.id === editUser.id) return { ...u, role: "owner" };
+          if (u.id === currentUserId) return { ...u, role: "admin" };
+          return u;
+        }),
+      );
+
+      setCurrentUserRole("admin");
+      setGlobalSuccess(`Ownership transferred to ${editUser.full_name}`);
+      setTransferOpen(false);
+      setEditOpen(false);
+      setEditUser(null);
+      setEditRole(null);
+    } catch {
+      setEditError("Failed to transfer ownership.");
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   const clearFilters = () => {
     setSearch("");
     setSortBy(null);
+    setSortStatus({ columnAccessor: "full_name", direction: "asc" });
+    setPage(1);
   };
 
   const hasFilters = search || sortBy;
 
-  const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const list = users.filter((u) => {
-      if (!q) return true;
-      return (
-        u.full_name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.role.toLowerCase().includes(q)
-      );
-    });
-
-    return [...list].sort((a, b) => {
-      const { columnAccessor, direction } = sortStatus;
-      const valA = a[columnAccessor as keyof AdminUser] as string;
-      const valB = b[columnAccessor as keyof AdminUser] as string;
-      if (valA === valB) return 0;
-      const result = valA < valB ? -1 : 1;
-      return direction === "asc" ? result : -result;
-    });
-  }, [users, search, sortStatus]);
-
-  const paginatedUsers = useMemo(() => {
-    return filteredUsers.slice((page - 1) * pageSize, page * pageSize);
-  }, [filteredUsers, page, pageSize]);
+  const filteredUsers = useMemo(() => users, [users]);
 
   const roleBadgeColor = (role: UserRole) => {
     if (role === "owner") return "violet.9";
@@ -190,14 +341,44 @@ export default function Users() {
     return "gray.8";
   };
 
-  const tableColumns: DataTableColumn<AdminUser>[] = useMemo(
+  const roleRank: Record<UserRole, number> = {
+    owner: 4,
+    admin: 3,
+    approver: 2,
+    user: 1,
+  };
+
+  const isEditingBlocked =
+    !!editUser &&
+    !!currentUserRole &&
+    roleRank[editUser.role] > roleRank[currentUserRole];
+
+  const isSameRoleBlocked =
+    !!editUser && !!currentUserRole && editUser.role === currentUserRole;
+
+  const isRoleEditHidden = isEditingBlocked || isSameRoleBlocked;
+
+  const roleOptions =
+    currentUserRole === "admin"
+      ? [
+          { value: "approver", label: "Approver" },
+          { value: "user", label: "User" },
+        ]
+      : [
+          { value: "owner", label: "Owner" },
+          { value: "admin", label: "Admin" },
+          { value: "approver", label: "Approver" },
+          { value: "user", label: "User" },
+        ];
+
+  const tableColumns: DataTableColumn<AdminUserPage>[] = useMemo(
     () => [
       {
         accessor: "full_name",
         title: "Full Name",
         width: 200,
         sortable: true,
-        render: ({ full_name }: AdminUser) => (
+        render: ({ full_name }: AdminUserPage) => (
           <Text fw={500} truncate>
             {full_name}
           </Text>
@@ -208,7 +389,7 @@ export default function Users() {
         title: "Email",
         width: 220,
         sortable: true,
-        render: ({ email }: AdminUser) => (
+        render: ({ email }: AdminUserPage) => (
           <Text size="sm" truncate>
             {email}
           </Text>
@@ -219,7 +400,7 @@ export default function Users() {
         title: "Role",
         width: 140,
         sortable: true,
-        render: ({ role }: AdminUser) => (
+        render: ({ role }: AdminUserPage) => (
           <Badge color={roleBadgeColor(role)} variant="filled" size="md">
             {role}
           </Badge>
@@ -230,7 +411,7 @@ export default function Users() {
         title: "Created",
         width: 140,
         sortable: true,
-        render: ({ created_at }: AdminUser) => (
+        render: ({ created_at }: AdminUserPage) => (
           <Text size="sm">{created_at}</Text>
         ),
       },
@@ -239,7 +420,7 @@ export default function Users() {
         title: "Actions",
         width: 100,
         textAlign: "right" as const,
-        render: (user: AdminUser) => (
+        render: (user: AdminUserPage) => (
           <Group gap="xs" justify="flex-end" wrap="nowrap">
             <Tooltip label="View Details">
               <ActionIcon
@@ -268,8 +449,46 @@ export default function Users() {
     [],
   );
 
+  const handleSortByChange = (value: string | null) => {
+    setSortBy(value);
+    if (!value) {
+      setSortStatus({ columnAccessor: "full_name", direction: "asc" });
+      setPage(1);
+      return;
+    }
+    if (value === "name_asc")
+      setSortStatus({ columnAccessor: "full_name", direction: "asc" });
+    if (value === "name_desc")
+      setSortStatus({ columnAccessor: "full_name", direction: "desc" });
+    if (value === "role_asc")
+      setSortStatus({ columnAccessor: "role", direction: "asc" });
+    setPage(1);
+  };
+
+  const handleSearchSubmit = useCallback(
+    (val: string) => {
+      if (val === search && page === 1) return;
+      setIsSearching(true);
+      setSearch(val);
+      setPage(1);
+    },
+    [search, page],
+  );
+
   return (
     <Stack align="center" gap="lg" w="100%">
+      {loadError && (
+        <Alert
+          variant="light"
+          color="red"
+          title="Error"
+          withCloseButton
+          onClose={() => setLoadError(null)}
+          w="100%"
+        >
+          {loadError}
+        </Alert>
+      )}
       {globalSuccess && (
         <Alert
           variant="light"
@@ -293,13 +512,7 @@ export default function Users() {
           wrap="nowrap"
         >
           <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
-            <TextInput
-              placeholder="Search users..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ flex: 1 }}
-            />
+            <SearchInput onSearch={handleSearchSubmit} />
             <Select
               placeholder="Sort By"
               data={[
@@ -308,7 +521,7 @@ export default function Users() {
                 { value: "role_asc", label: "Role (A-Z)" },
               ]}
               value={sortBy}
-              onChange={setSortBy}
+              onChange={handleSortByChange}
               clearable
               style={{ width: 180 }}
             />
@@ -345,10 +558,10 @@ export default function Users() {
             containIntrinsicSize: "400px",
           }}
         >
-          <AdminTable<AdminUser>
-            records={paginatedUsers}
-            fetching={loading}
-            totalRecords={filteredUsers.length}
+          <AdminTable<AdminUserPage>
+            records={isSearching ? [] : filteredUsers}
+            fetching={loading || isSearching}
+            totalRecords={totalRecords}
             recordsPerPage={pageSize}
             page={page}
             onPageChange={(p) => setPage(p)}
@@ -356,7 +569,10 @@ export default function Users() {
             onRecordsPerPageChange={setPageSize}
             columns={tableColumns}
             sortStatus={sortStatus}
-            onSortStatusChange={setSortStatus}
+            onSortStatusChange={(s) => {
+              setSortStatus(s);
+              setPage(1);
+            }}
             noRecordsText="No users found"
           />
         </Box>
@@ -473,18 +689,16 @@ export default function Users() {
             </Alert>
           )}
 
-          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-gray-0)">
-            <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
-              Debug: Current User Role
-            </Text>
-            <Badge
-              mt="xs"
-              variant="filled"
-              color={roleBadgeColor(currentUserRole ?? "user")}
-            >
-              {currentUserRole ?? "unknown"}
-            </Badge>
-          </Paper>
+          {isEditingBlocked && (
+            <Alert variant="light" color="orange" title="Not allowed">
+              You cannot edit a user with a higher role than yours.
+            </Alert>
+          )}
+          {isSameRoleBlocked && (
+            <Alert variant="light" color="orange" title="Not allowed">
+              You cannot edit a user with the same role as yours.
+            </Alert>
+          )}
 
           <Group justify="space-between" align="flex-start">
             <Box>
@@ -556,30 +770,42 @@ export default function Users() {
             </Stack>
           </Paper>
 
-          <Select
-            label="Role"
-            placeholder="Select role"
-            data={[
-              { value: "owner", label: "Owner" },
-              { value: "admin", label: "Admin" },
-              { value: "approver", label: "Approver" },
-              { value: "user", label: "User" },
-            ]}
-            value={editRole}
-            onChange={(v) => setEditRole((v as UserRole) ?? null)}
-          />
+          {!isRoleEditHidden && (
+            <Select
+              label="Role"
+              placeholder="Select role"
+              data={roleOptions}
+              value={editRole}
+              onChange={(v) => setEditRole((v as UserRole) ?? null)}
+              disabled={isSaving}
+            />
+          )}
 
           <Group justify="flex-end" mt="sm">
             {currentUserRole === "owner" && (
-              <Button variant="outline" color="red" onClick={openTransfer}>
+              <Button
+                variant="outline"
+                color="red"
+                onClick={openTransfer}
+                disabled={isSaving || isTransferring || isEditingBlocked}
+              >
                 Transfer Ownership
               </Button>
             )}
             <Group ml="auto">
-              <Button variant="default" onClick={() => setEditOpen(false)}>
+              <Button
+                variant="default"
+                onClick={() => setEditOpen(false)}
+                disabled={isSaving || isTransferring}
+              >
                 Cancel
               </Button>
-              <Button color="blue" onClick={handleEditSave}>
+              <Button
+                color="blue"
+                onClick={handleEditSave}
+                loading={isSaving}
+                disabled={isRoleEditHidden}
+              >
                 Save Changes
               </Button>
             </Group>
@@ -611,10 +837,18 @@ export default function Users() {
           </Paper>
 
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setTransferOpen(false)}>
+            <Button
+              variant="default"
+              onClick={() => setTransferOpen(false)}
+              disabled={isTransferring}
+            >
               Cancel
             </Button>
-            <Button color="red" onClick={handleTransferConfirm}>
+            <Button
+              color="red"
+              onClick={handleTransferConfirm}
+              loading={isTransferring}
+            >
               Confirm Transfer
             </Button>
           </Group>

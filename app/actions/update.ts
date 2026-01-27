@@ -293,3 +293,27 @@ export const cancelMailroomSubscription = async (
 
   return { ok: false, error: "Subscription not found" };
 };
+
+export async function adminUpdateUserRole(args: {
+  targetUserId: string;
+  newRole: string;
+  actorUserId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabaseAdmin.rpc("admin_update_user_role", {
+    input_target_user_id: args.targetUserId,
+    input_new_role: args.newRole,
+    input_actor_user_id: args.actorUserId,
+  });
+
+  if (error) {
+    console.error("admin_update_user_role RPC error:", error);
+    return { ok: false, error: error.message };
+  }
+
+  const result =
+    typeof data === "string"
+      ? (JSON.parse(data) as { ok: boolean; error?: string })
+      : (data as { ok: boolean; error?: string });
+
+  return result;
+}
