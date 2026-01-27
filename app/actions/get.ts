@@ -1,3 +1,5 @@
+"use server";
+
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import {
   normalizeAdminClaim,
@@ -9,10 +11,14 @@ import {
   AdminClaim,
   AdminDashboardStats,
   AdminUserKyc,
+  BarangayTableRow,
+  CityTableRow,
   ClaimWithUrl,
   MailroomPlanRow,
   MailroomRegistrationStats,
+  ProvinceTableRow,
   RegCounts,
+  RegionTableRow,
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
@@ -1348,3 +1354,60 @@ export async function checkEmailExistsAction(email: string): Promise<boolean> {
     throw new Error(`Unexpected error: ${String(err)}`);
   }
 }
+
+export const getRegion = async () => {
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("region_table")
+    .select("region_id, region")
+    .eq("region_is_disabled", false)
+    .eq("region_is_available", true);
+  if (error) throw error;
+
+  return data as RegionTableRow[];
+};
+
+export const getProvince = async (params: { regionId: string }) => {
+  const { regionId } = params;
+
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("province_table")
+    .select("province_id, province")
+    .eq("province_is_disabled", false)
+    .eq("province_is_available", true)
+    .eq("province_region_id", regionId);
+  if (error) throw error;
+
+  return data as ProvinceTableRow[];
+};
+
+export const getCity = async (params: { provinceId: string }) => {
+  const { provinceId } = params;
+
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("city_table")
+    .select("city_id, city")
+    .eq("city_is_disabled", false)
+    .eq("city_is_available", true)
+    .eq("city_province_id", provinceId);
+  if (error) throw error;
+
+  return data as CityTableRow[];
+};
+
+export const getBarangay = async (params: { cityId: string }) => {
+  const { cityId } = params;
+
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("barangay_table")
+    .select("barangay_id, barangay, barangay_zip_code")
+    .eq("barangay_is_disabled", false)
+    .eq("barangay_is_available", true)
+    .eq("barangay_city_id", cityId);
+  if (error) throw error;
+
+  return data as BarangayTableRow[];
+};

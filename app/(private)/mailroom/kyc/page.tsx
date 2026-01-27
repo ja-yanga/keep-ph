@@ -22,8 +22,10 @@ import {
   Center,
   Loader,
   SimpleGrid,
+  Select,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import useSWR from "swr";
 import {
   IconId,
   IconCheck,
@@ -42,7 +44,15 @@ import {
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import {
+  getRegion,
+  getProvince,
+  getCity,
+  getBarangay,
+} from "@/app/actions/get";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
+
+const formatLabel = (text: string) => text?.replace(/_/g, " ") || "";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -72,6 +82,16 @@ export default function KycPage() {
   const [region, setRegion] = useState<string>("");
   const [postal, setPostal] = useState<string>("");
   const [birthDate, setBirthDate] = useState<string>(""); // YYYY-MM-DD
+  const [province, setProvince] = useState<string>("");
+  const [barangay, setBarangay] = useState<string>("");
+
+  // Selected IDs (UUIDs from DB)
+  const [addressIds, setAddressIds] = useState({
+    regionId: "",
+    provinceId: "",
+    cityId: "",
+    barangayId: "",
+  });
 
   // NEW: submission state / server error
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +103,50 @@ export default function KycPage() {
   // confirm modal for submit
   const [confirmOpen, { open: openConfirm, close: closeConfirm }] =
     useDisclosure(false);
+
+  // SWR Fetchers
+  const { data: regionsData } = useSWR("regions", () => getRegion());
+
+  const { data: provincesData } = useSWR(
+    addressIds.regionId ? ["provinces", addressIds.regionId] : null,
+    ([, id]) => getProvince({ regionId: id }),
+  );
+
+  const { data: citiesData } = useSWR(
+    addressIds.provinceId ? ["cities", addressIds.provinceId] : null,
+    ([, id]) => getCity({ provinceId: id }),
+  );
+
+  const { data: barangaysData } = useSWR(
+    addressIds.cityId ? ["barangays", addressIds.cityId] : null,
+    ([, id]) => getBarangay({ cityId: id }),
+  );
+
+  // Transform for Mantine Select
+  const regions =
+    regionsData?.map((r) => ({
+      label: formatLabel(r.region),
+      value: r.region_id,
+    })) || [];
+
+  const provinces =
+    provincesData?.map((p) => ({
+      label: formatLabel(p.province),
+      value: p.province_id,
+    })) || [];
+
+  const cities =
+    citiesData?.map((c) => ({
+      label: formatLabel(c.city),
+      value: c.city_id,
+    })) || [];
+
+  const barangays =
+    barangaysData?.map((b) => ({
+      label: formatLabel(b.barangay),
+      value: b.barangay_id,
+      zip: b.barangay_zip_code,
+    })) || [];
 
   // load real KYC status from API on mount
   useEffect(() => {
@@ -149,7 +213,9 @@ export default function KycPage() {
       !lastName ||
       !addressLine1 ||
       !city ||
+      !province ||
       !region ||
+      !barangay ||
       !postal ||
       !birthDate ||
       submitting
@@ -169,7 +235,9 @@ export default function KycPage() {
       fd.append("address_line1", addressLine1);
       fd.append("address_line2", addressLine2);
       fd.append("city", city);
+      fd.append("province", province);
       fd.append("region", region);
+      fd.append("barangay", barangay);
       fd.append("postal", postal);
       fd.append("birth_date", birthDate);
       fd.append("front", frontFile as Blob);
@@ -212,7 +280,9 @@ export default function KycPage() {
     !!lastName &&
     !!addressLine1 &&
     !!city &&
+    !!province &&
     !!region &&
+    !!barangay &&
     !!birthDate &&
     !!postal;
 
@@ -254,7 +324,15 @@ export default function KycPage() {
     NONE: "Not submitted",
   } as const;
 
-  const fullAddress = [addressLine1, addressLine2, city, region, postal]
+  const fullAddress = [
+    addressLine1,
+    addressLine2,
+    barangay,
+    city,
+    province,
+    region,
+    postal,
+  ]
     .filter(Boolean)
     .join(", ");
 
@@ -441,7 +519,7 @@ export default function KycPage() {
 
                       <TextInput
                         label={FORM_NAME.address_line_one}
-                        placeholder="Street, building"
+                        placeholder="House No., Street Name, Phase/Section"
                         value={addressLine1}
                         onChange={(e) => setAddressLine1(e.currentTarget.value)}
                         required
@@ -449,32 +527,119 @@ export default function KycPage() {
                       />
                       <TextInput
                         label={FORM_NAME.address_line_two}
-                        placeholder="Unit / Barangay"
+                        placeholder="Building, Floor No., Unit No. (Optional)"
                         value={addressLine2}
                         onChange={(e) => setAddressLine2(e.currentTarget.value)}
                         disabled={isLocked}
                       />
 
-                      <Group grow>
-                        <TextInput
-                          label={FORM_NAME.city}
-                          placeholder={FORM_NAME.city}
-                          value={city}
-                          onChange={(e) => setCity(e.currentTarget.value)}
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                        <Select
+                          data-testid="region-select"
+                          label="Region"
+                          placeholder="Select Region"
+                          data={regions}
+                          value={addressIds.regionId}
+                          onChange={(val) => {
+                            const label = regions.find(
+                              (r) => r.value === val,
+                            )?.label;
+                            setRegion(label || "");
+                            // Reset children
+                            setProvince("");
+                            setCity("");
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              regionId: val || "",
+                              provinceId: "",
+                              cityId: "",
+                              barangayId: "",
+                            }));
+                          }}
                           required
                           disabled={isLocked}
+                          searchable
+                          clearable
                         />
-                        <TextInput
-                          label={FORM_NAME.region}
-                          placeholder={FORM_NAME.region}
-                          value={region}
-                          onChange={(e) => setRegion(e.currentTarget.value)}
+                        <Select
+                          data-testid="province-select"
+                          label="Province"
+                          placeholder="Select Province"
+                          data={provinces}
+                          value={addressIds.provinceId}
+                          onChange={(val) => {
+                            const label = provinces.find(
+                              (p) => p.value === val,
+                            )?.label;
+                            setProvince(label || "");
+                            // Reset children
+                            setCity("");
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              provinceId: val || "",
+                              cityId: "",
+                              barangayId: "",
+                            }));
+                          }}
                           required
-                          disabled={isLocked}
+                          disabled={isLocked || !addressIds.regionId}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="city-select"
+                          label="City/Municipality"
+                          placeholder="Select City/Municipality"
+                          data={cities}
+                          value={addressIds.cityId}
+                          onChange={(val) => {
+                            const label = cities.find(
+                              (c) => c.value === val,
+                            )?.label;
+                            setCity(label || "");
+                            // Reset children
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              cityId: val || "",
+                              barangayId: "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.provinceId}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="barangay-select"
+                          label="Barangay"
+                          placeholder="Select Barangay"
+                          data={barangays}
+                          value={addressIds.barangayId}
+                          onChange={(val) => {
+                            const b = barangays.find(
+                              (bar) => bar.value === val,
+                            );
+                            setBarangay(b?.label || "");
+                            setPostal(b?.zip || "");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              barangayId: val || "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.cityId}
+                          searchable
+                          clearable
                         />
                         <TextInput
-                          label={FORM_NAME.postal}
-                          placeholder={FORM_NAME.postal}
+                          label="Postal Code"
+                          placeholder="Postal Code"
                           value={postal}
                           onChange={(e) =>
                             setPostal(e.currentTarget.value.replace(/\D/g, ""))
@@ -482,9 +647,9 @@ export default function KycPage() {
                           inputMode="numeric"
                           pattern="\d*"
                           required
-                          disabled={isLocked}
+                          disabled={isLocked || !!addressIds.barangayId}
                         />
-                      </Group>
+                      </SimpleGrid>
                     </Stack>
                   </Paper>
 

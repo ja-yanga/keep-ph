@@ -318,6 +318,7 @@ export default function AccountAddressesTab() {
                         <Text size="sm" c="dimmed" style={{ lineHeight: 1.4 }}>
                           {[a.city, a.region, a.postal]
                             .filter(Boolean)
+                            .map((s) => s.replace(/_/g, " "))
                             .join(", ")}
                         </Text>
                       </Stack>
