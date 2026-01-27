@@ -27,6 +27,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/unauthorized",
   ],
   admin: [
+    "/account",
     "/admin/dashboard",
     "/admin/kyc",
     "/admin/locations",
@@ -36,6 +37,28 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/plans",
     "/admin/rewards",
     "/admin/stats",
+    "/admin/users",
+    "/unauthorized",
+  ],
+  approver: [
+    "/account",
+    "/admin/kyc",
+    "/admin/packages",
+    "/admin/rewards",
+    "/unauthorized",
+  ],
+  owner: [
+    "/account",
+    "/admin/dashboard",
+    "/admin/kyc",
+    "/admin/locations",
+    "/admin/lockers",
+    "/admin/mailrooms",
+    "/admin/packages",
+    "/admin/plans",
+    "/admin/rewards",
+    "/admin/stats",
+    "/admin/users",
     "/unauthorized",
   ],
 };
@@ -44,6 +67,8 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
 const ROLE_DEFAULT_PAGES: Record<string, string> = {
   user: "/dashboard",
   admin: "/admin/dashboard",
+  approver: "/admin/kyc",
+  owner: "/admin/dashboard",
 };
 
 //  function to copy cookies between responses

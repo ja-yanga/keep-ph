@@ -14,7 +14,7 @@ export async function GET(req: Request) {
 
     // verify requester is admin
     const requesterRole = await getUserRole(user.id);
-    if (requesterRole !== "admin") {
+    if (requesterRole == "user") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
