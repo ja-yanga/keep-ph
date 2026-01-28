@@ -186,23 +186,23 @@ BEGIN
     SELECT 
       COUNT(*) AS total_transactions,
       COUNT(*) FILTER (
-        WHERE LOWER(payment_transaction_status) LIKE '%completed%' 
-        OR LOWER(payment_transaction_status) LIKE '%success%' 
-        OR LOWER(payment_transaction_status) = 'paid'
+        WHERE LOWER(payment_transaction_status::TEXT) LIKE '%completed%' 
+        OR LOWER(payment_transaction_status::TEXT) LIKE '%success%' 
+        OR LOWER(payment_transaction_status::TEXT) = 'paid'
       ) AS successful_transactions,
       COALESCE(
         SUM(payment_transaction_amount) FILTER (
-          WHERE LOWER(payment_transaction_status) LIKE '%completed%' 
-          OR LOWER(payment_transaction_status) LIKE '%success%' 
-          OR LOWER(payment_transaction_status) = 'paid'
+          WHERE LOWER(payment_transaction_status::TEXT) LIKE '%completed%' 
+          OR LOWER(payment_transaction_status::TEXT) LIKE '%success%' 
+          OR LOWER(payment_transaction_status::TEXT) = 'paid'
         ),
         0
       ) AS total_revenue,
       COALESCE(
         AVG(payment_transaction_amount) FILTER (
-          WHERE LOWER(payment_transaction_status) LIKE '%completed%' 
-          OR LOWER(payment_transaction_status) LIKE '%success%' 
-          OR LOWER(payment_transaction_status) = 'paid'
+          WHERE LOWER(payment_transaction_status::TEXT) LIKE '%completed%' 
+          OR LOWER(payment_transaction_status::TEXT) LIKE '%success%' 
+          OR LOWER(payment_transaction_status::TEXT) = 'paid'
         ),
         0
       ) AS avg_transaction
@@ -260,27 +260,26 @@ BEGIN
           )
         ),
         '[]'::JSONB
-      ) AS transactions_json,
-      (SELECT total_count FROM total_counts) AS total_count,
-      (SELECT 
-        JSONB_BUILD_OBJECT(
-          'total_revenue', total_revenue,
-          'total_transactions', total_transactions,
-          'successful_transactions', successful_transactions,
-          'avg_transaction', avg_transaction
-        )
-      FROM transaction_stats) AS stats_json
+      ) AS transactions_json
     FROM paginated_transactions pt
-    CROSS JOIN total_counts
-    CROSS JOIN transaction_stats
   )
-  -- Get all data from the combined CTE
+  -- Get all data from the combined CTE and stats/total_count independently
   SELECT 
-    COALESCE(transactions_json, '[]'::JSONB),
-    COALESCE(total_count, 0),
-    COALESCE(stats_json, '{}'::JSONB)
+    COALESCE(cd.transactions_json, '[]'::JSONB),
+    COALESCE(tc.total_count, 0),
+    COALESCE(
+      JSONB_BUILD_OBJECT(
+        'total_revenue', ts.total_revenue,
+        'total_transactions', ts.total_transactions,
+        'successful_transactions', ts.successful_transactions,
+        'avg_transaction', ts.avg_transaction
+      ),
+      '{}'::JSONB
+    )
   INTO var_transactions, var_total_count, var_stats
-  FROM combined_data
+  FROM total_counts tc
+  CROSS JOIN transaction_stats ts
+  LEFT JOIN combined_data cd ON true
   LIMIT 1;
 
   -- Construct return data with pagination metadata and stats

@@ -23,6 +23,7 @@ export const NAV_ITMES: Record<
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },
     { path: "/admin/stats", key: "stats", title: "Stats" },
     { path: "/admin/users", key: "users", title: "Users" },
+    { path: "/admin/transactions", key: "transactions", title: "Transactions" },
   ],
   approver: [
     { path: "/admin/kyc", key: "kyc", title: "KYC" },
@@ -40,5 +41,6 @@ export const NAV_ITMES: Record<
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },
     { path: "/admin/stats", key: "stats", title: "Stats" },
     { path: "/admin/users", key: "users", title: "Users" },
+    { path: "/admin/transactions", key: "transactions", title: "Transactions" },
   ],
 };
