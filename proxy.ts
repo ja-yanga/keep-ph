@@ -38,6 +38,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/rewards",
     "/admin/stats",
     "/admin/users",
+    "/admin/transactions",
     "/unauthorized",
   ],
   approver: [
@@ -59,6 +60,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/rewards",
     "/admin/stats",
     "/admin/users",
+    "/admin/transactions",
     "/unauthorized",
   ],
 };

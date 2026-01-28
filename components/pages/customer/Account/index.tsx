@@ -1,10 +1,16 @@
 "use client";
 
 import { Box, Container, Title, Paper, Tabs } from "@mantine/core";
-import { IconUser, IconLock, IconMapPin } from "@tabler/icons-react";
+import {
+  IconUser,
+  IconLock,
+  IconMapPin,
+  IconReceipt,
+} from "@tabler/icons-react";
 import ProfileTab from "./ProfileTab";
 import AccountAddressesTab from "./AddressesTab";
 import SecurityTab from "./SecurityTab";
+import SubscriptionHistoryTab from "./SubscriptionHistoryTab";
 
 export default function AccountSettings() {
   return (
@@ -31,6 +37,13 @@ export default function AccountSettings() {
               <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
                 Security
               </Tabs.Tab>
+
+              <Tabs.Tab
+                value="subscription-history"
+                leftSection={<IconReceipt size={16} />}
+              >
+                Subscription History
+              </Tabs.Tab>
             </Tabs.List>
 
             {/* --- PROFILE TAB --- */}
@@ -46,6 +59,11 @@ export default function AccountSettings() {
             {/* --- SECURITY TAB --- */}
             <Tabs.Panel value="security">
               <SecurityTab />
+            </Tabs.Panel>
+
+            {/* --- SUBSCRIPTIONS TAB --- */}
+            <Tabs.Panel value="subscription-history">
+              <SubscriptionHistoryTab />
             </Tabs.Panel>
           </Tabs>
         </Paper>
