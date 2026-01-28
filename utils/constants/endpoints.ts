@@ -11,6 +11,7 @@ export const API_ENDPOINTS = {
     scans: "/api/user/scans",
     packages: (id?: string) =>
       id ? `/api/user/packages/${id}` : "/api/user/packages",
+    transactions: "/api/user/transactions",
   },
 
   // Auth endpoints
@@ -97,6 +98,7 @@ export const API_ENDPOINTS = {
     },
     userKyc: (userId?: string) =>
       userId ? `/api/admin/user-kyc/${userId}` : `/api/admin/user-kyc`,
+    transactions: "/api/admin/transactions",
   },
 
   // Onboarding

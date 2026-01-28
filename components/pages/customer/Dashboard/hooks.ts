@@ -105,7 +105,7 @@ export const useRegistrations = (
     {
       revalidateOnFocus: false, // Disable to reduce unnecessary re-fetches on mobile
       revalidateOnReconnect: false, // Disable to reduce blocking
-      revalidateIfStale: false, // Use fallback data if available
+      // revalidateIfStale: false, // Use fallback data if available
       fallbackData: fallbackDataObj,
       // Reduce polling and background updates
       dedupingInterval: 2000, // Dedupe requests within 2 seconds
