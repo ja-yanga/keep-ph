@@ -3,11 +3,12 @@ import { baseMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = {
   ...baseMetadata,
-  title: "Users | Admin | Keep PH",
-  description: "Manage user roles.",
+  title: "Referrals | Keep-PH",
+  description:
+    "View your referral list and track the claiming status of each referral.",
 };
 
-export default function UsersLayout({
+export default function ReferralsLayout({
   children,
 }: {
   children: React.ReactNode;
