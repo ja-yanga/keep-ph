@@ -157,6 +157,8 @@ export default function MailroomPackages() {
     locker_id: "",
     package_type: "", // CHANGED: Default to empty string to force selection
     status: "STORED",
+    recipient_email: "",
+    recipient_name: "",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -188,10 +190,7 @@ export default function MailroomPackages() {
   // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanFile, setScanFile] = useState<File | null>(null);
-  const [packageToScan, setPackageToScan] = useState<{
-    id: string;
-    package_name?: string;
-  } | null>(null);
+  const [packageToScan, setPackageToScan] = useState<Package | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
@@ -488,7 +487,8 @@ export default function MailroomPackages() {
         locker_id: pkg.locker_id || "",
         package_type: pkg.package_type,
         status: pkg.status,
-        // notes: pkg.notes || "",
+        recipient_email: pkg.registration?.email || "",
+        recipient_name: pkg.registration?.full_name || "",
       });
       // Find registration to populate recipient search
       const reg = registrations.find((r) => r.id === pkg.registration_id);
@@ -523,6 +523,8 @@ export default function MailroomPackages() {
         locker_id: "",
         package_type: "Parcel",
         status: "STORED",
+        recipient_email: "",
+        recipient_name: "",
       });
       setRecipientSearch("");
       setSelectedRecipientLabel("");
@@ -539,6 +541,8 @@ export default function MailroomPackages() {
         registration_id: "",
         locker_id: "",
         package_type: "",
+        recipient_email: "",
+        recipient_name: "",
       });
       return;
     }
@@ -549,7 +553,7 @@ export default function MailroomPackages() {
     );
 
     // Find the registration to check plan capabilities
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
+
     const _reg = registrations.find((r) => r.id === regId);
 
     // Determine default package type based on plan
@@ -565,6 +569,8 @@ export default function MailroomPackages() {
       registration_id: regId,
       locker_id: defaultLockerId,
       package_type: defaultType,
+      recipient_email: _reg?.email || "",
+      recipient_name: _reg?.full_name || "",
     });
   };
 
@@ -580,6 +586,23 @@ export default function MailroomPackages() {
     if (reg.mailroom_plans.can_receive_parcels) types.push("Parcel");
 
     return types;
+  };
+
+  // helper to fire-and-forget emails
+  const triggerEmail = async (
+    to: string,
+    template: string,
+    data: Record<string, string | number | boolean>,
+  ) => {
+    try {
+      fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, template, data }),
+      }).catch((err) => console.error("Async email error:", err));
+    } catch (err) {
+      console.error("Email trigger failed:", err);
+    }
   };
 
   const handleSubmit = async () => {
@@ -657,7 +680,10 @@ export default function MailroomPackages() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save");
+      }
       const raw = await res.json().catch(() => null);
       const saved = raw?.data ?? raw;
 
@@ -681,6 +707,21 @@ export default function MailroomPackages() {
       setGlobalSuccess(
         `Package ${editingPackage ? "updated" : "created"} successfully`,
       );
+
+      // Trigger Email Notification for new arrivals
+      if (!editingPackage && formData.recipient_email) {
+        const locker = lockers.find((l) => l.id === formData.locker_id);
+        triggerEmail(formData.recipient_email, "PACKAGE_ARRIVAL", {
+          packageName: formData.package_name,
+          recipientName: formData.recipient_name || "Recipient",
+          lockerCode: locker?.locker_code || "",
+        });
+      }
+
+      console.log("Package Saved Successfully", {
+        email: formData.recipient_email,
+        name: formData.recipient_name,
+      });
 
       close();
       await refreshAll();
@@ -767,6 +808,15 @@ export default function MailroomPackages() {
       if (!res.ok) throw new Error("Failed to update status");
 
       setGlobalSuccess("Package marked as DISPOSED and locker status updated");
+
+      // Trigger Email Notification for disposal
+      if (packageToDispose?.registration?.email) {
+        triggerEmail(packageToDispose.registration.email, "PACKAGE_DISPOSED", {
+          packageName: packageToDispose.package_name,
+          recipientName: packageToDispose.registration.full_name || "Recipient",
+        });
+      }
+
       setDisposeModalOpen(false);
       await refreshAll();
     } catch (error: unknown) {
@@ -810,7 +860,7 @@ export default function MailroomPackages() {
   };
 
   // --- SCAN HANDLERS ---
-  const handleOpenScan = (pkg: { id: string; package_name?: string }) => {
+  const handleOpenScan = (pkg: Package) => {
     setPackageToScan(pkg);
     setScanFile(null);
     setScanModalOpen(true);
@@ -837,6 +887,15 @@ export default function MailroomPackages() {
       }
 
       setGlobalSuccess("Document scanned and uploaded successfully");
+
+      // Trigger Email Notification for scan
+      if (packageToScan?.registration?.email) {
+        triggerEmail(packageToScan.registration.email, "PACKAGE_SCANNED", {
+          packageName: packageToScan.package_name,
+          recipientName: packageToScan.registration.full_name || "Recipient",
+        });
+      }
+
       setScanModalOpen(false);
       await refreshAll();
     } catch (error: unknown) {
@@ -954,6 +1013,15 @@ export default function MailroomPackages() {
       }
 
       setGlobalSuccess("Package released and locker status updated");
+
+      // Trigger Email Notification for release
+      if (packageToRelease?.registration?.email) {
+        triggerEmail(packageToRelease.registration.email, "PACKAGE_RELEASED", {
+          packageName: packageToRelease.package_name,
+          recipientName: packageToRelease.registration.full_name || "Recipient",
+        });
+      }
+
       setReleaseModalOpen(false);
       await refreshAll();
     } catch (error: unknown) {

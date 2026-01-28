@@ -105,6 +105,23 @@ export default function AdminRewards() {
     }
   }, [globalSuccess]);
 
+  // helper to fire-and-forget emails
+  const triggerEmail = async (
+    to: string,
+    template: string,
+    data: Record<string, string | number | boolean>,
+  ) => {
+    try {
+      fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, template, data }),
+      }).catch((err) => console.error("Async email error:", err));
+    } catch (err) {
+      console.error("Email trigger failed:", err);
+    }
+  };
+
   const doUpdate = async (id: string, status: "PROCESSING" | "PAID") => {
     setLoadingAction(id);
     try {
@@ -118,6 +135,20 @@ export default function AdminRewards() {
         const msg = parsed?.error ?? `Failed to update (status ${res.status})`;
         throw new Error(String(msg));
       }
+
+      // Trigger notification if PAID
+      if (status === "PAID") {
+        const row = claims.find((c) => c.id === id);
+        const email = row?.user?.users_email || row?.user?.email;
+        if (email) {
+          triggerEmail(email, "REWARD_PAID", {
+            recipientName: email,
+            amount: row?.amount ?? 0,
+            paymentMethod: row?.payment_method ?? "N/A",
+          });
+        }
+      }
+
       setGlobalSuccess(`Claim marked ${status}`);
       await swrMutate("/api/admin/rewards");
     } catch (err: unknown) {
@@ -255,6 +286,17 @@ export default function AdminRewards() {
         message: "Claim marked PAID.",
         color: "green",
       });
+
+      // Trigger notification
+      const email =
+        proofTargetRow.user?.users_email || proofTargetRow.user?.email;
+      if (email) {
+        triggerEmail(email, "REWARD_PAID", {
+          recipientName: email,
+          amount: proofTargetRow.amount ?? 0,
+          paymentMethod: proofTargetRow.payment_method ?? "N/A",
+        });
+      }
 
       await swrMutate("/api/admin/rewards");
 

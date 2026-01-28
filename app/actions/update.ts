@@ -74,6 +74,49 @@ export const adminUpdateUserKyc = async ({
     throw error;
   }
 
+  // Background trigger for Resend email notification
+  (async () => {
+    try {
+      const { data: userRow } = await supabaseAdmin
+        .from("users_table")
+        .select("users_email")
+        .eq("users_id", userId)
+        .single();
+
+      if (userRow?.users_email) {
+        const { data: kycRow } = await supabaseAdmin
+          .from("user_kyc_table")
+          .select("user_kyc_first_name")
+          .eq("user_id", userId)
+          .single();
+
+        const template =
+          normalizedStatus === "VERIFIED" ? "KYC_VERIFIED" : "KYC_REJECTED";
+        const protocol =
+          process.env.NODE_ENV === "development" ? "http" : "https";
+        const host = process.env.NEXT_PUBLIC_APP_URL || "localhost:3000";
+
+        await fetch(`${protocol}://${host}/api/send-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: userRow.users_email,
+            template,
+            data: {
+              recipientName: kycRow?.user_kyc_first_name || "User",
+              reason:
+                normalizedStatus === "REJECTED"
+                  ? "Please ensure your documents are clear and valid."
+                  : undefined,
+            },
+          }),
+        });
+      }
+    } catch (err) {
+      console.error("KYC background email error:", err);
+    }
+  })();
+
   return data;
 };
 
