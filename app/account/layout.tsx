@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
+import { Metadata } from "next";
 import { baseMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = {
   ...baseMetadata,
-  title: "Locations | Admin | Keep PH",
-  description: "Manage mailroom locations and capacity.",
+  title: "Account | Keep-PH",
+  description: "Manage your account settings and preferences.",
 };
 
-export default function AdminLocationsLayout({
+export default function AccountLayout({
   children,
 }: {
   children: React.ReactNode;

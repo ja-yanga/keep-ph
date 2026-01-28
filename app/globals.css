@@ -41,3 +41,9 @@ a:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+.mailroom-btn:hover {
+  opacity: 0.9;
+  animation-duration: 300ms;
+  text-decoration: none;
+}
