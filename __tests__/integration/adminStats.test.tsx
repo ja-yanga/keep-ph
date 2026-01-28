@@ -145,9 +145,23 @@ if (typeof g.ResizeObserver === "undefined") {
 }
 
 if (typeof g.IntersectionObserver === "undefined") {
+  // Provide a test-friendly IntersectionObserver that immediately signals intersection.
   g.IntersectionObserver = class {
-    constructor() {}
-    observe(): void {}
+    private cb?: IntersectionObserverCallback;
+    constructor(cb?: IntersectionObserverCallback) {
+      this.cb = cb;
+    }
+    observe(target?: Element): void {
+      if (this.cb) {
+        // immediately notify that the target is intersecting
+        const entry = {
+          isIntersecting: true,
+          intersectionRatio: 1,
+          target: (target as Element) ?? ({} as Element),
+        } as unknown as IntersectionObserverEntry;
+        this.cb([entry], this as unknown as IntersectionObserver);
+      }
+    }
     unobserve(): void {}
     disconnect(): void {}
     takeRecords() {

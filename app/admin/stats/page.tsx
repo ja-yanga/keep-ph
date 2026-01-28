@@ -1,18 +1,17 @@
 "use client";
 
-import { Container } from "@mantine/core";
+import { Container, Center, Loader } from "@mantine/core";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
-import { Loader, Center } from "@mantine/core";
 
 // Components
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
 
 // Dynamically import AnalyticsDashboard to reduce initial bundle size
+// We keep SSR enabled for the main layout to improve LCP
 const AnalyticsDashboard = dynamic(
   () => import("@/components/AnalyticsDashboard"),
   {
-    ssr: false,
     loading: () => (
       <Center h={400}>
         <Loader size="lg" />
@@ -33,7 +32,7 @@ export default function AdminStatsPage() {
           <Suspense
             fallback={
               <Center h={400}>
-                <Loader size="lg" />
+                <Loader size="lg" color="violet" type="dots" />
               </Center>
             }
           >

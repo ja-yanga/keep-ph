@@ -199,3 +199,7 @@ export const addMonths = (iso?: string | null, months = 0): string | null => {
   d.setMonth(d.getMonth() + months);
   return d.toISOString();
 };
+
+export const minTableHeight = (pageSize: number) => {
+  return 52 * pageSize + 50;
+};

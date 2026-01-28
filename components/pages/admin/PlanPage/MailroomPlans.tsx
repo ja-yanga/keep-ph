@@ -2,7 +2,7 @@
 
 import "mantine-datatable/styles.layer.css";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   ActionIcon,
   Badge,
@@ -22,7 +22,7 @@ import {
   Select,
   Switch,
   ThemeIcon,
-  Alert, // Added Alert
+  Alert,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import {
@@ -36,12 +36,18 @@ import {
   IconScan,
   IconCheck,
   IconX,
-  IconAlertCircle, // Added IconAlertCircle
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { DataTable } from "mantine-datatable";
+import {
+  type DataTableColumn,
+  type DataTableSortStatus,
+} from "mantine-datatable";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { Plan } from "@/utils/types";
+
+import { AdminTable } from "@/components/common/AdminTable";
+// Imports fixed above
 
 export default function MailroomPlans() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -53,6 +59,10 @@ export default function MailroomPlans() {
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Plan>>({
+    columnAccessor: "name",
+    direction: "asc",
+  });
 
   // View modal state
   const [viewOpen, setViewOpen] = useState(false);
@@ -263,8 +273,8 @@ export default function MailroomPlans() {
     </Group>
   );
 
-  const filteredPlans = plans
-    .filter((p) => {
+  const filteredPlans = React.useMemo(() => {
+    const pkgs = plans.filter((p) => {
       const q = search.trim().toLowerCase();
       const matchesSearch =
         !q ||
@@ -276,21 +286,125 @@ export default function MailroomPlans() {
           .includes(q);
 
       return matchesSearch;
-    })
-    .sort((a, b) => {
-      if (sortBy === "name_asc") return a.name.localeCompare(b.name);
-      if (sortBy === "price_asc") return a.price - b.price;
-      if (sortBy === "price_desc") return b.price - a.price;
-      return 0;
     });
 
-  const paginatedPlans = filteredPlans.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
+    return [...pkgs].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      const valA = a[columnAccessor as keyof Plan] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+      const valB = b[columnAccessor as keyof Plan] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [plans, search, sortStatus]);
+
+  const paginatedPlans = React.useMemo(() => {
+    return filteredPlans.slice((page - 1) * pageSize, page * pageSize);
+  }, [filteredPlans, page, pageSize]);
+
+  // Memoize table columns to prevent re-renders
+  const tableColumns: DataTableColumn<Plan>[] = useMemo(
+    () => [
+      {
+        accessor: "name",
+        title: "Name",
+        width: 180,
+        sortable: true,
+        render: ({ name }: Plan) => (
+          <Text fw={500} truncate>
+            {name}
+          </Text>
+        ),
+      },
+      {
+        accessor: "capabilities",
+        title: "Capabilities",
+        width: 120,
+        render: (plan: Plan) => renderCapabilities(plan),
+      },
+      {
+        accessor: "price",
+        title: "Price",
+        width: 150,
+        sortable: true,
+        render: ({ price }: Plan) => (
+          <Badge color="green.9" variant="filled" size="lg">
+            {formatCurrency(price)}
+          </Badge>
+        ),
+      },
+      {
+        accessor: "storage_limit",
+        title: "Storage Limit",
+        width: 150,
+        sortable: true,
+        render: ({ storage_limit }: Plan) => (
+          <Group gap={4} wrap="nowrap">
+            <IconDatabase size={14} style={{ flexShrink: 0 }} color="gray" />
+            <Text size="sm">{formatStorage(storage_limit)}</Text>
+          </Group>
+        ),
+      },
+      {
+        accessor: "description",
+        title: "Description",
+        sortable: true,
+        render: ({ description }: Plan) => (
+          <Text lineClamp={1} size="sm" c="#2D3748" truncate>
+            {description ?? "—"}
+          </Text>
+        ),
+      },
+      {
+        accessor: "actions",
+        title: "Actions",
+        width: 100,
+        textAlign: "right" as const,
+        render: (plan: Plan) => (
+          <Group gap="xs" justify="flex-end" wrap="nowrap">
+            <Tooltip label="View Details">
+              <ActionIcon
+                variant="subtle"
+                color="gray.7"
+                onClick={() => openView(plan)}
+                aria-label={`View details of ${plan.name} plan`}
+              >
+                <IconEye size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Edit">
+              <ActionIcon
+                variant="subtle"
+                color="blue.8"
+                onClick={() => openEdit(plan)}
+                aria-label={`Edit ${plan.name} plan`}
+              >
+                <IconEdit size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        ),
+      },
+    ],
+    [],
   );
 
   return (
-    <Stack>
+    <Stack align="center" gap="lg" w="100%">
       {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
@@ -300,20 +414,27 @@ export default function MailroomPlans() {
           icon={<IconCheck size={16} />}
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
+          w="100%"
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm">
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        <Group
+          justify="space-between"
+          mb="md"
+          gap="xs"
+          align="center"
+          wrap="nowrap"
+        >
+          <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
             <TextInput
               placeholder="Search plans..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 250 }}
+              style={{ flex: 1 }}
             />
             <Select
               placeholder="Sort By"
@@ -330,7 +451,7 @@ export default function MailroomPlans() {
             {hasFilters && (
               <Button
                 variant="subtle"
-                color="red"
+                color="red.8"
                 size="sm"
                 onClick={clearFilters}
               >
@@ -340,104 +461,38 @@ export default function MailroomPlans() {
           </Group>
           <Tooltip label="Refresh list">
             <Button
-              variant="light"
+              variant="filled"
               leftSection={<IconRefresh size={16} />}
               onClick={fetchData}
+              color="#1e3a8a"
+              aria-label="Refresh plans list"
             >
               Refresh
             </Button>
           </Tooltip>
         </Group>
 
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
-          highlightOnHover
-          records={paginatedPlans}
-          fetching={loading}
-          minHeight={200}
-          totalRecords={filteredPlans.length}
-          recordsPerPage={pageSize}
-          page={page}
-          onPageChange={(p) => setPage(p)}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={setPageSize}
-          columns={[
-            {
-              accessor: "name",
-              title: "Name",
-              width: 180,
-              render: ({ name }: Plan) => <Text fw={500}>{name}</Text>,
-            },
-            {
-              accessor: "capabilities", // Virtual column
-              title: "Capabilities",
-              width: 120,
-              render: (plan: Plan) => renderCapabilities(plan),
-            },
-            {
-              accessor: "price",
-              title: "Price",
-              width: 150,
-              render: ({ price }: Plan) => (
-                <Badge color="green" variant="light" size="lg">
-                  {formatCurrency(price)}
-                </Badge>
-              ),
-            },
-            {
-              accessor: "storage_limit",
-              title: "Storage Limit",
-              width: 150,
-              render: ({ storage_limit }: Plan) => (
-                <Group gap={4}>
-                  <IconDatabase size={14} color="gray" />
-                  <Text size="sm">{formatStorage(storage_limit)}</Text>
-                </Group>
-              ),
-            },
-            {
-              accessor: "description",
-              title: "Description",
-              render: ({ description }: Plan) => (
-                <Text lineClamp={1} size="sm" c="dimmed">
-                  {description ?? "—"}
-                </Text>
-              ),
-            },
-            {
-              accessor: "actions",
-              title: "Actions",
-              width: 100,
-              textAlign: "right",
-              render: (plan: Plan) => (
-                <Group gap="xs" justify="flex-end">
-                  <Tooltip label="View Details">
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      onClick={() => openView(plan)}
-                    >
-                      <IconEye size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Edit">
-                    <ActionIcon
-                      variant="subtle"
-                      color="blue"
-                      onClick={() => openEdit(plan)}
-                    >
-                      <IconEdit size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-              ),
-            },
-          ]}
-          noRecordsText="No plans found"
-        />
+        <div
+          style={{
+            contentVisibility: "auto",
+            containIntrinsicSize: "400px",
+          }}
+        >
+          <AdminTable<Plan>
+            records={paginatedPlans}
+            fetching={loading}
+            totalRecords={filteredPlans.length}
+            recordsPerPage={pageSize}
+            page={page}
+            onPageChange={(p) => setPage(p)}
+            recordsPerPageOptions={[10, 20, 50]}
+            onRecordsPerPageChange={setPageSize}
+            columns={tableColumns}
+            sortStatus={sortStatus}
+            onSortStatusChange={setSortStatus}
+            noRecordsText="No plans found"
+          />
+        </div>
       </Paper>
 
       {/* View modal */}
@@ -452,12 +507,12 @@ export default function MailroomPlans() {
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
               <Box>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
                   Plan Name
                 </Text>
                 <Title order={3}>{viewPlan.name}</Title>
               </Box>
-              <Badge size="lg" variant="light" color="green">
+              <Badge size="lg" variant="filled" color="green.9">
                 {formatCurrency(viewPlan.price)}
               </Badge>
             </Group>
@@ -470,7 +525,7 @@ export default function MailroomPlans() {
                 bg="var(--mantine-color-gray-0)"
               >
                 <Stack gap="xs">
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
                     Storage Limit
                   </Text>
                   <Group gap="xs">
@@ -490,10 +545,12 @@ export default function MailroomPlans() {
               bg="var(--mantine-color-gray-0)"
             >
               <Stack gap="xs">
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
                   Description
                 </Text>
-                <Text size="sm">{viewPlan.description || "—"}</Text>
+                <Text size="sm" c="#2D3748">
+                  {viewPlan.description || "—"}
+                </Text>
               </Stack>
             </Paper>
 
@@ -551,7 +608,7 @@ export default function MailroomPlans() {
             {/* ERROR ALERT INSIDE MODAL */}
             {formError && (
               <Alert
-                variant="light"
+                variant="filled"
                 color="red"
                 title="Error"
                 icon={<IconAlertCircle size={16} />}
@@ -577,7 +634,7 @@ export default function MailroomPlans() {
                 min={0}
                 required
                 leftSection={
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" c="#2D3748">
                     ₱
                   </Text>
                 }

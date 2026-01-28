@@ -3,7 +3,6 @@
 import "mantine-datatable/styles.layer.css";
 
 import React, { useEffect, useState, Suspense, useMemo } from "react";
-import dynamic from "next/dynamic";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
   ActionIcon,
@@ -22,6 +21,7 @@ import {
   FileInput,
   Tabs,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   IconSearch,
   IconCheck,
@@ -38,19 +38,8 @@ import type {
   ConfirmTarget,
 } from "@/utils/types";
 import { getStatusFormat, maskAccount } from "@/utils/helper";
-
-// Dynamically import DataTable to reduce initial bundle size
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((mod) => mod.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Center py="xl">
-        <Loader />
-      </Center>
-    ),
-  },
-);
+import { type DataTableSortStatus } from "mantine-datatable";
+import { AdminTable } from "@/components/common/AdminTable";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -58,6 +47,8 @@ export default function AdminRewards() {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const toggleReveal = (id: string) =>
     setRevealed((s) => ({ ...s, [id]: !s[id] }));
+
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const { data, error, isValidating } = useSWR("/api/admin/rewards", fetcher, {
     revalidateOnFocus: false, // Reduce unnecessary revalidations
@@ -75,6 +66,12 @@ export default function AdminRewards() {
   const [pageSize, setPageSize] = useState(10);
 
   const [activeTab, setActiveTab] = useState<ClaimStatusTab>("PENDING");
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<AdminClaimApprove>
+  >({
+    columnAccessor: "created_at",
+    direction: "desc",
+  });
 
   const [proofOpen, setProofOpen] = useState(false);
   const [proofTargetRow, setProofTargetRow] =
@@ -108,6 +105,23 @@ export default function AdminRewards() {
     }
   }, [globalSuccess]);
 
+  // helper to fire-and-forget emails
+  const triggerEmail = async (
+    to: string,
+    template: string,
+    data: Record<string, string | number | boolean>,
+  ) => {
+    try {
+      fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, template, data }),
+      }).catch((err) => console.error("Async email error:", err));
+    } catch (err) {
+      console.error("Email trigger failed:", err);
+    }
+  };
+
   const doUpdate = async (id: string, status: "PROCESSING" | "PAID") => {
     setLoadingAction(id);
     try {
@@ -121,6 +135,20 @@ export default function AdminRewards() {
         const msg = parsed?.error ?? `Failed to update (status ${res.status})`;
         throw new Error(String(msg));
       }
+
+      // Trigger notification if PAID
+      if (status === "PAID") {
+        const row = claims.find((c) => c.id === id);
+        const email = row?.user?.users_email || row?.user?.email;
+        if (email) {
+          triggerEmail(email, "REWARD_PAID", {
+            recipientName: email,
+            amount: row?.amount ?? 0,
+            paymentMethod: row?.payment_method ?? "N/A",
+          });
+        }
+      }
+
       setGlobalSuccess(`Claim marked ${status}`);
       await swrMutate("/api/admin/rewards");
     } catch (err: unknown) {
@@ -259,6 +287,17 @@ export default function AdminRewards() {
         color: "green",
       });
 
+      // Trigger notification
+      const email =
+        proofTargetRow.user?.users_email || proofTargetRow.user?.email;
+      if (email) {
+        triggerEmail(email, "REWARD_PAID", {
+          recipientName: email,
+          amount: proofTargetRow.amount ?? 0,
+          paymentMethod: proofTargetRow.payment_method ?? "N/A",
+        });
+      }
+
       await swrMutate("/api/admin/rewards");
 
       setProofOpen(false);
@@ -281,7 +320,7 @@ export default function AdminRewards() {
 
   // Memoize filtered and paginated data to prevent unnecessary recalculations
   const filtered = useMemo(() => {
-    return claims.filter((c) => {
+    const subset = claims.filter((c) => {
       if (activeTab === "PENDING" && c.status === "PAID") return false;
       if (activeTab === "PAID" && c.status !== "PAID") return false;
 
@@ -303,7 +342,38 @@ export default function AdminRewards() {
         .toLowerCase();
       return fields.includes(q);
     });
-  }, [claims, activeTab, search]);
+
+    return [...subset].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined;
+      let valB: string | number | boolean | null | undefined;
+
+      if (columnAccessor === "user") {
+        valA = a.user?.users_email || a.user?.email || a.user_id;
+        valB = b.user?.users_email || b.user?.email || b.user_id;
+      } else {
+        valA = a[columnAccessor as keyof AdminClaimApprove] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+        valB = b[columnAccessor as keyof AdminClaimApprove] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [claims, activeTab, search, sortStatus]);
 
   const paginated = useMemo(
     () => filtered.slice((page - 1) * pageSize, page * pageSize),
@@ -330,7 +400,7 @@ export default function AdminRewards() {
 
   // avoid nested ternary expressions for proof preview
   let viewProofContent: React.ReactNode = (
-    <Text c="dimmed" id="view-proof-modal-description">
+    <Text c="#2D3748" id="view-proof-modal-description">
       No proof available for this claim.
     </Text>
   );
@@ -375,60 +445,69 @@ export default function AdminRewards() {
   }
 
   return (
-    <Stack align="center" w="100%" gap="md">
+    <Stack align="center" w="100%" gap="lg">
       {globalSuccess && (
         <Alert
           variant="light"
           color="green"
           title="Success"
+          icon={<IconCheck size={16} />}
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
           w="100%"
-          maw={1200}
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
+      <Paper
+        p={isMobile ? "md" : "xl"}
+        radius="lg"
+        withBorder
+        shadow="sm"
+        w="100%"
+      >
         <Stack gap="md" mb="md">
-          <Group gap="sm" wrap="nowrap" w="100%">
-            <TextInput
-              placeholder="Search claims..."
-              leftSection={<IconSearch size={16} aria-hidden="true" />}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.currentTarget.value);
-                setPage(1); // Reset page on search
-              }}
-              style={{ flexGrow: 1, maxWidth: 400 }}
-              aria-label="Search reward claims"
-            />
+          <Group
+            justify="space-between"
+            gap="xs"
+            align="center"
+            wrap="nowrap"
+            w="100%"
+          >
+            <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
+              <TextInput
+                placeholder="Search claims..."
+                leftSection={<IconSearch size={16} aria-hidden="true" />}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.currentTarget.value);
+                  setPage(1); // Reset page on search
+                }}
+                style={{ flex: 1 }}
+                aria-label="Search reward claims"
+              />
+            </Group>
           </Group>
 
           <Tabs
             value={activeTab}
             onChange={(value) => {
-              setActiveTab(value as ClaimStatusTab);
+              setActiveTab((value as ClaimStatusTab) || "PENDING");
               setPage(1); // Reset page on tab change
             }}
             keepMounted={false}
+            aria-label="Reward claim status tabs"
           >
             <Tabs.List>
               <Tabs.Tab
                 value="PENDING"
                 rightSection={
-                  <Badge
-                    w={16}
-                    h={16}
-                    bg="transparent"
-                    c="blue"
-                    p={0}
-                    variant="filled"
-                    radius="sm"
-                  >
-                    {pendingCount}
-                  </Badge>
+                  activeTab === "PENDING" && pendingCount > 0 ? (
+                    <Badge size="xs" color="blue" variant="filled">
+                      {pendingCount}
+                    </Badge>
+                  ) : null
                 }
               >
                 Pending Action
@@ -436,22 +515,20 @@ export default function AdminRewards() {
               <Tabs.Tab
                 value="PAID"
                 rightSection={
-                  <Badge
-                    w={16}
-                    h={16}
-                    bg="transparent"
-                    c="green"
-                    p={0}
-                    variant="filled"
-                    radius="sm"
-                  >
-                    {paidCount}
-                  </Badge>
+                  activeTab === "PAID" && paidCount > 0 ? (
+                    <Badge size="xs" color="green" variant="filled">
+                      {paidCount}
+                    </Badge>
+                  ) : null
                 }
               >
                 Paid/Completed
               </Tabs.Tab>
             </Tabs.List>
+
+            {/* Panels are required so Tabs can generate valid aria-controls/tabpanel ids */}
+            <Tabs.Panel value="PENDING">{null}</Tabs.Panel>
+            <Tabs.Panel value="PAID">{null}</Tabs.Panel>
           </Tabs>
         </Stack>
 
@@ -462,95 +539,88 @@ export default function AdminRewards() {
             </Center>
           }
         >
-          <DataTable
-            withTableBorder
-            borderRadius="sm"
-            withColumnBorders
-            striped
-            highlightOnHover
-            records={paginated}
-            totalRecords={filtered.length}
-            recordsPerPage={pageSize}
-            page={page}
-            onPageChange={(p) => setPage(p)}
-            recordsPerPageOptions={[10, 20, 50]}
-            onRecordsPerPageChange={(r) => {
-              setPageSize(r);
-              setPage(1);
+          <div
+            style={{
+              contentVisibility: "auto",
+              containIntrinsicSize: "400px",
             }}
-            minHeight={200}
-            columns={[
-              {
-                accessor: "id",
-                title: "Claim",
-                width: 120,
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return <Text fw={700}>{String(row.id).slice(0, 8)}</Text>;
+          >
+            <AdminTable<AdminClaimApprove>
+              records={paginated}
+              totalRecords={filtered.length}
+              recordsPerPage={pageSize}
+              page={page}
+              onPageChange={(p) => setPage(p)}
+              recordsPerPageOptions={[10, 20, 50]}
+              onRecordsPerPageChange={(r) => {
+                setPageSize(r);
+                setPage(1);
+              }}
+              columns={[
+                {
+                  accessor: "id",
+                  title: "Claim",
+                  width: 100,
+                  sortable: true,
+                  render: (row) => (
+                    <Text fw={700}>{String(row.id).slice(0, 8)}</Text>
+                  ),
                 },
-              },
-              {
-                accessor: "user",
-                title: "User",
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return (
+                {
+                  accessor: "user",
+                  title: "User",
+                  width: 250,
+                  sortable: true,
+                  render: (row) => (
                     <Stack gap={2}>
                       <Text size="sm" fw={500}>
                         {row.user?.users_email ??
                           row.user?.email ??
                           row.user_id}
                       </Text>
-                      {/* <Text size="xs" c="dimmed">
-                    {(row.user?.first_name ?? "") +
-                      " " +
-                      (row.user?.last_name ?? "")}
-                  </Text> */}
                     </Stack>
-                  );
+                  ),
                 },
-              },
-              {
-                accessor: "referral_count",
-                title: "Claim Referrals",
-                width: 130,
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return <Text>{row.referral_count ?? "—"}</Text>;
+                {
+                  accessor: "referral_count",
+                  title: "Claim Ref",
+                  width: 100,
+                  sortable: true,
+                  render: (row) => <Text>{row.referral_count ?? "—"}</Text>,
                 },
-              },
-              {
-                accessor: "total_referrals",
-                title: "Total Referrals",
-                width: 130,
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return <Text>{row.total_referrals ?? "—"}</Text>;
+                {
+                  accessor: "total_referrals",
+                  title: "Total Ref",
+                  width: 90,
+                  sortable: true,
+                  render: (row) => <Text>{row.total_referrals ?? "—"}</Text>,
                 },
-              },
-              {
-                accessor: "amount",
-                title: "Amount",
-                width: 120,
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return <Text fw={700}>PHP {row.amount ?? "—"}</Text>;
+                {
+                  accessor: "amount",
+                  title: "Amount",
+                  width: 110,
+                  sortable: true,
+                  render: (row) => (
+                    <Text fw={700}>PHP {row.amount ?? "—"}</Text>
+                  ),
                 },
-              },
-              {
-                accessor: "method_account",
-                title: "Method / Account",
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return (
+                {
+                  accessor: "method_account",
+                  title: "Method / Account",
+                  width: 250,
+                  render: (row) => (
                     <Stack gap={2}>
-                      <Text size="sm" fw={500}>
+                      <Text
+                        style={{ textTransform: "uppercase" }}
+                        size="sm"
+                        fw={700}
+                      >
                         {row.payment_method ?? "—"}
                       </Text>
-                      <Group gap={8} align="center">
+                      <Group gap={8} align="center" justify="space-between">
                         <Text
                           size="xs"
-                          c="dimmed"
+                          c="#2D3748"
                           style={{ wordBreak: "break-all" }}
                         >
                           {revealed[row.id]
@@ -577,48 +647,50 @@ export default function AdminRewards() {
                         </Tooltip>
                       </Group>
                     </Stack>
-                  );
+                  ),
                 },
-              },
-              {
-                accessor: "created_at",
-                title: "Requested",
-                width: 180,
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return (
+                {
+                  accessor: "created_at",
+                  title: "Requested",
+                  width: 180,
+                  sortable: true,
+                  render: (row) => (
                     <Text size="sm">
                       {row.created_at
                         ? new Date(row.created_at).toLocaleString()
                         : "—"}
                     </Text>
-                  );
+                  ),
                 },
-              },
-              {
-                accessor: "status_display",
-                title: "Status",
-                width: 100,
-                textAlign: "center",
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return (
-                    <Center>
-                      <Badge color={getStatusFormat(row.status)} size="md">
-                        {row.status ?? "—"}
-                      </Badge>
-                    </Center>
-                  );
+                {
+                  accessor: "status",
+                  title: "Status",
+                  width: 150,
+                  textAlign: "center",
+                  sortable: true,
+                  render: (row) => {
+                    const color = getStatusFormat(row.status);
+                    const badgeColor = `${color}.9`;
+                    return (
+                      <Center>
+                        <Badge
+                          color={badgeColor}
+                          variant="filled"
+                          size="md"
+                          w={100}
+                        >
+                          {row.status ?? "—"}
+                        </Badge>
+                      </Center>
+                    );
+                  },
                 },
-              },
-              {
-                accessor: "actions",
-                title: "Actions",
-                width: 180,
-                textAlign: "right",
-                render: (record: unknown) => {
-                  const row = record as AdminClaimApprove;
-                  return (
+                {
+                  accessor: "actions",
+                  title: "Actions",
+                  width: 160,
+                  textAlign: "right" as const,
+                  render: (row) => (
                     <Group justify="flex-end" gap="xs">
                       {row.status === "PENDING" && (
                         <Button
@@ -632,6 +704,7 @@ export default function AdminRewards() {
                           leftSection={
                             <IconUpload size={16} aria-hidden="true" />
                           }
+                          w={140}
                           aria-label={`Upload proof for claim ${row.id}`}
                         >
                           Upload Proof
@@ -647,6 +720,7 @@ export default function AdminRewards() {
                             setConfirmOpen(true);
                           }}
                           loading={loadingAction === row.id}
+                          w={140}
                           aria-label={`Mark claim ${row.id} as paid`}
                         >
                           Mark Paid
@@ -661,18 +735,21 @@ export default function AdminRewards() {
                             setViewProofOpen(true);
                           }}
                           leftSection={<IconEye size={14} aria-hidden="true" />}
+                          w={140}
                           aria-label={`View proof for claim ${row.id}`}
                         >
                           View Proof
                         </Button>
                       )}
                     </Group>
-                  );
+                  ),
                 },
-              },
-            ]}
-            noRecordsText="No reward claims"
-          />
+              ]}
+              sortStatus={sortStatus}
+              onSortStatusChange={setSortStatus}
+              noRecordsText="No reward claims"
+            />
+          </div>
         </Suspense>
       </Paper>
 
@@ -681,8 +758,6 @@ export default function AdminRewards() {
         onClose={() => setConfirmOpen(false)}
         title="Confirm Action"
         centered
-        aria-labelledby="confirm-modal-title"
-        aria-describedby="confirm-modal-description"
       >
         <Stack>
           <Text id="confirm-modal-description">
@@ -721,8 +796,6 @@ export default function AdminRewards() {
         }}
         title="Upload Proof of Payment"
         centered
-        aria-labelledby="upload-proof-modal-title"
-        aria-describedby="upload-proof-modal-description"
       >
         <Stack>
           <Text size="sm" fw={500}>
@@ -739,7 +812,7 @@ export default function AdminRewards() {
             aria-label="Select proof of payment file"
             aria-describedby="file-input-description"
           />
-          <Text size="xs" c="dimmed" id="file-input-description">
+          <Text size="xs" c="#2D3748" id="file-input-description">
             Accepted formats: JPEG, PNG, GIF, or PDF (max 5MB)
           </Text>
 
@@ -774,8 +847,6 @@ export default function AdminRewards() {
         title="Proof of Payment"
         centered
         size="lg"
-        aria-labelledby="view-proof-modal-title"
-        aria-describedby="view-proof-modal-description"
       >
         <Stack align="center">{viewProofContent}</Stack>
       </Modal>

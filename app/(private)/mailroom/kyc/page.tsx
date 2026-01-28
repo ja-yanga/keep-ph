@@ -18,13 +18,14 @@ import {
   Alert,
   Modal,
   Grid,
-  rem,
   Divider,
   Center,
   Loader,
   SimpleGrid,
+  Select,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import useSWR from "swr";
 import {
   IconId,
   IconCheck,
@@ -41,10 +42,17 @@ import {
 } from "@tabler/icons-react";
 
 // add your navbar/footer components (adjust import paths if your project uses a different alias)
-import { getStatusFormat } from "@/utils/helper";
 import { FORM_NAME, IDENTITY_VERIFICATION_KYC } from "@/utils/constants";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import {
+  getRegion,
+  getProvince,
+  getCity,
+  getBarangay,
+} from "@/app/actions/get";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
+
+const formatLabel = (text: string) => text?.replace(/_/g, " ") || "";
 
 function maskId(id?: string, visible = 4) {
   if (!id) return "";
@@ -74,6 +82,16 @@ export default function KycPage() {
   const [region, setRegion] = useState<string>("");
   const [postal, setPostal] = useState<string>("");
   const [birthDate, setBirthDate] = useState<string>(""); // YYYY-MM-DD
+  const [province, setProvince] = useState<string>("");
+  const [barangay, setBarangay] = useState<string>("");
+
+  // Selected IDs (UUIDs from DB)
+  const [addressIds, setAddressIds] = useState({
+    regionId: "",
+    provinceId: "",
+    cityId: "",
+    barangayId: "",
+  });
 
   // NEW: submission state / server error
   const [submitting, setSubmitting] = useState(false);
@@ -85,6 +103,50 @@ export default function KycPage() {
   // confirm modal for submit
   const [confirmOpen, { open: openConfirm, close: closeConfirm }] =
     useDisclosure(false);
+
+  // SWR Fetchers
+  const { data: regionsData } = useSWR("regions", () => getRegion());
+
+  const { data: provincesData } = useSWR(
+    addressIds.regionId ? ["provinces", addressIds.regionId] : null,
+    ([, id]) => getProvince({ regionId: id }),
+  );
+
+  const { data: citiesData } = useSWR(
+    addressIds.provinceId ? ["cities", addressIds.provinceId] : null,
+    ([, id]) => getCity({ provinceId: id }),
+  );
+
+  const { data: barangaysData } = useSWR(
+    addressIds.cityId ? ["barangays", addressIds.cityId] : null,
+    ([, id]) => getBarangay({ cityId: id }),
+  );
+
+  // Transform for Mantine Select
+  const regions =
+    regionsData?.map((r) => ({
+      label: formatLabel(r.region),
+      value: r.region_id,
+    })) || [];
+
+  const provinces =
+    provincesData?.map((p) => ({
+      label: formatLabel(p.province),
+      value: p.province_id,
+    })) || [];
+
+  const cities =
+    citiesData?.map((c) => ({
+      label: formatLabel(c.city),
+      value: c.city_id,
+    })) || [];
+
+  const barangays =
+    barangaysData?.map((b) => ({
+      label: formatLabel(b.barangay),
+      value: b.barangay_id,
+      zip: b.barangay_zip_code,
+    })) || [];
 
   // load real KYC status from API on mount
   useEffect(() => {
@@ -151,7 +213,9 @@ export default function KycPage() {
       !lastName ||
       !addressLine1 ||
       !city ||
+      !province ||
       !region ||
+      !barangay ||
       !postal ||
       !birthDate ||
       submitting
@@ -171,7 +235,9 @@ export default function KycPage() {
       fd.append("address_line1", addressLine1);
       fd.append("address_line2", addressLine2);
       fd.append("city", city);
+      fd.append("province", province);
       fd.append("region", region);
+      fd.append("barangay", barangay);
       fd.append("postal", postal);
       fd.append("birth_date", birthDate);
       fd.append("front", frontFile as Blob);
@@ -214,7 +280,9 @@ export default function KycPage() {
     !!lastName &&
     !!addressLine1 &&
     !!city &&
+    !!province &&
     !!region &&
+    !!barangay &&
     !!birthDate &&
     !!postal;
 
@@ -256,20 +324,42 @@ export default function KycPage() {
     NONE: "Not submitted",
   } as const;
 
-  const fullAddress = [addressLine1, addressLine2, city, region, postal]
+  const fullAddress = [
+    addressLine1,
+    addressLine2,
+    barangay,
+    city,
+    province,
+    region,
+    postal,
+  ]
     .filter(Boolean)
     .join(", ");
 
   const StatusIconComponent = getStatusIcon(status);
 
+  const getStatusBadgeColor = (s: typeof status) => {
+    if (s === "VERIFIED") return "green.9";
+    if (s === "SUBMITTED") return "blue.9";
+    return "gray.9";
+  };
+
+  // Styles to fix FileInput placeholder contrast
+  const fileInputStyles = {
+    placeholder: {
+      color: "var(--mantine-color-gray-7)", // Ensure sufficient contrast for "Choose ... image" text
+      opacity: 1,
+    },
+  };
+
   return (
     <PrivateMainLayout>
       {initialLoading ? (
-        <Center h="90vh">
+        <Center h="90vh" component="main">
           <Loader />
         </Center>
       ) : (
-        <Container size="sm" py="xl">
+        <Container size="sm" py="xl" component="main">
           <Stack gap="xl">
             <Group
               justify="space-between"
@@ -283,7 +373,7 @@ export default function KycPage() {
                 </Group>
               </Title>
               <Button
-                variant="subtle"
+                variant="default" // Changed from 'subtle' for better contrast
                 leftSection={<IconArrowLeft size={16} />}
                 onClick={() => router.back()}
                 aria-label="Go back"
@@ -295,18 +385,20 @@ export default function KycPage() {
             {/* === STATUS SECTION === */}
             <Paper withBorder p="lg" radius="md">
               <Stack gap="md">
-                <Text>
+                <Text size="md">
                   {IDENTITY_VERIFICATION_KYC.section_header.sub_title}
                 </Text>
 
                 <Group justify="space-between" align="center">
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" fw={600} c="gray.9">
+                    {/* Darker color (gray.9) */}
                     {IDENTITY_VERIFICATION_KYC.section_header.status}
                   </Text>
                   <Badge
-                    color={getStatusFormat(status)}
+                    color={getStatusBadgeColor(status)}
                     size="lg"
-                    variant="light"
+                    variant="filled"
+                    c="white" // Explicitly ensure text is white for contrast
                     leftSection={<StatusIconComponent size={14} />}
                   >
                     {statusTextMap[status as keyof typeof statusTextMap]}
@@ -329,15 +421,15 @@ export default function KycPage() {
                   <Alert
                     icon={<IconAlertCircle size={18} />}
                     color="blue"
-                    variant="light"
+                    variant="outline"
                   >
-                    <Text size="sm" fw={600}>
+                    <Text size="sm" fw={700} c="blue.9">
                       {
                         IDENTITY_VERIFICATION_KYC.section_form.section_header
                           .alert_title
                       }
                     </Text>
-                    <Text size="sm">
+                    <Text size="sm" c="gray.9" mt={4}>
                       {
                         IDENTITY_VERIFICATION_KYC.section_form.section_header
                           .alert_description
@@ -390,7 +482,7 @@ export default function KycPage() {
                           value={firstName}
                           onChange={(e) => setFirstName(e.currentTarget.value)}
                           required
-                          leftSection={<IconUser size={rem(16)} />}
+                          leftSection={<IconUser size={16} />}
                           disabled={isLocked}
                         />
                         <TextInput
@@ -416,7 +508,10 @@ export default function KycPage() {
                         labelPosition="left"
                         label={
                           <Group gap="xs">
-                            <IconMapPin size={16} /> Address
+                            <IconMapPin size={16} />
+                            <Text size="sm" c="gray.8" fw={500}>
+                              Address
+                            </Text>
                           </Group>
                         }
                         my="xs"
@@ -424,7 +519,7 @@ export default function KycPage() {
 
                       <TextInput
                         label={FORM_NAME.address_line_one}
-                        placeholder="Street, building"
+                        placeholder="House No., Street Name, Phase/Section"
                         value={addressLine1}
                         onChange={(e) => setAddressLine1(e.currentTarget.value)}
                         required
@@ -432,32 +527,119 @@ export default function KycPage() {
                       />
                       <TextInput
                         label={FORM_NAME.address_line_two}
-                        placeholder="Unit / Barangay"
+                        placeholder="Building, Floor No., Unit No. (Optional)"
                         value={addressLine2}
                         onChange={(e) => setAddressLine2(e.currentTarget.value)}
                         disabled={isLocked}
                       />
 
-                      <Group grow>
-                        <TextInput
-                          label={FORM_NAME.city}
-                          placeholder={FORM_NAME.city}
-                          value={city}
-                          onChange={(e) => setCity(e.currentTarget.value)}
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                        <Select
+                          data-testid="region-select"
+                          label="Region"
+                          placeholder="Select Region"
+                          data={regions}
+                          value={addressIds.regionId}
+                          onChange={(val) => {
+                            const label = regions.find(
+                              (r) => r.value === val,
+                            )?.label;
+                            setRegion(label || "");
+                            // Reset children
+                            setProvince("");
+                            setCity("");
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              regionId: val || "",
+                              provinceId: "",
+                              cityId: "",
+                              barangayId: "",
+                            }));
+                          }}
                           required
                           disabled={isLocked}
+                          searchable
+                          clearable
                         />
-                        <TextInput
-                          label={FORM_NAME.region}
-                          placeholder={FORM_NAME.region}
-                          value={region}
-                          onChange={(e) => setRegion(e.currentTarget.value)}
+                        <Select
+                          data-testid="province-select"
+                          label="Province"
+                          placeholder="Select Province"
+                          data={provinces}
+                          value={addressIds.provinceId}
+                          onChange={(val) => {
+                            const label = provinces.find(
+                              (p) => p.value === val,
+                            )?.label;
+                            setProvince(label || "");
+                            // Reset children
+                            setCity("");
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              provinceId: val || "",
+                              cityId: "",
+                              barangayId: "",
+                            }));
+                          }}
                           required
-                          disabled={isLocked}
+                          disabled={isLocked || !addressIds.regionId}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="city-select"
+                          label="City/Municipality"
+                          placeholder="Select City/Municipality"
+                          data={cities}
+                          value={addressIds.cityId}
+                          onChange={(val) => {
+                            const label = cities.find(
+                              (c) => c.value === val,
+                            )?.label;
+                            setCity(label || "");
+                            // Reset children
+                            setBarangay("");
+                            setPostal("");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              cityId: val || "",
+                              barangayId: "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.provinceId}
+                          searchable
+                          clearable
+                        />
+                        <Select
+                          data-testid="barangay-select"
+                          label="Barangay"
+                          placeholder="Select Barangay"
+                          data={barangays}
+                          value={addressIds.barangayId}
+                          onChange={(val) => {
+                            const b = barangays.find(
+                              (bar) => bar.value === val,
+                            );
+                            setBarangay(b?.label || "");
+                            setPostal(b?.zip || "");
+                            setAddressIds((prev) => ({
+                              ...prev,
+                              barangayId: val || "",
+                            }));
+                          }}
+                          required
+                          disabled={isLocked || !addressIds.cityId}
+                          searchable
+                          clearable
                         />
                         <TextInput
-                          label={FORM_NAME.postal}
-                          placeholder={FORM_NAME.postal}
+                          label="Postal Code"
+                          placeholder="Postal Code"
                           value={postal}
                           onChange={(e) =>
                             setPostal(e.currentTarget.value.replace(/\D/g, ""))
@@ -465,9 +647,9 @@ export default function KycPage() {
                           inputMode="numeric"
                           pattern="\d*"
                           required
-                          disabled={isLocked}
+                          disabled={isLocked || !!addressIds.barangayId}
                         />
-                      </Group>
+                      </SimpleGrid>
                     </Stack>
                   </Paper>
 
@@ -488,9 +670,10 @@ export default function KycPage() {
                             accept="image/*"
                             value={frontFile}
                             onChange={setFrontFile}
-                            leftSection={<IconArrowRight size={rem(14)} />}
+                            leftSection={<IconArrowRight size={14} />}
                             required
                             disabled={isLocked}
+                            styles={fileInputStyles}
                           />
                         </Grid.Col>
                         <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -500,20 +683,30 @@ export default function KycPage() {
                             accept="image/*"
                             value={backFile}
                             onChange={setBackFile}
-                            leftSection={<IconArrowLeft size={rem(14)} />}
+                            leftSection={<IconArrowLeft size={14} />}
                             required
                             disabled={isLocked}
+                            styles={fileInputStyles}
                           />
                         </Grid.Col>
                       </Grid>
 
-                      <Text size="xs" c="dimmed">
+                      <Text size="xs" c="gray.8">
+                        {/* Changed from gray.7 to gray.8 */}
                         Supported formats: JPG, PNG. Max file size: 5MB. Clear,
                         well-lit images are required.
                       </Text>
 
                       {/* Inline previews inside upload section */}
-                      <Divider my="sm" label="Previews" labelPosition="left" />
+                      <Divider
+                        my="sm"
+                        label={
+                          <Text size="sm" c="gray.8" fw={500}>
+                            Previews
+                          </Text>
+                        }
+                        labelPosition="left"
+                      />
                       <Group grow wrap="nowrap" align="flex-start">
                         {frontPreview ? (
                           <Paper
@@ -548,7 +741,8 @@ export default function KycPage() {
                             radius="md"
                             style={{ flexBasis: "50%" }}
                           >
-                            <Text c="dimmed" size="sm" ta="center">
+                            <Text c="gray.7" size="sm" ta="center">
+                              {/* Darker gray (gray.7) */}
                               Front ID preview will appear here.
                             </Text>
                           </Paper>
@@ -587,7 +781,8 @@ export default function KycPage() {
                             radius="md"
                             style={{ flexBasis: "50%" }}
                           >
-                            <Text c="dimmed" size="sm" ta="center">
+                            <Text c="gray.7" size="sm" ta="center">
+                              {/* Darker gray (gray.7) */}
                               Back ID preview will appear here.
                             </Text>
                           </Paper>
@@ -609,9 +804,8 @@ export default function KycPage() {
 
                   <Group justify="flex-end" mt="md">
                     <Button
-                      variant="outline"
+                      variant="default" // Changed from outline to default for better contrast
                       onClick={() => {
-                        // cancel / reset
                         setDocNumber("");
                         setFrontFile(null);
                         setBackFile(null);
@@ -654,11 +848,14 @@ export default function KycPage() {
 
                   {/* Status Alert */}
                   <Alert
-                    color={status === "VERIFIED" ? "green" : "yellow"}
+                    color={status === "VERIFIED" ? "green" : "orange"} // Use orange for review state -> better contrast than yellow
+                    variant="light"
                     title={
-                      status === "VERIFIED"
-                        ? "Verification Complete"
-                        : "Documents Under Review"
+                      <Text span fw={700} c="gray.9">
+                        {status === "VERIFIED"
+                          ? "Verification Complete"
+                          : "Documents Under Review"}
+                      </Text>
                     }
                     icon={
                       status === "VERIFIED" ? (
@@ -668,9 +865,11 @@ export default function KycPage() {
                       )
                     }
                   >
-                    {status === "VERIFIED"
-                      ? "Your identity is verified. You can now access all services."
-                      : "We are currently reviewing your submitted documents. Please check back later."}
+                    <Text size="sm" c="gray.9">
+                      {status === "VERIFIED"
+                        ? "Your identity is verified. You can now access all services."
+                        : "We are currently reviewing your submitted documents. Please check back later."}
+                    </Text>
                   </Alert>
 
                   {/* SimpleGrid for Snapshot Details */}
@@ -686,18 +885,22 @@ export default function KycPage() {
                         </Group>
                         <Divider my={5} />
                         <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
+                            {/* Darker text */}
                             Type:
                           </Text>
-                          <Badge size="lg" variant="light" color="blue">
+                          <Badge size="lg" variant="filled" color="blue.9">
+                            {/* Changed to blue.9 for better contrast */}
                             {docType}
                           </Badge>
                         </Group>
                         <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
                             Number:
                           </Text>
-                          <Text fw={500}>{maskId(docNumber)}</Text>
+                          <Text fw={600} c="gray.9">
+                            {maskId(docNumber)}
+                          </Text>
                         </Group>
                       </Stack>
                     </Paper>
@@ -708,7 +911,7 @@ export default function KycPage() {
                         {/* Header (Kept the same) */}
                         <Group gap="xs">
                           <IconUser size={20} />
-                          <Text fw={600} size="md">
+                          <Text fw={600} size="md" c="gray.9">
                             Personal Details
                           </Text>
                         </Group>
@@ -716,47 +919,61 @@ export default function KycPage() {
 
                         {/* Full Name Detail (Label-Top, Value-Bottom) */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
                             Full Name:
                           </Text>
-                          <Text fw={500}>
+                          <Text fw={600} c="gray.9">
                             {firstName} {lastName}
                           </Text>
                         </Stack>
 
                         {/* Address Detail (Label-Top, Value-Bottom) */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
+                          <Text
+                            size="sm"
+                            c="gray.8"
+                            fw={500}
+                            style={{ flexShrink: 0 }}
+                          >
                             Address:
                           </Text>
-                          <Text fw={500} style={{ wordBreak: "break-word" }}>
+                          <Text
+                            fw={600}
+                            c="gray.9"
+                            style={{ wordBreak: "break-word" }}
+                          >
                             {fullAddress}
                           </Text>
                         </Stack>
 
-                        {/* FIX: Date of Birth Detail (Label-Top, Value-Bottom) 
-        Replaced <Group> with <Stack> to force vertical alignment.
-    */}
                         <Stack gap={2}>
-                          <Text size="sm" c="dimmed">
+                          <Text size="sm" c="gray.8" fw={500}>
                             Date of birth:
                           </Text>
-                          <Text fw={500}>{formatDobMasked(birthDate)}</Text>
+                          <Text fw={600} c="gray.9">
+                            {formatDobMasked(birthDate)}
+                          </Text>
                         </Stack>
                       </Stack>
                     </Paper>
                   </SimpleGrid>
 
                   <Divider
-                    label="Document Images"
+                    label={
+                      <Text size="sm" c="gray.8" fw={500}>
+                        Document Images
+                      </Text>
+                    }
                     labelPosition="center"
                     my="md"
                   />
 
                   {/* Images hidden from user snapshot for privacy */}
                   <Paper withBorder p="lg" radius="md" ta="center">
-                    <Text fw={600}>Document images are hidden for privacy</Text>
-                    <Text size="sm" c="dimmed" mt="xs">
+                    <Text fw={700} c="gray.9">
+                      Document images are hidden for privacy
+                    </Text>
+                    <Text size="sm" c="gray.8" mt="xs">
                       If you need to view or update your documents, contact
                       support or wait for verification.
                     </Text>

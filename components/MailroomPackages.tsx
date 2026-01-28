@@ -1,10 +1,8 @@
 "use client";
 
 import "mantine-datatable/styles.layer.css";
-
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
-import dynamic from "next/dynamic";
 import {
   ActionIcon,
   Alert,
@@ -24,6 +22,7 @@ import {
   FileInput,
   Tabs,
   SegmentedControl,
+  Loader,
 } from "@mantine/core";
 import { useDisclosure, useDebouncedValue } from "@mantine/hooks";
 // Added useSearchParams
@@ -47,19 +46,11 @@ import {
 import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-
-// Dynamic import for DataTable to reduce initial bundle size
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((mod) => mod.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
-        Loading table...
-      </div>
-    ),
-  },
-);
+import { AdminTable } from "./common/AdminTable";
+import {
+  type DataTableColumn,
+  type DataTableSortStatus,
+} from "mantine-datatable";
 
 type Registration = {
   id: string;
@@ -137,6 +128,7 @@ export default function MailroomPackages() {
     Array<{ value: string; label: string }>
   >([]);
   const [searchingRecipients, setSearchingRecipients] = useState(false);
+  const [selectedRecipientLabel, setSelectedRecipientLabel] = useState("");
 
   // New Filter States
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
@@ -145,6 +137,10 @@ export default function MailroomPackages() {
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Package>>({
+    columnAccessor: "received_at",
+    direction: "desc",
+  });
 
   // Modal state
   const [opened, { open, close }] = useDisclosure(false);
@@ -161,6 +157,8 @@ export default function MailroomPackages() {
     locker_id: "",
     package_type: "", // CHANGED: Default to empty string to force selection
     status: "STORED",
+    recipient_email: "",
+    recipient_name: "",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -192,10 +190,7 @@ export default function MailroomPackages() {
   // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanFile, setScanFile] = useState<File | null>(null);
-  const [packageToScan, setPackageToScan] = useState<{
-    id: string;
-    package_name?: string;
-  } | null>(null);
+  const [packageToScan, setPackageToScan] = useState<Package | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
@@ -230,7 +225,7 @@ export default function MailroomPackages() {
   const [isDisposing, setIsDisposing] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<string | null>("active");
+  const [activeTab, setActiveTab] = useState<string>("active");
 
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [packageToRestore, setPackageToRestore] = useState<Package | null>(
@@ -247,9 +242,9 @@ export default function MailroomPackages() {
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
+    if (!tabParam) return;
+    const allowed = ["active", "requests", "released", "disposed", "archive"];
+    if (allowed.includes(tabParam)) setActiveTab(tabParam);
   }, [searchParams]);
 
   // New state for locker capacity
@@ -311,9 +306,8 @@ export default function MailroomPackages() {
     fetcher,
   );
 
-  // sync SWR combined response into local state
-  useEffect(() => {
-    setLoading(!!isValidating || !!isArchivedValidating);
+  // sync SWR combined response into local state using useMemo to reduce main-thread work
+  const normalizedData = useMemo(() => {
     const payload = combinedData ?? {};
     let pkgs: Package[];
     if (Array.isArray(payload.packages)) {
@@ -331,23 +325,38 @@ export default function MailroomPackages() {
       ? payload.assignedLockers
       : [];
 
-    setPackages(pkgs);
-    setRegistrations(regs);
-    setLockers(lks);
-    setAssignedLockers(assigned);
+    return {
+      pkgs,
+      regs,
+      lks,
+      assigned,
+      total: payload.meta?.total,
+      counts: payload.counts,
+    };
+  }, [combinedData]);
 
-    if (payload.meta?.total !== undefined) {
-      setServerTotalCount(payload.meta.total);
-    }
-    if (payload.counts) {
-      setCounts(payload.counts);
+  useEffect(() => {
+    setLoading(!!isValidating || !!isArchivedValidating);
+
+    if (normalizedData.pkgs) {
+      setPackages(normalizedData.pkgs);
+      setRegistrations(normalizedData.regs);
+      setLockers(normalizedData.lks);
+      setAssignedLockers(normalizedData.assigned);
+
+      if (normalizedData.total !== undefined) {
+        setServerTotalCount(normalizedData.total);
+      }
+      if (normalizedData.counts) {
+        setCounts(normalizedData.counts);
+      }
     }
 
     if (archivedData) {
       setArchivedPackages(archivedData.packages || []);
       setArchivedTotalCount(archivedData.total_count || 0);
     }
-  }, [combinedData, isValidating, archivedData, isArchivedValidating]);
+  }, [normalizedData, isValidating, archivedData, isArchivedValidating]);
 
   // helper to refresh combined data (used after mutations)
   const refreshAll = async () => {
@@ -394,6 +403,12 @@ export default function MailroomPackages() {
     // Clear options if search is less than 2 characters
     if (searchQuery.length < 2) {
       setRecipientOptions([]);
+      setSearchingRecipients(false);
+      return;
+    }
+
+    // Skip search if the query is exactly the selected recipient's label
+    if (selectedRecipientLabel && searchQuery === selectedRecipientLabel) {
       setSearchingRecipients(false);
       return;
     }
@@ -472,7 +487,8 @@ export default function MailroomPackages() {
         locker_id: pkg.locker_id || "",
         package_type: pkg.package_type,
         status: pkg.status,
-        // notes: pkg.notes || "",
+        recipient_email: pkg.registration?.email || "",
+        recipient_name: pkg.registration?.full_name || "",
       });
       // Find registration to populate recipient search
       const reg = registrations.find((r) => r.id === pkg.registration_id);
@@ -486,6 +502,7 @@ export default function MailroomPackages() {
         ? `${reg.mailroom_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
         : "";
       setRecipientSearch(regLabel);
+      setSelectedRecipientLabel(regLabel);
       // Add current recipient to options so it displays correctly (without triggering search)
       if (reg) {
         setRecipientOptions([
@@ -506,8 +523,11 @@ export default function MailroomPackages() {
         locker_id: "",
         package_type: "Parcel",
         status: "STORED",
+        recipient_email: "",
+        recipient_name: "",
       });
       setRecipientSearch("");
+      setSelectedRecipientLabel("");
       setRecipientOptions([]); // Clear options when opening new package modal
       setPackagePhoto(null);
     }
@@ -521,6 +541,8 @@ export default function MailroomPackages() {
         registration_id: "",
         locker_id: "",
         package_type: "",
+        recipient_email: "",
+        recipient_name: "",
       });
       return;
     }
@@ -531,7 +553,7 @@ export default function MailroomPackages() {
     );
 
     // Find the registration to check plan capabilities
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
+
     const _reg = registrations.find((r) => r.id === regId);
 
     // Determine default package type based on plan
@@ -547,6 +569,8 @@ export default function MailroomPackages() {
       registration_id: regId,
       locker_id: defaultLockerId,
       package_type: defaultType,
+      recipient_email: _reg?.email || "",
+      recipient_name: _reg?.full_name || "",
     });
   };
 
@@ -562,6 +586,23 @@ export default function MailroomPackages() {
     if (reg.mailroom_plans.can_receive_parcels) types.push("Parcel");
 
     return types;
+  };
+
+  // helper to fire-and-forget emails
+  const triggerEmail = async (
+    to: string,
+    template: string,
+    data: Record<string, string | number | boolean>,
+  ) => {
+    try {
+      fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, template, data }),
+      }).catch((err) => console.error("Async email error:", err));
+    } catch (err) {
+      console.error("Email trigger failed:", err);
+    }
   };
 
   const handleSubmit = async () => {
@@ -639,7 +680,10 @@ export default function MailroomPackages() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save");
+      }
       const raw = await res.json().catch(() => null);
       const saved = raw?.data ?? raw;
 
@@ -663,6 +707,21 @@ export default function MailroomPackages() {
       setGlobalSuccess(
         `Package ${editingPackage ? "updated" : "created"} successfully`,
       );
+
+      // Trigger Email Notification for new arrivals
+      if (!editingPackage && formData.recipient_email) {
+        const locker = lockers.find((l) => l.id === formData.locker_id);
+        triggerEmail(formData.recipient_email, "PACKAGE_ARRIVAL", {
+          packageName: formData.package_name,
+          recipientName: formData.recipient_name || "Recipient",
+          lockerCode: locker?.locker_code || "",
+        });
+      }
+
+      console.log("Package Saved Successfully", {
+        email: formData.recipient_email,
+        name: formData.recipient_name,
+      });
 
       close();
       await refreshAll();
@@ -749,6 +808,15 @@ export default function MailroomPackages() {
       if (!res.ok) throw new Error("Failed to update status");
 
       setGlobalSuccess("Package marked as DISPOSED and locker status updated");
+
+      // Trigger Email Notification for disposal
+      if (packageToDispose?.registration?.email) {
+        triggerEmail(packageToDispose.registration.email, "PACKAGE_DISPOSED", {
+          packageName: packageToDispose.package_name,
+          recipientName: packageToDispose.registration.full_name || "Recipient",
+        });
+      }
+
       setDisposeModalOpen(false);
       await refreshAll();
     } catch (error: unknown) {
@@ -792,7 +860,7 @@ export default function MailroomPackages() {
   };
 
   // --- SCAN HANDLERS ---
-  const handleOpenScan = (pkg: { id: string; package_name?: string }) => {
+  const handleOpenScan = (pkg: Package) => {
     setPackageToScan(pkg);
     setScanFile(null);
     setScanModalOpen(true);
@@ -819,6 +887,15 @@ export default function MailroomPackages() {
       }
 
       setGlobalSuccess("Document scanned and uploaded successfully");
+
+      // Trigger Email Notification for scan
+      if (packageToScan?.registration?.email) {
+        triggerEmail(packageToScan.registration.email, "PACKAGE_SCANNED", {
+          packageName: packageToScan.package_name,
+          recipientName: packageToScan.registration.full_name || "Recipient",
+        });
+      }
+
       setScanModalOpen(false);
       await refreshAll();
     } catch (error: unknown) {
@@ -936,6 +1013,15 @@ export default function MailroomPackages() {
       }
 
       setGlobalSuccess("Package released and locker status updated");
+
+      // Trigger Email Notification for release
+      if (packageToRelease?.registration?.email) {
+        triggerEmail(packageToRelease.registration.email, "PACKAGE_RELEASED", {
+          packageName: packageToRelease.package_name,
+          recipientName: packageToRelease.registration.full_name || "Recipient",
+        });
+      }
+
       setReleaseModalOpen(false);
       await refreshAll();
     } catch (error: unknown) {
@@ -973,8 +1059,42 @@ export default function MailroomPackages() {
 
   // Memoize paginated packages
   const paginatedPackages = useMemo(() => {
-    return activeTab === "archive" ? archivedPackages : filteredPackages;
-  }, [activeTab, archivedPackages, filteredPackages]);
+    const pkgs = activeTab === "archive" ? archivedPackages : filteredPackages;
+
+    return [...pkgs].sort((a, b) => {
+      const { columnAccessor, direction } = sortStatus;
+      let valA: string | number | boolean | null | undefined;
+      let valB: string | number | boolean | null | undefined;
+
+      if (columnAccessor === "registration.full_name") {
+        valA = a.registration?.full_name;
+        valB = b.registration?.full_name;
+      } else if (columnAccessor === "locker.locker_code") {
+        valA = a.locker?.locker_code;
+        valB = b.locker?.locker_code;
+      } else {
+        valA = a[columnAccessor as keyof Package] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+        valB = b[columnAccessor as keyof Package] as
+          | string
+          | number
+          | boolean
+          | null
+          | undefined;
+      }
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      const result = valA < valB ? -1 : 1;
+      return direction === "asc" ? result : -result;
+    });
+  }, [activeTab, archivedPackages, filteredPackages, sortStatus]);
 
   const totalRecords = useMemo(
     () => (activeTab === "archive" ? archivedTotalCount : serverTotalCount),
@@ -1000,12 +1120,13 @@ export default function MailroomPackages() {
   const requestCount = useMemo(() => counts.requests || 0, [counts]);
 
   // Memoize DataTable columns to prevent recreation on each render
-  const tableColumns = useMemo(
+  const tableColumns: DataTableColumn<Package>[] = useMemo(
     () => [
       {
         accessor: "package_name",
         title: "Package",
         width: 200,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
@@ -1018,6 +1139,7 @@ export default function MailroomPackages() {
       {
         accessor: "registration.full_name",
         title: "Recipient",
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
@@ -1025,7 +1147,7 @@ export default function MailroomPackages() {
               <Text size="sm" fw={500}>
                 {pkg.registration?.full_name || "Unknown"}
               </Text>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="#4A5568">
                 {pkg.registration?.email}
               </Text>
             </Stack>
@@ -1036,6 +1158,7 @@ export default function MailroomPackages() {
         accessor: "locker.locker_code",
         title: "Locker",
         width: 120,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return pkg.locker ? (
@@ -1047,7 +1170,7 @@ export default function MailroomPackages() {
               {pkg.locker.locker_code}
             </Badge>
           ) : (
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="#4A5568">
               —
             </Text>
           );
@@ -1056,13 +1179,15 @@ export default function MailroomPackages() {
       {
         accessor: "package_type",
         title: "Type",
-        width: 120,
+        width: 150,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
             <Badge
-              variant="light"
+              variant="filled"
               color="gray"
+              w={110}
               leftSection={
                 pkg.package_type === "Document" ? (
                   <IconFileText size={12} aria-hidden="true" />
@@ -1080,10 +1205,11 @@ export default function MailroomPackages() {
         accessor: "status",
         title: "Status",
         width: 180,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
-            <Badge color={getStatusColor(pkg.status)} variant="light">
+            <Badge color={getStatusColor(pkg.status)} variant="filled">
               {pkg.status.replace(/_/g, " ")}
             </Badge>
           );
@@ -1093,6 +1219,7 @@ export default function MailroomPackages() {
         accessor: "received_at",
         title: activeTab === "archive" ? "Deleted At" : "Received",
         width: 150,
+        sortable: true,
         render: (record: unknown) => {
           const pkg = record as Package;
           return dayjs(pkg.received_at).format("MMM D, YYYY");
@@ -1114,7 +1241,7 @@ export default function MailroomPackages() {
                     <Button
                       size="compact-xs"
                       color="green"
-                      w={100}
+                      variant="filled"
                       leftSection={<IconRestore size={14} aria-hidden="true" />}
                       onClick={() => handleOpenRestore(pkg)}
                       aria-label={`Restore package ${pkg.package_name}`}
@@ -1165,6 +1292,7 @@ export default function MailroomPackages() {
                         size="compact-xs"
                         w={100}
                         color="red"
+                        variant="filled"
                         leftSection={<IconTrash size={14} aria-hidden="true" />}
                         onClick={() => handleConfirmDisposal(pkg)}
                         aria-label={`Dispose package ${pkg.package_name}`}
@@ -1283,8 +1411,35 @@ export default function MailroomPackages() {
     }
   };
 
+  const packagesTable = (
+    <div
+      style={{
+        contentVisibility: "auto",
+        containIntrinsicSize: "400px",
+      }}
+    >
+      <AdminTable<Package>
+        records={paginatedPackages}
+        fetching={loading}
+        totalRecords={totalRecords}
+        recordsPerPage={pageSize}
+        page={page}
+        onPageChange={(p) => setPage(p)}
+        recordsPerPageOptions={[10, 20, 50]}
+        onRecordsPerPageChange={setPageSize}
+        columns={tableColumns}
+        sortStatus={sortStatus}
+        onSortStatusChange={setSortStatus}
+        aria-label="Packages data table"
+        noRecordsText={
+          activeTab === "requests" ? "No pending requests" : "No packages found"
+        }
+      />
+    </div>
+  );
+
   return (
-    <Stack align="center">
+    <Stack align="center" gap="lg" w="100%">
       {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
@@ -1295,21 +1450,26 @@ export default function MailroomPackages() {
           withCloseButton
           onClose={() => setGlobalSuccess(null)}
           w="100%"
-          maw={1200}
         >
           {globalSuccess}
         </Alert>
       )}
 
-      <Paper p="md" radius="md" withBorder shadow="sm" w="100%" maw={1200}>
-        <Group justify="space-between" mb="md">
-          <Group style={{ flex: 1 }}>
+      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+        <Group
+          justify="space-between"
+          mb="md"
+          gap="xs"
+          align="center"
+          wrap="nowrap"
+        >
+          <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
             <TextInput
               placeholder="Search packages..."
               leftSection={<IconSearch size={16} aria-hidden="true" />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ width: 250 }}
+              style={{ flex: 1 }}
               aria-label="Search packages by name, recipient, email, status, or locker code"
             />
             {/* Only show status filter on active tab */}
@@ -1325,7 +1485,7 @@ export default function MailroomPackages() {
                 value={filterStatus}
                 onChange={setFilterStatus}
                 clearable
-                style={{ width: 200 }}
+                style={{ width: 180 }}
                 aria-label="Filter packages by status"
               />
             )}
@@ -1335,7 +1495,7 @@ export default function MailroomPackages() {
               value={filterType}
               onChange={setFilterType}
               clearable
-              style={{ width: 150 }}
+              style={{ width: 140 }}
               aria-label="Filter packages by type"
             />
             {hasFilters && (
@@ -1353,6 +1513,7 @@ export default function MailroomPackages() {
           <Button
             leftSection={<IconPlus size={16} aria-hidden="true" />}
             onClick={() => handleOpenModal()}
+            color="#1e3a8a"
             aria-label="Add new package"
           >
             Add Package
@@ -1361,9 +1522,10 @@ export default function MailroomPackages() {
 
         <Tabs
           value={activeTab}
-          onChange={setActiveTab}
+          onChange={(value) => setActiveTab(value || "active")}
           mb="md"
           aria-label="Package status tabs"
+          keepMounted={false}
         >
           <Tabs.List>
             <Tabs.Tab
@@ -1408,31 +1570,15 @@ export default function MailroomPackages() {
               Archive
             </Tabs.Tab>
           </Tabs.List>
-        </Tabs>
 
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          withColumnBorders
-          striped
-          highlightOnHover
-          records={paginatedPackages}
-          fetching={loading}
-          minHeight={200}
-          totalRecords={totalRecords}
-          recordsPerPage={pageSize}
-          page={page}
-          onPageChange={(p) => setPage(p)}
-          recordsPerPageOptions={[10, 20, 50]}
-          onRecordsPerPageChange={setPageSize}
-          columns={tableColumns}
-          aria-label="Packages data table"
-          noRecordsText={
-            activeTab === "requests"
-              ? "No pending requests"
-              : "No packages found"
-          }
-        />
+          {(
+            ["active", "requests", "released", "disposed", "archive"] as const
+          ).map((tab) => (
+            <Tabs.Panel key={tab} value={tab} pt="xs">
+              {packagesTable}
+            </Tabs.Panel>
+          ))}
+        </Tabs>
       </Paper>
 
       <Modal
@@ -1502,7 +1648,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}
@@ -1541,22 +1687,29 @@ export default function MailroomPackages() {
               const matched = recipientOptions.find((opt) => opt.label === val);
               if (matched) {
                 handleRegistrationChange(matched.value);
+                setSelectedRecipientLabel(matched.label);
               } else if (!val) {
                 handleRegistrationChange(null);
                 setRecipientOptions([]); // Clear options when cleared
+                setSelectedRecipientLabel("");
+              } else {
+                // If user is typing and it doesn't match the current selection label, clear the selection
+                if (val !== selectedRecipientLabel) {
+                  handleRegistrationChange(null);
+                  setSelectedRecipientLabel("");
+                }
               }
             }}
             onOptionSubmit={(val) => {
-              handleRegistrationChange(val);
               const matched = recipientOptions.find((opt) => opt.value === val);
-              setRecipientSearch(matched?.label || "");
+              if (matched) {
+                handleRegistrationChange(val);
+                setRecipientSearch(matched.label);
+                setSelectedRecipientLabel(matched.label);
+              }
             }}
             rightSection={
-              searchingRecipients ? (
-                <Text size="xs" c="dimmed">
-                  Searching...
-                </Text>
-              ) : undefined
+              searchingRecipients ? <Loader size="xs" /> : undefined
             }
             description={(() => {
               if (recipientSearch.length > 0 && recipientSearch.length < 2) {
@@ -1565,7 +1718,8 @@ export default function MailroomPackages() {
               if (
                 recipientSearch.length >= 2 &&
                 recipientOptions.length === 0 &&
-                !searchingRecipients
+                !searchingRecipients &&
+                !selectedRecipientLabel
               ) {
                 return "No recipients found";
               }
@@ -1721,7 +1875,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}
@@ -1769,7 +1923,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}
@@ -1811,7 +1965,7 @@ export default function MailroomPackages() {
 
                         {/* Delivery Address (Label on top, Value below) */}
                         <Stack gap={2}>
-                          <Text fw={700} size="sm" c="dimmed">
+                          <Text fw={700} size="sm" c="#4A5568">
                             Delivery Address
                           </Text>
                           <Text size="sm" fw={500}>
@@ -1823,7 +1977,7 @@ export default function MailroomPackages() {
                         <Group grow mt="xs">
                           {packageToRelease.release_to_name && (
                             <Stack gap={2}>
-                              <Text fw={700} size="sm" c="dimmed">
+                              <Text fw={700} size="sm" c="#4A5568">
                                 Recipient Name
                               </Text>
                               <Text size="sm" fw={500}>
@@ -1833,7 +1987,7 @@ export default function MailroomPackages() {
                           )}
                           {phone && (
                             <Stack gap={2}>
-                              <Text fw={700} size="sm" c="dimmed">
+                              <Text fw={700} size="sm" c="#4A5568">
                                 Contact Phone
                               </Text>
                               <Text size="sm" fw={500}>
@@ -1858,7 +2012,7 @@ export default function MailroomPackages() {
                               </Text>
                               {/* Details as label: value pairs */}
                               {pickup.name && (
-                                <Text size="sm" c="dimmed">
+                                <Text size="sm" c="#4A5568">
                                   Name:{" "}
                                   <Text span fw={500} c="dark">
                                     {pickup.name}
@@ -1866,7 +2020,7 @@ export default function MailroomPackages() {
                                 </Text>
                               )}
                               {pickup.mobile && (
-                                <Text size="sm" c="dimmed">
+                                <Text size="sm" c="#4A5568">
                                   Mobile:{" "}
                                   <Text span fw={500} c="dark">
                                     {pickup.mobile}
@@ -1874,7 +2028,7 @@ export default function MailroomPackages() {
                                 </Text>
                               )}
                               {pickup.contact_mode && (
-                                <Text size="sm" c="dimmed">
+                                <Text size="sm" c="#4A5568">
                                   Contact via:{" "}
                                   <Text span fw={500} c="dark">
                                     {String(pickup.contact_mode).toUpperCase()}
@@ -1903,7 +2057,7 @@ export default function MailroomPackages() {
                               {def.label || "Unnamed Address"}
                             </Text>
                             {def.is_default && (
-                              <Badge size="sm" color="blue" variant="light">
+                              <Badge size="sm" color="blue" variant="filled">
                                 Default
                               </Badge>
                             )}
@@ -1912,7 +2066,7 @@ export default function MailroomPackages() {
 
                           {/* Recipient (Label on top, Value below) */}
                           <Stack gap={2}>
-                            <Text fw={700} size="sm" c="dimmed">
+                            <Text fw={700} size="sm" c="#4A5568">
                               Recipient Name
                             </Text>
                             <Text size="sm" fw={500}>
@@ -1925,7 +2079,7 @@ export default function MailroomPackages() {
                           {/* Address and Phone (Side by side) */}
                           <Group grow mt="xs">
                             <Stack gap={2}>
-                              <Text fw={700} size="sm" c="dimmed">
+                              <Text fw={700} size="sm" c="#4A5568">
                                 Address
                               </Text>
                               <Stack gap={0}>
@@ -1943,7 +2097,7 @@ export default function MailroomPackages() {
 
                             {def.contact_phone && (
                               <Stack gap={2}>
-                                <Text fw={700} size="sm" c="dimmed">
+                                <Text fw={700} size="sm" c="#4A5568">
                                   Contact Phone
                                 </Text>
                                 <Text size="sm" fw={500}>
@@ -1957,7 +2111,7 @@ export default function MailroomPackages() {
                     );
                   }
                   return (
-                    <Text c="dimmed">
+                    <Text c="#4A5568">
                       No shipping address on file for this user.
                     </Text>
                   );
@@ -2002,7 +2156,7 @@ export default function MailroomPackages() {
                 return "blue";
               })()}
             />
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="#4A5568">
               Since items are being removed, you might want to set this to
               &quot;Normal&quot; or &quot;Empty&quot;.
             </Text>
@@ -2038,7 +2192,7 @@ export default function MailroomPackages() {
           {/* FORM ERROR ALERT */}
           {formError && (
             <Alert
-              variant="light"
+              variant="filled"
               color="red"
               title="Error"
               icon={<IconAlertCircle size={16} />}

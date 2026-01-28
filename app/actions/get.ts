@@ -1,3 +1,5 @@
+"use server";
+
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import {
   normalizeAdminClaim,
@@ -9,10 +11,15 @@ import {
   AdminClaim,
   AdminDashboardStats,
   AdminUserKyc,
+  AdminUsersRpcResult,
+  BarangayTableRow,
+  CityTableRow,
   ClaimWithUrl,
   MailroomPlanRow,
   MailroomRegistrationStats,
+  ProvinceTableRow,
   RegCounts,
+  RegionTableRow,
   RewardsStatusResult,
   RpcAdminClaim,
   RpcClaim,
@@ -1347,4 +1354,114 @@ export async function checkEmailExistsAction(email: string): Promise<boolean> {
     }
     throw new Error(`Unexpected error: ${String(err)}`);
   }
+}
+
+export const getRegion = async () => {
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("region_table")
+    .select("region_id, region")
+    .eq("region_is_disabled", false)
+    .eq("region_is_available", true);
+  if (error) throw error;
+
+  return data as RegionTableRow[];
+};
+
+export const getProvince = async (params: { regionId: string }) => {
+  const { regionId } = params;
+
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("province_table")
+    .select("province_id, province")
+    .eq("province_is_disabled", false)
+    .eq("province_is_available", true)
+    .eq("province_region_id", regionId);
+  if (error) throw error;
+
+  return data as ProvinceTableRow[];
+};
+
+export const getCity = async (params: { provinceId: string }) => {
+  const { provinceId } = params;
+
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("city_table")
+    .select("city_id, city")
+    .eq("city_is_disabled", false)
+    .eq("city_is_available", true)
+    .eq("city_province_id", provinceId);
+  if (error) throw error;
+
+  return data as CityTableRow[];
+};
+
+export const getBarangay = async (params: { cityId: string }) => {
+  const { cityId } = params;
+
+  const { data, error } = await supabaseAdmin
+    .schema("address_schema")
+    .from("barangay_table")
+    .select("barangay_id, barangay, barangay_zip_code")
+    .eq("barangay_is_disabled", false)
+    .eq("barangay_is_available", true)
+    .eq("barangay_city_id", cityId);
+  if (error) throw error;
+
+  return data as BarangayTableRow[];
+};
+
+export async function adminListUsers(args: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+}): Promise<{ data: AdminUsersRpcResult["data"]; total_count: number }> {
+  const {
+    search = "",
+    limit = 10,
+    offset = 0,
+    sort = "users_created_at",
+    direction = "desc",
+  } = args;
+
+  const { data, error } = await supabaseAdmin.rpc("admin_list_users", {
+    input_search: search,
+    input_limit: limit,
+    input_offset: offset,
+    input_sort: sort,
+    input_direction: direction,
+  });
+
+  if (error) {
+    console.error("admin_list_users RPC error:", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
+
+  const payload =
+    typeof data === "string" ? JSON.parse(data) : (data as unknown);
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !("total_count" in payload)
+  ) {
+    return { data: [], total_count: 0 };
+  }
+
+  const result = payload as AdminUsersRpcResult;
+
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    total_count: Number(result.total_count) || 0,
+  };
 }

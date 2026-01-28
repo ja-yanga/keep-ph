@@ -20,7 +20,16 @@ export async function GET() {
       can_digitize: Boolean(plan.mailroom_plan_can_digitize),
     }));
 
-    return NextResponse.json({ data: normalized }, { status: 200 });
+    return NextResponse.json(
+      { data: normalized },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control":
+            "private, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      },
+    );
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";

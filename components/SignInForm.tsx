@@ -10,7 +10,6 @@ import {
   TextInput,
   PasswordInput,
   Button,
-  Anchor,
   Center,
   Alert,
   Group,
@@ -29,6 +28,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@/components/SessionProvider";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import { startRouteProgress } from "@/lib/route-progress";
+import Link from "next/link";
 
 function SignInContent() {
   const router = useRouter();
@@ -94,6 +95,7 @@ function SignInContent() {
         return;
       }
 
+      startRouteProgress();
       const supabase = createClient();
       await supabase.auth.getSession();
       await refresh();
@@ -202,7 +204,7 @@ function SignInContent() {
 
                   <TextInput
                     label="Email"
-                    placeholder="you@example.com"
+                    placeholder="user@email.com"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -227,14 +229,18 @@ function SignInContent() {
                       }
                     />
                     <Group justify="flex-end">
-                      <Anchor
+                      <Link
                         href="/forgot-password"
-                        size="sm"
-                        fw={500}
-                        c={colors.primaryBlue}
+                        onClick={() => startRouteProgress()}
+                        style={{
+                          fontWeight: 600,
+                          color: colors.primaryBlue,
+                          textDecoration: "none",
+                          fontSize: ".8rem",
+                        }}
                       >
                         Forgot Password?
-                      </Anchor>
+                      </Link>
                     </Group>
                   </Stack>
 
@@ -289,9 +295,17 @@ function SignInContent() {
                 style={{ color: colors.textSecondary }}
               >
                 Don&apos;t have an account?{" "}
-                <Anchor href="/signup" fw={600} c={colors.primaryBlue}>
+                <Link
+                  href="/signup"
+                  onClick={() => startRouteProgress()}
+                  style={{
+                    fontWeight: 600,
+                    color: colors.primaryBlue,
+                    textDecoration: "none",
+                  }}
+                >
                   Sign Up
-                </Anchor>
+                </Link>
               </Text>
             </Paper>
           </Stack>

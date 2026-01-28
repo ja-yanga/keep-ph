@@ -78,6 +78,7 @@ describe("PrivateNavigationHeader (admin) — admin role", () => {
     expect(screen.getByText(/Plans/i)).toBeTruthy();
     expect(screen.getByText(/Rewards/i)).toBeTruthy();
     expect(screen.getByText(/Stats/i)).toBeTruthy();
+    expect(screen.getByText(/Users/i)).toBeTruthy();
   });
 
   it("admin nav links have expected hrefs (no router push from anchors)", async () => {
@@ -85,6 +86,28 @@ describe("PrivateNavigationHeader (admin) — admin role", () => {
       <MantineProvider>
         <PrivateNavigationHeader />
       </MantineProvider>,
+    );
+
+    const dashboardLink = screen.getByText(/Dashboard/i).closest("a");
+    expect(dashboardLink).toBeTruthy();
+    expect(String(dashboardLink?.getAttribute("href"))).toContain(
+      "/admin/dashboard",
+    );
+
+    const kycLink = screen.getByText(/KYC/i).closest("a");
+    expect(kycLink).toBeTruthy();
+    expect(String(kycLink?.getAttribute("href"))).toContain("/admin/kyc");
+
+    const locationsLink = screen.getByText(/Locations/i).closest("a");
+    expect(locationsLink).toBeTruthy();
+    expect(String(locationsLink?.getAttribute("href"))).toContain(
+      "/admin/locations",
+    );
+
+    const lockersLink = screen.getByText(/Lockers/i).closest("a");
+    expect(lockersLink).toBeTruthy();
+    expect(String(lockersLink?.getAttribute("href"))).toContain(
+      "/admin/lockers",
     );
 
     const packagesLink = screen.getByText(/Packages/i).closest("a");
@@ -99,9 +122,23 @@ describe("PrivateNavigationHeader (admin) — admin role", () => {
       "/admin/mailrooms",
     );
 
+    const plansLink = screen.getByText(/Plans/i).closest("a");
+    expect(plansLink).toBeTruthy();
+    expect(String(plansLink?.getAttribute("href"))).toContain("/admin/plans");
+
+    const rewardsLink = screen.getByText(/Rewards/i).closest("a");
+    expect(rewardsLink).toBeTruthy();
+    expect(String(rewardsLink?.getAttribute("href"))).toContain(
+      "/admin/rewards",
+    );
+
     const statsLink = screen.getByText(/Stats/i).closest("a");
     expect(statsLink).toBeTruthy();
     expect(String(statsLink?.getAttribute("href"))).toContain("/admin/stats");
+
+    const usersLink = screen.getByText(/Users/i).closest("a");
+    expect(usersLink).toBeTruthy();
+    expect(String(usersLink?.getAttribute("href"))).toContain("/admin/users");
   });
 
   it("does not render user-only notifications control for admin role", async () => {

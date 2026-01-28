@@ -9,7 +9,6 @@ import {
   Stack,
   TextInput,
   Button,
-  Anchor,
   Center,
   Alert,
   rem,
@@ -21,6 +20,8 @@ import {
   IconMail,
   IconArrowLeft,
 } from "@tabler/icons-react";
+import Link from "next/link";
+import { startRouteProgress } from "@/lib/route-progress";
 
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -144,7 +145,7 @@ export default function ForgotPasswordForm() {
 
                     <TextInput
                       label="Email"
-                      placeholder="you@example.com"
+                      placeholder="user@email.com"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -173,19 +174,21 @@ export default function ForgotPasswordForm() {
 
               <Center mt="xl">
                 {/* CONTRAST FIX: Replaced c="dimmed" with textSecondary */}
-                <Anchor
+                <Link
                   href="/signin"
-                  size="sm"
+                  onClick={() => startRouteProgress()}
                   style={{
                     color: colors.textSecondary,
                     display: "flex",
                     alignItems: "center",
                     gap: 5,
                     fontWeight: 500,
+                    textDecoration: "none",
+                    fontSize: ".9rem",
                   }}
                 >
                   <IconArrowLeft size={14} /> Back to Login
-                </Anchor>
+                </Link>
               </Center>
             </Paper>
           </Stack>

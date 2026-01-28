@@ -6,7 +6,6 @@ import {
   Container,
   Group,
   Title,
-  Anchor,
   Button,
   ActionIcon,
   Tooltip,
@@ -22,6 +21,7 @@ import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 import { NAV_ITMES } from "@/utils/constants/nav-items";
 import Notifications from "../Notifications";
+import { startRouteProgress } from "@/lib/route-progress";
 
 export default function PrivateNavigationHeader() {
   const pathname = usePathname() ?? "/";
@@ -42,10 +42,12 @@ export default function PrivateNavigationHeader() {
       color: "#1A237E",
       fontWeight: active ? 700 : 500,
       fontSize: "1rem",
+      textDecoration: "none",
     };
   };
 
   const handleSignOut = async () => {
+    startRouteProgress();
     setLoading(true);
     try {
       await fetch("/api/auth/signout", { method: "POST" });
@@ -59,17 +61,22 @@ export default function PrivateNavigationHeader() {
     }
   };
 
+  const handleRouteClick = (href: string) => {
+    if (pathname !== href) {
+      startRouteProgress();
+    }
+    close();
+  };
+
   const navLinks = ((role && NAV_ITMES[role]) || []).map((nav, key) => (
-    <Anchor
+    <Link
       key={key}
-      component={Link}
       href={nav.path}
       style={linkColor(nav.path)}
-      underline="hover"
-      onClick={close} // Close drawer when link is clicked
+      onClick={() => handleRouteClick(nav.path)} // Close drawer when link is clicked
     >
       {nav.title}
-    </Anchor>
+    </Link>
   ));
 
   return (

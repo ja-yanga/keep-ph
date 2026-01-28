@@ -2,8 +2,12 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 // Import Mantine CSS - Next.js will optimize this automatically
 import "@mantine/core/styles.css";
-import "mantine-datatable/styles.css";
+// Moved mantine-datatable styles to components using them to reduce initial CSS bundle
+// import "mantine-datatable/styles.css";
 
+import "mantine-datatable/styles.css";
+import "nprogress/nprogress.css";
+import "@/app/globals.css";
 import {
   ColorSchemeScript,
   MantineProvider,
@@ -11,12 +15,14 @@ import {
 } from "@mantine/core";
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import TopLoaderProvider from "@/components/provider/TopLoaderProvider";
+import { StoreProvider } from "@/store/StoreProvider";
 
 // CRITICAL: Use only ONE font to minimize render-blocking
 const inter = Inter({
   subsets: ["latin"],
   display: "swap", // Prevent FOIT (Flash of Invisible Text)
-  preload: true,
+  preload: true, // Let Next.js optimize font loading to reduce critical path latency
   fallback: ["system-ui", "arial"],
 });
 
@@ -50,12 +56,6 @@ export default function RootLayout({
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript />
-        {/* DNS Prefetch for external resources */}
-        <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://rqdyfadbeafmunvmlqcp.supabase.co"
-        />
       </head>
       <body
         className={inter.className}
@@ -66,9 +66,13 @@ export default function RootLayout({
         {process.env.NEXT_PUBLIC_GA_ID && (
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
-
         <MantineProvider>
-          <ServerSessionProvider>{children}</ServerSessionProvider>
+          <StoreProvider>
+            <ServerSessionProvider>
+              <TopLoaderProvider />
+              {children}
+            </ServerSessionProvider>
+          </StoreProvider>
         </MantineProvider>
       </body>
     </html>

@@ -10,7 +10,6 @@ import {
   TextInput,
   PasswordInput,
   Button,
-  Anchor,
   Center,
   Alert,
   rem,
@@ -31,6 +30,8 @@ import {
 } from "@tabler/icons-react";
 import { createClient } from "@/lib/supabase/client";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
+import Link from "next/link";
+import { doneRouteProgress, startRouteProgress } from "@/lib/route-progress";
 
 export default function SignUpForm() {
   const [email, setEmail] = useState("");
@@ -119,8 +120,8 @@ export default function SignUpForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
       const data = await res.json();
+      startRouteProgress();
 
       if (!res.ok) {
         setError(data?.error || "Signup failed");
@@ -136,6 +137,7 @@ export default function SignUpForm() {
       setError(message);
     } finally {
       setLoading(false);
+      doneRouteProgress();
     }
   };
 
@@ -267,14 +269,19 @@ export default function SignUpForm() {
                       : "Resend Email"}
                   </Button>
 
-                  <Anchor
+                  <Link
                     href="/signin"
-                    size="sm"
-                    style={{ color: colors.textMuted }}
-                    mt="xs"
+                    onClick={() => startRouteProgress()}
+                    style={{
+                      color: colors.textMuted,
+                      fontWeight: 600,
+                      fontSize: "sm",
+                      marginTop: "1rem",
+                      textDecoration: "none",
+                    }}
                   >
                     Back to Login
-                  </Anchor>
+                  </Link>
                 </Stack>
               </Paper>
             </Stack>
@@ -333,7 +340,7 @@ export default function SignUpForm() {
 
                   <TextInput
                     label="Email"
-                    placeholder="you@example.com"
+                    placeholder="user@email.com"
                     required
                     aria-required="true"
                     value={email}
@@ -475,9 +482,17 @@ export default function SignUpForm() {
                 style={{ color: colors.textMuted }}
               >
                 Already have an account?{" "}
-                <Anchor href="/signin" fw={600} c={colors.primaryBlue}>
+                <Link
+                  href="/signin"
+                  onClick={() => startRouteProgress()}
+                  style={{
+                    fontWeight: 600,
+                    color: colors.primaryBlue,
+                    textDecoration: "none",
+                  }}
+                >
                   Log In
-                </Anchor>
+                </Link>
               </Text>
             </Paper>
           </Stack>

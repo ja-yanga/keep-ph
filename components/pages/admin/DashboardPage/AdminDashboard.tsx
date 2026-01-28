@@ -18,22 +18,8 @@ import {
   Skeleton,
   Loader,
 } from "@mantine/core";
-import dynamic from "next/dynamic";
-import { type DataTableColumn, type DataTableProps } from "mantine-datatable";
-// Lazy load DataTable to reduce initial bundle
-const DataTable = dynamic(
-  () => import("mantine-datatable").then((m) => m.DataTable),
-  {
-    ssr: false,
-    loading: () => (
-      <Stack gap="xs" aria-busy="true" aria-label="Loading table">
-        {[...Array(5)].map((_, i) => (
-          <Skeleton key={i} h={40} />
-        ))}
-      </Stack>
-    ),
-  },
-) as <T>(props: DataTableProps<T>) => React.ReactElement;
+import { AdminTable } from "@/components/common/AdminTable";
+import { type DataTableColumn } from "mantine-datatable";
 import {
   IconBox,
   IconUsers,
@@ -50,6 +36,7 @@ import { StatCard } from "./StatCard";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 
 import { AdminDashboardStats } from "@/utils/types";
+import { startRouteProgress } from "@/lib/route-progress";
 
 export default function AdminDashboard({
   initialData,
@@ -151,7 +138,7 @@ export default function AdminDashboard({
       {
         accessor: "received_at",
         title: "Received",
-        textAlign: "right",
+        textAlign: "right" as const,
         render: (pkg) => (
           <Text size="sm" fw={600} c="dark.7">
             {pkg.received_at ? (
@@ -177,6 +164,11 @@ export default function AdminDashboard({
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handleViewFullInventory = () => {
+    startRouteProgress();
+    router.push("/admin/packages");
   };
 
   let pageContent: React.ReactNode;
@@ -405,7 +397,7 @@ export default function AdminDashboard({
               size="xs"
               radius="md"
               rightSection={<IconArrowRight size={14} aria-hidden="true" />}
-              onClick={() => router.push("/admin/packages")}
+              onClick={handleViewFullInventory}
               aria-label="View all packages"
             >
               View Full Inventory
@@ -415,17 +407,12 @@ export default function AdminDashboard({
           <div aria-live="polite" aria-atomic="true">
             {/* On mobile, only render if it was visible in viewport. On desktop, follow the idle callback readiness. */}
             {(isMobile ? wasTableVisible : true) && isTableReady ? (
-              <DataTable
-                striped
-                withTableBorder={false}
-                borderRadius="lg"
-                verticalSpacing="md"
-                highlightOnHover
-                minHeight={150}
+              <AdminTable<AdminDashboardStats["recentPackages"][0]>
                 records={recent}
                 aria-label="Recent packages"
                 columns={tableColumns}
                 noRecordsText="No recent activity found"
+                minHeight={300}
                 noRecordsIcon={
                   <IconPackage
                     size={32}

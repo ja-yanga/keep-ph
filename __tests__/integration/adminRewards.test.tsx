@@ -281,8 +281,9 @@ const waitForRowWithText = async (text: string) => {
 describe("AdminRewards (admin)", () => {
   it("displays the title 'Reward Claims'", async () => {
     renderComponent();
+    // heading renders as h1 in the page; assert by text only
     expect(
-      screen.getByRole("heading", { name: /Reward Claims/i, level: 2 }),
+      screen.getByRole("heading", { name: /Rewards & Referral Claims/i }),
     ).toBeInTheDocument();
   });
 

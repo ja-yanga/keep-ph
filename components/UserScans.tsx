@@ -294,10 +294,16 @@ export default function UserScans({
         <Group justify="space-between" mb="md">
           <Group gap="xs">
             <IconDatabase size={20} color="gray" />
-            <Title order={4}>Digital Storage</Title>
+            <Title order={3}>Digital Storage</Title>
           </Group>
           <Group>
-            <Badge variant="light" size="lg" color="violet">
+            <Badge
+              variant="filled"
+              size="lg"
+              styles={{
+                root: { backgroundColor: "#5b21b6", color: "#ffffff" },
+              }}
+            >
               {scans.length} Files
             </Badge>
           </Group>
@@ -318,7 +324,7 @@ export default function UserScans({
         {/* Storage Usage Bar */}
         <Box mb="lg">
           <Group justify="space-between" mb={5}>
-            <Text size="xs" fw={500} c="dimmed">
+            <Text size="xs" fw={500} c="gray.8">
               Storage Usage
             </Text>
             <Text size="xs" fw={500}>
@@ -334,6 +340,27 @@ export default function UserScans({
               if (usage.percentage > 70) return "orange";
               return "blue";
             })()}
+            aria-hidden="true" // hide native aria attrs from Mantine root
+          />
+          {/* Accessible progressbar for assistive tech (kept visually hidden) */}
+          <div
+            role="progressbar"
+            aria-label="Storage usage"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(usage.percentage)}
+            aria-valuetext={`${Math.round(usage.percentage)}%`}
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0 0 0 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
           />
         </Box>
 
@@ -401,13 +428,17 @@ export default function UserScans({
                             >
                               <Box style={{ width: "100%" }}>
                                 <Badge
-                                  variant="outline"
+                                  variant="filled"
                                   color="gray"
                                   size="sm"
-                                  style={{
-                                    maxWidth: "100%",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
+                                  styles={{
+                                    root: {
+                                      backgroundColor: "#374151",
+                                      color: "#ffffff",
+                                      maxWidth: "100%",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    },
                                   }}
                                 >
                                   {pkgName}
@@ -415,7 +446,7 @@ export default function UserScans({
                               </Box>
                             </Tooltip>
                           ) : (
-                            <Text size="sm" c="dimmed">
+                            <Text size="sm" c="gray.7">
                               —
                             </Text>
                           )}
@@ -451,6 +482,8 @@ export default function UserScans({
                               <ActionIcon
                                 variant="light"
                                 color="blue"
+                                aria-label={`Preview ${scan.file_name}`}
+                                title={`Preview ${scan.file_name}`}
                                 onClick={() => handlePreview(scan)}
                               >
                                 <IconEye size={16} />
@@ -464,6 +497,8 @@ export default function UserScans({
                                 target="_blank"
                                 variant="light"
                                 color="green"
+                                aria-label={`Download ${scan.file_name}`}
+                                title={`Download ${scan.file_name}`}
                               >
                                 <IconDownload size={16} />
                               </ActionIcon>
@@ -472,6 +507,8 @@ export default function UserScans({
                               <ActionIcon
                                 color="red"
                                 variant="light"
+                                aria-label={`Delete ${scan.file_name}`}
+                                title={`Delete ${scan.file_name}`}
                                 onClick={() => handleDelete(scan.id)}
                                 disabled={deletingId === scan.id}
                               >
@@ -491,7 +528,7 @@ export default function UserScans({
                           size={40}
                           color="var(--mantine-color-gray-3)"
                         />
-                        <Text c="dimmed">
+                        <Text c="gray.7">
                           {search
                             ? "No results found for your search."
                             : "No scanned documents found"}
@@ -511,14 +548,14 @@ export default function UserScans({
             align="center"
             style={{ width: "100%" }}
           >
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="gray.7">
               Showing {Math.min(start + 1, total)}–
               {Math.min(start + paginatedScans.length, total)} of {total}
             </Text>
             <Group>
               <Button
                 size="xs"
-                variant="outline"
+                variant="default"
                 disabled={activePage === 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
@@ -526,7 +563,7 @@ export default function UserScans({
               </Button>
               <Button
                 size="xs"
-                variant="outline"
+                variant="default"
                 disabled={start + ITEMS_PER_PAGE >= total}
                 onClick={() => setPage((p) => p + 1)}
               >
@@ -550,7 +587,7 @@ export default function UserScans({
       >
         {(() => {
           if (!selectedScan)
-            return <Text c="dimmed">No preview available</Text>;
+            return <Text c="gray.7">No preview available</Text>;
           if (/\.pdf(\?.*)?$/i.test(selectedScan.file_url)) {
             return (
               <iframe
