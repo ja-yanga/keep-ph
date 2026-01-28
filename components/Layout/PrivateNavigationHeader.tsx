@@ -139,6 +139,7 @@ export default function PrivateNavigationHeader() {
                 color="gray"
                 radius="xl"
                 size="lg"
+                onClick={() => startRouteProgress()}
                 aria-label="View account settings"
               >
                 <IconUser size={20} aria-hidden="true" />
