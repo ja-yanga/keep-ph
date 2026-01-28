@@ -40,35 +40,12 @@ export async function POST(req: Request) {
       email,
       password,
       options: {
-        emailRedirectTo: `${origin}/signin`,
+        emailRedirectTo: `${origin}/api/auth/callback`,
       },
     });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    if (data.user) {
-      const { error: dbError } = await supabase.from("users_table").insert({
-        users_id: data.user.id,
-        users_email: email,
-        users_role: "user",
-      });
-
-      if (dbError) {
-        console.error("Error creating public user record:", dbError);
-      }
-
-      // // Sync to auth metadata when successfully created public user record
-      // const { error: updateError } = await supabase.auth.admin.updateUserById(
-      //   data.user.id,
-      //   {
-      //     user_metadata: { role: "user" },
-      //   },
-      // );
-      // if (updateError) {
-      //   console.error("Error updating auth metadata:", updateError);
-      // }
     }
 
     return NextResponse.json({

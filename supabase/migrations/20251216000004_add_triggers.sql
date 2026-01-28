@@ -78,7 +78,15 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
 -- ============================================================================
 CREATE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
-FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+FOR EACH ROW
+WHEN (NEW.email_confirmed_at IS NOT NULL)
+EXECUTE FUNCTION public.handle_new_user();
+
+CREATE TRIGGER on_auth_user_confirmed
+AFTER UPDATE ON auth.users
+FOR EACH ROW
+WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================================
 -- FUNCTION: Handle User Update
@@ -131,6 +139,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
 -- ============================================================================
 -- TRIGGER: On User Deleted in users_table
 -- ============================================================================
-CREATE TRIGGER on_user_deleted
+CREATE OR REPLACE TRIGGER on_user_deleted
 AFTER DELETE ON public.users_table
 FOR EACH ROW EXECUTE FUNCTION public.handle_user_delete();
