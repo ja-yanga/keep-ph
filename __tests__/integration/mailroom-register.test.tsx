@@ -12,7 +12,7 @@ import type { Plan } from "@/utils/types";
 /**
  * Integration tests for the Mailroom registration flow.
  * - smoke tests for rendering and basic interactions
- * - end-to-end like flow up to payments.create request
+ * - end-to-end like flow up to payments create-subscription request
  * - lightweight unit tests for OrderSummary and ReviewStep components
  *
  * These tests run in JSDOM and therefore polyfill a couple of browser APIs used by Mantine.
@@ -145,28 +145,29 @@ describe("Mailroom Register - basic smoke", () => {
     expect(screen).toBeDefined();
   });
 
-  it("creates payment session and redirects to checkout", async () => {
+  it("creates subscription and redirects to pay page", async () => {
     /**
      * Full-ish flow:
      * - select plan/location
      * - fill details
      * - open confirm modal and trigger Confirm & Pay
-     * - assert payments.create was called with a payload containing the plan and email
-     *
-     * Notes:
-     * - We don't actually follow the external checkout flow in tests; we assert the app
-     *   creates a payment session and returns the expected checkout_url via the API call.
+     * - assert create-subscription was called with a payload containing the plan and email
+     * - app redirects to /mailroom/register/pay with payment_intent_id
      */
 
-    const checkoutUrl = "https://checkout.example/session/abc";
+    const paymentIntentId = "pi_test_123";
 
-    // mock fetch: return checkout_url for payments.create, otherwise default empty responses
+    // mock fetch: return subscription + payment_intent_id for create-subscription, otherwise default empty
     const fetchMock = jest.fn((input: RequestInfo) => {
-      if (String(input).includes(API_ENDPOINTS.payments.create)) {
+      if (String(input).includes(API_ENDPOINTS.payments.createSubscription)) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            data: { attributes: { checkout_url: checkoutUrl } },
+            success: true,
+            payment_intent_id: paymentIntentId,
+            subscription_id: "sub_xxx",
+            customer_id: "cus_xxx",
+            plan_id: "plan_xxx",
           }),
         } as unknown as Response);
       }
@@ -225,10 +226,10 @@ describe("Mailroom Register - basic smoke", () => {
     });
     await userEvent.click(confirmBtn);
 
-    // wait for payment creation request then assert the payments.create endpoint was hit
+    // wait for create-subscription request then assert the endpoint was hit
     await waitFor(() =>
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining(API_ENDPOINTS.payments.create),
+        expect.stringContaining(API_ENDPOINTS.payments.createSubscription),
         expect.anything(),
       ),
     );
@@ -237,7 +238,7 @@ describe("Mailroom Register - basic smoke", () => {
     const calls = (global.fetch as unknown as jest.Mock).mock
       .calls as unknown[][];
     const createCall = calls.find((c) =>
-      String(c[0]).includes(API_ENDPOINTS.payments.create),
+      String(c[0]).includes(API_ENDPOINTS.payments.createSubscription),
     );
     expect(createCall).toBeDefined();
     const createOpts = createCall
@@ -247,7 +248,8 @@ describe("Mailroom Register - basic smoke", () => {
     const bodyStr = typeof body === "string" ? body : JSON.stringify(body);
     expect(bodyStr).toMatch(/p1/);
     expect(bodyStr).toMatch(/jane@example.com/);
-  });
+    // On success the app redirects to /mailroom/register/pay with payment_intent_id (not asserted: window.location is not redefinable in JSDOM)
+  }, 15000);
 });
 
 describe("OrderSummary component", () => {

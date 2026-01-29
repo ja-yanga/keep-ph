@@ -177,6 +177,83 @@ export async function POST(req: Request) {
         );
         break;
 
+      case "SUBSCRIPTION_RENEWAL_REMINDER":
+        subject = "Subscription Renewal Reminder - Keep PH";
+        contentHtml = getEmailLayout(
+          "Your Subscription Renews Soon",
+          `
+          <p>Hi ${data.recipientName || "User"},</p>
+          <p>This is a friendly reminder that your mailroom subscription will renew automatically in ${data.daysUntilRenewal || "a few"} days.</p>
+          <div class="card">
+            <p><strong>Plan:</strong> ${data.planName || "Mailroom Plan"}</p>
+            <p><strong>Amount:</strong> PHP ${data.amount || "0.00"}</p>
+            <p><strong>Renewal Date:</strong> ${data.renewalDate || "N/A"}</p>
+          </div>
+          <p>No action is required if you want to continue your subscription. Your payment method on file will be charged automatically.</p>
+          <p>If you need to update your payment method or cancel your subscription, please visit your dashboard.</p>
+          `,
+          { label: "Manage Subscription", href: `${appUrl}/dashboard` },
+        );
+        break;
+
+      case "SUBSCRIPTION_PAYMENT_FAILED":
+        subject = "Subscription Payment Failed - Keep PH";
+        contentHtml = getEmailLayout(
+          "Payment Failed - Action Required",
+          `
+          <p>Hi ${data.recipientName || "User"},</p>
+          <p>We were unable to process your subscription payment. Your subscription may be paused until payment is received.</p>
+          <div class="card" style="border-left: 4px solid #ef4444; background: #fef2f2;">
+            <p><strong>Plan:</strong> ${data.planName || "Mailroom Plan"}</p>
+            <p><strong>Amount:</strong> PHP ${data.amount || "0.00"}</p>
+            <p><strong>Reason:</strong> ${data.reason || "Payment method declined or expired"}</p>
+          </div>
+          <p>Please update your payment method to continue your subscription service without interruption.</p>
+          `,
+          { label: "Update Payment Method", href: `${appUrl}/dashboard` },
+        );
+        break;
+
+      case "SUBSCRIPTION_ACTIVATED":
+        subject = "Subscription Activated - Keep PH";
+        contentHtml = getEmailLayout(
+          "Welcome to Keep PH Mailroom!",
+          `
+          <p>Hi ${data.recipientName || "User"},</p>
+          <p>Great news! Your mailroom subscription has been successfully activated.</p>
+          <div class="card" style="border-left: 4px solid #10b981; background: #f0fdf4;">
+            <p><strong>Plan:</strong> ${data.planName || "Mailroom Plan"}</p>
+            <p><strong>Billing Cycle:</strong> ${data.billingCycle || "Monthly"}</p>
+            <p><strong>Next Billing Date:</strong> ${data.nextBillingDate || "N/A"}</p>
+          </div>
+          <p>You can now start using all the features of your mailroom subscription. Access your dashboard to manage packages and view your subscription details.</p>
+          `,
+          { label: "Go to Dashboard", href: `${appUrl}/dashboard` },
+        );
+        break;
+
+      case "SUBSCRIPTION_CANCELLED":
+        subject = "Subscription Cancelled - Keep PH";
+        contentHtml = getEmailLayout(
+          "Subscription Cancelled",
+          `
+          <p>Hi ${data.recipientName || "User"},</p>
+          <p>Your mailroom subscription has been cancelled as requested.</p>
+          <div class="card">
+            <p><strong>Plan:</strong> ${data.planName || "Mailroom Plan"}</p>
+            <p><strong>Cancellation Date:</strong> ${data.cancellationDate || "N/A"}</p>
+            <p><strong>Access Until:</strong> ${data.accessUntil || "End of current billing period"}</p>
+          </div>
+          <p>You will continue to have access to your mailroom services until the end of your current billing period.</p>
+          <p>We're sorry to see you go! If you change your mind, you can reactivate your subscription anytime.</p>
+          `,
+          {
+            label: "Reactivate Subscription",
+            href: `${appUrl}/mailroom/register`,
+          },
+        );
+        break;
+
       default:
         return NextResponse.json(
           { error: `Unknown template: ${template}` },

@@ -346,75 +346,76 @@ export default function RegisterForm({
       };
 
       const minor = Math.round((Number(totalCost) / qty) * 100);
-      const payRes = await fetch(API_ENDPOINTS.payments.create, {
+
+      // Determine billing interval based on selected billing cycle
+      const interval = billingCycle === "annual" ? "year" : "month";
+      const intervalCount = billingCycle === "annual" ? 1 : 1;
+
+      const successUrl = `${location.origin}/mailroom/register/success?order=${encodeURIComponent(orderId)}`;
+      const failedUrl = `${location.origin}/mailroom/register/failed?order=${encodeURIComponent(orderId)}`;
+
+      // Use PayMongo Subscriptions API: Plan → Customer → Subscription → pay page to attach card
+      const subRes = await fetch(API_ENDPOINTS.payments.createSubscription, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId,
           planName: selectedPlan?.name ?? "Mailroom Plan",
           amount: minor,
-          quantity: qty,
-          currency: "PHP",
-          show_all: true,
-          metadata: registrationMetadata,
-          successUrl: `${location.origin}/mailroom/register/success?order=${encodeURIComponent(orderId)}`,
-          failedUrl: `${location.origin}/mailroom/register/failed?order=${encodeURIComponent(orderId)}`,
+          interval,
+          interval_count: intervalCount,
+          email,
+          phone: mobile.startsWith("0") ? mobile.slice(1) : mobile,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          metadata: {
+            ...registrationMetadata,
+            billing_cycle: billingCycle,
+            is_subscription: "true",
+            ...(billingCycle === "annual"
+              ? selectedPlan?.paymongo_plan_id_annual && {
+                  paymongo_plan_id: selectedPlan.paymongo_plan_id_annual,
+                }
+              : selectedPlan?.paymongo_plan_id_monthly && {
+                  paymongo_plan_id: selectedPlan.paymongo_plan_id_monthly,
+                }),
+          },
+          successUrl,
+          failedUrl,
         }),
       });
 
-      // parse response without `any` and safely extract checkout URL / error message
-      const payJson: unknown = await payRes.json().catch(() => null);
+      const subJson: unknown = await subRes.json().catch(() => null);
 
-      const getStringProp = (obj: unknown, key: string): string | null => {
-        if (!obj || typeof obj !== "object") return null;
-        const v = (obj as Record<string, unknown>)[key];
-        return typeof v === "string" && v.trim() ? v : null;
-      };
-
-      let checkoutUrl: string | null = null;
-      if (payJson && typeof payJson === "object") {
-        const top = payJson as Record<string, unknown>;
-        const data = top["data"];
-        const attrs =
-          data && typeof data === "object"
-            ? ((data as Record<string, unknown>)["attributes"] ?? data)
-            : (top["attributes"] ?? top);
-
-        if (attrs && typeof attrs === "object") {
-          checkoutUrl = getStringProp(attrs, "checkout_url");
-          if (!checkoutUrl) {
-            const redirect = (attrs as Record<string, unknown>)["redirect"];
-            if (redirect && typeof redirect === "object") {
-              checkoutUrl =
-                getStringProp(redirect, "checkout_url") ||
-                getStringProp(redirect, "url");
-            }
-          }
-        }
-      }
-
-      if (!checkoutUrl) {
-        let errMsg: string | null = null;
-        if (payJson && typeof payJson === "object") {
-          const top = payJson as Record<string, unknown>;
-          const errors = top["errors"];
-          if (
-            Array.isArray(errors) &&
-            errors.length > 0 &&
-            typeof errors[0] === "object"
-          ) {
-            const e0 = errors[0] as Record<string, unknown>;
-            if (typeof e0["detail"] === "string") errMsg = e0["detail"];
-          }
-          if (!errMsg && typeof top["error"] === "string")
-            errMsg = top["error"] as string;
-        }
-        setError(errMsg ?? "Failed to create payment session");
+      if (!subRes.ok || !subJson || typeof subJson !== "object") {
+        const top = subJson as Record<string, unknown>;
+        const errMsg =
+          (typeof top?.error === "string" ? top.error : null) ??
+          (Array.isArray(top?.errors) &&
+          typeof (top.errors[0] as Record<string, unknown>)?.detail === "string"
+            ? (top.errors[0] as Record<string, unknown>).detail
+            : null) ??
+          "Failed to create subscription";
+        setError(errMsg as string);
         close();
         return;
       }
 
-      window.location.href = checkoutUrl;
+      const sub = subJson as Record<string, unknown>;
+      if (sub.success !== true || !sub.payment_intent_id) {
+        setError((sub.error as string) ?? "No payment intent returned");
+        close();
+        return;
+      }
+
+      const paymentIntentId = sub.payment_intent_id as string;
+      const payPageUrl = new URL(`${location.origin}/mailroom/register/pay`);
+      payPageUrl.searchParams.set("payment_intent_id", paymentIntentId);
+      payPageUrl.searchParams.set("order_id", orderId);
+      payPageUrl.searchParams.set("success_url", successUrl);
+      payPageUrl.searchParams.set("failed_url", failedUrl);
+
+      window.location.href = payPageUrl.toString();
     } catch (err) {
       // keep generic logging minimal
       console.error(err);
@@ -452,6 +453,18 @@ export default function RegisterForm({
           <Text c="dimmed" size="sm">
             Please review your subscription details.
           </Text>
+          <Alert
+            icon={<IconAlertCircle size={16} />}
+            title="Payment Method"
+            color="blue"
+            variant="light"
+          >
+            <Text size="sm">
+              Subscriptions only accept <strong>card payments</strong> (Visa,
+              Mastercard, credit/debit cards). E-wallets (GCash, Maya, etc.) are
+              not supported for recurring subscriptions.
+            </Text>
+          </Alert>
           <Paper withBorder p="md" bg="gray.0" radius="md">
             <Stack gap="xs">
               <Group justify="space-between">

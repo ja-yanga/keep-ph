@@ -468,6 +468,8 @@ export async function getMailroomPlans(): Promise<
     can_receive_mail: boolean;
     can_receive_parcels: boolean;
     can_digitize: boolean;
+    paymongo_plan_id_monthly?: string | null;
+    paymongo_plan_id_annual?: string | null;
   }>
 > {
   try {
@@ -496,6 +498,8 @@ export async function getMailroomPlans(): Promise<
         can_receive_mail: plan.mailroom_plan_can_receive_mail,
         can_receive_parcels: plan.mailroom_plan_can_receive_parcels,
         can_digitize: plan.mailroom_plan_can_digitize,
+        paymongo_plan_id_monthly: plan.paymongo_plan_id_monthly ?? null,
+        paymongo_plan_id_annual: plan.paymongo_plan_id_annual ?? null,
       })) ?? []
     );
   } catch (err) {

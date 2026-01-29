@@ -11,6 +11,8 @@ export type MailroomPlan = {
   canReceiveMail: boolean;
   canReceiveParcels: boolean;
   canDigitize: boolean;
+  paymongoPlanIdMonthly?: string | null;
+  paymongoPlanIdAnnual?: string | null;
 };
 
 export type ReferralRow = {
@@ -296,6 +298,8 @@ export type RpcMailroomPlan = {
   mailroom_plan_can_receive_mail: boolean;
   mailroom_plan_can_receive_parcels: boolean;
   mailroom_plan_can_digitize: boolean;
+  paymongo_plan_id_monthly?: string | null;
+  paymongo_plan_id_annual?: string | null;
 };
 
 export type CreateUserAddressArgs = {
@@ -391,6 +395,8 @@ export type MailroomPlanRow = {
   mailroom_plan_can_receive_mail: boolean;
   mailroom_plan_can_receive_parcels: boolean;
   mailroom_plan_can_digitize: boolean;
+  paymongo_plan_id_monthly?: string | null;
+  paymongo_plan_id_annual?: string | null;
 };
 
 export type AdminUpdateMailroomPlanArgs = {
@@ -415,6 +421,8 @@ export type Plan = {
   can_receive_mail: boolean;
   can_receive_parcels: boolean;
   can_digitize: boolean;
+  paymongo_plan_id_monthly?: string | null;
+  paymongo_plan_id_annual?: string | null;
 };
 
 export type MailroomPackageViewItem = RawRow | null;

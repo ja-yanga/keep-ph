@@ -44,6 +44,8 @@ export const API_ENDPOINTS = {
   // Payments
   payments: {
     create: "/api/payments/create",
+    createSubscription: "/api/payments/create-subscription",
+    attach: "/api/payments/attach",
     verify: "/api/payments/verify",
     lookupByOrder: "/api/payments/lookup-by-order",
     confirm: "/api/payments/confirm",
@@ -90,6 +92,9 @@ export const API_ENDPOINTS = {
       restore: (id: string) => `/api/admin/mailroom/archive/${id}/restore`,
       permanentDelete: (id: string) =>
         `/api/admin/mailroom/archive/${id}/permanent`,
+    },
+    payments: {
+      seedPaymongoPlans: "/api/admin/payments/seed-paymongo-plans",
     },
     rewards: {
       list: "/api/admin/rewards",

@@ -16,6 +16,8 @@ export async function GET() {
       canReceiveMail: plan.can_receive_mail,
       canReceiveParcels: plan.can_receive_parcels,
       canDigitize: plan.can_digitize,
+      paymongoPlanIdMonthly: plan.paymongo_plan_id_monthly ?? undefined,
+      paymongoPlanIdAnnual: plan.paymongo_plan_id_annual ?? undefined,
     }));
 
     return NextResponse.json(formattedPlans);

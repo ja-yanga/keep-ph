@@ -45,7 +45,7 @@ export default async function RegisterMailroomPage() {
     // Continue with empty data - RegisterForm will handle it
   }
 
-  // Map to match RegisterForm's expected types
+  // Map to match RegisterForm's expected types (Plan)
   const formattedPlans = plans.map((p) => ({
     id: p.id,
     name: p.name,
@@ -55,6 +55,8 @@ export default async function RegisterMailroomPage() {
     can_receive_mail: p.canReceiveMail,
     can_receive_parcels: p.canReceiveParcels,
     can_digitize: p.canDigitize,
+    paymongo_plan_id_monthly: p.paymongoPlanIdMonthly ?? undefined,
+    paymongo_plan_id_annual: p.paymongoPlanIdAnnual ?? undefined,
   }));
 
   const formattedLocations = locations.map((l) => ({

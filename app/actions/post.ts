@@ -707,6 +707,418 @@ export async function upsertPaymentResource(payRes: {
 }
 
 /**
+ * When subscription.invoice.paid fires (first payment for PayMongo subscription),
+ * fetch subscription metadata from PayMongo and create registration.
+ */
+export async function finalizeRegistrationFromSubscriptionInvoice(invoiceData: {
+  id?: string;
+  type?: string;
+  attributes?: {
+    amount?: number;
+    status?: string;
+    resource_id?: string;
+  };
+}) {
+  const resourceId = invoiceData?.attributes?.resource_id;
+  if (!resourceId) {
+    console.debug("[webhook] subscription.invoice.paid: no resource_id");
+    return { processed: false };
+  }
+
+  const secret = process.env.PAYMONGO_SECRET_KEY;
+  if (!secret) {
+    console.error("[webhook] PAYMONGO_SECRET_KEY missing");
+    return { processed: false };
+  }
+
+  const auth = `Basic ${Buffer.from(`${secret}:`).toString("base64")}`;
+  const res = await fetch(
+    `https://api.paymongo.com/v1/subscriptions/${encodeURIComponent(resourceId)}`,
+    { headers: { Authorization: auth, accept: "application/json" } },
+  );
+  const subJson = await res.json().catch(() => null);
+  if (!res.ok || !subJson?.data) {
+    console.error("[webhook] failed to fetch subscription:", subJson);
+    return { processed: false };
+  }
+
+  const sub = subJson.data;
+  const meta = sub?.attributes?.metadata ?? {};
+  const orderId = meta.order_id ?? null;
+  const userId = meta.user_id?.trim() ?? null;
+  const locationId = meta.location_id?.trim() ?? null;
+  const planId = meta.plan_id?.trim() ?? null;
+
+  if (!orderId || !userId || !locationId || !planId) {
+    console.debug("[webhook] subscription.invoice.paid: missing metadata", {
+      orderId,
+      userId,
+      locationId,
+      planId,
+    });
+    return { processed: false };
+  }
+
+  const latestInvoice = sub?.attributes?.latest_invoice;
+  const payments =
+    latestInvoice?.payments ?? latestInvoice?.payment_intent?.payments;
+  const firstPayment = Array.isArray(payments) ? payments[0] : null;
+  const paymentId =
+    (firstPayment?.id ?? firstPayment?.data?.id) ||
+    invoiceData?.id ||
+    `inv_${resourceId}`;
+  const amount =
+    Number(invoiceData?.attributes?.amount ?? 0) ||
+    Number(latestInvoice?.amount ?? 0) ||
+    0;
+
+  try {
+    await finalizeRegistrationFromPayment({
+      paymentId: String(paymentId),
+      orderId,
+      userId,
+      locationId,
+      planId,
+      lockerQty: Math.max(1, Number(meta.locker_qty ?? 1)),
+      months: Math.max(1, Number(meta.months ?? 1)),
+      amount,
+      referral_code: meta.referral_code?.trim() || undefined,
+    });
+    return { processed: true };
+  } catch (err) {
+    console.error(
+      "[webhook] finalizeRegistrationFromSubscriptionInvoice error:",
+      err,
+    );
+    throw err;
+  }
+}
+
+/**
+ * Handles PayMongo subscription webhook events
+ * Updates subscription_table with PayMongo subscription/plan IDs and handles subscription lifecycle
+ */
+export async function handleSubscriptionWebhook(subscriptionRes: {
+  id?: string;
+  type?: string;
+  attributes?: {
+    status?: string;
+    plan?: { id?: string; data?: { id?: string } };
+    current_period_end?: string;
+    current_period_start?: string;
+    metadata?: {
+      order_id?: string;
+      user_id?: string;
+      location_id?: string;
+      plan_id?: string;
+      mailroom_registration_id?: string;
+    };
+  };
+}) {
+  const subscriptionId = subscriptionRes?.id;
+  const attrs = subscriptionRes?.attributes ?? {};
+  const meta = attrs?.metadata ?? {};
+  const status = attrs?.status;
+
+  if (!subscriptionId) {
+    console.debug(
+      "[webhook] subscription processing skipped: no subscription_id",
+    );
+    return { id: subscriptionId, processed: false };
+  }
+
+  // Get PayMongo Plan ID
+  const planId =
+    typeof attrs?.plan === "string"
+      ? attrs.plan
+      : (attrs?.plan?.id ?? attrs?.plan?.data?.id ?? null);
+
+  // Try to find existing subscription by PayMongo subscription ID
+  const { data: existingSub } = await supabase
+    .from("subscription_table")
+    .select("subscription_id, mailroom_registration_id")
+    .eq("paymongo_subscription_id", subscriptionId)
+    .single();
+
+  // If not found by subscription ID, try to find by metadata
+  let registrationId: string | null = null;
+  if (existingSub) {
+    registrationId = existingSub.mailroom_registration_id as string;
+  } else if (meta.mailroom_registration_id) {
+    registrationId = meta.mailroom_registration_id as string;
+  } else if (meta.order_id) {
+    // Try to find registration by order_id from payment_transaction
+    const { data: paymentTx } = await supabase
+      .from("payment_transaction_table")
+      .select("mailroom_registration_id")
+      .eq("payment_transaction_order_id", meta.order_id)
+      .order("payment_transaction_created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (paymentTx) {
+      registrationId = paymentTx.mailroom_registration_id as string;
+    }
+  }
+
+  // Update subscription with PayMongo IDs
+  if (registrationId) {
+    const updateData: Record<string, unknown> = {
+      paymongo_subscription_id: subscriptionId,
+      subscription_updated_at: new Date().toISOString(),
+    };
+
+    if (planId) updateData.paymongo_plan_id = planId;
+
+    // Update subscription status based on PayMongo status
+    if (status === "active" || status === "trialing") {
+      updateData.subscription_auto_renew = true;
+    } else if (status === "canceled" || status === "unpaid") {
+      updateData.subscription_auto_renew = false;
+    }
+
+    // Update expiry date if provided
+    if (attrs.current_period_end) {
+      updateData.subscription_expires_at = attrs.current_period_end;
+    }
+
+    const { error: updateError } = await supabase
+      .from("subscription_table")
+      .update(updateData)
+      .eq("mailroom_registration_id", registrationId);
+
+    if (updateError) {
+      console.error("[webhook] failed to update subscription:", updateError);
+      throw updateError;
+    }
+
+    console.debug("[webhook] subscription updated:", {
+      subscriptionId,
+      registrationId,
+      status,
+    });
+
+    // Send email notifications based on subscription status
+    if (registrationId && status) {
+      try {
+        // Get user email from registration
+        const { data: registration } = await supabase
+          .from("mailroom_registration_table")
+          .select("user_id, mailroom_plan_table(mailroom_plan_name)")
+          .eq("mailroom_registration_id", registrationId)
+          .single();
+
+        if (registration) {
+          const userId = registration.user_id as string;
+          const { data: user } = await supabase
+            .from("users_table")
+            .select("users_email, users_first_name, users_last_name")
+            .eq("users_id", userId)
+            .single();
+
+          if (user?.users_email) {
+            const email = user.users_email as string;
+            const firstName = (user.users_first_name as string) || "User";
+            const planName =
+              (registration.mailroom_plan_table as Record<string, unknown>)
+                ?.mailroom_plan_name || "Mailroom Plan";
+
+            const protocol =
+              process.env.NODE_ENV === "development" ? "http" : "https";
+            const host = process.env.NEXT_PUBLIC_APP_URL || "localhost:3000";
+
+            if (status === "active" || status === "trialing") {
+              // Send activation email
+              await fetch(`${protocol}://${host}/api/send-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  to: email,
+                  template: "SUBSCRIPTION_ACTIVATED",
+                  data: {
+                    recipientName: firstName,
+                    planName,
+                    billingCycle: attrs.current_period_end
+                      ? "Monthly"
+                      : "Based on your plan",
+                    nextBillingDate: attrs.current_period_end || "N/A",
+                  },
+                }),
+              }).catch((err) =>
+                console.error("[webhook] email send error:", err),
+              );
+            } else if (
+              status === "canceled" ||
+              status === "incomplete_cancelled"
+            ) {
+              // Send cancellation email
+              await fetch(`${protocol}://${host}/api/send-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  to: email,
+                  template: "SUBSCRIPTION_CANCELLED",
+                  data: {
+                    recipientName: firstName,
+                    planName,
+                    cancellationDate: new Date().toLocaleDateString(),
+                    accessUntil:
+                      attrs.current_period_end || "End of billing period",
+                  },
+                }),
+              }).catch((err) =>
+                console.error("[webhook] email send error:", err),
+              );
+            }
+          }
+        }
+      } catch (emailErr) {
+        console.error("[webhook] email notification error:", emailErr);
+        // Don't throw - email failures shouldn't break webhook processing
+      }
+    }
+  } else {
+    console.debug(
+      "[webhook] subscription processing skipped: no registration found",
+      {
+        subscriptionId,
+        metadata: meta,
+      },
+    );
+  }
+
+  return { id: subscriptionId, processed: !!registrationId };
+}
+
+/**
+ * Handles PayMongo subscription payment events (recurring payment succeeded/failed)
+ */
+export async function handleSubscriptionPaymentWebhook(paymentRes: {
+  id?: string;
+  attributes?: {
+    status?: string;
+    amount?: number;
+    currency?: string;
+    metadata?: {
+      subscription_id?: string;
+      order_id?: string;
+    };
+  };
+}) {
+  const paymentId = paymentRes?.id;
+  const attrs = paymentRes?.attributes ?? {};
+  const meta = attrs?.metadata ?? {};
+  const subscriptionId = meta.subscription_id;
+
+  if (!subscriptionId) {
+    console.debug(
+      "[webhook] subscription payment processing skipped: no subscription_id in metadata",
+    );
+    return { id: paymentId, processed: false };
+  }
+
+  // Find subscription by PayMongo subscription ID
+  const { data: subscription } = await supabase
+    .from("subscription_table")
+    .select("mailroom_registration_id")
+    .eq("paymongo_subscription_id", subscriptionId)
+    .single();
+
+  if (!subscription) {
+    console.debug(
+      "[webhook] subscription payment processing skipped: subscription not found",
+      { subscriptionId },
+    );
+    return { id: paymentId, processed: false };
+  }
+
+  const registrationId = subscription.mailroom_registration_id as string;
+
+  // Create payment transaction record for recurring payment
+  if (attrs.status === "paid" && attrs.amount) {
+    const { error: insertError } = await supabase
+      .from("payment_transaction_table")
+      .insert({
+        mailroom_registration_id: registrationId,
+        payment_transaction_amount: Number(attrs.amount) / 100.0, // Convert cents to decimal
+        payment_transaction_status: "PAID",
+        payment_transaction_type: "SUBSCRIPTION",
+        payment_transaction_reference_id: paymentId,
+        payment_transaction_order_id:
+          meta.order_id || `sub_${subscriptionId}_${Date.now()}`,
+        payment_transaction_channel: "paymongo",
+      });
+
+    if (insertError) {
+      console.error(
+        "[webhook] failed to insert subscription payment transaction:",
+        insertError,
+      );
+      throw insertError;
+    }
+
+    console.debug("[webhook] subscription payment recorded:", {
+      paymentId,
+      subscriptionId,
+      registrationId,
+      amount: attrs.amount,
+    });
+  } else if (attrs.status === "failed" || attrs.status === "pending") {
+    // Send payment failed email
+    try {
+      const { data: registration } = await supabase
+        .from("mailroom_registration_table")
+        .select("user_id, mailroom_plan_table(mailroom_plan_name)")
+        .eq("mailroom_registration_id", registrationId)
+        .single();
+
+      if (registration) {
+        const userId = registration.user_id as string;
+        const { data: user } = await supabase
+          .from("users_table")
+          .select("users_email, users_first_name")
+          .eq("users_id", userId)
+          .single();
+
+        if (user?.users_email) {
+          const protocol =
+            process.env.NODE_ENV === "development" ? "http" : "https";
+          const host = process.env.NEXT_PUBLIC_APP_URL || "localhost:3000";
+
+          await fetch(`${protocol}://${host}/api/send-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: user.users_email as string,
+              template: "SUBSCRIPTION_PAYMENT_FAILED",
+              data: {
+                recipientName: (user.users_first_name as string) || "User",
+                planName:
+                  (registration.mailroom_plan_table as Record<string, unknown>)
+                    ?.mailroom_plan_name || "Mailroom Plan",
+                amount: attrs.amount
+                  ? `PHP ${(Number(attrs.amount) / 100).toFixed(2)}`
+                  : "N/A",
+                reason: "Payment method declined or expired",
+              },
+            }),
+          }).catch((err) =>
+            console.error("[webhook] payment failed email error:", err),
+          );
+        }
+      }
+    } catch (emailErr) {
+      console.error(
+        "[webhook] payment failed email notification error:",
+        emailErr,
+      );
+    }
+  }
+
+  return { id: paymentId, processed: true };
+}
+
+/**
  * Creates a new locker assignment for admin via RPC.
  * Used in:
  * - app/api/admin/mailroom/assigned-lockers/route.ts - API endpoint for admin assigned lockers
