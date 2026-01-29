@@ -99,6 +99,7 @@ export const API_ENDPOINTS = {
     userKyc: (userId?: string) =>
       userId ? `/api/admin/user-kyc/${userId}` : `/api/admin/user-kyc`,
     transactions: "/api/admin/transactions",
+    approverStats: "/api/admin/dashboard/approver-stats",
   },
 
   // Onboarding
