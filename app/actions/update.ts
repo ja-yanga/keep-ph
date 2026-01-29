@@ -55,7 +55,8 @@ export const updateRewardClaim = async ({
 export const adminUpdateUserKyc = async ({
   userId,
   status,
-}: UpdateUserKycStatusArgs) => {
+  actorUserId,
+}: UpdateUserKycStatusArgs & { actorUserId?: string }) => {
   if (!userId) {
     throw new Error("userId is required");
   }
@@ -72,6 +73,26 @@ export const adminUpdateUserKyc = async ({
 
   if (error) {
     throw error;
+  }
+
+  // Log activity
+  if (actorUserId) {
+    try {
+      await logActivity({
+        userId: actorUserId,
+        action: normalizedStatus === "VERIFIED" ? "APPROVE" : "REJECT",
+        type: "USER_KYC_VERIFY",
+        entityType: "USER_KYC",
+        entityId: userId,
+        details: {
+          target_user_id: userId,
+          new_status: normalizedStatus,
+          description: `Admin ${normalizedStatus === "VERIFIED" ? "verified" : "rejected"} KYC for user ${userId}`,
+        },
+      });
+    } catch (logErr) {
+      console.error("KYC activity log failed:", logErr);
+    }
   }
 
   // Background trigger for Resend email notification
@@ -253,14 +274,19 @@ export async function adminUpdateMailroomPackage(args: {
   }
 
   // Log activity
+  let activityAction: "UPDATE" | "RELEASE" | "DISPOSE" = "UPDATE";
+  if (args.status === "RELEASED") activityAction = "RELEASE";
+  if (args.status === "DISPOSED") activityAction = "DISPOSE";
+
   await logActivity({
     userId: args.userId,
-    action: "UPDATE",
+    action: activityAction,
     type: "ADMIN_ACTION",
     entityType: "MAILBOX_ITEM",
     entityId: args.id,
     details: {
       mailbox_item_id: args.id,
+      package_name: args.package_name ?? result.item.mailbox_item_name,
       updates: {
         package_name: args.package_name,
         registration_id: args.registration_id,
@@ -272,6 +298,7 @@ export async function adminUpdateMailroomPackage(args: {
       },
       old_status: result.old_status,
       new_status: args.status,
+      description: `Admin ${activityAction.toLowerCase()}d package ${args.package_name ?? result.item.mailbox_item_name}`,
     },
   });
 
@@ -310,6 +337,51 @@ export const updateMailboxItem = async (args: {
 
   if (error) {
     throw error;
+  }
+
+  // Log user-initiated activity
+  if (args.status) {
+    let activityAction: "SCAN" | "RELEASE" | "DISPOSE" | "CANCEL" | "UPDATE" =
+      "UPDATE";
+    let activityType:
+      | "USER_REQUEST_SCAN"
+      | "USER_REQUEST_RELEASE"
+      | "USER_REQUEST_DISPOSE"
+      | "USER_REQUEST_CANCEL"
+      | "USER_REQUEST_OTHERS" = "USER_REQUEST_OTHERS";
+
+    // Map status to action and type
+    if (args.status === "REQUEST_TO_SCAN") {
+      activityAction = "SCAN";
+      activityType = "USER_REQUEST_SCAN";
+    } else if (args.status === "REQUEST_TO_RELEASE") {
+      activityAction = "RELEASE";
+      activityType = "USER_REQUEST_RELEASE";
+    } else if (args.status === "REQUEST_TO_DISPOSE") {
+      activityAction = "DISPOSE";
+      activityType = "USER_REQUEST_DISPOSE";
+    }
+
+    try {
+      await logActivity({
+        userId: args.userId,
+        action: activityAction,
+        type: activityType,
+        entityType: "MAILBOX_ITEM",
+        entityId: args.id,
+        details: {
+          mailbox_item_id: args.id,
+          status: args.status,
+          selected_address_id: args.selected_address_id,
+          release_to_name: args.release_to_name,
+          forward_address: args.forward_address,
+          notes: args.notes,
+          description: `User requested ${activityAction.toLowerCase()} for package ${args.id}`,
+        },
+      });
+    } catch (logErr) {
+      console.error("User package action activity log failed:", logErr);
+    }
   }
 
   return data;
