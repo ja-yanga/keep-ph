@@ -35,8 +35,8 @@ export default function PrivateNavigationHeader({
   opened,
   toggle,
 }: {
-  opened: boolean;
-  toggle: () => void;
+  opened?: boolean;
+  toggle?: () => void;
 }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
