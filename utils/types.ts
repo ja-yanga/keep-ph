@@ -695,3 +695,26 @@ export type ApiUserPage = {
       }>
     | null;
 };
+
+export type ActivityLogEntryRow =
+  Database["public"]["Tables"]["activity_log_table"]["Row"];
+
+export type ActivityLogDetails = {
+  package_name?: string;
+  status?: string;
+  description?: string;
+  new_status?: string;
+  package_type?: string;
+};
+
+export type ActivityLogEntry = ActivityLogEntryRow & {
+  actor_email: string | null;
+  actor_name: string | null;
+  activity_details: ActivityLogDetails;
+  activity_type: string;
+};
+
+export type AdminListActivityLogsResult = {
+  total_count: number;
+  logs: ActivityLogEntry[];
+};
