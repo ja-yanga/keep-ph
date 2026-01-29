@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       notes: notes || null,
       selectedAddressId: selectedAddressId || null,
       releaseToName: releaseToName || null,
+      actorUserId: user.id,
     });
 
     return NextResponse.json(result);

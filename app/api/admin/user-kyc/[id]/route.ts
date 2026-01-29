@@ -50,6 +50,7 @@ export async function PUT(
     const data = await adminUpdateUserKyc({
       userId,
       status: statusDb as "VERIFIED" | "REJECTED",
+      actorUserId: user.id,
     });
 
     return NextResponse.json(data);
