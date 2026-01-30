@@ -1,6 +1,8 @@
 import { Metadata } from "next";
+import { baseMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = {
+  ...baseMetadata,
   title: "Website Analytics | Admin",
   description: "View website traffic and user engagement metrics.",
 };

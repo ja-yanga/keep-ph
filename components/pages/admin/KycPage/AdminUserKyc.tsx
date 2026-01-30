@@ -35,6 +35,7 @@ import dayjs from "dayjs";
 import { getStatusFormat, fetcher } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { FormattedKycRow, KycRow } from "@/utils/types";
+import { useSearchParams } from "next/navigation";
 
 import { AdminTable } from "@/components/common/AdminTable";
 import dynamic from "next/dynamic";
@@ -132,14 +133,25 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 type StatusTab = "ALL" | "SUBMITTED" | "VERIFIED" | "REJECTED";
 
-// KycTable component removed in favor of AdminTable
-
 export default function AdminUserKyc() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [query, setQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusTab>("ALL");
+  const searchParams = useSearchParams();
+  const initialStatus = (searchParams?.get("status") ?? "ALL") as StatusTab;
+  const [statusFilter, setStatusFilter] = useState<StatusTab>(initialStatus);
+
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (
+      status &&
+      ["ALL", "SUBMITTED", "VERIFIED", "REJECTED"].includes(status)
+    ) {
+      setStatusFilter(status as StatusTab);
+    }
+  }, [searchParams]);
+
   const [sortStatus, setSortStatus] = useState<
     DataTableSortStatus<FormattedKycRow>
   >({

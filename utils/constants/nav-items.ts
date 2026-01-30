@@ -26,6 +26,11 @@ export const NAV_ITMES: Record<
     { path: "/admin/transactions", key: "transactions", title: "Transactions" },
   ],
   approver: [
+    {
+      path: "/admin/approver-dashboard",
+      key: "approver-dashboard",
+      title: "Dashboard",
+    },
     { path: "/admin/kyc", key: "kyc", title: "KYC" },
     { path: "/admin/packages", key: "packages", title: "Packages" },
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },

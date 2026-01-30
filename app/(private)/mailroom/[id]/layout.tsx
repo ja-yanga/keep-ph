@@ -3,12 +3,12 @@ import { baseMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = {
   ...baseMetadata,
-  title: "KYC Submission | Keep-PH",
+  title: "Mailroom | Keep-PH",
   description:
-    "Fill out your KYC form to verify your identity and submit necessary documents securely.",
+    "Manage your mailboxes and incoming mail. Request document or parcel release, disposal, or scanning directly from your mailroom dashboard.",
 };
 
-export default function CustomerKycLayout({
+export default function MailroomLayout({
   children,
 }: {
   children: React.ReactNode;

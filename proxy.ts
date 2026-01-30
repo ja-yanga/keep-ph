@@ -43,6 +43,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
   ],
   approver: [
     "/account",
+    "/admin/approver-dashboard",
     "/admin/kyc",
     "/admin/packages",
     "/admin/rewards",
@@ -69,7 +70,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
 const ROLE_DEFAULT_PAGES: Record<string, string> = {
   user: "/dashboard",
   admin: "/admin/dashboard",
-  approver: "/admin/kyc",
+  approver: "/admin/approver-dashboard",
   owner: "/admin/dashboard",
 };
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Container,
   Stack,
@@ -16,6 +16,7 @@ import {
   IconScan,
   IconShieldLock,
 } from "@tabler/icons-react";
+import { startRouteProgress } from "@/lib/route-progress";
 
 const DashboardContentNoMailRoom = ({
   displayName,
@@ -24,6 +25,17 @@ const DashboardContentNoMailRoom = ({
   displayName: string;
   loading: boolean;
 }) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGetMailroomAddress = () => {
+    try {
+      startRouteProgress();
+      setIsLoading(true);
+    } catch {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <>
       <Container size="lg" py={60}>
@@ -34,10 +46,10 @@ const DashboardContentNoMailRoom = ({
               size={64}
               radius={80}
               variant="light"
-              color="blue"
+              color="#26316D"
               mb="lg"
             >
-              <IconMail size={40} />
+              <IconMail size={40} color="#26316D" />
             </ThemeIcon>
 
             <Title
@@ -59,21 +71,25 @@ const DashboardContentNoMailRoom = ({
               packages remotely, and digitize your physical mail—all in one
               secure platform.
             </Text>
-
             <Button
+              className="mailroom-btn"
               component="a"
               href="/mailroom/register"
               size="xl"
               radius="md"
               bg="#26316D"
+              onClick={handleGetMailroomAddress}
+              loading={isLoading}
+              disabled={isLoading}
+              loaderProps={{ color: "white", size: "sm" }}
               leftSection={<IconPackage size={20} />}
               style={{
                 transition: "transform 0.2s",
                 maxWidth: 420,
                 margin: "0 auto",
                 display: "block",
+                textDecoration: "none",
               }}
-              fullWidth
             >
               Get Your Mailroom Address
             </Button>

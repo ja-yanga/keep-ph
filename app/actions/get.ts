@@ -1609,6 +1609,7 @@ export async function adminListUsers(args: {
   offset?: number;
   sort?: string;
   direction?: "asc" | "desc";
+  role?: string;
 }): Promise<{ data: AdminUsersRpcResult["data"]; total_count: number }> {
   const {
     search = "",
@@ -1616,6 +1617,7 @@ export async function adminListUsers(args: {
     offset = 0,
     sort = "users_created_at",
     direction = "desc",
+    role = "",
   } = args;
 
   const { data, error } = await supabaseAdmin.rpc("admin_list_users", {
@@ -1624,17 +1626,10 @@ export async function adminListUsers(args: {
     input_offset: offset,
     input_sort: sort,
     input_direction: direction,
+    input_role: role,
   });
 
-  if (error) {
-    console.error("admin_list_users RPC error:", {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw error;
-  }
+  if (error) throw error;
 
   const payload =
     typeof data === "string" ? JSON.parse(data) : (data as unknown);
