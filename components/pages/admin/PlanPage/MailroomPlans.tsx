@@ -339,18 +339,18 @@ export default function MailroomPlans() {
       {
         accessor: "price",
         title: "Price",
-        width: 150,
+        width: 120,
         sortable: true,
         render: ({ price }: Plan) => (
-          <Badge color="green.9" variant="filled" size="lg">
+          <Badge color="green.9" variant="filled" size="md">
             {formatCurrency(price)}
           </Badge>
         ),
       },
       {
         accessor: "storage_limit",
-        title: "Storage Limit",
-        width: 150,
+        title: "Storage",
+        width: 130,
         sortable: true,
         render: ({ storage_limit }: Plan) => (
           <Group gap={4} wrap="nowrap">
@@ -362,9 +362,22 @@ export default function MailroomPlans() {
       {
         accessor: "description",
         title: "Description",
+        width: 250,
         sortable: true,
         render: ({ description }: Plan) => (
-          <Text lineClamp={1} size="sm" c="#2D3748" truncate>
+          <Text
+            lineClamp={2}
+            size="sm"
+            c="#2D3748"
+            style={{
+              wordBreak: "break-word",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
             {description ?? "—"}
           </Text>
         ),

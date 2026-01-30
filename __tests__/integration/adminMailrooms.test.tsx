@@ -612,7 +612,7 @@ describe("Admin Mailrooms Page (admin/mailrooms)", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Click Add button - should be enabled now
-      const addBtn = within(modal).getByRole("button", { name: "Add" });
+      const addBtn = within(modal).getByRole("button", { name: "Add Locker" });
       expect(addBtn).not.toBeDisabled();
 
       await act(async () => {
