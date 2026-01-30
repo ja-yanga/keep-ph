@@ -20,7 +20,7 @@ const ActivityLogContent = dynamic(
         <Loader size="lg" color="violet" type="dots" />
       </Center>
     ),
-    ssr: false, // Disable SSR since component uses client-side features
+    ssr: true,
   },
 );
 
