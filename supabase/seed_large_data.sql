@@ -330,7 +330,7 @@ INSERT INTO user_kyc_table (
 )
 SELECT 
   u.users_id,
-  (ARRAY['SUBMITTED', 'VERIFIED', 'REJECTED']::user_kyc_status[])[FLOOR(RANDOM() * 3 + 1)::INT],
+  'VERIFIED'::user_kyc_status, -- All users have verified KYC
   'https://storage.keep-ph.com/kyc/front_' || u.users_id::text || '.jpg',
   'https://storage.keep-ph.com/kyc/back_' || u.users_id::text || '.jpg',
   u.users_created_at + (random() * interval '30 days'), -- Submitted within 30 days of account creation

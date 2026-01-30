@@ -26,6 +26,7 @@ import { RecentPackagesSection } from "./RecentPackagesSection";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import type { AdminDashboardStats } from "@/utils/types";
 import { startRouteProgress } from "@/lib/route-progress";
+import ActivityLogContent from "../ActivityLog/ActivityLogContent";
 
 export default function AdminDashboard({
   initialData,
@@ -247,6 +248,21 @@ export default function AdminDashboard({
         onViewFullInventory={handleViewFullInventory}
         tableRef={tableRef}
       />
+
+      <Paper
+        withBorder
+        p="xl"
+        radius="lg"
+        shadow="sm"
+        role="region"
+        style={{
+          contentVisibility: "auto",
+          containIntrinsicSize: "500px",
+          minHeight: "300px",
+        }}
+      >
+        <ActivityLogContent />
+      </Paper>
     </Stack>
   );
 }
