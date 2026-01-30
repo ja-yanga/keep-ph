@@ -17,13 +17,17 @@ DECLARE
   
   -- Filters
   input_user_id UUID := (input_data->>'user_id')::UUID;
-  input_actor_id UUID := (input_data->>'actor_id')::UUID; -- synonymous with user_id in this context
+  input_actor_id UUID := (input_data->>'actor_id')::UUID;
   input_action TEXT := (input_data->>'action')::TEXT;
   input_entity_type TEXT := (input_data->>'entity_type')::TEXT;
   input_entity_id UUID := (input_data->>'entity_id')::UUID;
   input_date_from TIMESTAMP WITH TIME ZONE := (input_data->>'date_from')::TIMESTAMP WITH TIME ZONE;
   input_date_to TIMESTAMP WITH TIME ZONE := (input_data->>'date_to')::TIMESTAMP WITH TIME ZONE;
   input_search TEXT := (input_data->>'search')::TEXT;
+
+  -- Sorting
+  input_sort_by TEXT := COALESCE(input_data->>'sort_by', 'activity_created_at');
+  input_sort_direction TEXT := COALESCE(input_data->>'sort_direction', 'desc');
 
   -- Results
   result_count INTEGER;
@@ -79,7 +83,17 @@ BEGIN
         'actor_name', actor_name
       ) as log_entry
     FROM filtered_logs
-    ORDER BY activity_created_at DESC
+    ORDER BY 
+      CASE WHEN input_sort_by = 'activity_created_at' AND input_sort_direction = 'asc' THEN activity_created_at END ASC,
+      CASE WHEN input_sort_by = 'activity_created_at' AND input_sort_direction = 'desc' THEN activity_created_at END DESC,
+      CASE WHEN input_sort_by = 'actor_email' AND input_sort_direction = 'asc' THEN actor_email END ASC,
+      CASE WHEN input_sort_by = 'actor_email' AND input_sort_direction = 'desc' THEN actor_email END DESC,
+      CASE WHEN input_sort_by = 'activity_entity_type' AND input_sort_direction = 'asc' THEN activity_entity_type::TEXT END ASC,
+      CASE WHEN input_sort_by = 'activity_entity_type' AND input_sort_direction = 'desc' THEN activity_entity_type::TEXT END DESC,
+      CASE WHEN input_sort_by = 'activity_action' AND input_sort_direction = 'asc' THEN activity_action::TEXT END ASC,
+      CASE WHEN input_sort_by = 'activity_action' AND input_sort_direction = 'desc' THEN activity_action::TEXT END DESC,
+      -- Default fallback
+      activity_created_at DESC
     LIMIT input_limit
     OFFSET input_offset
   ) sub;
@@ -92,6 +106,7 @@ BEGIN
   RETURN return_data;
 END;
 $$;
+
 
 -- Grant execution permissions
 GRANT EXECUTE ON FUNCTION public.admin_list_activity_logs(JSONB) TO authenticated;

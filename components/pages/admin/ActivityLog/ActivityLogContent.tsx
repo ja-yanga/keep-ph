@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Container,
   Stack,
   Group,
   TextInput,
@@ -11,9 +10,22 @@ import {
   Paper,
   Text,
   Badge,
+  Popover,
+  Chip,
+  ActionIcon,
+  Divider,
+  Box,
 } from "@mantine/core";
-import { IconSearch, IconRefresh, IconUser } from "@tabler/icons-react";
+import {
+  IconSearch,
+  IconRefresh,
+  IconUser,
+  IconFilter,
+  IconX,
+  IconArrowRight,
+} from "@tabler/icons-react";
 import { AdminTable } from "@/components/common/AdminTable";
+import { type DataTableSortStatus } from "mantine-datatable";
 import { formatDate } from "@/utils/format";
 import {
   type ActivityLogEntry,
@@ -82,10 +94,12 @@ export default function ActivityLogContent() {
   ]);
 
   // Sorting
-  const [sortStatus, setSortStatus] = useState<{
-    columnAccessor: string;
-    direction: "asc" | "desc";
-  }>({ columnAccessor: "activity_created_at", direction: "desc" });
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<ActivityLogEntry>
+  >({
+    columnAccessor: "activity_created_at",
+    direction: "desc",
+  });
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -99,7 +113,7 @@ export default function ActivityLogContent() {
           action: action || null,
           date_from: dateRange[0] || null,
           date_to: dateRange[1] || null,
-          sort_by: sortStatus.columnAccessor || null,
+          sort_by: String(sortStatus.columnAccessor) || null,
           sort_direction: sortStatus.direction || null,
         },
       });
@@ -133,6 +147,11 @@ export default function ActivityLogContent() {
   useEffect(() => {
     void fetchLogs();
   }, [fetchLogs]);
+
+  // Reset to first page when filters or sorting change
+  useEffect(() => {
+    setPage(1);
+  }, [search, entityType, action, dateRange, sortStatus]);
 
   const generateDescription = (log: ActivityLogEntry) => {
     const logAction =
@@ -200,161 +219,351 @@ export default function ActivityLogContent() {
     );
   };
 
-  return (
-    <Container fluid>
-      <Stack gap="xs">
-        <Paper p="md" withBorder shadow="sm" radius="md">
-          <Stack gap="md">
-            {/* First row: Search, Entity Type, Action */}
-            <Group align="flex-end" grow preventGrowOverflow={false}>
-              <TextInput
-                label="Search"
-                placeholder="Search by details or email..."
-                leftSection={<IconSearch size={16} />}
-                value={search}
-                onChange={(e) => setSearch(e.currentTarget.value)}
-                style={{ minWidth: 0 }}
-              />
-              <Select
-                label="Entity Type"
-                placeholder="Pick one"
-                data={ENTITY_TYPES}
-                value={entityType}
-                onChange={setEntityType}
-                clearable
-                style={{ minWidth: 0 }}
-              />
-              <Select
-                label="Action"
-                placeholder="Pick one"
-                data={ACTIONS}
-                value={action}
-                onChange={setAction}
-                clearable
-                style={{ minWidth: 0 }}
-              />
-            </Group>
+  const [searchInput, setSearchInput] = useState("");
+  const hasActiveFilters = entityType || action || dateRange[0] || dateRange[1];
+  const activeFilterCount = [
+    entityType,
+    action,
+    dateRange[0],
+    dateRange[1],
+  ].filter(Boolean).length;
 
-            {/* Second row: Date filters and Refresh button */}
-            <Group align="flex-end" wrap="wrap">
+  const clearAllFilters = () => {
+    setEntityType(null);
+    setAction(null);
+    setDateRange([null, null]);
+    setSearch("");
+    setSearchInput("");
+  };
+
+  const handleSearchSubmit = () => {
+    setSearch(searchInput);
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput("");
+    setSearch("");
+  };
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearchSubmit();
+    }
+  };
+
+  return (
+    <Box>
+      <Stack gap="xs">
+        <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
+          <Stack gap="md">
+            {/* Search Bar with Filters */}
+            <Group
+              gap="sm"
+              role="search"
+              aria-label="Activity log search and filters"
+              align="center"
+              wrap="nowrap"
+            >
               <TextInput
-                label="From Date"
-                type="date"
-                placeholder="Pick date"
-                value={dateRange[0] || ""}
-                onChange={(e) =>
-                  setDateRange([e.currentTarget.value || null, dateRange[1]])
+                placeholder="Search by details or email..."
+                aria-label="Search activity logs"
+                leftSection={<IconSearch size={16} aria-hidden="true" />}
+                rightSectionWidth={searchInput ? 70 : 42}
+                rightSection={
+                  searchInput ? (
+                    <Group gap={4}>
+                      <ActionIcon
+                        size="sm"
+                        variant="transparent"
+                        c="gray.7"
+                        onClick={handleClearSearch}
+                        aria-label="Clear search"
+                      >
+                        <IconX size={16} aria-hidden="true" />
+                      </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        variant="transparent"
+                        c="indigo"
+                        onClick={handleSearchSubmit}
+                        aria-label="Submit search"
+                      >
+                        <IconArrowRight size={16} aria-hidden="true" />
+                      </ActionIcon>
+                    </Group>
+                  ) : (
+                    <ActionIcon
+                      size="sm"
+                      variant="transparent"
+                      c="gray.7"
+                      onClick={handleSearchSubmit}
+                      aria-label="Submit search"
+                    >
+                      <IconArrowRight size={16} aria-hidden="true" />
+                    </ActionIcon>
+                  )
                 }
-                style={{ flex: "1 1 200px", minWidth: "200px" }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.currentTarget.value)}
+                onKeyDown={handleSearchKeyPress}
+                style={{ flex: 1 }}
               />
-              <TextInput
-                label="To Date"
-                type="date"
-                placeholder="Pick date"
-                value={dateRange[1] || ""}
-                onChange={(e) =>
-                  setDateRange([dateRange[0], e.currentTarget.value || null])
-                }
-                style={{ flex: "1 1 200px", minWidth: "200px" }}
-              />
-              <Button
-                variant="default"
-                leftSection={<IconRefresh size={16} aria-hidden="true" />}
+
+              <Popover width={400} position="bottom-end" shadow="md">
+                <Popover.Target>
+                  <Button
+                    variant="filled"
+                    color="#26316e"
+                    leftSection={<IconFilter size={18} aria-hidden="true" />}
+                    size="sm"
+                    radius="md"
+                    aria-label={`Open filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ""}`}
+                    rightSection={
+                      activeFilterCount > 0 ? (
+                        <Badge
+                          size="sm"
+                          variant="filled"
+                          circle
+                          color="red"
+                          c="white"
+                          aria-hidden="true"
+                        >
+                          {activeFilterCount}
+                        </Badge>
+                      ) : null
+                    }
+                  >
+                    Filters
+                  </Button>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Stack
+                    gap="md"
+                    component="form"
+                    role="form"
+                    aria-label="Filter options"
+                  >
+                    <Group justify="space-between">
+                      <Text fw={600} size="sm" component="h2">
+                        Filter Activity Logs
+                      </Text>
+                      {hasActiveFilters && (
+                        <Button
+                          variant="subtle"
+                          size="xs"
+                          color="red"
+                          onClick={clearAllFilters}
+                          aria-label="Clear all filters"
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                    </Group>
+
+                    <Divider />
+
+                    <Select
+                      label="Entity Type"
+                      placeholder="Select entity type"
+                      data={ENTITY_TYPES}
+                      value={entityType}
+                      onChange={setEntityType}
+                      clearable
+                      searchable
+                      aria-label="Filter by entity type"
+                    />
+
+                    <Select
+                      label="Action"
+                      placeholder="Select action"
+                      data={ACTIONS}
+                      value={action}
+                      onChange={setAction}
+                      clearable
+                      searchable
+                      aria-label="Filter by action"
+                    />
+
+                    <Divider label="Date Range" labelPosition="center" />
+
+                    <TextInput
+                      label="From Date"
+                      type="date"
+                      placeholder="Pick start date"
+                      value={dateRange[0] || ""}
+                      onChange={(e) =>
+                        setDateRange([
+                          e.currentTarget.value || null,
+                          dateRange[1],
+                        ])
+                      }
+                      aria-label="Filter from date"
+                    />
+
+                    <TextInput
+                      label="To Date"
+                      type="date"
+                      placeholder="Pick end date"
+                      value={dateRange[1] || ""}
+                      onChange={(e) =>
+                        setDateRange([
+                          dateRange[0],
+                          e.currentTarget.value || null,
+                        ])
+                      }
+                      aria-label="Filter to date"
+                    />
+                  </Stack>
+                </Popover.Dropdown>
+              </Popover>
+
+              <ActionIcon
+                variant="filled"
+                color="#26316e"
+                size="lg"
+                radius="md"
                 onClick={() => fetchLogs()}
                 loading={loading}
-                size="sm"
                 aria-label="Refresh activity logs"
-                style={{ flex: "0 0 auto" }}
+                title="Refresh"
               >
-                Refresh
-              </Button>
+                <IconRefresh size={18} aria-hidden="true" />
+              </ActionIcon>
             </Group>
+
+            {/* Active Filters Display */}
+            {hasActiveFilters && (
+              <Group
+                gap="xs"
+                role="status"
+                aria-live="polite"
+                aria-label="Active filters"
+              >
+                <Text size="xs" c="dimmed" fw={500}>
+                  Active Filters:
+                </Text>
+                {entityType && (
+                  <Chip
+                    checked={false}
+                    size="sm"
+                    variant="filled"
+                    color="#26316e"
+                    radius="sm"
+                    onClick={() => setEntityType(null)}
+                    aria-label={`Remove entity type filter: ${ENTITY_TYPES.find((e) => e.value === entityType)?.label}`}
+                  >
+                    {ENTITY_TYPES.find((e) => e.value === entityType)?.label}
+                  </Chip>
+                )}
+                {action && (
+                  <Chip
+                    checked={false}
+                    size="sm"
+                    variant="filled"
+                    color="#26316e"
+                    radius="sm"
+                    onClick={() => setAction(null)}
+                    aria-label={`Remove action filter: ${ACTIONS.find((a) => a.value === action)?.label}`}
+                  >
+                    {ACTIONS.find((a) => a.value === action)?.label}
+                  </Chip>
+                )}
+                {dateRange[0] && (
+                  <Chip
+                    checked={false}
+                    size="sm"
+                    variant="filled"
+                    color="#26316e"
+                    radius="sm"
+                    onClick={() => setDateRange([null, dateRange[1]])}
+                    aria-label={`Remove from date filter: ${dateRange[0]}`}
+                  >
+                    From: {dateRange[0]}
+                  </Chip>
+                )}
+                {dateRange[1] && (
+                  <Chip
+                    checked={false}
+                    size="sm"
+                    variant="filled"
+                    color="#26316e"
+                    radius="sm"
+                    onClick={() => setDateRange([dateRange[0], null])}
+                    aria-label={`Remove to date filter: ${dateRange[1]}`}
+                  >
+                    To: {dateRange[1]}
+                  </Chip>
+                )}
+              </Group>
+            )}
+
+            {/* Table inside Paper */}
+            <AdminTable<ActivityLogEntry>
+              fetching={loading}
+              records={logs}
+              idAccessor="activity_log_id"
+              totalRecords={totalRecords}
+              recordsPerPage={recordsPerPage}
+              page={page}
+              onPageChange={setPage}
+              sortStatus={sortStatus}
+              onSortStatusChange={setSortStatus}
+              columns={[
+                {
+                  accessor: "activity_created_at",
+                  title: "Timestamp",
+                  width: 180,
+                  sortable: true,
+                  render: (log) => formatDate(log.activity_created_at),
+                },
+                {
+                  accessor: "actor_email",
+                  title: "Actor",
+                  width: 250,
+                  sortable: true,
+                  render: (log) => (
+                    <Group gap="xs">
+                      <IconUser size={14} color="gray" />
+                      <Stack gap={0}>
+                        <Text size="sm" fw={500}>
+                          {log.actor_email}
+                        </Text>
+                      </Stack>
+                    </Group>
+                  ),
+                },
+                {
+                  accessor: "activity_entity_type",
+                  title: "Entity Type",
+                  width: 200,
+                  sortable: true,
+                  render: (log) => (
+                    <Badge variant="dot" color="blue">
+                      {log.activity_entity_type?.replaceAll("_", " ") || "N/A"}
+                    </Badge>
+                  ),
+                },
+                {
+                  accessor: "description",
+                  title: "Description",
+                  render: (log) => generateDescription(log),
+                },
+                {
+                  accessor: "activity_action",
+                  title: "Action",
+                  width: 120,
+                  sortable: true,
+                  render: (log) => (
+                    <Badge variant="dot" color="blue">
+                      {log.activity_action}
+                    </Badge>
+                  ),
+                },
+              ]}
+            />
           </Stack>
         </Paper>
-
-        <AdminTable<ActivityLogEntry>
-          fetching={loading}
-          records={logs}
-          idAccessor="activity_log_id"
-          totalRecords={totalRecords}
-          recordsPerPage={recordsPerPage}
-          page={page}
-          onPageChange={setPage}
-          sortStatus={sortStatus}
-          onSortStatusChange={setSortStatus}
-          columns={[
-            {
-              accessor: "activity_created_at",
-              title: "Timestamp",
-              width: 180,
-              sortable: true,
-              render: (log) => formatDate(log.activity_created_at),
-            },
-            {
-              accessor: "actor_email",
-              title: "Actor",
-              width: 250,
-              sortable: true,
-              render: (log) => (
-                <Group gap="xs">
-                  <IconUser size={14} color="gray" />
-                  <Stack gap={0}>
-                    <Text size="sm" fw={500}>
-                      {log.actor_email}
-                    </Text>
-                  </Stack>
-                </Group>
-              ),
-            },
-            {
-              accessor: "activity_entity_type",
-              title: "Entity Type",
-              width: 200,
-              sortable: true,
-              render: (log) => (
-                <Badge variant="dot" color="blue">
-                  {log.activity_entity_type?.replaceAll("_", " ") || "N/A"}
-                </Badge>
-              ),
-            },
-            {
-              accessor: "description",
-              title: "Description",
-              render: (log) => generateDescription(log),
-            },
-            {
-              accessor: "activity_action",
-              title: "Action",
-              width: 120,
-              sortable: true,
-              render: (log) => (
-                <Badge variant="dot" color="blue">
-                  {log.activity_action}
-                </Badge>
-              ),
-            },
-            // {
-            //   accessor: "context",
-            //   title: "Context",
-            //   width: 150,
-            //   render: (log) => (
-            //     <Tooltip
-            //       label={`IP: ${log.activity_ip_address || "N/A"}\nUA: ${log.activity_user_agent || "N/A"}`}
-            //     >
-            //       <Stack gap={0}>
-            //         <Text size="sm" c="dimmed">
-            //           {log.activity_ip_address || "No IP"}
-            //         </Text>
-            //         <Text size="xs" c="dimmed" truncate>
-            //           {log.activity_user_agent || "No UA"}
-            //         </Text>
-            //       </Stack>
-            //     </Tooltip>
-            //   ),
-            // },
-          ]}
-        />
       </Stack>
-    </Container>
+    </Box>
   );
 }
