@@ -221,36 +221,23 @@ INSERT INTO public.users_table (
     users_email,
     users_role,
     users_is_verified,
-    users_referral_code,
-    mobile_number
+    users_referral_code
 )
 SELECT 
     id,
     email,
     'user',
     true,
-    'USER' || upper(substring(md5(random()::text) from 1 for 6)),
-    CASE 
-      WHEN email = 'user1@example.com' THEN '+639123456789'
-      WHEN email = 'user2@example.com' THEN '+639234567890'
-      WHEN email = 'user3@example.com' THEN '+639345678901'
-      ELSE '+639' || LPAD((floor(random() * 999999999)::bigint)::text, 9, '0')
-    END
+    'USER' || upper(substring(md5(random()::text) from 1 for 6))
 FROM auth.users
 WHERE email IN ('user1@example.com', 'user2@example.com', 'user3@example.com')
   AND NOT EXISTS (
       SELECT 1 FROM public.users_table WHERE users_id = auth.users.id
   );
 
--- Update users_table to ensure test users are verified and have mobile numbers
+-- Update users_table to ensure test users are verified
 UPDATE public.users_table
-SET users_is_verified = true,
-    mobile_number = CASE 
-      WHEN users_email = 'user1@example.com' THEN COALESCE(mobile_number, '+639123456789')
-      WHEN users_email = 'user2@example.com' THEN COALESCE(mobile_number, '+639234567890')
-      WHEN users_email = 'user3@example.com' THEN COALESCE(mobile_number, '+639345678901')
-      ELSE mobile_number
-    END
+SET users_is_verified = true
 WHERE users_email IN ('user1@example.com', 'user2@example.com', 'user3@example.com');
 
 -- Generate 50,000 Users (excluding the specific test users)
@@ -330,7 +317,7 @@ INSERT INTO user_kyc_table (
 )
 SELECT 
   u.users_id,
-  (ARRAY['SUBMITTED', 'VERIFIED', 'REJECTED']::user_kyc_status[])[FLOOR(RANDOM() * 3 + 1)::INT],
+  'VERIFIED'::user_kyc_status, -- All users have verified KYC
   'https://storage.keep-ph.com/kyc/front_' || u.users_id::text || '.jpg',
   'https://storage.keep-ph.com/kyc/back_' || u.users_id::text || '.jpg',
   u.users_created_at + (random() * interval '30 days'), -- Submitted within 30 days of account creation
@@ -343,13 +330,8 @@ SELECT
 FROM temp_user_ids u;
 
 -- Update all users to be verified since they all have verified KYC
--- Also ensure all users have mobile numbers (generate if missing)
 UPDATE users_table
-SET users_is_verified = true,
-    mobile_number = COALESCE(
-      mobile_number,
-      '+639' || LPAD((floor(random() * 999999999)::bigint)::text, 9, '0')
-    )
+SET users_is_verified = true
 WHERE users_id IN (SELECT users_id FROM temp_user_ids);
 
 -- Get existing plans (from seed.sql)
@@ -500,16 +482,10 @@ CROSS JOIN generate_series(1, CASE WHEN random() < 0.5 THEN 2 WHEN random() < 0.
 -- (Already controlled by registration count and per-registration multiplier)
 
 -- Get lockers for assignments (limited)
--- Only get lockers that are available AND not already assigned
 CREATE TEMP TABLE IF NOT EXISTS temp_locker_ids AS
-SELECT l.location_locker_id, l.mailroom_location_id
-FROM location_locker_table l
-WHERE l.location_locker_is_available = true
-  AND l.location_locker_id NOT IN (
-    SELECT location_locker_id 
-    FROM mailroom_assigned_locker_table
-    WHERE location_locker_id IS NOT NULL
-  );
+SELECT location_locker_id, mailroom_location_id
+FROM location_locker_table
+WHERE location_locker_is_available = true;
 
 -- Generate Mailroom Assigned Lockers (~30,000 - for registrations with locations)
 -- Each registration with a location gets assigned a locker
@@ -560,14 +536,6 @@ INNER JOIN available_lockers_by_location l
   AND r.reg_row_num = l.locker_row_num
 WHERE l.location_locker_id IS NOT NULL
 LIMIT 30000; -- Limit to 30,000 assignments (or available lockers, whichever is less)
-
--- Update locker availability: Mark assigned lockers as unavailable (occupied)
-UPDATE location_locker_table
-SET location_locker_is_available = false
-WHERE location_locker_id IN (
-  SELECT location_locker_id 
-  FROM mailroom_assigned_locker_table
-);
 
 -- Generate Mailbox Items (50,000+ - packages/mail received)
 INSERT INTO mailbox_item_table (

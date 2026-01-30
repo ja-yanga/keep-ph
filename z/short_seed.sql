@@ -1,41 +1,24 @@
 -- ============================================================================
--- Large Scale Seed Data for Testing
+-- Reduced Scale Seed Data for Testing (UPDATED)
 -- ============================================================================
--- This script generates 50,000+ records per table for testing purposes
--- Focus: Users, Actions/Queues (Mail Action Requests), Mailbox Items, etc.
--- Location tables are excluded as only few locations are company-owned
--- 
--- USAGE:
--- 1. **REQUIRED**: Run seed.sql FIRST to create plans, locations, and admin users
--- 2. Then run this script (seed_large_data.sql) to generate test data
--- 3. This script can be run multiple times (idempotent - clears and regenerates)
--- 4. Estimated execution time: 5-10 minutes depending on database capacity
+-- This trimmed script generates ~1,000 test users and proportionally smaller
+-- related datasets for faster local/dev runs while preserving realistic FK
+-- relationships.
 --
--- IMPORTANT: If you get "null value in column mailroom_plan_id" error:
---   → You need to run seed.sql FIRST before running this script!
---
--- SPECIFIC USERS CREATED:
--- - Admin users: admin@example.com, admin1@example.com (password: admin123)
--- - Test users: user1@example.com, user2@example.com, user3@example.com (password: customer123)
--- - Plus 50,000 generated test users (user1@test.keep-ph.com through user50000@test.keep-ph.com)
---
--- TABLES SEEDED:
--- - users_table: 50,000 users
--- - user_address_table: ~45,000 addresses (90% of users)
--- - user_kyc_table: All users have verified KYC records (100%)
--- - mailroom_registration_table: ~40,000 registrations (80% of users)
--- - subscription_table: ~40,000 subscriptions (one per registration)
--- - payment_transaction_table: ~120,000 transactions (multiple per registration)
--- - mailroom_assigned_locker_table: ~30,000 assigned lockers (for registrations with locations)
--- - mailbox_item_table: 50,000+ mailbox items
--- - mailroom_file_table: 60,000+ files (scanned documents, package photos)
--- - mail_action_request_table: 60,000+ action requests (THE QUEUES)
--- - notification_table: 75,000+ notifications
--- - referral_table: ~15,000 referrals
--- - rewards_claim_table: ~5,000 reward claims
--- - activity_log_table: 150,000+ activity logs (linked to actual entities)
--- 
--- NOTE: All tables properly reference users or admins through foreign keys
+-- New targets (approximate):
+-- - USERS: 1,000
+-- - ADDRESSES: ~900
+-- - REGISTRATIONS: ~800
+-- - SUBSCRIPTIONS: ~800
+-- - PAYMENT TRANSACTIONS: ~2,400 (approx 2-3 per registration)
+-- - ASSIGNED LOCKERS: ~600
+-- - MAILBOX ITEMS: ~1,200
+-- - MAILROOM FILES: ~1,500
+-- - MAIL ACTION REQUESTS: ~1,200
+-- - NOTIFICATIONS: ~1,500
+-- - REFERRALS: ~300
+-- - REWARDS CLAIMS: ~100
+-- - ACTIVITY LOGS: ~3,000
 -- ============================================================================
 
 -- Disable triggers temporarily for faster inserts
@@ -253,7 +236,7 @@ SET users_is_verified = true,
     END
 WHERE users_email IN ('user1@example.com', 'user2@example.com', 'user3@example.com');
 
--- Generate 50,000 Users (excluding the specific test users)
+-- Generate 1,000 Users (excluding the specific test users)
 INSERT INTO users_table (
   users_id,
   users_email,
@@ -267,13 +250,13 @@ INSERT INTO users_table (
 SELECT 
   gen_random_uuid(),
   'user' || generate_series || '@test.keep-ph.com',
-  'user', -- All generated users are regular users (admins are created separately)
+  'user', -- All generated users are regular users
   now() - (random() * interval '365 days'),
-  true, -- All users are verified (they all have verified KYC)
+  true,
   'REF' || upper(substring(md5(random()::text) from 1 for 8)),
   '+639' || LPAD((floor(random() * 999999999)::bigint)::text, 9, '0'),
   CASE WHEN random() < 0.20 THEN floor(random() * 5)::int ELSE 0 END
-FROM generate_series(1, 50000);
+FROM generate_series(1, 1000);
 
 -- Store user IDs for reference (includes specific test users and generated users)
 CREATE TEMP TABLE IF NOT EXISTS temp_user_ids AS
@@ -283,7 +266,7 @@ WHERE users_email LIKE '%@test.keep-ph.com'
    OR users_email IN ('user1@example.com', 'user2@example.com', 'user3@example.com')
 ORDER BY users_created_at;
 
--- Generate User Addresses (~45,000 - 90% of users)
+-- Generate User Addresses (~90% of users)
 INSERT INTO user_address_table (
   user_id,
   user_address_label,
@@ -309,10 +292,10 @@ SELECT
   (ARRAY['Manila', 'Makati', 'Quezon City', 'Taguig', 'Pasig', 'Mandaluyong', 'San Juan', 'Marikina', 'Las Pinas', 'Paranaque'])[floor(random() * 10 + 1)],
   (ARRAY['Metro Manila', 'Calabarzon', 'Central Luzon'])[floor(random() * 3 + 1)],
   LPAD((1000 + floor(random() * 8000))::text, 4, '0'),
-  row_number() OVER (PARTITION BY u.users_id) = 1, -- First address is default
+  row_number() OVER (PARTITION BY u.users_id) = 1,
   u.users_created_at + (random() * interval '30 days')
 FROM temp_user_ids u
-WHERE random() < 0.90; -- 90% of users have addresses
+WHERE random() < 0.90; -- 90% of users
 
 -- Generate User KYC (All users - 100% verified)
 INSERT INTO user_kyc_table (
@@ -330,20 +313,19 @@ INSERT INTO user_kyc_table (
 )
 SELECT 
   u.users_id,
-  (ARRAY['SUBMITTED', 'VERIFIED', 'REJECTED']::user_kyc_status[])[FLOOR(RANDOM() * 3 + 1)::INT],
+  'VERIFIED'::user_kyc_status,
   'https://storage.keep-ph.com/kyc/front_' || u.users_id::text || '.jpg',
   'https://storage.keep-ph.com/kyc/back_' || u.users_id::text || '.jpg',
-  u.users_created_at + (random() * interval '30 days'), -- Submitted within 30 days of account creation
-  u.users_created_at + (random() * interval '45 days'), -- Verified within 45 days (after submission)
+  u.users_created_at + (random() * interval '30 days'),
+  u.users_created_at + (random() * interval '45 days'),
   (ARRAY['PASSPORT', 'DRIVERS_LICENSE', 'PHILHEALTH_ID', 'SSS_ID', 'TIN_ID', 'NATIONAL_ID'])[floor(random() * 6 + 1)],
   (ARRAY['Juan', 'Maria', 'Jose', 'Anna', 'Carlos', 'Maria', 'Pedro', 'Liza', 'Miguel', 'Carmen'])[floor(random() * 10 + 1)],
   (ARRAY['Dela Cruz', 'Santos', 'Reyes', 'Garcia', 'Ramos', 'Torres', 'Flores', 'Villanueva', 'Cruz', 'Lopez'])[floor(random() * 10 + 1)],
   (DATE '1950-01-01' + (random() * (DATE '2005-12-31' - DATE '1950-01-01'))::int),
-  true -- All agreements accepted
+  true
 FROM temp_user_ids u;
 
--- Update all users to be verified since they all have verified KYC
--- Also ensure all users have mobile numbers (generate if missing)
+-- Update all users to be verified and ensure mobile numbers
 UPDATE users_table
 SET users_is_verified = true,
     mobile_number = COALESCE(
@@ -384,7 +366,7 @@ CREATE TEMP TABLE IF NOT EXISTS temp_location_ids AS
 SELECT mailroom_location_id
 FROM mailroom_location_table;
 
--- Generate Mailroom Registrations (~40,000 - 80% of users)
+-- Generate Mailroom Registrations (~80% of users)
 INSERT INTO mailroom_registration_table (
   mailroom_registration_id,
   user_id,
@@ -399,13 +381,13 @@ SELECT
   gen_random_uuid(),
   u.users_id,
   CASE WHEN random() < 0.80 THEN (SELECT mailroom_location_id FROM temp_location_ids ORDER BY random() LIMIT 1) ELSE NULL END,
-  (SELECT mailroom_plan_id FROM temp_plan_ids ORDER BY random() LIMIT 1), -- Will never be NULL due to check above
+  (SELECT mailroom_plan_id FROM temp_plan_ids ORDER BY random() LIMIT 1),
   'REG-' || upper(substring(md5(random()::text || u.users_id::text) from 1 for 12)),
-  random() < 0.90, -- 90% active
+  random() < 0.90,
   u.users_created_at + (random() * interval '180 days'),
   u.users_created_at + (random() * interval '200 days')
 FROM temp_user_ids u
-WHERE random() < 0.80; -- 80% of users register
+WHERE random() < 0.80; -- ~80% of users register
 
 -- Store registration IDs for reference
 CREATE TEMP TABLE IF NOT EXISTS temp_registration_ids AS
@@ -437,7 +419,7 @@ SELECT
     WHEN 1 THEN 'QUARTERLY'::billing_cycle
     ELSE 'ANNUAL'::billing_cycle
   END,
-  random() < 0.70, -- 70% auto-renew
+  random() < 0.70,
   r.mailroom_registration_created_at,
   r.mailroom_registration_created_at + 
     CASE floor(random() * 3)
@@ -449,7 +431,7 @@ SELECT
   r.mailroom_registration_created_at + (random() * interval '30 days')
 FROM temp_registration_ids r;
 
--- Generate Payment Transactions (~120,000 - multiple per registration)
+-- Generate Payment Transactions (~2-3 per registration)
 INSERT INTO payment_transaction_table (
   payment_transaction_id,
   mailroom_registration_id,
@@ -477,8 +459,7 @@ SELECT
     WHEN random() < 0.70 THEN 'PAID'::payment_status
     WHEN random() < 0.85 THEN 'PROCESSING'::payment_status
     WHEN random() < 0.95 THEN 'PENDING'::payment_status
-    WHEN random() < 0.98 THEN 'FAILED'::payment_status
-    ELSE 'REFUNDED'::payment_status
+    ELSE 'FAILED'::payment_status
   END,
   r.mailroom_registration_created_at + (random() * interval '365 days'),
   (ARRAY['credit_card', 'debit_card', 'gcash', 'paymaya', 'bank_transfer', 'paypal'])[floor(random() * 6 + 1)],
@@ -494,13 +475,9 @@ SELECT
   r.mailroom_registration_created_at + (random() * interval '365 days'),
   r.mailroom_registration_created_at + (random() * interval '370 days')
 FROM temp_registration_ids r
-CROSS JOIN generate_series(1, CASE WHEN random() < 0.5 THEN 2 WHEN random() < 0.8 THEN 3 ELSE 4 END); -- 2-4 transactions per registration
-
--- Limit to approximately 120,000 transactions
--- (Already controlled by registration count and per-registration multiplier)
+CROSS JOIN generate_series(1, CASE WHEN random() < 0.6 THEN 1 WHEN random() < 0.9 THEN 2 ELSE 3 END);
 
 -- Get lockers for assignments (limited)
--- Only get lockers that are available AND not already assigned
 CREATE TEMP TABLE IF NOT EXISTS temp_locker_ids AS
 SELECT l.location_locker_id, l.mailroom_location_id
 FROM location_locker_table l
@@ -511,9 +488,7 @@ WHERE l.location_locker_is_available = true
     WHERE location_locker_id IS NOT NULL
   );
 
--- Generate Mailroom Assigned Lockers (~30,000 - for registrations with locations)
--- Each registration with a location gets assigned a locker
--- Use a deterministic approach to ensure no duplicate locker assignments
+-- Generate Mailroom Assigned Lockers (~600)
 WITH registrations_with_locations AS (
   SELECT 
     r.mailroom_registration_id,
@@ -522,7 +497,7 @@ WITH registrations_with_locations AS (
     ROW_NUMBER() OVER (PARTITION BY r.mailroom_location_id ORDER BY r.mailroom_registration_created_at, r.mailroom_registration_id) as reg_row_num
   FROM temp_registration_ids r
   WHERE r.mailroom_location_id IS NOT NULL
-    AND random() < 0.75  -- 75% of registrations with locations get assigned lockers
+    AND random() < 0.75
 ),
 available_lockers_by_location AS (
   SELECT 
@@ -559,9 +534,9 @@ INNER JOIN available_lockers_by_location l
   ON r.mailroom_location_id = l.mailroom_location_id 
   AND r.reg_row_num = l.locker_row_num
 WHERE l.location_locker_id IS NOT NULL
-LIMIT 30000; -- Limit to 30,000 assignments (or available lockers, whichever is less)
+LIMIT 600;
 
--- Update locker availability: Mark assigned lockers as unavailable (occupied)
+-- Update locker availability for assigned lockers
 UPDATE location_locker_table
 SET location_locker_is_available = false
 WHERE location_locker_id IN (
@@ -569,7 +544,7 @@ WHERE location_locker_id IN (
   FROM mailroom_assigned_locker_table
 );
 
--- Generate Mailbox Items (50,000+ - packages/mail received)
+-- Generate Mailbox Items (~1,200)
 INSERT INTO mailbox_item_table (
   mailbox_item_id,
   mailroom_registration_id,
@@ -613,9 +588,10 @@ SELECT
   r.mailroom_registration_created_at + (random() * interval '365 days'),
   r.mailroom_registration_created_at + (random() * interval '370 days')
 FROM temp_registration_ids r
-CROSS JOIN generate_series(1, CASE WHEN random() < 0.6 THEN 1 WHEN random() < 0.85 THEN 2 ELSE 3 END); -- 1-3 items per registration
+CROSS JOIN generate_series(1, CASE WHEN random() < 0.7 THEN 1 WHEN random() < 0.9 THEN 2 ELSE 3 END)
+LIMIT 1200;
 
--- Store mailbox item IDs for reference (with user_id from registrations)
+-- Store mailbox item IDs for reference
 CREATE TEMP TABLE IF NOT EXISTS temp_mailbox_item_ids AS
 SELECT 
   mi.mailbox_item_id,
@@ -626,7 +602,7 @@ SELECT
 FROM mailbox_item_table mi
 INNER JOIN temp_registration_ids r ON mi.mailroom_registration_id = r.mailroom_registration_id;
 
--- Generate Mail Action Requests (60,000+ - THE QUEUES/USER ACTIONS)
+-- Generate Mail Action Requests (~1,200)
 INSERT INTO mail_action_request_table (
   mail_action_request_id,
   mailbox_item_id,
@@ -667,8 +643,8 @@ SELECT
   CASE WHEN random() < 0.50 THEN (ARRAY['J&T Express', 'LBC', '2GO', 'Ninja Van', 'Lalamove'])[floor(random() * 5 + 1)] ELSE NULL END,
   CASE WHEN random() < 0.50 THEN 'https://tracking.example.com/track/' || upper(substring(md5(random()::text) from 1 for 16)) ELSE NULL END,
   CASE 
-    WHEN random() < 0.65 THEN NULL -- Still processing
-    ELSE mi.mailbox_item_received_at + (random() * interval '7 days') -- Completed
+    WHEN random() < 0.65 THEN NULL
+    ELSE mi.mailbox_item_received_at + (random() * interval '7 days')
   END,
   CASE 
     WHEN random() < 0.65 THEN NULL
@@ -685,13 +661,13 @@ SELECT
   mi.mailbox_item_received_at + (random() * interval '35 days')
 FROM temp_mailbox_item_ids mi
 CROSS JOIN generate_series(1, CASE 
-  WHEN random() < 0.70 THEN 1  -- 70% have 1 request
-  WHEN random() < 0.90 THEN 2  -- 20% have 2 requests
-  ELSE 3                       -- 10% have 3 requests
-END);
+  WHEN random() < 0.80 THEN 1
+  WHEN random() < 0.95 THEN 2
+  ELSE 3
+END)
+LIMIT 1200;
 
--- Generate Mailroom Files (60,000+ - scanned documents and package photos)
--- Files are linked to mailbox items (scanned documents, received photos, etc.)
+-- Generate Mailroom Files (~1,500)
 INSERT INTO mailroom_file_table (
   mailroom_file_id,
   mailbox_item_id,
@@ -716,8 +692,8 @@ SELECT
     ELSE 'https://storage.keep-ph.com/documents/doc_' || mi.mailbox_item_id::text || '.pdf'
   END,
   CASE 
-    WHEN random() < 0.50 THEN (0.5 + random() * 4.5)::numeric(10,2) -- 0.5-5 MB for scans
-    ELSE (1.0 + random() * 9.0)::numeric(10,2) -- 1-10 MB for photos
+    WHEN random() < 0.50 THEN (0.5 + random() * 4.5)::numeric(10,2)
+    ELSE (1.0 + random() * 9.0)::numeric(10,2)
   END,
   CASE 
     WHEN random() < 0.50 THEN 'application/pdf'
@@ -731,12 +707,13 @@ SELECT
   END
 FROM temp_mailbox_item_ids mi
 CROSS JOIN generate_series(1, CASE 
-  WHEN random() < 0.60 THEN 1  -- 60% have 1 file
-  WHEN random() < 0.85 THEN 2  -- 25% have 2 files
-  ELSE 3                       -- 15% have 3 files
-END);
+  WHEN random() < 0.70 THEN 1
+  WHEN random() < 0.90 THEN 2
+  ELSE 3
+END)
+LIMIT 1500;
 
--- Generate Notifications (75,000+ - user notifications)
+-- Generate Notifications (~1,500)
 INSERT INTO notification_table (
   notification_id,
   user_id,
@@ -777,18 +754,18 @@ SELECT
     WHEN 5 THEN 'REWARD_PROCESSING'::notification_type
     ELSE 'REWARD_PAID'::notification_type
   END,
-  random() < 0.60, -- 60% read
+  random() < 0.60,
   CASE WHEN random() < 0.50 THEN '/dashboard/packages' ELSE NULL END,
   u.users_created_at + (random() * interval '365 days')
 FROM temp_user_ids u
 CROSS JOIN generate_series(1, CASE 
-  WHEN random() < 0.50 THEN 1  -- 50% have 1 notification
-  WHEN random() < 0.80 THEN 2  -- 30% have 2 notifications
-  WHEN random() < 0.95 THEN 3  -- 15% have 3 notifications
-  ELSE 4                       -- 5% have 4 notifications
-END);
+  WHEN random() < 0.60 THEN 1
+  WHEN random() < 0.85 THEN 2
+  ELSE 3
+END)
+LIMIT 1500;
 
--- Generate Referrals (~15,000 referrals)
+-- Generate Referrals (~300)
 INSERT INTO referral_table (
   referral_referrer_user_id,
   referral_referred_user_id,
@@ -807,11 +784,11 @@ SELECT
 FROM temp_user_ids u1
 CROSS JOIN temp_user_ids u2
 WHERE u1.users_id != u2.users_id
-  AND random() < 0.30 -- 30% chance of referral relationship
-  AND u2.users_created_at > u1.users_created_at -- Referred user created after referrer
-LIMIT 15000; -- Approximate limit
+  AND random() < 0.10
+  AND u2.users_created_at > u1.users_created_at
+LIMIT 300;
 
--- Generate Rewards Claims (~5,000 claims)
+-- Generate Rewards Claims (~100)
 INSERT INTO rewards_claim_table (
   rewards_claim_id,
   user_id,
@@ -833,14 +810,14 @@ SELECT
     WHEN 1 THEN '09' || LPAD((floor(random() * 999999999)::bigint)::text, 9, '0')
     ELSE 'BDO Account: ' || LPAD((floor(random() * 999999999)::bigint)::text, 9, '0')
   END,
-  500.00 + (floor(random() * 10) * 500.00), -- 500, 1000, 1500... up to 5000
+  500.00 + (floor(random() * 10) * 500.00),
   CASE 
     WHEN random() < 0.50 THEN 'PAID'::rewards_claim_status
     WHEN random() < 0.75 THEN 'PROCESSING'::rewards_claim_status
     WHEN random() < 0.95 THEN 'PENDING'::rewards_claim_status
     ELSE 'REJECTED'::rewards_claim_status
   END,
-  5 + floor(random() * 20), -- 5-25 referrals
+  5 + floor(random() * 20),
   u.users_created_at + (random() * interval '365 days'),
   CASE 
     WHEN random() < 0.50 THEN u.users_created_at + (random() * interval '370 days')
@@ -848,12 +825,11 @@ SELECT
   END,
   5 + floor(random() * 30)
 FROM temp_user_ids u
-WHERE random() < 0.10; -- 10% of users claim rewards
+WHERE random() < 0.05
+LIMIT 100;
 
--- Generate Activity Logs (150,000+ - comprehensive user activity tracking)
--- Link activity logs to actual entities for realistic tracking
-
--- Activity logs for mail action requests (linked to actual requests)
+-- Generate Activity Logs (~3,000) - keep similar percentages but smaller overall
+-- (Examples: mail action requests, mailbox views, logins, etc.)
 INSERT INTO activity_log_table (
   activity_log_id,
   user_id,
@@ -867,334 +843,24 @@ INSERT INTO activity_log_table (
 )
 SELECT 
   gen_random_uuid(),
-  mar.user_id,
-  CASE mar.mail_action_request_type
-    WHEN 'SCAN' THEN 'SCAN'::activity_action
-    WHEN 'RELEASE' THEN 'RELEASE'::activity_action
-    WHEN 'DISPOSE' THEN 'DISPOSE'::activity_action
-    WHEN 'CANCEL' THEN 'CANCEL'::activity_action
-    WHEN 'REFUND' THEN 'REFUND'::activity_action
-    WHEN 'REWARD' THEN 'CLAIM'::activity_action
+  u.users_id,
+  CASE floor(random() * 6)
+    WHEN 0 THEN 'VIEW'::activity_action
+    WHEN 1 THEN 'LOGIN'::activity_action
+    WHEN 2 THEN 'LOGOUT'::activity_action
+    WHEN 3 THEN 'CREATE'::activity_action
+    WHEN 4 THEN 'UPDATE'::activity_action
     ELSE 'SUBMIT'::activity_action
   END,
-  CASE mar.mail_action_request_type
-    WHEN 'SCAN' THEN 'USER_REQUEST_SCAN'::activity_type
-    WHEN 'RELEASE' THEN 'USER_REQUEST_RELEASE'::activity_type
-    WHEN 'DISPOSE' THEN 'USER_REQUEST_DISPOSE'::activity_type
-    WHEN 'CANCEL' THEN 'USER_REQUEST_CANCEL'::activity_type
-    WHEN 'REFUND' THEN 'USER_REQUEST_REFUND'::activity_type
-    WHEN 'REWARD' THEN 'USER_REQUEST_REWARD'::activity_type
-    ELSE 'USER_REQUEST_OTHERS'::activity_type
-  END,
-  'MAIL_ACTION_REQUEST'::activity_entity_type,
-  mar.mail_action_request_id,
-  jsonb_build_object(
-    'request_id', mar.mail_action_request_id,
-    'mailbox_item_id', mar.mailbox_item_id,
-    'request_type', mar.mail_action_request_type,
-    'request_status', mar.mail_action_request_status,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  mar.mail_action_request_created_at
-FROM mail_action_request_table mar
-WHERE mar.user_id IN (SELECT users_id FROM temp_user_ids);
-
--- Activity logs for mailbox items (viewing packages)
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  r.user_id,
-  'VIEW'::activity_action,
   'USER_REQUEST_OTHERS'::activity_type,
-  'MAILBOX_ITEM'::activity_entity_type,
-  mi.mailbox_item_id,
-  jsonb_build_object(
-    'mailbox_item_id', mi.mailbox_item_id,
-    'item_type', mi.mailbox_item_type,
-    'item_status', mi.mailbox_item_status,
-    'item_name', mi.mailbox_item_name,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  mi.mailbox_item_received_at + (random() * interval '7 days')
-FROM mailbox_item_table mi
-INNER JOIN temp_registration_ids r ON mi.mailroom_registration_id = r.mailroom_registration_id
-WHERE r.user_id IN (SELECT users_id FROM temp_user_ids)
-  AND random() < 0.60; -- 60% of mailbox items get viewed
-
--- Activity logs for user logins
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  u.users_id,
-  'LOGIN'::activity_action,
-  'USER_LOGIN'::activity_type,
   'USER'::activity_entity_type,
   u.users_id,
-  jsonb_build_object(
-    'user_id', u.users_id,
-    'email', u.users_email,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END,
-    'user_agent', CASE 
-      WHEN random() < 0.5 THEN 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-      WHEN random() < 0.8 THEN 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)'
-      ELSE 'Mozilla/5.0 (Android 11; Mobile)'
-    END
-  ),
+  jsonb_build_object('user_id', u.users_id, 'sample', true),
   '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
   u.users_created_at + (random() * interval '365 days')
 FROM temp_user_ids u
-CROSS JOIN generate_series(1, CASE 
-  WHEN random() < 0.40 THEN 1  -- 40% have 1 login
-  WHEN random() < 0.70 THEN 2  -- 30% have 2 logins
-  WHEN random() < 0.90 THEN 3  -- 20% have 3 logins
-  ELSE 4                       -- 10% have 4+ logins
-END);
-
--- Activity logs for user logouts
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  u.users_id,
-  'LOGOUT'::activity_action,
-  'USER_LOGOUT'::activity_type,
-  'USER'::activity_entity_type,
-  u.users_id,
-  jsonb_build_object(
-    'user_id', u.users_id,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  u.users_created_at + (random() * interval '365 days')
-FROM temp_user_ids u
-CROSS JOIN generate_series(1, CASE 
-  WHEN random() < 0.50 THEN 1  -- 50% have 1 logout
-  WHEN random() < 0.80 THEN 2  -- 30% have 2 logouts
-  ELSE 3                       -- 20% have 3+ logouts
-END);
-
--- Activity logs for KYC submissions
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  kyc.user_id,
-  'SUBMIT'::activity_action,
-  'USER_KYC_SUBMIT'::activity_type,
-  'USER_KYC'::activity_entity_type,
-  kyc.user_kyc_id,
-  jsonb_build_object(
-    'kyc_id', kyc.user_kyc_id,
-    'kyc_status', kyc.user_kyc_status,
-    'document_type', kyc.user_kyc_id_document_type,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  kyc.user_kyc_submitted_at
-FROM user_kyc_table kyc
-WHERE kyc.user_id IN (SELECT users_id FROM temp_user_ids);
-
--- Activity logs for payment transactions
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  r.user_id,
-  CASE pt.payment_transaction_type
-    WHEN 'SUBSCRIPTION' THEN 'PAY'::activity_action
-    WHEN 'ONE_TIME' THEN 'PAY'::activity_action
-    WHEN 'REFUND' THEN 'REFUND'::activity_action
-    ELSE 'PAY'::activity_action
-  END,
-  'USER_REQUEST_OTHERS'::activity_type,
-  'PAYMENT_TRANSACTION'::activity_entity_type,
-  pt.payment_transaction_id,
-  jsonb_build_object(
-    'transaction_id', pt.payment_transaction_id,
-    'amount', pt.payment_transaction_amount,
-    'status', pt.payment_transaction_status,
-    'type', pt.payment_transaction_type,
-    'method', pt.payment_transaction_method,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  pt.payment_transaction_created_at
-FROM payment_transaction_table pt
-INNER JOIN temp_registration_ids r ON pt.mailroom_registration_id = r.mailroom_registration_id
-WHERE r.user_id IN (SELECT users_id FROM temp_user_ids)
-  AND random() < 0.80; -- 80% of payments get logged
-
--- Activity logs for subscriptions
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  r.user_id,
-  'CREATE'::activity_action,
-  'USER_REQUEST_OTHERS'::activity_type,
-  'SUBSCRIPTION'::activity_entity_type,
-  s.subscription_id,
-  jsonb_build_object(
-    'subscription_id', s.subscription_id,
-    'billing_cycle', s.subscription_billing_cycle,
-    'auto_renew', s.subscription_auto_renew,
-    'expires_at', s.subscription_expires_at,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  s.subscription_created_at
-FROM subscription_table s
-INNER JOIN temp_registration_ids r ON s.mailroom_registration_id = r.mailroom_registration_id
-WHERE r.user_id IN (SELECT users_id FROM temp_user_ids);
-
--- Activity logs for rewards claims
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  rc.user_id,
-  'CLAIM'::activity_action,
-  'USER_REQUEST_REWARD'::activity_type,
-  'REWARDS_CLAIM'::activity_entity_type,
-  rc.rewards_claim_id,
-  jsonb_build_object(
-    'claim_id', rc.rewards_claim_id,
-    'amount', rc.rewards_claim_amount,
-    'status', rc.rewards_claim_status,
-    'referral_count', rc.rewards_claim_referral_count,
-    'payment_method', rc.rewards_claim_payment_method,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  rc.rewards_claim_created_at
-FROM rewards_claim_table rc
-WHERE rc.user_id IN (SELECT users_id FROM temp_user_ids);
-
--- Activity logs for profile updates
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  u.users_id,
-  'UPDATE'::activity_action,
-  'USER_UPDATE_PROFILE'::activity_type,
-  'USER'::activity_entity_type,
-  u.users_id,
-  jsonb_build_object(
-    'user_id', u.users_id,
-    'fields_updated', (ARRAY['email', 'mobile_number', 'avatar_url', 'address'])[floor(random() * 4 + 1)],
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  u.users_created_at + (random() * interval '365 days')
-FROM temp_user_ids u
-WHERE random() < 0.30; -- 30% of users update their profile
-
--- Activity logs for mailroom registrations
-INSERT INTO activity_log_table (
-  activity_log_id,
-  user_id,
-  activity_action,
-  activity_type,
-  activity_entity_type,
-  activity_entity_id,
-  activity_details,
-  activity_ip_address,
-  activity_created_at
-)
-SELECT 
-  gen_random_uuid(),
-  r.user_id,
-  'REGISTER'::activity_action,
-  'USER_REQUEST_OTHERS'::activity_type,
-  'MAILROOM_REGISTRATION'::activity_entity_type,
-  r.mailroom_registration_id,
-  jsonb_build_object(
-    'registration_id', r.mailroom_registration_id,
-    'location_id', r.mailroom_location_id,
-    'registration_code', r.mailroom_registration_code,
-    'source', CASE WHEN random() < 0.7 THEN 'web' ELSE 'mobile' END
-  ),
-  '192.168.' || floor(random() * 255)::text || '.' || floor(random() * 255)::text,
-  r.mailroom_registration_created_at
-FROM temp_registration_ids r
-WHERE r.user_id IN (SELECT users_id FROM temp_user_ids);
+CROSS JOIN generate_series(1, CASE WHEN random() < 0.7 THEN 1 WHEN random() < 0.95 THEN 2 ELSE 3 END)
+LIMIT 3000;
 
 -- Clean up temp tables
 DROP TABLE IF EXISTS temp_user_ids;
@@ -1210,7 +876,7 @@ SET session_replication_role = 'origin';
 
 COMMIT;
 
--- Display summary statistics
+-- Display summary statistics (trimmed)
 DO $$
 DECLARE
   v_users_count INT;
@@ -1232,7 +898,7 @@ BEGIN
   SELECT COUNT(*) INTO v_activity_logs_count FROM activity_log_table;
   
   RAISE NOTICE '========================================';
-  RAISE NOTICE 'Seed Data Generation Complete!';
+  RAISE NOTICE 'Reduced Seed Data Generation Complete!';
   RAISE NOTICE '========================================';
   RAISE NOTICE 'Users: %', v_users_count;
   RAISE NOTICE 'Mailroom Registrations: %', v_registrations_count;
