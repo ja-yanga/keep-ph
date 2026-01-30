@@ -5,13 +5,15 @@ import {
   Box,
   Container,
   Group,
-  Title,
   Button,
   ActionIcon,
   Tooltip,
   Burger,
+  Title,
   Drawer,
+  NavLink,
   Stack,
+  ScrollArea,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconUser } from "@tabler/icons-react";
@@ -19,31 +21,58 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
-import { NAV_ITMES } from "@/utils/constants/nav-items";
 import Notifications from "../Notifications";
 import { startRouteProgress } from "@/lib/route-progress";
+import { NAV_ITMES } from "@/utils/constants/nav-items";
+import {
+  IconLayoutDashboard,
+  IconMail,
+  IconUsers,
+  IconBox,
+} from "@tabler/icons-react";
 
-export default function PrivateNavigationHeader() {
+export default function PrivateNavigationHeader({
+  opened,
+  toggle,
+}: {
+  opened?: boolean;
+  toggle?: () => void;
+}) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [opened, { toggle, close }] = useDisclosure(false); // Mobile drawer state
+  const [
+    customerDrawerOpened,
+    { open: openCustomerDrawer, close: closeCustomerDrawer },
+  ] = useDisclosure(false);
 
   const supabase = createClient();
   const { session } = useSession();
 
   const role = session?.role;
-  const showLinks = !pathname.startsWith("/onboarding");
   const isAdmin = role === "admin";
+  const isCustomer = role === "user";
+  const showLinks = !pathname.startsWith("/onboarding");
 
-  const linkColor = (href: string) => {
-    const active = pathname === href || pathname.startsWith(href + "/");
-    return {
-      color: "#1A237E",
-      fontWeight: active ? 700 : 500,
-      fontSize: "1rem",
-      textDecoration: "none",
+  // Get navigation items for customer
+  const customerNavItems = isCustomer && role ? NAV_ITMES[role] || [] : [];
+
+  // Map navigation keys to icons
+  const getIcon = (key: string) => {
+    const iconMap: Record<string, React.ReactNode> = {
+      dashboard: <IconLayoutDashboard size={18} />,
+      "register-mail-service": <IconMail size={18} />,
+      referrals: <IconUsers size={18} />,
+      storage: <IconBox size={18} />,
     };
+    return iconMap[key] || null;
+  };
+
+  const handleRouteClick = (href: string) => {
+    if (pathname !== href) {
+      startRouteProgress();
+    }
+    closeCustomerDrawer();
   };
 
   const handleSignOut = async () => {
@@ -61,132 +90,234 @@ export default function PrivateNavigationHeader() {
     }
   };
 
-  const handleRouteClick = (href: string) => {
-    if (pathname !== href) {
-      startRouteProgress();
-    }
-    close();
-  };
-
-  const navLinks = ((role && NAV_ITMES[role]) || []).map((nav, key) => (
-    <Link
-      key={key}
-      href={nav.path}
-      style={linkColor(nav.path)}
-      onClick={() => handleRouteClick(nav.path)} // Close drawer when link is clicked
-    >
-      {nav.title}
-    </Link>
-  ));
-
   return (
-    <Box
-      component="header"
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-        width: "100%",
-        borderBottom: "1px solid #e5e7eb",
-        backdropFilter: "blur(10px)",
-        backgroundColor: "rgba(255,255,255,0.8)",
-      }}
-      py="md"
-    >
-      <Container size="xl">
-        <Group justify="space-between" align="center" w="100%" wrap="nowrap">
-          <Group>
-            {/* BURGER FOR MOBILE */}
-            {showLinks && (
-              <Burger
-                opened={opened}
-                onClick={toggle}
-                hiddenFrom="sm"
-                size="sm"
-                aria-label="Toggle navigation menu"
-                aria-expanded={opened}
-                aria-controls="mobile-navigation-drawer"
-              />
+    <>
+      <Box
+        component="header"
+        style={{
+          height: "100%",
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          borderBottom: "1px solid #e5e7eb",
+        }}
+        p="md"
+      >
+        <Container size="xl" style={{ width: "100%", padding: "0px 0px" }}>
+          <Group justify="space-between" align="center" w="100%" wrap="nowrap">
+            {/* LEFT SIDE - Logo and Navigation */}
+            <Group gap="md" wrap="nowrap">
+              {/* Mobile Burger and Logo */}
+              {showLinks && (
+                <Group gap="xs" hiddenFrom="sm">
+                  {isAdmin && (
+                    <>
+                      <Burger
+                        opened={opened}
+                        onClick={toggle}
+                        size="sm"
+                        aria-label="Toggle sidebar"
+                        aria-expanded={opened}
+                        color="#1A237E"
+                      />
+                      <Link
+                        href={isAdmin ? "/admin/dashboard" : "/dashboard"}
+                        style={{ textDecoration: "none" }}
+                        aria-label="Keep PH - Home"
+                      >
+                        <Title order={3} fw={800} c="#1A237E">
+                          Keep PH
+                        </Title>
+                      </Link>
+                    </>
+                  )}
+                  {isCustomer && (
+                    <>
+                      <Burger
+                        opened={customerDrawerOpened}
+                        onClick={openCustomerDrawer}
+                        size="sm"
+                        aria-label="Toggle navigation"
+                        aria-expanded={customerDrawerOpened}
+                        color="#1A237E"
+                        aria-controls="mobile-navigation-drawer"
+                      />
+                      <Link
+                        href="/dashboard"
+                        style={{ textDecoration: "none" }}
+                        aria-label="Keep PH - Home"
+                      >
+                        <Title order={1} fw={800} c="#1A237E">
+                          Keep PH
+                        </Title>
+                      </Link>
+                    </>
+                  )}
+                </Group>
+              )}
+
+              {/* Desktop Logo */}
+              {showLinks && !isAdmin && (
+                <Link
+                  href="/dashboard"
+                  style={{ textDecoration: "none" }}
+                  aria-label="Keep PH - Home"
+                >
+                  <Title order={3} fw={800} c="#1A237E" visibleFrom="sm">
+                    Keep PH
+                  </Title>
+                </Link>
+              )}
+            </Group>
+
+            {/* Customer Navigation Items - Desktop */}
+            {showLinks && isCustomer && customerNavItems.length > 0 && (
+              <Group gap={4} visibleFrom="sm" wrap="nowrap">
+                {customerNavItems.map((nav) => {
+                  const isActive =
+                    pathname === nav.path ||
+                    pathname.startsWith(nav.path + "/");
+                  return (
+                    <Button
+                      key={nav.key}
+                      component={Link}
+                      href={nav.path}
+                      variant={isActive ? "filled" : "subtle"}
+                      leftSection={getIcon(nav.key)}
+                      onClick={() => handleRouteClick(nav.path)}
+                      style={{
+                        borderRadius: "8px",
+                        fontWeight: isActive ? 700 : 500,
+                        color: isActive ? "#FFFFFF" : "#4B5563",
+                        backgroundColor: isActive ? "#1A237E" : "transparent",
+                      }}
+                      size="sm"
+                    >
+                      {nav.title}
+                    </Button>
+                  );
+                })}
+              </Group>
             )}
 
+            {/* RIGHT SIDE NAV */}
+            <Group gap="sm" wrap="nowrap">
+              {showLinks && role === "user" && <Notifications />}
+
+              <Tooltip label="Account">
+                <ActionIcon
+                  component={Link}
+                  href="/account"
+                  variant="subtle"
+                  color="gray"
+                  radius="xl"
+                  size="lg"
+                  aria-label="View account settings"
+                >
+                  <IconUser size={20} aria-hidden="true" />
+                </ActionIcon>
+              </Tooltip>
+
+              <Button
+                onClick={handleSignOut}
+                loading={loading}
+                variant="outline"
+                bd="1px solid #26316D"
+                bdrs={999}
+                fw={600}
+                c="#26316D"
+                px={18}
+                visibleFrom="xs"
+                aria-label="Sign out of your account"
+              >
+                Logout
+              </Button>
+            </Group>
+          </Group>
+        </Container>
+      </Box>
+
+      {/* Mobile Navigation Drawer for Customers */}
+      {showLinks && isCustomer && customerNavItems.length > 0 && (
+        <Drawer
+          opened={customerDrawerOpened}
+          onClose={closeCustomerDrawer}
+          title={
             <Link
-              href={isAdmin ? "/admin/dashboard" : "/dashboard"}
+              href="/dashboard"
               style={{ textDecoration: "none" }}
               aria-label="Keep PH - Home"
+              onClick={closeCustomerDrawer}
             >
-              <Title order={1} fw={800} c="#1A237E">
+              <Title order={3} fw={800} c="#1A237E">
                 Keep PH
               </Title>
             </Link>
-          </Group>
-
-          {/* DESKTOP NAV LINKS - Hidden on Mobile */}
-          {showLinks && session && (
-            <Group gap="lg" visibleFrom="sm">
-              {navLinks}
-            </Group>
-          )}
-
-          {/* RIGHT SIDE NAV */}
-          <Group gap="sm" wrap="nowrap">
-            {showLinks && role === "user" && <Notifications />}
-
-            <Tooltip label="Account">
-              <ActionIcon
-                component={Link}
-                href="/account"
-                variant="subtle"
-                color="gray"
-                radius="xl"
-                size="lg"
-                onClick={() => startRouteProgress()}
-                aria-label="View account settings"
-              >
-                <IconUser size={20} aria-hidden="true" />
-              </ActionIcon>
-            </Tooltip>
-
-            <Button
-              onClick={handleSignOut}
-              loading={loading}
-              variant="outline"
-              bd="1px solid #26316D"
-              bdrs={999}
-              fw={600}
-              c="#26316D"
-              px={18}
-              visibleFrom="xs"
-              aria-label="Sign out of your account"
-            >
-              Logout
-            </Button>
-          </Group>
-        </Group>
-      </Container>
-
-      {/* MOBILE DRAWER */}
-      <Drawer
-        opened={opened}
-        onClose={close}
-        title="Navigation"
-        size="xs"
-        hiddenFrom="sm"
-        id="mobile-navigation-drawer"
-      >
-        <Stack gap="md" mt="xl">
-          {navLinks}
-          <Button
-            onClick={handleSignOut}
-            loading={loading}
-            variant="light"
-            color="red"
-            fullWidth
-            mt="xl"
+          }
+          size={280}
+          hiddenFrom="sm"
+          position="left"
+          overlayProps={{ opacity: 0.5, blur: 4 }}
+          transitionProps={{ duration: 200, timingFunction: "ease" }}
+          zIndex={300}
+          id="customer-mobile-navigation-drawer"
+          styles={{
+            content: {
+              display: "flex",
+              flexDirection: "column",
+            },
+            body: {
+              flex: 1,
+              overflow: "hidden",
+            },
+          }}
+        >
+          <Box
+            style={{
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              backgroundColor: "#FFFFFF",
+            }}
           >
-            Logout
-          </Button>
-        </Stack>
-      </Drawer>
-    </Box>
+            <ScrollArea style={{ flex: 1 }}>
+              <Stack gap={4} py="md">
+                {customerNavItems.map((nav) => {
+                  const isActive =
+                    pathname === nav.path ||
+                    pathname.startsWith(nav.path + "/");
+                  return (
+                    <NavLink
+                      key={nav.key}
+                      component={Link}
+                      href={nav.path}
+                      label={nav.title}
+                      leftSection={getIcon(nav.key)}
+                      active={isActive}
+                      onClick={() => handleRouteClick(nav.path)}
+                      style={{
+                        borderRadius: "8px",
+                        fontWeight: isActive ? 700 : 500,
+                        color: isActive ? "#1A237E" : "#4B5563",
+                      }}
+                    />
+                  );
+                })}
+                <Button
+                  onClick={handleSignOut}
+                  loading={loading}
+                  variant="light"
+                  color="red"
+                  fullWidth
+                  mt="xl"
+                >
+                  Logout
+                </Button>
+              </Stack>
+            </ScrollArea>
+          </Box>
+        </Drawer>
+      )}
+    </>
   );
 }
