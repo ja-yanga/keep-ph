@@ -10,6 +10,7 @@ export async function GET(request: Request) {
   const q = (searchParams.get("q") ?? "").trim();
   const sort = searchParams.get("sort") ?? "users_created_at";
   const direction = searchParams.get("direction") === "asc" ? "asc" : "desc";
+  const role = (searchParams.get("role") ?? "").trim();
 
   try {
     const { data, total_count } = await adminListUsers({
@@ -18,6 +19,7 @@ export async function GET(request: Request) {
       offset: from,
       sort,
       direction,
+      role,
     });
 
     return NextResponse.json({ data, count: total_count }, { status: 200 });
