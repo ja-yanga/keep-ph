@@ -69,6 +69,7 @@ const ACTIONS = [
   { label: "Release", value: "RELEASE" },
   { label: "Dispose", value: "DISPOSE" },
   { label: "Scan", value: "SCAN" },
+  { label: "Purchase", value: "PURCHASE" },
 ];
 
 export default function ActivityLogContent() {
@@ -150,6 +151,14 @@ export default function ActivityLogContent() {
     // For KYC
     const kyc_description = log.activity_details?.kyc_description || "";
 
+    // For subscription
+    const subscription_plan_name =
+      log.activity_details?.mailroom_plan_name || "";
+    const subscription_location_name =
+      log.activity_details?.mailroom_location_name || "";
+    const subscription_locker_qty =
+      log.activity_details?.mailroom_locker_qty || "";
+
     return (
       <Stack gap={2}>
         {/* Main action description */}
@@ -176,6 +185,14 @@ export default function ActivityLogContent() {
         {kyc_description && (
           <Text size="xs" c="dimmed" lineClamp={1}>
             {kyc_description}
+          </Text>
+        )}
+
+        {/* For subscription: show description */}
+        {subscription_plan_name && (
+          <Text size="xs" c="dimmed" lineClamp={1}>
+            {subscription_plan_name} - {subscription_location_name} -{" "}
+            {subscription_locker_qty}
           </Text>
         )}
       </Stack>

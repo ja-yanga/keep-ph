@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { upsertPaymentResource } from "@/app/actions/post";
+import { logActivity } from "@/lib/activity-log";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   const payload = await req.json().catch(() => null);
@@ -39,6 +41,57 @@ export async function POST(req: Request) {
                 { status: 500 },
               );
             }
+          }
+        }
+
+        // Log activity after successful payment processing
+        if (
+          eventType === "checkout_session.payment.paid" &&
+          payments.length > 0
+        ) {
+          try {
+            const firstPayment = payments[0];
+            const meta = firstPayment?.attributes?.metadata;
+
+            if (meta?.user_id && meta?.location_id && meta?.plan_id) {
+              const supabase = createSupabaseServiceClient();
+
+              // Fetch location and plan names for logging
+              const { data: locationData } = await supabase
+                .from("mailroom_location_table")
+                .select("mailroom_location_name")
+                .eq("mailroom_location_id", meta.location_id)
+                .single();
+
+              const { data: planData } = await supabase
+                .from("mailroom_plan_table")
+                .select("mailroom_plan_name")
+                .eq("mailroom_plan_id", meta.plan_id)
+                .single();
+
+              await logActivity({
+                userId: meta.user_id,
+                action: "PURCHASE",
+                type: "USER_REQUEST_OTHERS",
+                entityType: "SUBSCRIPTION",
+                entityId: meta.user_id,
+                details: {
+                  mailroom_locker_qty:
+                    String(meta.locker_qty ?? 1) + " Lockers",
+                  mailroom_location_name:
+                    locationData?.mailroom_location_name || "Unknown",
+                  mailroom_plan_name: planData?.mailroom_plan_name || "Unknown",
+                },
+              });
+
+              console.log("[webhook] ✅ Payment activity logged successfully");
+            } else {
+              console.debug(
+                "[webhook] Skipping log: missing required metadata",
+              );
+            }
+          } catch (logErr) {
+            console.error("[webhook] Payment activity log failed:", logErr);
           }
         }
       } else if (nested?.type === "payment") {

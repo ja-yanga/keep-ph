@@ -706,6 +706,9 @@ export type ActivityLogDetails = {
   payment_amount?: string;
   payment_method?: string;
   kyc_description?: string;
+  mailroom_plan_name?: string;
+  mailroom_location_name?: string;
+  mailroom_locker_qty?: string;
 };
 
 export type ActivityLogEntry = ActivityLogEntryRow & {

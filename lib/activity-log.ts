@@ -29,7 +29,8 @@ export async function logActivity(args: {
     | "CLAIM"
     | "RELEASE"
     | "DISPOSE"
-    | "SCAN";
+    | "SCAN"
+    | "PURCHASE";
   type:
     | "USER_REQUEST_SCAN"
     | "USER_REQUEST_RELEASE"

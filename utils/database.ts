@@ -1482,7 +1482,8 @@ export type Database = {
         | "CLAIM"
         | "RELEASE"
         | "DISPOSE"
-        | "SCAN";
+        | "SCAN"
+        | "PURCHASE";
       activity_entity_type:
         | "MAIL_ACTION_REQUEST"
         | "USER_KYC"
@@ -1793,6 +1794,7 @@ export const Constants = {
         "RELEASE",
         "DISPOSE",
         "SCAN",
+        "PURCHASE",
       ],
       activity_entity_type: [
         "MAIL_ACTION_REQUEST",
