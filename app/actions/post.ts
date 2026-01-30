@@ -610,6 +610,18 @@ export async function adminCreateMailroomPackage(args: {
 
   // Log activity
   const packageData = data as Record<string, unknown>;
+
+  // Fetch locker code if locker_id is provided
+  let locker_code: string | null = null;
+  if (args.locker_id) {
+    const { data: lockerData } = await supabaseAdmin
+      .from("location_locker_table")
+      .select("location_locker_code")
+      .eq("location_locker_id", args.locker_id)
+      .single();
+    locker_code = lockerData?.location_locker_code || null;
+  }
+
   await logActivity({
     userId: args.userId,
     action: "STORE",
@@ -617,12 +629,10 @@ export async function adminCreateMailroomPackage(args: {
     entityType: "MAILBOX_ITEM",
     entityId: packageData.mailbox_item_id as string,
     details: {
+      package_status: args.status,
       package_name: args.package_name,
-      registration_id: args.registration_id,
-      locker_id: args.locker_id,
       package_type: args.package_type,
-      status: args.status,
-      mailbox_item_id: packageData.mailbox_item_id,
+      ...(locker_code && { package_locker_code: locker_code }),
     },
   });
 
@@ -906,6 +916,24 @@ export async function adminReleaseMailroomPackage(args: {
   // Log activity
   if (actorUserId) {
     try {
+      // Get package type and locker info from the database
+      const { data: pkgDetails } = await supabaseAdmin
+        .from("mailbox_item_table")
+        .select("mailbox_item_type, mailbox_item_status, location_locker_id")
+        .eq("mailbox_item_id", packageId)
+        .single();
+
+      // Fetch locker code if locker exists
+      let locker_code: string | null = null;
+      if (pkgDetails?.location_locker_id) {
+        const { data: lockerData } = await supabaseAdmin
+          .from("location_locker_table")
+          .select("location_locker_code")
+          .eq("location_locker_id", pkgDetails.location_locker_id)
+          .single();
+        locker_code = lockerData?.location_locker_code || null;
+      }
+
       await logActivity({
         userId: actorUserId,
         action: "RELEASE",
@@ -913,11 +941,10 @@ export async function adminReleaseMailroomPackage(args: {
         entityType: "MAILBOX_ITEM",
         entityId: packageId,
         details: {
-          mailbox_item_id: packageId,
+          status: "RELEASED",
           package_name: pkg?.mailbox_item_name,
-          release_to_name: finalReleaseToName,
-          address: releaseAddressText,
-          description: `Admin released package ${pkg?.mailbox_item_name || packageId} to ${finalReleaseToName || "recipient"}`,
+          package_type: pkgDetails?.mailbox_item_type || "Parcel",
+          ...(locker_code && { locker_code }),
         },
       });
     } catch (logErr) {

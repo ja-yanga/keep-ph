@@ -115,10 +115,8 @@ export async function POST(request: Request) {
         entityType: "MAILBOX_ITEM",
         entityId: packageId,
         details: {
-          mailbox_item_id: packageId,
+          package_status: "SCAN",
           package_name: pkgData.mailbox_item_name,
-          file_name: file.name,
-          description: `Admin scanned document (${pkgData.mailbox_item_name})`,
         },
       });
     } catch (logErr) {

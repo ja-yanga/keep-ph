@@ -701,10 +701,10 @@ export type ActivityLogEntryRow =
 
 export type ActivityLogDetails = {
   package_name?: string;
-  status?: string;
-  description?: string;
-  new_status?: string;
   package_type?: string;
+  package_locker_code?: string;
+  payment_amount?: string;
+  payment_method?: string;
 };
 
 export type ActivityLogEntry = ActivityLogEntryRow & {

@@ -137,25 +137,35 @@ export default function ActivityLogContent() {
       log.activity_action?.toLowerCase() || "performed an action";
     const entity =
       log.activity_entity_type?.toLowerCase().replace(/_/g, " ") || "something";
-    const kyc_detail = log.activity_details?.description || "";
+
+    // For mailbox items (store, dispose, release, scan)
+    const package_name = log.activity_details?.package_name || "";
     const package_type = log.activity_details?.package_type || "";
-    const package_detail = log.activity_details?.package_name || "";
-    const package_type_is =
-      package_type === "Document" ? "Document" : "Package";
+    const package_locker_code = log.activity_details?.package_locker_code || "";
+
+    // For rewards
+    const payment_method = log.activity_details?.payment_method || "";
+    const payment_amount = log.activity_details?.payment_amount || "";
 
     return (
       <Stack gap={2}>
+        {/* Main action description */}
         <Text size="sm" fw={500} tt="capitalize">
           {logAction} {entity}
         </Text>
-        {kyc_detail && (
+
+        {/* For mailbox items: show package name and type */}
+        {package_name && (
           <Text size="xs" c="dimmed" lineClamp={1}>
-            {kyc_detail}
+            {package_name} {package_type ? `(${package_type})` : "(Scanned)"}
+            {package_locker_code && ` - Locker: ${package_locker_code}`}
           </Text>
         )}
-        {package_detail && (
-          <Text size="xs" c="dimmed" lineClamp={1}>
-            {package_type_is}: {package_detail}
+
+        {/* For rewards: show payout and payment method */}
+        {payment_amount && payment_method && (
+          <Text size="xs" c="dimmed" lineClamp={1} tt="uppercase">
+            Amount: ₱{payment_amount} ({payment_method})
           </Text>
         )}
       </Stack>

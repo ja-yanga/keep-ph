@@ -278,6 +278,18 @@ export async function adminUpdateMailroomPackage(args: {
   if (args.status === "RELEASED") activityAction = "RELEASE";
   if (args.status === "DISPOSED") activityAction = "DISPOSE";
 
+  // Fetch locker code if locker_id exists
+  let locker_code: string | null = null;
+  const locker_id = args.locker_id ?? result.item.location_locker_id;
+  if (locker_id) {
+    const { data: lockerData } = await supabaseAdmin
+      .from("location_locker_table")
+      .select("location_locker_code")
+      .eq("location_locker_id", locker_id)
+      .single();
+    locker_code = lockerData?.location_locker_code || null;
+  }
+
   await logActivity({
     userId: args.userId,
     action: activityAction,
@@ -285,20 +297,13 @@ export async function adminUpdateMailroomPackage(args: {
     entityType: "MAILBOX_ITEM",
     entityId: args.id,
     details: {
-      mailbox_item_id: args.id,
-      package_name: args.package_name ?? result.item.mailbox_item_name,
-      updates: {
-        package_name: args.package_name,
-        registration_id: args.registration_id,
-        locker_id: args.locker_id,
-        package_type: args.package_type,
-        status: args.status,
-        package_photo: args.package_photo !== undefined ? "updated" : undefined,
-        locker_status: args.locker_status,
-      },
-      old_status: result.old_status,
-      new_status: args.status,
-      description: `Admin ${activityAction.toLowerCase()}d package ${args.package_name ?? result.item.mailbox_item_name}`,
+      package_status: args.status ?? result.old_status,
+      package_name: (args.package_name ??
+        result.item.mailbox_item_name) as string,
+      package_type: (args.package_type ??
+        result.item.mailbox_item_type ??
+        "Parcel") as string,
+      ...(locker_code && { package_locker_code: locker_code }),
     },
   });
 
@@ -363,6 +368,24 @@ export const updateMailboxItem = async (args: {
     }
 
     try {
+      // Fetch package details for consistent logging
+      const { data: pkgDetails } = await supabaseAdmin
+        .from("mailbox_item_table")
+        .select("mailbox_item_name, mailbox_item_type, location_locker_id")
+        .eq("mailbox_item_id", args.id)
+        .single();
+
+      // Fetch locker code if locker exists
+      let locker_code: string | null = null;
+      if (pkgDetails?.location_locker_id) {
+        const { data: lockerData } = await supabaseAdmin
+          .from("location_locker_table")
+          .select("location_locker_code")
+          .eq("location_locker_id", pkgDetails.location_locker_id)
+          .single();
+        locker_code = lockerData?.location_locker_code || null;
+      }
+
       await logActivity({
         userId: args.userId,
         action: activityAction,
@@ -370,13 +393,10 @@ export const updateMailboxItem = async (args: {
         entityType: "MAILBOX_ITEM",
         entityId: args.id,
         details: {
-          mailbox_item_id: args.id,
-          status: args.status,
-          selected_address_id: args.selected_address_id,
-          release_to_name: args.release_to_name,
-          forward_address: args.forward_address,
-          notes: args.notes,
-          description: `User requested ${activityAction.toLowerCase()} for package ${args.id}`,
+          package_status: args.status,
+          package_name: pkgDetails?.mailbox_item_name || "Unknown",
+          package_type: pkgDetails?.mailbox_item_type || "Parcel",
+          ...(locker_code && { package_locker_code: locker_code }),
         },
       });
     } catch (logErr) {

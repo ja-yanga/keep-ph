@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { claimReferralRewards } from "@/app/actions/post";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: Request) {
   try {
@@ -21,10 +22,21 @@ export async function POST(req: Request) {
       );
     }
 
+    // Log the reward claim activity
+    await logActivity({
+      userId,
+      action: "CLAIM",
+      type: "USER_REQUEST_REWARD",
+      entityType: "REWARDS_CLAIM",
+      details: {
+        payment_amount: payload.payout,
+        payment_method: paymentMethod,
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       message: payload.message,
-      payout: payload.payout,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
