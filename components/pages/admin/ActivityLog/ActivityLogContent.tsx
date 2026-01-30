@@ -1,5 +1,7 @@
 "use client";
 
+import "mantine-datatable/styles.layer.css";
+
 import { useState, useEffect, useCallback } from "react";
 import {
   Stack,
@@ -77,12 +79,14 @@ const ACTIONS = [
   { label: "Purchase", value: "PURCHASE" },
 ];
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+
 export default function ActivityLogContent() {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
   const [totalRecords, setTotalRecords] = useState(0);
   const [page, setPage] = useState(1);
-  const recordsPerPage = 10;
+  const [recordsPerPage, setRecordsPerPage] = useState(10);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -142,7 +146,7 @@ export default function ActivityLogContent() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, entityType, action, dateRange, sortStatus]);
+  }, [page, recordsPerPage, search, entityType, action, dateRange, sortStatus]);
 
   useEffect(() => {
     void fetchLogs();
@@ -249,6 +253,11 @@ export default function ActivityLogContent() {
     if (e.key === "Enter") {
       handleSearchSubmit();
     }
+  };
+
+  const handleRecordsPerPageChange = (n: number) => {
+    setRecordsPerPage(n);
+    setPage(1);
   };
 
   return (
@@ -504,6 +513,8 @@ export default function ActivityLogContent() {
               idAccessor="activity_log_id"
               totalRecords={totalRecords}
               recordsPerPage={recordsPerPage}
+              recordsPerPageOptions={PAGE_SIZE_OPTIONS}
+              onRecordsPerPageChange={handleRecordsPerPageChange}
               page={page}
               onPageChange={setPage}
               sortStatus={sortStatus}
