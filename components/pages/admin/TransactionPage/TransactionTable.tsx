@@ -14,6 +14,7 @@ import {
   Loader,
   Center,
   Tooltip,
+  Skeleton,
 } from "@mantine/core";
 import {
   IconArrowUp,
@@ -290,6 +291,31 @@ const TransactionTable = () => {
       renderDateHeader,
     ],
   );
+
+  if (isLoading) {
+    return (
+      <Stack
+        gap="xl"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading dashboard data"
+      >
+        <Skeleton h={32} w={200} mb="xs" />
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} h={120} radius="lg" />
+          ))}
+        </SimpleGrid>
+
+        {/* Use a lighter skeleton for the table container initially */}
+        <Paper withBorder p="lg" radius="md" h={300}>
+          <Center h="100%">
+            <Loader size="sm" color="gray" />
+          </Center>
+        </Paper>
+      </Stack>
+    );
+  }
 
   if (error) {
     return (
