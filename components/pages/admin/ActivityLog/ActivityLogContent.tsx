@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Container,
-  Title,
   Stack,
   Group,
   TextInput,
@@ -12,14 +11,8 @@ import {
   Paper,
   Text,
   Badge,
-  ThemeIcon,
 } from "@mantine/core";
-import {
-  IconSearch,
-  IconRefresh,
-  IconUser,
-  IconDatabase,
-} from "@tabler/icons-react";
+import { IconSearch, IconRefresh, IconUser } from "@tabler/icons-react";
 import { AdminTable } from "@/components/common/AdminTable";
 import { formatDate } from "@/utils/format";
 import {
@@ -88,6 +81,12 @@ export default function ActivityLogContent() {
     null,
   ]);
 
+  // Sorting
+  const [sortStatus, setSortStatus] = useState<{
+    columnAccessor: string;
+    direction: "asc" | "desc";
+  }>({ columnAccessor: "activity_created_at", direction: "desc" });
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -100,6 +99,8 @@ export default function ActivityLogContent() {
           action: action || null,
           date_from: dateRange[0] || null,
           date_to: dateRange[1] || null,
+          sort_by: sortStatus.columnAccessor || null,
+          sort_direction: sortStatus.direction || null,
         },
       });
 
@@ -127,7 +128,7 @@ export default function ActivityLogContent() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, entityType, action, dateRange]);
+  }, [page, search, entityType, action, dateRange, sortStatus]);
 
   useEffect(() => {
     void fetchLogs();
@@ -201,82 +202,74 @@ export default function ActivityLogContent() {
 
   return (
     <Container fluid>
-      <Stack gap="lg">
-        <Group justify="space-between">
-          <Group gap="sm">
-            <ThemeIcon
-              variant="gradient"
-              gradient={{ from: "gray.1", to: "gray.2", deg: 180 }}
-              size="lg"
-              radius="md"
-              aria-hidden="true"
-            >
-              <IconDatabase size={20} color="var(--mantine-color-dark-3)" />
-            </ThemeIcon>
-            <div>
-              <Title order={2} fw={800} size="h4" id="recent-packages-heading">
-                Activity Logs
-              </Title>
-              <Text size="xs" c="dark.4" fw={500}>
-                Latest activities and updates
-              </Text>
-            </div>
-          </Group>
-          <Button
-            variant="default"
-            leftSection={<IconRefresh size={16} aria-hidden="true" />}
-            onClick={() => fetchLogs()}
-            loading={loading}
-            size="sm"
-            aria-label="Refresh activity logs"
-          >
-            Refresh
-          </Button>
-        </Group>
+      <Stack gap="xs">
         <Paper p="md" withBorder shadow="sm" radius="md">
-          <Group align="flex-end" grow>
-            <TextInput
-              label="Search"
-              placeholder="Search by details or email..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-            />
-            <Select
-              label="Entity Type"
-              placeholder="Pick one"
-              data={ENTITY_TYPES}
-              value={entityType}
-              onChange={setEntityType}
-              clearable
-            />
-            <Select
-              label="Action"
-              placeholder="Pick one"
-              data={ACTIONS}
-              value={action}
-              onChange={setAction}
-              clearable
-            />
-            <TextInput
-              label="From Date"
-              type="date"
-              placeholder="Pick date"
-              value={dateRange[0] || ""}
-              onChange={(e) =>
-                setDateRange([e.currentTarget.value || null, dateRange[1]])
-              }
-            />
-            <TextInput
-              label="To Date"
-              type="date"
-              placeholder="Pick date"
-              value={dateRange[1] || ""}
-              onChange={(e) =>
-                setDateRange([dateRange[0], e.currentTarget.value || null])
-              }
-            />
-          </Group>
+          <Stack gap="md">
+            {/* First row: Search, Entity Type, Action */}
+            <Group align="flex-end" grow preventGrowOverflow={false}>
+              <TextInput
+                label="Search"
+                placeholder="Search by details or email..."
+                leftSection={<IconSearch size={16} />}
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                style={{ minWidth: 0 }}
+              />
+              <Select
+                label="Entity Type"
+                placeholder="Pick one"
+                data={ENTITY_TYPES}
+                value={entityType}
+                onChange={setEntityType}
+                clearable
+                style={{ minWidth: 0 }}
+              />
+              <Select
+                label="Action"
+                placeholder="Pick one"
+                data={ACTIONS}
+                value={action}
+                onChange={setAction}
+                clearable
+                style={{ minWidth: 0 }}
+              />
+            </Group>
+
+            {/* Second row: Date filters and Refresh button */}
+            <Group align="flex-end" wrap="wrap">
+              <TextInput
+                label="From Date"
+                type="date"
+                placeholder="Pick date"
+                value={dateRange[0] || ""}
+                onChange={(e) =>
+                  setDateRange([e.currentTarget.value || null, dateRange[1]])
+                }
+                style={{ flex: "1 1 200px", minWidth: "200px" }}
+              />
+              <TextInput
+                label="To Date"
+                type="date"
+                placeholder="Pick date"
+                value={dateRange[1] || ""}
+                onChange={(e) =>
+                  setDateRange([dateRange[0], e.currentTarget.value || null])
+                }
+                style={{ flex: "1 1 200px", minWidth: "200px" }}
+              />
+              <Button
+                variant="default"
+                leftSection={<IconRefresh size={16} aria-hidden="true" />}
+                onClick={() => fetchLogs()}
+                loading={loading}
+                size="sm"
+                aria-label="Refresh activity logs"
+                style={{ flex: "0 0 auto" }}
+              >
+                Refresh
+              </Button>
+            </Group>
+          </Stack>
         </Paper>
 
         <AdminTable<ActivityLogEntry>
@@ -287,17 +280,21 @@ export default function ActivityLogContent() {
           recordsPerPage={recordsPerPage}
           page={page}
           onPageChange={setPage}
+          sortStatus={sortStatus}
+          onSortStatusChange={setSortStatus}
           columns={[
             {
               accessor: "activity_created_at",
               title: "Timestamp",
               width: 180,
+              sortable: true,
               render: (log) => formatDate(log.activity_created_at),
             },
             {
-              accessor: "actor",
+              accessor: "actor_email",
               title: "Actor",
               width: 250,
+              sortable: true,
               render: (log) => (
                 <Group gap="xs">
                   <IconUser size={14} color="gray" />
@@ -310,12 +307,13 @@ export default function ActivityLogContent() {
               ),
             },
             {
-              accessor: "activity_type",
+              accessor: "activity_entity_type",
               title: "Entity Type",
               width: 200,
+              sortable: true,
               render: (log) => (
                 <Badge variant="dot" color="blue">
-                  {log.activity_type.replaceAll("_", " ")}
+                  {log.activity_entity_type?.replaceAll("_", " ") || "N/A"}
                 </Badge>
               ),
             },
@@ -328,6 +326,7 @@ export default function ActivityLogContent() {
               accessor: "activity_action",
               title: "Action",
               width: 120,
+              sortable: true,
               render: (log) => (
                 <Badge variant="dot" color="blue">
                   {log.activity_action}

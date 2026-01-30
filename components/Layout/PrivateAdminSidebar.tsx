@@ -27,6 +27,7 @@ import {
   IconAward,
   IconChartBar,
   IconReceipt,
+  IconFileTime,
 } from "@tabler/icons-react";
 
 type PrivateAdminSidebarProps = {
@@ -76,6 +77,7 @@ export default function PrivateAdminSidebar({
       stats: <IconChartBar size={20} />,
       users: <IconUsers size={20} />,
       transactions: <IconReceipt size={20} />,
+      "activity-logs": <IconFileTime size={20} />,
     };
     return iconMap[key] || null;
   };
