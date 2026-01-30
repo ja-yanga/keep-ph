@@ -132,6 +132,19 @@ export async function submitKYC(formData: FormData, userId: string) {
     },
   });
 
+  if (!upErr) {
+    await logActivity({
+      userId,
+      action: "SUBMIT",
+      type: "USER_KYC_SUBMIT",
+      entityType: "USER_KYC",
+      entityId: userId,
+      details: {
+        kyc_description: `${first_name} ${last_name} submitted KYC`,
+      },
+    });
+  }
+
   // store the submitted address in user's saved addresses and mark it as default
   // run in background (do not block response)
   if (!upErr && address_line1) {
@@ -610,19 +623,29 @@ export async function adminCreateMailroomPackage(args: {
 
   // Log activity
   const packageData = data as Record<string, unknown>;
+
+  // Fetch locker code if locker_id is provided
+  let locker_code: string | null = null;
+  if (args.locker_id) {
+    const { data: lockerData } = await supabaseAdmin
+      .from("location_locker_table")
+      .select("location_locker_code")
+      .eq("location_locker_id", args.locker_id)
+      .single();
+    locker_code = lockerData?.location_locker_code || null;
+  }
+
   await logActivity({
     userId: args.userId,
-    action: "CREATE",
+    action: "STORE",
     type: "ADMIN_ACTION",
     entityType: "MAILBOX_ITEM",
     entityId: packageData.mailbox_item_id as string,
     details: {
+      package_status: args.status,
       package_name: args.package_name,
-      registration_id: args.registration_id,
-      locker_id: args.locker_id,
       package_type: args.package_type,
-      status: args.status,
-      mailbox_item_id: packageData.mailbox_item_id,
+      ...(locker_code && { package_locker_code: locker_code }),
     },
   });
 
@@ -741,11 +764,18 @@ export async function adminReleaseMailroomPackage(args: {
   notes?: string | null;
   selectedAddressId?: string | null;
   releaseToName?: string | null;
+  actorUserId?: string | null;
 }): Promise<{ success: boolean }> {
   const supabaseAdmin = createSupabaseServiceClient();
 
-  const { packageId, file, lockerStatus, selectedAddressId, releaseToName } =
-    args;
+  const {
+    packageId,
+    file,
+    lockerStatus,
+    selectedAddressId,
+    releaseToName,
+    actorUserId,
+  } = args;
 
   if (!file || !packageId) {
     throw new Error("File and package ID are required");
@@ -876,7 +906,6 @@ export async function adminReleaseMailroomPackage(args: {
   }
 
   // Update Package Status and snapshot release address/name if provided
-  // Note: Keep mailbox_item_photo for backward compatibility, but proof is now in mailroom_file_table
   const updatePayload: Record<string, unknown> = {
     mailbox_item_status: "RELEASED",
   };
@@ -885,10 +914,6 @@ export async function adminReleaseMailroomPackage(args: {
     updatePayload.user_address_id = releaseAddressId;
     updatePayload.mailbox_item_release_address = releaseAddressText;
   }
-
-  // Note: release_to_name is stored in mail_action_request_table or can be derived from address
-  // The mailbox_item_table doesn't have a dedicated release_to_name field
-  // It will be available through the mailroom_file_table or registration data
 
   const { data: pkg, error: updateError } = await supabaseAdmin
     .from("mailbox_item_table")
@@ -901,6 +926,45 @@ export async function adminReleaseMailroomPackage(args: {
     throw new Error(`Failed to update package: ${updateError.message}`);
   }
 
+  // Log activity
+  if (actorUserId) {
+    try {
+      // Get package type and locker info from the database
+      const { data: pkgDetails } = await supabaseAdmin
+        .from("mailbox_item_table")
+        .select("mailbox_item_type, mailbox_item_status, location_locker_id")
+        .eq("mailbox_item_id", packageId)
+        .single();
+
+      // Fetch locker code if locker exists
+      let locker_code: string | null = null;
+      if (pkgDetails?.location_locker_id) {
+        const { data: lockerData } = await supabaseAdmin
+          .from("location_locker_table")
+          .select("location_locker_code")
+          .eq("location_locker_id", pkgDetails.location_locker_id)
+          .single();
+        locker_code = lockerData?.location_locker_code || null;
+      }
+
+      await logActivity({
+        userId: actorUserId,
+        action: "RELEASE",
+        type: "ADMIN_ACTION",
+        entityType: "MAILBOX_ITEM",
+        entityId: packageId,
+        details: {
+          status: "RELEASED",
+          package_name: pkg?.mailbox_item_name,
+          package_type: pkgDetails?.mailbox_item_type || "Parcel",
+          ...(locker_code && { locker_code }),
+        },
+      });
+    } catch (logErr) {
+      console.error("Release activity log failed:", logErr);
+    }
+  }
+
   // Update Locker Status
   if (lockerStatus && pkg.mailroom_registration_id) {
     const { error: lockerError } = await supabaseAdmin
@@ -910,7 +974,6 @@ export async function adminReleaseMailroomPackage(args: {
 
     if (lockerError) {
       console.error("Failed to update locker status:", lockerError);
-      // Don't throw - allow release to succeed even if locker update fails
     }
   }
 

@@ -15,6 +15,7 @@ import {
 import {
   IconMapPin,
   IconCopy,
+  IconCheck,
   IconChevronRight,
   IconPackage,
 } from "@tabler/icons-react";
@@ -58,8 +59,12 @@ function SubscriptionCardComponent({
 }: SubscriptionCardProps) {
   const [isNavigating, setIsNavigating] = useState(false);
 
+  const [copied, setCopied] = useState(false);
+
   const handleCopyAddress = useCallback(() => {
     onCopyAddress(row);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [onCopyAddress, row]);
 
   const handleManageMailbox = useCallback(() => {
@@ -107,8 +112,9 @@ function SubscriptionCardComponent({
               size="sm"
               onClick={handleCopyAddress}
               title="Copy full shipping address"
+              color={copied ? "teal" : "blue"}
             >
-              <IconCopy size={14} />
+              {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
             </ActionIcon>
           </Group>
           <Badge

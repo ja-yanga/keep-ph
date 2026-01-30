@@ -8,11 +8,13 @@ import "@mantine/core/styles.css";
 import "mantine-datatable/styles.css";
 import "nprogress/nprogress.css";
 import "@/app/globals.css";
+import "@mantine/notifications/styles.css";
 import {
   ColorSchemeScript,
   MantineProvider,
   mantineHtmlProps,
 } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import TopLoaderProvider from "@/components/provider/TopLoaderProvider";
@@ -67,6 +69,7 @@ export default function RootLayout({
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
         <MantineProvider>
+          <Notifications />
           <StoreProvider>
             <ServerSessionProvider>
               <TopLoaderProvider />

@@ -1,12 +1,25 @@
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import {
+  createSupabaseServiceClient,
+  createClient,
+} from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { sendNotification } from "@/lib/notifications"; // Import the helper
+import { sendNotification } from "@/lib/notifications";
+import { logActivity } from "@/lib/activity-log";
 
 // Initialize Admin Client (Service Role needed for Storage uploads if RLS is strict)
 const supabase = createSupabaseServiceClient();
 
 export async function POST(request: Request) {
   try {
+    // 0. Authentication Check
+    const authSupabase = await createClient();
+    const {
+      data: { user },
+    } = await authSupabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const packageId = formData.get("packageId") as string;
@@ -91,6 +104,23 @@ export async function POST(request: Request) {
       } catch (notifyErr) {
         console.error("sendNotification failed:", notifyErr);
       }
+    }
+
+    // 7. Log Activity
+    try {
+      await logActivity({
+        userId: user.id,
+        action: "SCAN",
+        type: "ADMIN_ACTION",
+        entityType: "MAILBOX_ITEM",
+        entityId: packageId,
+        details: {
+          package_status: "SCAN",
+          package_name: pkgData.mailbox_item_name,
+        },
+      });
+    } catch (logErr) {
+      console.error("Scan activity log failed:", logErr);
     }
 
     return NextResponse.json({ success: true, url: publicUrl });

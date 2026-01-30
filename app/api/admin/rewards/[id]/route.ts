@@ -1,6 +1,7 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications";
+import { logActivity } from "@/lib/activity-log";
 import type {
   AdminUpdateClaimResponse,
   RewardDbRow,
@@ -208,6 +209,23 @@ export async function PUT(
           title = "Reward Paid";
           message = `Your reward request (${String(id).slice(0, 8)}) has been paid. Amount: PHP ${amount}.`;
           typeStr = "REWARD_PAID";
+
+          // Log activity when admin pays the referrer
+          try {
+            await logActivity({
+              userId: oldClaim.user_id,
+              action: "PAY",
+              type: "ADMIN_ACTION",
+              entityType: "REWARDS_CLAIM",
+              entityId: id,
+              details: {
+                payment_amount: updated.amount ?? oldClaim.rewards_claim_amount,
+                payment_method: updated.payment_method,
+              },
+            });
+          } catch (logErr) {
+            console.error("Failed to log reward payment activity:", logErr);
+          }
         }
 
         await sendNotification(userId, title, message, typeStr, "/referrals");

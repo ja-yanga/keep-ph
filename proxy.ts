@@ -39,6 +39,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/stats",
     "/admin/users",
     "/admin/transactions",
+    "/admin/activity-logs",
     "/unauthorized",
   ],
   approver: [
@@ -47,6 +48,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/kyc",
     "/admin/packages",
     "/admin/rewards",
+    "/admin/activity-logs",
     "/unauthorized",
   ],
   owner: [
@@ -62,6 +64,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/stats",
     "/admin/users",
     "/admin/transactions",
+    "/admin/activity-logs",
     "/unauthorized",
   ],
 };
