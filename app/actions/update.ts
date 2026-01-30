@@ -78,16 +78,21 @@ export const adminUpdateUserKyc = async ({
   // Log activity
   if (actorUserId) {
     try {
+      // Fetch user's KYC details for logging
+      const { data: kycData } = await supabaseAdmin
+        .from("user_kyc_table")
+        .select("user_kyc_first_name, user_kyc_last_name")
+        .eq("user_id", userId)
+        .single();
+
       await logActivity({
         userId: actorUserId,
         action: normalizedStatus === "VERIFIED" ? "APPROVE" : "REJECT",
-        type: "USER_KYC_VERIFY",
+        type: "ADMIN_ACTION",
         entityType: "USER_KYC",
         entityId: userId,
         details: {
-          target_user_id: userId,
-          new_status: normalizedStatus,
-          description: `Admin ${normalizedStatus === "VERIFIED" ? "verified" : "rejected"} KYC for user ${userId}`,
+          kyc_description: `Admin ${normalizedStatus === "VERIFIED" ? "verified" : "rejected"} KYC for ${kycData?.user_kyc_first_name}${kycData?.user_kyc_last_name}`,
         },
       });
     } catch (logErr) {

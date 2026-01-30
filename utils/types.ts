@@ -705,6 +705,7 @@ export type ActivityLogDetails = {
   package_locker_code?: string;
   payment_amount?: string;
   payment_method?: string;
+  kyc_description?: string;
 };
 
 export type ActivityLogEntry = ActivityLogEntryRow & {

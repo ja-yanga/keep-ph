@@ -132,6 +132,19 @@ export async function submitKYC(formData: FormData, userId: string) {
     },
   });
 
+  if (!upErr) {
+    await logActivity({
+      userId,
+      action: "SUBMIT",
+      type: "USER_KYC_SUBMIT",
+      entityType: "USER_KYC",
+      entityId: userId,
+      details: {
+        kyc_description: `${first_name} ${last_name} submitted KYC`,
+      },
+    });
+  }
+
   // store the submitted address in user's saved addresses and mark it as default
   // run in background (do not block response)
   if (!upErr && address_line1) {

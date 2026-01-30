@@ -147,6 +147,9 @@ export default function ActivityLogContent() {
     const payment_method = log.activity_details?.payment_method || "";
     const payment_amount = log.activity_details?.payment_amount || "";
 
+    // For KYC
+    const kyc_description = log.activity_details?.kyc_description || "";
+
     return (
       <Stack gap={2}>
         {/* Main action description */}
@@ -166,6 +169,13 @@ export default function ActivityLogContent() {
         {payment_amount && payment_method && (
           <Text size="xs" c="dimmed" lineClamp={1} tt="uppercase">
             Amount: ₱{payment_amount} ({payment_method})
+          </Text>
+        )}
+
+        {/* For KYC: show description */}
+        {kyc_description && (
+          <Text size="xs" c="dimmed" lineClamp={1}>
+            {kyc_description}
           </Text>
         )}
       </Stack>
