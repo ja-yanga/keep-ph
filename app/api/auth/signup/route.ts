@@ -31,8 +31,6 @@ export async function POST(req: Request) {
       }
     } catch (rpcError) {
       console.error("Error checking email existence:", rpcError);
-      // We continue if the check fails, or we could return an error.
-      // Given the requirement, we should probably handle it gracefully or return a generic error.
     }
 
     const origin = new URL(req.url).origin;
@@ -42,6 +40,9 @@ export async function POST(req: Request) {
       password,
       options: {
         emailRedirectTo: `${origin}/api/auth/callback`,
+        data: {
+          role: "user", // Set role in metadata during signup
+        },
       },
     });
 
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
       logActivity({
         userId: data.user.id,
         action: "REGISTER",
-        type: "USER_LOGIN", // Or we could use a specific type if we added one, but REGISTER action captures it
+        type: "USER_LOGIN",
         entityType: "USER",
         entityId: data.user.id,
         details: {

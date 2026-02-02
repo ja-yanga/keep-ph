@@ -27,16 +27,15 @@ BEGIN
   -- Get role from metadata (defaults to 'user' if not provided)
   v_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'user');
 
-  -- Update auth.users metadata if role is missing
-  IF NEW.raw_user_meta_data ->> 'role' IS NULL THEN
-    UPDATE auth.users
-    SET raw_user_meta_data = jsonb_set(
-      COALESCE(raw_user_meta_data, '{}'::jsonb),
-      '{role}',
-      '"user"'::jsonb
-    )
-    WHERE id = NEW.id;
-  END IF;
+  -- ALWAYS update auth.users metadata to set role
+  UPDATE auth.users
+  SET raw_user_meta_data = jsonb_set(
+    COALESCE(raw_user_meta_data, '{}'::jsonb),
+    '{role}',
+    to_jsonb(v_role),
+    true
+  )
+  WHERE id = NEW.id;
   
   -- Get mobile number from metadata if provided
   v_mobile_number := NEW.raw_user_meta_data ->> 'mobile_number';
@@ -52,7 +51,7 @@ BEGIN
     users_created_at
   )
   VALUES (
-    NEW.id, -- Use auth.users.id as users_id
+    NEW.id,
     NEW.email,
     v_role,
     NEW.raw_user_meta_data ->> 'avatar_url',
@@ -62,6 +61,7 @@ BEGIN
   )
   ON CONFLICT (users_id) DO UPDATE SET
     users_email = EXCLUDED.users_email,
+    users_role = EXCLUDED.users_role,
     users_avatar_url = EXCLUDED.users_avatar_url,
     users_is_verified = EXCLUDED.users_is_verified,
     mobile_number = EXCLUDED.mobile_number;
@@ -73,19 +73,14 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
 -- ============================================================================
 -- TRIGGER: On Auth User Created
 -- ============================================================================
--- Fires after a new user is inserted into auth.users
--- Automatically creates corresponding record in users_table
+-- Fires IMMEDIATELY after insert, regardless of email confirmation
 -- ============================================================================
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_confirmed ON auth.users;
+
 CREATE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
 FOR EACH ROW
-WHEN (NEW.email_confirmed_at IS NOT NULL)
-EXECUTE FUNCTION public.handle_new_user();
-
-CREATE TRIGGER on_auth_user_confirmed
-AFTER UPDATE ON auth.users
-FOR EACH ROW
-WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
 EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================================

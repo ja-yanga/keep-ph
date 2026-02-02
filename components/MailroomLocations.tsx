@@ -22,6 +22,8 @@ import {
   Alert,
   Skeleton,
   Loader,
+  Popover,
+  Divider,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
@@ -35,6 +37,7 @@ import {
   IconCheck,
   IconX,
   IconArrowRight,
+  IconFilter,
 } from "@tabler/icons-react";
 import { AdminTable } from "./common/AdminTable";
 import { type DataTableSortStatus } from "mantine-datatable";
@@ -145,6 +148,14 @@ export default function MailroomLocations() {
   const [filterRegion, setFilterRegion] = useState<string | null>(null);
   const [filterCity, setFilterCity] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [draftRegion, setDraftRegion] = useState<string | null>(null);
+  const [draftCity, setDraftCity] = useState<string | null>(null);
+  const [draftSortBy, setDraftSortBy] = useState<string | null>(null);
+
+  const [allRegions, setAllRegions] = useState<string[]>([]);
+  const [allCities, setAllCities] = useState<string[]>([]);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -152,6 +163,25 @@ export default function MailroomLocations() {
     columnAccessor: "name",
     direction: "asc",
   });
+
+  const sortByToStatus = (
+    value: string | null,
+  ): DataTableSortStatus<Location> => {
+    if (value === "lockers_desc") {
+      return { columnAccessor: "total_lockers", direction: "desc" };
+    }
+    if (value === "lockers_asc") {
+      return { columnAccessor: "total_lockers", direction: "asc" };
+    }
+    return { columnAccessor: "name", direction: "asc" };
+  };
+
+  const statusToSortBy = (status: DataTableSortStatus<Location>): string => {
+    if (status.columnAccessor === "total_lockers") {
+      return status.direction === "desc" ? "lockers_desc" : "lockers_asc";
+    }
+    return "name_asc";
+  };
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -191,44 +221,42 @@ export default function MailroomLocations() {
   const rawLocations = (data?.data as Location[]) ?? [];
   const totalRecords = data?.pagination?.totalCount ?? 0;
 
-  const locations = useMemo(() => {
-    return [...rawLocations].sort((a, b) => {
-      const { columnAccessor, direction } = sortStatus;
-      const valA = a[columnAccessor as keyof Location] as
-        | string
-        | number
-        | boolean
-        | null
-        | undefined;
-      const valB = b[columnAccessor as keyof Location] as
-        | string
-        | number
-        | boolean
-        | null
-        | undefined;
+  const locations = rawLocations;
 
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
+  useEffect(() => {
+    setSortStatus(sortByToStatus(sortBy));
+  }, [sortBy]);
 
-      const result = valA < valB ? -1 : 1;
-      return direction === "asc" ? result : -result;
-    });
-  }, [rawLocations, sortStatus]);
+  const hasFilters = Boolean(query || filterRegion || filterCity || sortBy);
+  const activeFilterCount = [filterRegion, filterCity, sortBy].filter(
+    Boolean,
+  ).length;
 
-  // Derive regions and cities from a separate fetch or use a subset if needed.
-  // For the sake of this implementation, we'll use a subset or the user can search.
-  // In lockers, locations were fetched separately. Here we'll just keep the useMemo for labels
-  // based on the current page data for now, but in high-perf apps these should be lookups.
+  useEffect(() => {
+    if (!hasFilters) {
+      const nextRegions = Array.from(
+        new Set(rawLocations.map((l) => l.region).filter(Boolean)),
+      ).sort() as string[];
+      const nextCities = Array.from(
+        new Set(rawLocations.map((l) => l.city).filter(Boolean)),
+      ).sort() as string[];
+
+      setAllRegions(nextRegions);
+      setAllCities(nextCities);
+    }
+  }, [rawLocations, hasFilters]);
+
   const regions = useMemo(() => {
+    if (hasFilters && allRegions.length > 0) return allRegions;
     const unique = new Set(locations.map((l) => l.region).filter(Boolean));
     return Array.from(unique).sort() as string[];
-  }, [locations]);
+  }, [locations, allRegions, hasFilters]);
 
   const cities = useMemo(() => {
+    if (hasFilters && allCities.length > 0) return allCities;
     const unique = new Set(locations.map((l) => l.city).filter(Boolean));
     return Array.from(unique).sort() as string[];
-  }, [locations]);
+  }, [locations, allCities, hasFilters]);
 
   const form = useForm({
     initialValues: {
@@ -289,10 +317,19 @@ export default function MailroomLocations() {
     setFilterRegion(null);
     setFilterCity(null);
     setSortBy(null);
+    setDraftRegion(null);
+    setDraftCity(null);
+    setDraftSortBy(null);
     setPage(1);
   };
 
-  const hasFilters = Boolean(query || filterRegion || filterCity || sortBy);
+  const applyFilters = () => {
+    setFilterRegion(draftRegion);
+    setFilterCity(draftCity);
+    setSortBy(draftSortBy);
+    setPage(1);
+    setFiltersOpen(false);
+  };
 
   const handleCreate = form.onSubmit(async (values) => {
     setCreating(true);
@@ -523,63 +560,115 @@ export default function MailroomLocations() {
                 loading={isSearching}
               />
             </div>
-            <Select
-              placeholder="Region"
-              aria-label="Filter by region"
-              data={regions}
-              value={filterRegion}
-              onChange={setFilterRegion}
-              clearable
-              searchable
-              style={{ width: 150, flexShrink: 0 }}
-            />
-            <Select
-              placeholder="City"
-              aria-label="Filter by city"
-              data={cities}
-              value={filterCity}
-              onChange={setFilterCity}
-              clearable
-              searchable
-              style={{ width: 150, flexShrink: 0 }}
-            />
-            <Select
-              placeholder="Sort By"
-              aria-label="Sort locations"
-              data={[
-                { value: "name_asc", label: "Name (A-Z)" },
-                { value: "lockers_desc", label: "Lockers (High-Low)" },
-                { value: "lockers_asc", label: "Lockers (Low-High)" },
-              ]}
-              value={sortBy}
-              onChange={setSortBy}
-              clearable
-              style={{ width: 180, flexShrink: 0 }}
-            />
-            {hasFilters && (
-              <Button
-                variant="subtle"
-                color="red.8"
-                size="sm"
-                onClick={clearFilters}
-                aria-label="Clear all filters"
-                style={{ flexShrink: 0 }}
-              >
-                Clear Filters
-              </Button>
-            )}
-            <Tooltip label="Refresh list">
-              <ActionIcon
-                variant="subtle"
-                color="dark.7"
-                size="lg"
-                onClick={() => mutate()}
-                aria-label="Refresh locations list"
-                style={{ flexShrink: 0 }}
-              >
-                <IconRefresh size={16} aria-hidden="true" />
-              </ActionIcon>
-            </Tooltip>
+
+            <Popover
+              width={360}
+              position="bottom-end"
+              shadow="md"
+              opened={filtersOpen}
+              onChange={(opened) => {
+                setFiltersOpen(opened);
+                if (opened) {
+                  setDraftRegion(filterRegion);
+                  setDraftCity(filterCity);
+                  setDraftSortBy(sortBy);
+                }
+              }}
+            >
+              <Popover.Target>
+                <Button
+                  variant="filled"
+                  color="#1e3a8a"
+                  leftSection={<IconFilter size={16} aria-hidden="true" />}
+                  onClick={() => setFiltersOpen((o) => !o)}
+                  aria-label={`Open filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ""}`}
+                  rightSection={
+                    activeFilterCount > 0 ? (
+                      <Badge
+                        size="sm"
+                        variant="filled"
+                        circle
+                        color="red"
+                        c="white"
+                        aria-hidden="true"
+                      >
+                        {activeFilterCount}
+                      </Badge>
+                    ) : null
+                  }
+                >
+                  Filters
+                </Button>
+              </Popover.Target>
+              <Popover.Dropdown>
+                {filtersOpen && (
+                  <Stack
+                    gap="md"
+                    component="form"
+                    role="form"
+                    aria-label="Location filters"
+                  >
+                    <Group justify="space-between">
+                      <Text fw={600} size="sm">
+                        Filter Locations
+                      </Text>
+                      {hasFilters && (
+                        <Button
+                          variant="subtle"
+                          size="xs"
+                          color="red"
+                          onClick={clearFilters}
+                          aria-label="Clear all filters"
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                    </Group>
+
+                    <Divider />
+
+                    <Select
+                      placeholder="Region"
+                      aria-label="Filter by region"
+                      data={regions}
+                      value={draftRegion}
+                      onChange={setDraftRegion}
+                      clearable
+                      searchable
+                      comboboxProps={{ withinPortal: false }}
+                    />
+                    <Select
+                      placeholder="City"
+                      aria-label="Filter by city"
+                      data={cities}
+                      value={draftCity}
+                      onChange={setDraftCity}
+                      clearable
+                      searchable
+                      comboboxProps={{ withinPortal: false }}
+                    />
+                    <Select
+                      placeholder="Sort By"
+                      aria-label="Sort locations"
+                      data={[
+                        { value: "name_asc", label: "Name (A-Z)" },
+                        { value: "lockers_desc", label: "Lockers (High-Low)" },
+                        { value: "lockers_asc", label: "Lockers (Low-High)" },
+                      ]}
+                      value={draftSortBy}
+                      onChange={setDraftSortBy}
+                      clearable
+                      comboboxProps={{ withinPortal: false }}
+                    />
+
+                    <Button onClick={applyFilters} color="#1e3a8a" fullWidth>
+                      Apply Filters
+                    </Button>
+                  </Stack>
+                )}
+              </Popover.Dropdown>
+            </Popover>
+
             <Button
               leftSection={<IconPlus size={16} aria-hidden="true" />}
               onClick={() => {
@@ -592,6 +681,19 @@ export default function MailroomLocations() {
             >
               Create Location
             </Button>
+
+            <Tooltip label="Refresh list">
+              <ActionIcon
+                variant="subtle"
+                color="dark.7"
+                size="lg"
+                onClick={() => mutate()}
+                aria-label="Refresh locations list"
+                style={{ flexShrink: 0 }}
+              >
+                <IconRefresh size={16} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
           </Group>
         )}
 
@@ -615,7 +717,11 @@ export default function MailroomLocations() {
             }
             recordsPerPageLabel="Locations per page"
             sortStatus={sortStatus}
-            onSortStatusChange={setSortStatus}
+            onSortStatusChange={(status) => {
+              setSortStatus(status);
+              setSortBy(statusToSortBy(status));
+              setPage(1);
+            }}
             columns={[
               {
                 accessor: "name",

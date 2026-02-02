@@ -11,7 +11,6 @@ export async function GET(request: Request) {
   const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
-    // 1. Initialize Supabase Client (Handles Cookies Automatically fo r PKCE)
     const supabase = await createClient();
 
     try {
@@ -25,6 +24,14 @@ export async function GET(request: Request) {
 
       if (session?.user) {
         const supabaseAdmin = createSupabaseServiceClient();
+
+        // Update auth.users metadata to include role (trigger will sync to users_table)
+        await supabaseAdmin.auth.admin.updateUserById(session.user.id, {
+          user_metadata: {
+            ...session.user.user_metadata,
+            role: "user",
+          },
+        });
 
         // Check if user exists in public 'users' table
         const { data: existingUser } = await supabaseAdmin
@@ -45,7 +52,6 @@ export async function GET(request: Request) {
 
           if (insertError) {
             console.error("Failed to insert user:", insertError);
-            // Continue even if insert fails, as the auth session is valid
           }
         }
 
@@ -65,10 +71,9 @@ export async function GET(request: Request) {
           console.error("Failed to log Google auth activity:", logError);
         });
 
-        const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
+        const forwardedHost = request.headers.get("x-forwarded-host");
         const isLocalEnv = process.env.NODE_ENV === "development";
         if (isLocalEnv) {
-          // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
           return NextResponse.redirect(`${origin}${next}`);
         } else if (forwardedHost) {
           return NextResponse.redirect(`https://${forwardedHost}${next}`);
