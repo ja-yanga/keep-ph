@@ -19,6 +19,9 @@ import {
   Box,
   VisuallyHidden,
   Flex,
+  Modal,
+  ScrollArea,
+  Grid,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -28,7 +31,11 @@ import {
   IconX,
   IconArrowRight,
   IconCalendar,
+  IconInfoCircle,
+  IconDeviceDesktop,
+  IconWorld,
 } from "@tabler/icons-react";
+import { useDisclosure } from "@mantine/hooks";
 import { AdminTable } from "@/components/common/AdminTable";
 import { type DataTableSortStatus } from "mantine-datatable";
 import { formatDate } from "@/utils/format";
@@ -58,6 +65,12 @@ const ENTITY_TYPES = [
 
 const ACTIONS = [
   { label: "All Actions", value: "" },
+  { label: "Login", value: "LOGIN" },
+  { label: "Logout", value: "LOGOUT" },
+  { label: "Register", value: "REGISTER" },
+  { label: "Password Change", value: "PASSWORD_CHANGE" },
+  { label: "Reset Request", value: "RESET_REQUEST" },
+  { label: "Store", value: "STORE" },
   { label: "Create", value: "CREATE" },
   { label: "Update", value: "UPDATE" },
   { label: "Delete", value: "DELETE" },
@@ -71,11 +84,6 @@ const ACTIONS = [
   { label: "Verify", value: "VERIFY" },
   { label: "Pay", value: "PAY" },
   { label: "Refund", value: "REFUND" },
-  { label: "Login", value: "LOGIN" },
-  { label: "Logout", value: "LOGOUT" },
-  { label: "Register", value: "REGISTER" },
-  { label: "Password Change", value: "PASSWORD_CHANGE" },
-  { label: "Reset Request", value: "RESET_REQUEST" },
   { label: "Claim", value: "CLAIM" },
   { label: "Release", value: "RELEASE" },
   { label: "Dispose", value: "DISPOSE" },
@@ -263,6 +271,135 @@ export default function ActivityLogContent() {
     columnAccessor: "activity_created_at",
     direction: "desc",
   });
+
+  const [selectedLog, setSelectedLog] = useState<ActivityLogEntry | null>(null);
+  const [opened, { open, close }] = useDisclosure(false);
+
+  const handleRowClick = (log: ActivityLogEntry) => {
+    setSelectedLog(log);
+    open();
+  };
+
+  const LogDetailsModal = () => {
+    if (!selectedLog) return null;
+
+    return (
+      <Modal
+        opened={opened}
+        onClose={close}
+        centered
+        closeOnEscape
+        closeOnClickOutside
+        title={
+          <Group gap="xs">
+            <IconInfoCircle size={20} color="var(--mantine-color-indigo-6)" />
+            <Text fw={700}>Activity Details</Text>
+          </Group>
+        }
+        size="lg"
+        radius="lg"
+        overlayProps={{
+          backgroundOpacity: 0.55,
+          blur: 3,
+        }}
+        scrollAreaComponent={ScrollArea.Autosize}
+      >
+        <Stack gap="md">
+          <Paper withBorder p="md" radius="md" bg="gray.0">
+            <Grid gutter="md">
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <Stack gap={4}>
+                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                    Entity / Action
+                  </Text>
+                  <Group gap="xs">
+                    <Badge variant="filled" color="indigo" radius="sm">
+                      {selectedLog.activity_entity_type?.replace("_", " ")}
+                    </Badge>
+                    <Badge variant="filled" color="indigo" radius="sm">
+                      {selectedLog.activity_action
+                        .replace("_", " ")
+                        .toUpperCase()}
+                    </Badge>
+                  </Group>
+                </Stack>
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <Stack gap={4}>
+                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                    Timestamp
+                  </Text>
+                  <Text size="sm" fw={500}>
+                    {formatDate(selectedLog.activity_created_at)}
+                  </Text>
+                </Stack>
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <Stack gap={4}>
+                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                    Actor
+                  </Text>
+                  <Group gap="xs">
+                    <IconUser size={14} />
+                    <Text size="sm" fw={500}>
+                      {selectedLog.actor_email}
+                    </Text>
+                  </Group>
+                </Stack>
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <Stack gap={4}>
+                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                    IP Address
+                  </Text>
+                  <Group gap="xs">
+                    <IconWorld size={14} />
+                    <Text size="sm" fw={500}>
+                      {selectedLog.activity_ip_address || "N/A"}
+                    </Text>
+                  </Group>
+                </Stack>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <Stack gap={4}>
+                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                    User Agent
+                  </Text>
+                  <Group gap="xs" align="flex-start" wrap="nowrap">
+                    <IconDeviceDesktop size={14} />
+                    <Text
+                      size="sm"
+                      fw={500}
+                      style={{ wordBreak: "break-word" }}
+                    >
+                      {selectedLog.activity_user_agent || "N/A"}
+                    </Text>
+                  </Group>
+                </Stack>
+              </Grid.Col>
+            </Grid>
+          </Paper>
+
+          <Box>
+            <Text size="sm" fw={700} mb={8}>
+              Parsed Details
+            </Text>
+            {generateDescription(selectedLog)}
+          </Box>
+
+          <Button
+            variant="light"
+            color="gray"
+            onClick={close}
+            fullWidth
+            mt="sm"
+          >
+            Close View
+          </Button>
+        </Stack>
+      </Modal>
+    );
+  };
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -492,7 +629,7 @@ export default function ActivityLogContent() {
         sortable: true,
         render: (log: ActivityLogEntry) => (
           <Badge variant="filled" size="md" color="indigo" radius="md" w={100}>
-            {log.activity_action}
+            {log.activity_action.replace("_", " ").toUpperCase()}
           </Badge>
         ),
       },
@@ -596,10 +733,13 @@ export default function ActivityLogContent() {
                         placeholder="Select entity type"
                         data={ENTITY_TYPES}
                         value={entityType}
-                        onChange={setEntityType}
+                        onChange={(val) => {
+                          setEntityType(val);
+                        }}
                         clearable
                         searchable
                         aria-label="Filter by entity type"
+                        comboboxProps={{ withinPortal: false }}
                       />
 
                       <Select
@@ -607,10 +747,13 @@ export default function ActivityLogContent() {
                         placeholder="Select action"
                         data={ACTIONS}
                         value={action}
-                        onChange={setAction}
+                        onChange={(val) => {
+                          setAction(val);
+                        }}
                         clearable
                         searchable
                         aria-label="Filter by action"
+                        comboboxProps={{ withinPortal: false }}
                       />
 
                       <Divider label="Date Range" labelPosition="center" />
@@ -693,7 +836,9 @@ export default function ActivityLogContent() {
               onSortStatusChange={setSortStatus}
               columns={columns}
               noRecordsText="No activity logs found"
+              onRowClick={({ record }) => handleRowClick(record)}
             />
+            <LogDetailsModal />
           </Stack>
         </Paper>
       </Stack>
