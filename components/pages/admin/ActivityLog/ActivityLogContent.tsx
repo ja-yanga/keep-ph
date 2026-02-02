@@ -1,8 +1,7 @@
 "use client";
 
-import "mantine-datatable/styles.layer.css";
-
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import dynamic from "next/dynamic";
 import {
   Stack,
   Group,
@@ -19,9 +18,6 @@ import {
   Box,
   VisuallyHidden,
   Flex,
-  Modal,
-  ScrollArea,
-  Grid,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -31,9 +27,6 @@ import {
   IconX,
   IconArrowRight,
   IconCalendar,
-  IconInfoCircle,
-  IconDeviceDesktop,
-  IconWorld,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { AdminTable } from "@/components/common/AdminTable";
@@ -45,6 +38,10 @@ import {
   type ActivityLogEntry,
   type AdminListActivityLogsResult,
 } from "@/utils/types";
+
+const LogDetailsModal = dynamic(() => import("./LogDetailsModal"), {
+  ssr: false,
+});
 
 const ENTITY_TYPES = [
   { label: "All Entities", value: "" },
@@ -110,6 +107,7 @@ const SearchSection = memo(
     <TextInput
       placeholder="Search..."
       aria-label="Search activity logs"
+      data-testid="search-input"
       leftSection={<IconSearch size={16} aria-hidden="true" />}
       rightSectionWidth={searchInput ? 70 : 42}
       rightSection={
@@ -122,6 +120,7 @@ const SearchSection = memo(
               onClick={handleClearSearch}
               aria-label="Clear search"
               title="Clear search"
+              data-testid="clear-search-button"
             >
               <IconX size={16} aria-hidden="true" />
             </ActionIcon>
@@ -132,6 +131,7 @@ const SearchSection = memo(
               onClick={handleSearchSubmit}
               aria-label="Submit search"
               title="Submit search"
+              data-testid="submit-search-button"
             >
               <IconArrowRight size={16} aria-hidden="true" />
             </ActionIcon>
@@ -144,6 +144,7 @@ const SearchSection = memo(
             onClick={handleSearchSubmit}
             aria-label="Submit search"
             title="Submit search"
+            data-testid="submit-search-button"
           >
             <IconArrowRight size={16} aria-hidden="true" />
           </ActionIcon>
@@ -280,127 +281,6 @@ export default function ActivityLogContent() {
     open();
   };
 
-  const LogDetailsModal = () => {
-    if (!selectedLog) return null;
-
-    return (
-      <Modal
-        opened={opened}
-        onClose={close}
-        centered
-        closeOnEscape
-        closeOnClickOutside
-        title={
-          <Group gap="xs">
-            <IconInfoCircle size={20} color="var(--mantine-color-indigo-6)" />
-            <Text fw={700}>Activity Details</Text>
-          </Group>
-        }
-        size="lg"
-        radius="lg"
-        overlayProps={{
-          backgroundOpacity: 0.55,
-          blur: 3,
-        }}
-        scrollAreaComponent={ScrollArea.Autosize}
-      >
-        <Stack gap="md">
-          <Paper withBorder p="md" radius="md" bg="gray.0">
-            <Grid gutter="md">
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Stack gap={4}>
-                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                    Entity / Action
-                  </Text>
-                  <Group gap="xs">
-                    <Badge variant="filled" color="indigo" radius="sm">
-                      {selectedLog.activity_entity_type?.replace("_", " ")}
-                    </Badge>
-                    <Badge variant="filled" color="indigo" radius="sm">
-                      {selectedLog.activity_action
-                        .replace("_", " ")
-                        .toUpperCase()}
-                    </Badge>
-                  </Group>
-                </Stack>
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Stack gap={4}>
-                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                    Timestamp
-                  </Text>
-                  <Text size="sm" fw={500}>
-                    {formatDate(selectedLog.activity_created_at)}
-                  </Text>
-                </Stack>
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Stack gap={4}>
-                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                    Actor
-                  </Text>
-                  <Group gap="xs">
-                    <IconUser size={14} />
-                    <Text size="sm" fw={500}>
-                      {selectedLog.actor_email}
-                    </Text>
-                  </Group>
-                </Stack>
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Stack gap={4}>
-                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                    IP Address
-                  </Text>
-                  <Group gap="xs">
-                    <IconWorld size={14} />
-                    <Text size="sm" fw={500}>
-                      {selectedLog.activity_ip_address || "N/A"}
-                    </Text>
-                  </Group>
-                </Stack>
-              </Grid.Col>
-              <Grid.Col span={12}>
-                <Stack gap={4}>
-                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                    User Agent
-                  </Text>
-                  <Group gap="xs" align="flex-start" wrap="nowrap">
-                    <IconDeviceDesktop size={14} />
-                    <Text
-                      size="sm"
-                      fw={500}
-                      style={{ wordBreak: "break-word" }}
-                    >
-                      {selectedLog.activity_user_agent || "N/A"}
-                    </Text>
-                  </Group>
-                </Stack>
-              </Grid.Col>
-            </Grid>
-          </Paper>
-
-          <Box>
-            <Text size="sm" fw={700} mb={8}>
-              Parsed Details
-            </Text>
-            {generateDescription(selectedLog)}
-          </Box>
-
-          <Button
-            variant="light"
-            color="gray"
-            onClick={close}
-            fullWidth
-            mt="sm"
-          >
-            Close View
-          </Button>
-        </Stack>
-      </Modal>
-    );
-  };
-
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -479,8 +359,8 @@ export default function ActivityLogContent() {
 
     return (
       <Box>
-        <Text size="sm" fw={500} tt="capitalize">
-          {entity} {logAction.replaceAll("_", " ")}
+        <Text size="sm" fw={500} tt="capitalize" c="dark.7">
+          {entity} {logAction.replace(/_/g, " ")}
         </Text>
 
         {(package_name ||
@@ -490,7 +370,7 @@ export default function ActivityLogContent() {
           email) && (
           <Box mt={2}>
             {email && (
-              <Text size="xs" c="dimmed" lineClamp={1}>
+              <Text size="xs" c="gray.7" lineClamp={1}>
                 User: {email}
                 {provider ? ` via ${provider}` : ""}
                 {platform ? ` on ${platform}` : ""}
@@ -502,7 +382,7 @@ export default function ActivityLogContent() {
             )}
 
             {package_name && (
-              <Text size="xs" c="dimmed" lineClamp={1}>
+              <Text size="xs" c="gray.7" lineClamp={1}>
                 {package_name}{" "}
                 {package_type ? `(${package_type})` : "(Scanned)"}
                 {package_locker_code && ` - Locker: ${package_locker_code}`}
@@ -510,19 +390,19 @@ export default function ActivityLogContent() {
             )}
 
             {payment_amount && payment_method && (
-              <Text size="xs" c="dimmed" lineClamp={1} tt="uppercase">
+              <Text size="xs" c="gray.7" lineClamp={1} tt="uppercase">
                 Amount: ₱{payment_amount} ({payment_method})
               </Text>
             )}
 
             {kyc_description && (
-              <Text size="xs" c="dimmed" lineClamp={1}>
+              <Text size="xs" c="gray.7" lineClamp={1}>
                 {kyc_description}
               </Text>
             )}
 
             {mailroom_plan_name && (
-              <Text size="xs" c="dimmed" lineClamp={1}>
+              <Text size="xs" c="gray.7" lineClamp={1}>
                 {mailroom_plan_name} - {mailroom_location_name} -{" "}
                 {mailroom_locker_qty}
               </Text>
@@ -597,10 +477,10 @@ export default function ActivityLogContent() {
           <Group gap="xs" wrap="nowrap">
             <IconUser
               size={14}
-              color="var(--mantine-color-gray-6)"
+              color="var(--mantine-color-dark-7)"
               aria-hidden="true"
             />
-            <Text size="sm" fw={500} truncate>
+            <Text size="sm" fw={500} truncate c="dark.7">
               {log.actor_email}
             </Text>
           </Group>
@@ -612,8 +492,15 @@ export default function ActivityLogContent() {
         width: 200,
         sortable: true,
         render: (log: ActivityLogEntry) => (
-          <Badge variant="filled" size="md" color="indigo" radius="md" w={130}>
-            {log.activity_entity_type?.replaceAll("_", " ") || "N/A"}
+          <Badge
+            variant="filled"
+            size="md"
+            color="#1a237e"
+            radius="md"
+            w={130}
+            aria-label={`Entity Type: ${log.activity_entity_type?.replace(/_/g, " ") || "N/A"}`}
+          >
+            {log.activity_entity_type?.replace(/_/g, " ") || "N/A"}
           </Badge>
         ),
       },
@@ -628,8 +515,15 @@ export default function ActivityLogContent() {
         width: 150,
         sortable: true,
         render: (log: ActivityLogEntry) => (
-          <Badge variant="filled" size="md" color="indigo" radius="md" w={100}>
-            {log.activity_action.replace("_", " ").toUpperCase()}
+          <Badge
+            variant="filled"
+            size="md"
+            color="#1a237e"
+            radius="md"
+            w={100}
+            aria-label={`Action: ${log.activity_action.replace(/_/g, " ").toUpperCase()}`}
+          >
+            {log.activity_action.replace(/_/g, " ").toUpperCase()}
           </Badge>
         ),
       },
@@ -673,6 +567,7 @@ export default function ActivityLogContent() {
                 shadow="md"
                 opened={popoverOpened}
                 onChange={setPopoverOpened}
+                withinPortal={false}
               >
                 <Popover.Target>
                   <Button
@@ -683,6 +578,10 @@ export default function ActivityLogContent() {
                     radius="md"
                     onClick={() => setPopoverOpened((o) => !o)}
                     aria-label={`Open filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ""}`}
+                    aria-expanded={popoverOpened}
+                    aria-haspopup="dialog"
+                    aria-controls="activity-log-filters"
+                    data-testid="filter-button"
                     rightSection={
                       activeFilterCount > 0 ? (
                         <Badge
@@ -701,12 +600,12 @@ export default function ActivityLogContent() {
                     Filters
                   </Button>
                 </Popover.Target>
-                <Popover.Dropdown>
+                <Popover.Dropdown id="activity-log-filters">
                   {popoverOpened && (
                     <Stack
                       gap="md"
                       component="form"
-                      role="form"
+                      role="dialog"
                       aria-label="Filter options"
                     >
                       <Group justify="space-between">
@@ -720,6 +619,7 @@ export default function ActivityLogContent() {
                             color="red"
                             onClick={clearAllFilters}
                             aria-label="Clear all filters"
+                            data-testid="clear-all-filters-button"
                           >
                             Clear All
                           </Button>
@@ -739,6 +639,7 @@ export default function ActivityLogContent() {
                         clearable
                         searchable
                         aria-label="Filter by entity type"
+                        data-testid="entity-type-select"
                         comboboxProps={{ withinPortal: false }}
                       />
 
@@ -753,6 +654,7 @@ export default function ActivityLogContent() {
                         clearable
                         searchable
                         aria-label="Filter by action"
+                        data-testid="action-select"
                         comboboxProps={{ withinPortal: false }}
                       />
 
@@ -762,6 +664,7 @@ export default function ActivityLogContent() {
                         label="From Date"
                         type="date"
                         placeholder="Pick start date"
+                        data-testid="from-date-filter"
                         leftSection={
                           <IconCalendar size={16} aria-hidden="true" />
                         }
@@ -779,6 +682,7 @@ export default function ActivityLogContent() {
                         label="To Date"
                         type="date"
                         placeholder="Pick end date"
+                        data-testid="to-date-filter"
                         leftSection={
                           <IconCalendar size={16} aria-hidden="true" />
                         }
@@ -821,24 +725,36 @@ export default function ActivityLogContent() {
               setDateRange={setDateRange}
             />
 
-            {/* Table inside Paper */}
-            <AdminTable<ActivityLogEntry>
-              fetching={loading}
-              records={logs}
-              idAccessor="activity_log_id"
-              totalRecords={totalRecords}
-              recordsPerPage={recordsPerPage}
-              recordsPerPageOptions={PAGE_SIZE_OPTIONS}
-              onRecordsPerPageChange={handleRecordsPerPageChange}
-              page={page}
-              onPageChange={setPage}
-              sortStatus={sortStatus}
-              onSortStatusChange={setSortStatus}
-              columns={columns}
-              noRecordsText="No activity logs found"
-              onRowClick={({ record }) => handleRowClick(record)}
+            {/* Table inside Paper with rendering optimization */}
+            <Box
+              style={{
+                contentVisibility: "auto",
+                containIntrinsicSize: "0 750px",
+              }}
+            >
+              <AdminTable<ActivityLogEntry>
+                fetching={loading}
+                records={logs}
+                idAccessor="activity_log_id"
+                totalRecords={totalRecords}
+                recordsPerPage={recordsPerPage}
+                recordsPerPageOptions={PAGE_SIZE_OPTIONS}
+                onRecordsPerPageChange={handleRecordsPerPageChange}
+                page={page}
+                onPageChange={setPage}
+                sortStatus={sortStatus}
+                onSortStatusChange={setSortStatus}
+                columns={columns}
+                noRecordsText="No activity logs found"
+                onRowClick={({ record }) => handleRowClick(record)}
+              />
+            </Box>
+            <LogDetailsModal
+              opened={opened}
+              onClose={close}
+              selectedLog={selectedLog}
+              generateDescription={generateDescription}
             />
-            <LogDetailsModal />
           </Stack>
         </Paper>
       </Stack>

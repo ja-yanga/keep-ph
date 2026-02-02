@@ -111,6 +111,7 @@ export default function PrivateAdminSidebar({
 
   const desktopSidebarContent = (
     <Box
+      id="admin-sidebar"
       style={{
         height: "100%",
         display: "flex",
