@@ -101,15 +101,6 @@ type Package = {
 };
 
 const PACKAGE_TYPES = ["Document", "Parcel"];
-const STATUSES = [
-  "STORED",
-  "RELEASED",
-  "RETRIEVED",
-  "DISPOSED",
-  "REQUEST_TO_RELEASE",
-  "REQUEST_TO_DISPOSE",
-  "REQUEST_TO_SCAN",
-];
 
 export default function MailroomPackages() {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -1470,22 +1461,7 @@ export default function MailroomPackages() {
               aria-label="Search packages by name, recipient, email, status, or locker code"
             />
             {/* Only show status filter on active tab */}
-            {activeTab === "active" && (
-              <Select
-                placeholder="Filter by Status"
-                data={STATUSES.filter((s) => !s.includes("REQUEST")).map(
-                  (s) => ({
-                    value: s,
-                    label: s.replace(/_/g, " "),
-                  }),
-                )}
-                value={filterStatus}
-                onChange={setFilterStatus}
-                clearable
-                style={{ width: 180 }}
-                aria-label="Filter packages by status"
-              />
-            )}
+
             <Select
               placeholder="Filter by Type"
               data={PACKAGE_TYPES}
