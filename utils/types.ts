@@ -709,6 +709,11 @@ export type ActivityLogDetails = {
   mailroom_plan_name?: string;
   mailroom_location_name?: string;
   mailroom_locker_qty?: string;
+  email?: string;
+  provider?: string;
+  platform?: string;
+  method?: string;
+  update_type?: string;
 };
 
 export type ActivityLogEntry = ActivityLogEntryRow & {

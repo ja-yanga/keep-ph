@@ -4,6 +4,7 @@ import {
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { logActivity } from "@/lib/activity-log";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -44,6 +45,22 @@ export async function GET(request: Request) {
           console.error("Error creating public user record:", insertError);
         }
       }
+
+      // Log login/register activity
+      logActivity({
+        userId: user.id,
+        action: existingUser ? "LOGIN" : "REGISTER",
+        type: "USER_LOGIN",
+        entityType: "USER",
+        entityId: user.id,
+        details: {
+          email: user.email,
+          provider: user.app_metadata.provider || "email",
+          platform: "web",
+        },
+      }).catch((logError) => {
+        console.error("Failed to log auth callback activity:", logError);
+      });
 
       return NextResponse.redirect(`${origin}${next}`);
     } else {

@@ -3,6 +3,7 @@ import {
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { logActivity } from "@/lib/activity-log";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -47,6 +48,22 @@ export async function GET(request: Request) {
             // Continue even if insert fails, as the auth session is valid
           }
         }
+
+        // Log login/register activity
+        logActivity({
+          userId: session.user.id,
+          action: existingUser ? "LOGIN" : "REGISTER",
+          type: "USER_LOGIN",
+          entityType: "USER",
+          entityId: session.user.id,
+          details: {
+            email: session.user.email,
+            provider: "google",
+            platform: "web",
+          },
+        }).catch((logError) => {
+          console.error("Failed to log Google auth activity:", logError);
+        });
 
         const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
         const isLocalEnv = process.env.NODE_ENV === "development";

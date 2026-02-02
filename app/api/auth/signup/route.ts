@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { checkEmailExistsAction } from "@/app/actions/get";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: Request) {
   try {
@@ -46,6 +47,24 @@ export async function POST(req: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Log successful sign-up
+    if (data.user) {
+      logActivity({
+        userId: data.user.id,
+        action: "REGISTER",
+        type: "USER_LOGIN", // Or we could use a specific type if we added one, but REGISTER action captures it
+        entityType: "USER",
+        entityId: data.user.id,
+        details: {
+          email: data.user.email,
+          provider: data.user.app_metadata.provider || "email",
+          platform: "web",
+        },
+      }).catch((logError) => {
+        console.error("Failed to log sign-up activity:", logError);
+      });
     }
 
     return NextResponse.json({
