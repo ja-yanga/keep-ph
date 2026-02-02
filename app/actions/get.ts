@@ -26,6 +26,7 @@ import {
   RpcClaim,
   RpcMailroomPlan,
   UserAddressRow,
+  ActivityLogEntry,
 } from "@/utils/types";
 import {
   T_TransactionPaginationMeta,
@@ -1648,5 +1649,57 @@ export async function adminListUsers(args: {
   return {
     data: Array.isArray(result.data) ? result.data : [],
     total_count: Number(result.total_count) || 0,
+  };
+}
+
+/**
+ * Lists activity logs for admin review using RPC.
+ * This follows the API pattern by being the "Action" layer.
+ *
+ * Used in:
+ * - app/api/admin/activity-logs/route.ts
+ */
+export async function adminListActivityLogs(args: {
+  limit?: number;
+  offset?: number;
+  search?: string | null;
+  entity_type?: string | null;
+  action?: string | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  sort_by?: string | null;
+  sort_direction?: string | null;
+}): Promise<{
+  total_count: number;
+  logs: ActivityLogEntry[];
+}> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_activity_logs", {
+    input_data: {
+      limit: args.limit ?? 10,
+      offset: args.offset ?? 0,
+      search: args.search || null,
+      entity_type: args.entity_type || null,
+      action: args.action || null,
+      date_from: args.date_from || null,
+      date_to: args.date_to || null,
+      sort_by: args.sort_by || null,
+      sort_direction: args.sort_direction || null,
+    },
+  });
+
+  if (error) {
+    console.error("Error fetching activity logs action:", error);
+    throw error;
+  }
+
+  // Handle difference between raw RPC return and possibly parsed object
+  const result = (typeof data === "string" ? JSON.parse(data) : data) as {
+    total_count: number;
+    logs: ActivityLogEntry[];
+  };
+
+  return {
+    total_count: Number(result?.total_count || 0),
+    logs: Array.isArray(result?.logs) ? result.logs : [],
   };
 }

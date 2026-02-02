@@ -100,6 +100,7 @@ export const API_ENDPOINTS = {
       userId ? `/api/admin/user-kyc/${userId}` : `/api/admin/user-kyc`,
     transactions: "/api/admin/transactions",
     approverStats: "/api/admin/dashboard/approver-stats",
+    activityLogs: "/api/admin/activity-logs",
   },
 
   // Onboarding
