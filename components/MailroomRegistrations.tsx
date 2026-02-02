@@ -44,6 +44,7 @@ import {
 } from "mantine-datatable";
 import dayjs from "dayjs";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { getStatusFormat } from "@/utils/helper";
 
 type Registration = {
   id: string;
@@ -743,12 +744,7 @@ export default function MailroomRegistrations() {
                             <Badge
                               variant="filled"
                               size="sm"
-                              color={(() => {
-                                if (l.status === "Full") return "red";
-                                if (l.status === "Near Full") return "orange";
-                                if (l.status === "Empty") return "gray";
-                                return "blue";
-                              })()}
+                              color={`${getStatusFormat(l.status)}.9`}
                             >
                               {l.status}
                             </Badge>

@@ -59,8 +59,8 @@ function ClaimCard({
   const statusColor = getStatusFormat(claim.status);
 
   const getButtonColor = () => {
-    if (claim.status === "PENDING") return "blue";
-    if (claim.status === "PROCESSING") return "green";
+    if (claim.status === "PENDING") return getStatusFormat("PENDING");
+    if (claim.status === "PROCESSING") return getStatusFormat("VERIFIED");
     return "gray";
   };
 
@@ -84,7 +84,7 @@ function ClaimCard({
             <Text size="xs" c="dimmed">
               Claim ID
             </Text>
-            <Text fw={600} size="xs">
+            <Text fw={600} size="sm">
               {String(claim.id).slice(0, 8)}
             </Text>
           </Stack>
@@ -100,7 +100,7 @@ function ClaimCard({
             <Text size="xs" c="dimmed">
               User
             </Text>
-            <Text size="xs" fw={500} lineClamp={1}>
+            <Text size="sm" fw={500} lineClamp={1}>
               {claim.user?.users_email ?? claim.user?.email ?? claim.user_id}
             </Text>
           </Group>
@@ -109,17 +109,8 @@ function ClaimCard({
             <Text size="xs" c="dimmed">
               Amount
             </Text>
-            <Text size="xs" fw={700}>
+            <Text size="sm" fw={700}>
               ₱{claim.amount ?? "—"}
-            </Text>
-          </Group>
-
-          <Group justify="space-between">
-            <Text size="xs" c="dimmed">
-              Claim Ref / Total Ref
-            </Text>
-            <Text size="xs">
-              {claim.referral_count ?? "—"} / {claim.total_referrals ?? "—"}
             </Text>
           </Group>
 
@@ -127,7 +118,7 @@ function ClaimCard({
             <Text size="xs" c="dimmed">
               Method
             </Text>
-            <Text size="xs" fw={600} tt="uppercase">
+            <Text size="sm" fw={600} tt="uppercase">
               {claim.payment_method ?? "—"}
             </Text>
           </Group>
@@ -138,7 +129,7 @@ function ClaimCard({
             </Text>
             <Group gap={4} align="center" wrap="nowrap">
               <Text
-                size="xs"
+                size="sm"
                 style={{
                   wordBreak: "break-all",
                   flex: 1,
@@ -165,7 +156,7 @@ function ClaimCard({
             <Text size="xs" c="dimmed">
               Requested
             </Text>
-            <Text size="xs">
+            <Text size="sm">
               {claim.created_at
                 ? new Date(claim.created_at).toLocaleDateString()
                 : "—"}
@@ -534,7 +525,7 @@ export default function AdminRewards() {
       {globalSuccess && (
         <Alert
           variant="light"
-          color="green"
+          color={getStatusFormat("VERIFIED")}
           title="Success"
           icon={<IconCheck size={16} />}
           withCloseButton
@@ -578,7 +569,11 @@ export default function AdminRewards() {
                 value="PENDING"
                 rightSection={
                   statusCounts.PENDING > 0 ? (
-                    <Badge size="xs" color="yellow" variant="filled">
+                    <Badge
+                      size="xs"
+                      color={`${getStatusFormat("PENDING")}.9`}
+                      variant="filled"
+                    >
                       {statusCounts.PENDING}
                     </Badge>
                   ) : null
@@ -590,7 +585,11 @@ export default function AdminRewards() {
                 value="PROCESSING"
                 rightSection={
                   statusCounts.PROCESSING > 0 ? (
-                    <Badge size="xs" color="blue" variant="filled">
+                    <Badge
+                      size="xs"
+                      color={`${getStatusFormat("PROCESSING")}.9`}
+                      variant="filled"
+                    >
                       {statusCounts.PROCESSING}
                     </Badge>
                   ) : null
@@ -602,7 +601,11 @@ export default function AdminRewards() {
                 value="PAID"
                 rightSection={
                   statusCounts.PAID > 0 ? (
-                    <Badge size="xs" color="green" variant="filled">
+                    <Badge
+                      size="xs"
+                      color={`${getStatusFormat("PAID")}.9`}
+                      variant="filled"
+                    >
                       {statusCounts.PAID}
                     </Badge>
                   ) : null
@@ -693,10 +696,10 @@ export default function AdminRewards() {
                   {
                     accessor: "id",
                     title: "Claim",
-                    width: 80,
+                    width: 100,
                     sortable: true,
                     render: (row) => (
-                      <Text fw={600} size="xs">
+                      <Text fw={600} size="sm">
                         {String(row.id).slice(0, 8)}
                       </Text>
                     ),
@@ -704,10 +707,10 @@ export default function AdminRewards() {
                   {
                     accessor: "user",
                     title: "User",
-                    width: 180,
+                    width: 220,
                     sortable: true,
                     render: (row) => (
-                      <Text size="xs" fw={500} lineClamp={1}>
+                      <Text size="sm" fw={500} lineClamp={1}>
                         {row.user?.users_email ??
                           row.user?.email ??
                           row.user_id}
@@ -715,30 +718,12 @@ export default function AdminRewards() {
                     ),
                   },
                   {
-                    accessor: "referral_count",
-                    title: "Claim Ref",
-                    width: 80,
-                    sortable: true,
-                    render: (row) => (
-                      <Text size="xs">{row.referral_count ?? "—"}</Text>
-                    ),
-                  },
-                  {
-                    accessor: "total_referrals",
-                    title: "Total Ref",
-                    width: 80,
-                    sortable: true,
-                    render: (row) => (
-                      <Text size="xs">{row.total_referrals ?? "—"}</Text>
-                    ),
-                  },
-                  {
                     accessor: "amount",
                     title: "Amount",
-                    width: 90,
+                    width: 110,
                     sortable: true,
                     render: (row) => (
-                      <Text fw={700} size="xs">
+                      <Text fw={700} size="sm">
                         ₱{row.amount ?? "—"}
                       </Text>
                     ),
@@ -746,15 +731,15 @@ export default function AdminRewards() {
                   {
                     accessor: "method_account",
                     title: "Method / Account",
-                    width: 220,
+                    width: 280,
                     render: (row) => (
                       <Stack gap={4}>
-                        <Text tt="uppercase" size="xs" fw={700}>
+                        <Text tt="uppercase" size="sm" fw={700}>
                           {row.payment_method ?? "—"}
                         </Text>
                         <Group gap={4} align="center" wrap="nowrap">
                           <Text
-                            size="xs"
+                            size="sm"
                             c="#2D3748"
                             style={{
                               fontFamily: "monospace",
@@ -767,15 +752,15 @@ export default function AdminRewards() {
                               : maskAccount(row.account_details)}
                           </Text>
                           <ActionIcon
-                            size="xs"
+                            size="sm"
                             variant="subtle"
                             onClick={() => toggleReveal(row.id)}
                             style={{ flexShrink: 0 }}
                           >
                             {revealed[row.id] ? (
-                              <IconEyeOff size={12} />
+                              <IconEyeOff size={14} />
                             ) : (
-                              <IconEye size={12} />
+                              <IconEye size={14} />
                             )}
                           </ActionIcon>
                         </Group>
@@ -785,10 +770,10 @@ export default function AdminRewards() {
                   {
                     accessor: "created_at",
                     title: "Requested",
-                    width: 100,
+                    width: 120,
                     sortable: true,
                     render: (row) => (
-                      <Text size="xs">
+                      <Text size="sm">
                         {row.created_at
                           ? new Date(row.created_at).toLocaleDateString()
                           : "—"}
@@ -798,7 +783,7 @@ export default function AdminRewards() {
                   {
                     accessor: "status",
                     title: "Status",
-                    width: 100,
+                    width: 110,
                     textAlign: "center",
                     sortable: true,
                     render: (row) => {
@@ -808,7 +793,7 @@ export default function AdminRewards() {
                           <Badge
                             color={`${color}.9`}
                             variant="filled"
-                            size="xs"
+                            size="sm"
                           >
                             {row.status}
                           </Badge>
@@ -819,7 +804,7 @@ export default function AdminRewards() {
                   {
                     accessor: "actions",
                     title: "Actions",
-                    width: 120,
+                    width: 130,
                     textAlign: "right",
                     render: (row) => (
                       <Group justify="flex-end" gap="xs">
@@ -831,8 +816,8 @@ export default function AdminRewards() {
                               setProofOpen(true);
                             }}
                             loading={loadingAction === row.id}
-                            color="blue"
-                            leftSection={<IconUpload size={12} />}
+                            color={getStatusFormat("PENDING")}
+                            leftSection={<IconUpload size={14} />}
                           >
                             Upload
                           </Button>
@@ -840,7 +825,7 @@ export default function AdminRewards() {
                         {row.status === "PROCESSING" && (
                           <Button
                             size="xs"
-                            color="green"
+                            color={getStatusFormat("VERIFIED")}
                             onClick={() => {
                               setConfirmTarget({ id: row.id, status: "PAID" });
                               setConfirmOpen(true);
@@ -857,7 +842,7 @@ export default function AdminRewards() {
                               setViewProofRow(row);
                               setViewProofOpen(true);
                             }}
-                            leftSection={<IconEye size={12} />}
+                            leftSection={<IconEye size={14} />}
                           >
                             View
                           </Button>
@@ -896,7 +881,11 @@ export default function AdminRewards() {
                 doUpdate(confirmTarget.id, confirmTarget.status)
               }
               loading={loadingAction === confirmTarget?.id}
-              color={confirmTarget?.status === "PAID" ? "green" : "orange"}
+              color={
+                confirmTarget?.status === "PAID"
+                  ? getStatusFormat("PAID")
+                  : getStatusFormat("REFUNDED")
+              }
             >
               {confirmTarget?.status}
             </Button>
@@ -936,7 +925,7 @@ export default function AdminRewards() {
               Cancel
             </Button>
             <Button
-              color="green"
+              color={getStatusFormat("VERIFIED")}
               onClick={handleUploadAndMarkPaid}
               loading={uploading}
               disabled={!proofFile || uploading}

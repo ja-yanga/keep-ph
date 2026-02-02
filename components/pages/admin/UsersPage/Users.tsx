@@ -40,6 +40,7 @@ import {
 } from "mantine-datatable";
 import { AdminTable } from "@/components/common/AdminTable";
 import type { AdminUserPage, ApiUserPage, UserRole } from "@/utils/types";
+import { getStatusFormat } from "@/utils/helper";
 
 const SearchInput = memo(
   ({
@@ -245,10 +246,7 @@ export default function Users() {
   }, [page, pageSize, search, sortStatus, roleFilter, refreshKey]);
 
   const roleBadgeColor = useCallback((role: UserRole) => {
-    if (role === "owner") return "violet.9";
-    if (role === "admin") return "blue.9";
-    if (role === "approver") return "orange.9";
-    return "gray.8";
+    return `${getStatusFormat(role)}.9`;
   }, []);
 
   const roleRank: Record<UserRole, number> = {
@@ -502,7 +500,7 @@ export default function Users() {
       {loadError && (
         <Alert
           variant="light"
-          color="red"
+          color={getStatusFormat("REJECTED")}
           title="Error"
           withCloseButton
           onClose={() => setLoadError(null)}
@@ -514,7 +512,7 @@ export default function Users() {
       {globalSuccess && (
         <Alert
           variant="light"
-          color="green"
+          color={getStatusFormat("VERIFIED")}
           title="Success"
           icon={<IconCheck size={16} />}
           withCloseButton
@@ -743,9 +741,9 @@ export default function Users() {
             {editError && (
               <Alert
                 variant="filled"
-                color="red"
+                color={getStatusFormat("REJECTED")}
                 title="Error"
-                icon={<IconCheck size={16} />}
+                icon={<IconX size={16} />}
                 withCloseButton
                 onClose={() => setEditError(null)}
               >
@@ -754,12 +752,20 @@ export default function Users() {
             )}
 
             {isEditingBlocked && (
-              <Alert variant="light" color="orange" title="Not allowed">
+              <Alert
+                variant="light"
+                color={getStatusFormat("REFUNDED")}
+                title="Not allowed"
+              >
                 You cannot edit a user with a higher role than yours.
               </Alert>
             )}
             {isSameRoleBlocked && (
-              <Alert variant="light" color="orange" title="Not allowed">
+              <Alert
+                variant="light"
+                color={getStatusFormat("REFUNDED")}
+                title="Not allowed"
+              >
                 You cannot edit a user with the same role as yours.
               </Alert>
             )}
@@ -849,7 +855,7 @@ export default function Users() {
               {currentUserRole === "owner" && (
                 <Button
                   variant="outline"
-                  color="red"
+                  color={getStatusFormat("REJECTED")}
                   onClick={openTransfer}
                   disabled={isModalBusy || isEditingBlocked}
                 >
@@ -891,7 +897,11 @@ export default function Users() {
           withCloseButton={!isModalBusy}
         >
           <Stack gap="md">
-            <Alert variant="light" color="red" title="This action is sensitive">
+            <Alert
+              variant="light"
+              color={getStatusFormat("REJECTED")}
+              title="This action is sensitive"
+            >
               You are about to transfer ownership to this user. Your role will
               be downgraded to admin.
             </Alert>
@@ -914,7 +924,7 @@ export default function Users() {
                 Cancel
               </Button>
               <Button
-                color="red"
+                color={getStatusFormat("REJECTED")}
                 onClick={handleTransferConfirm}
                 loading={isTransferring}
                 disabled={isModalBusy}

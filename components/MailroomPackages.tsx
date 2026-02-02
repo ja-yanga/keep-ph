@@ -25,7 +25,6 @@ import {
   Loader,
 } from "@mantine/core";
 import { useDisclosure, useDebouncedValue } from "@mantine/hooks";
-// Added useSearchParams
 import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
@@ -51,6 +50,7 @@ import {
   type DataTableColumn,
   type DataTableSortStatus,
 } from "mantine-datatable";
+import { getStatusFormat } from "@/utils/helper";
 
 type Registration = {
   id: string;
@@ -1101,19 +1101,13 @@ export default function MailroomPackages() {
     [activeTab, archivedTotalCount, serverTotalCount],
   );
 
-  // Memoize status color function to prevent recreation on each render
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case "STORED":
-        return "blue";
-      case "RELEASED":
-      case "RETRIEVED":
-        return "green";
-      case "DISPOSED":
-        return "red";
-      default:
-        return "orange";
-    }
+  // Memoize status color function using helper
+  const getPackageStatusColor = useCallback((status: string) => {
+    return getStatusFormat(status);
+  }, []);
+
+  const getLockerStatusColor = useCallback((status: string) => {
+    return getStatusFormat(status);
   }, []);
 
   // Count requests for badge - memoized to prevent recalculation
@@ -1186,7 +1180,7 @@ export default function MailroomPackages() {
           return (
             <Badge
               variant="filled"
-              color="gray"
+              color={`${getStatusFormat(pkg.package_type)}.9`}
               w={110}
               leftSection={
                 pkg.package_type === "Document" ? (
@@ -1209,7 +1203,10 @@ export default function MailroomPackages() {
         render: (record: unknown) => {
           const pkg = record as Package;
           return (
-            <Badge color={getStatusColor(pkg.status)} variant="filled">
+            <Badge
+              color={`${getPackageStatusColor(pkg.status)}.9`}
+              variant="filled"
+            >
               {pkg.status.replace(/_/g, " ")}
             </Badge>
           );
@@ -1332,7 +1329,7 @@ export default function MailroomPackages() {
         },
       },
     ],
-    [activeTab, getStatusColor],
+    [activeTab, getPackageStatusColor],
   );
 
   // helper to extract phone for release snapshot
@@ -1811,12 +1808,7 @@ export default function MailroomPackages() {
                   { label: "Near Full", value: "Near Full" },
                   { label: "Full", value: "Full" },
                 ]}
-                color={(() => {
-                  if (lockerCapacity === "Full") return "red";
-                  if (lockerCapacity === "Near Full") return "orange";
-                  if (lockerCapacity === "Empty") return "gray";
-                  return "blue";
-                })()}
+                color={getLockerStatusColor(lockerCapacity)}
               />
               <Text size="xs" c="dimmed">
                 This will update the status of the assigned locker for this
@@ -2149,12 +2141,7 @@ export default function MailroomPackages() {
                 { label: "Near Full", value: "Near Full" },
                 { label: "Full", value: "Full" },
               ]}
-              color={(() => {
-                if (lockerCapacity === "Full") return "red";
-                if (lockerCapacity === "Near Full") return "orange";
-                if (lockerCapacity === "Empty") return "gray";
-                return "blue";
-              })()}
+              color={getLockerStatusColor(lockerCapacity)}
             />
             <Text size="xs" c="#4A5568">
               Since items are being removed, you might want to set this to
@@ -2228,12 +2215,7 @@ export default function MailroomPackages() {
                 { label: "Near Full", value: "Near Full" },
                 { label: "Full", value: "Full" },
               ]}
-              color={(() => {
-                if (lockerCapacity === "Full") return "red";
-                if (lockerCapacity === "Near Full") return "orange";
-                if (lockerCapacity === "Empty") return "gray";
-                return "blue";
-              })()}
+              color={getLockerStatusColor(lockerCapacity)}
             />
             <Text size="xs" c="dimmed">
               Since items are being disposed, you might want to set this to

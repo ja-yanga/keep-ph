@@ -17,7 +17,7 @@ const colorGroups = {
     "RETRIEVED",
     "COMPLETED",
   ],
-  blue: ["EMPTY"],
+  blue: ["EMPTY", "ADMIN"],
   indigo: [
     "SUBMITTED",
     "PENDING",
@@ -30,7 +30,10 @@ const colorGroups = {
     "REQUEST_TO_SCAN",
   ],
   red: ["REJECTED", "FULL", "DISPOSED", "FAILED"],
-  orange: ["NEAR FULL", "REFUNDED"],
+  orange: ["NEAR FULL", "REFUNDED", "APPROVER"],
+  gray: ["DOCUMENT", "PARCEL", "USER"],
+  teal: ["RELEASED", "RETRIEVED"],
+  violet: ["OWNER"],
 };
 
 const statusToColor = Object.entries(colorGroups).reduce(
