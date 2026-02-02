@@ -3,6 +3,7 @@ import {
   createClient,
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity-log";
 
 // Admin client for database/storage operations (bypassing RLS)
 const supabaseAdmin = createSupabaseServiceClient();
@@ -79,6 +80,22 @@ export async function POST(req: NextRequest) {
 
     if (updateError) throw updateError;
 
+    // Log profile update (avatar)
+    logActivity({
+      userId: user.id,
+      action: "UPDATE",
+      type: "USER_UPDATE_PROFILE",
+      entityType: "USER",
+      entityId: user.id,
+      details: {
+        email: user.email,
+        update_type: "avatar",
+        platform: "web",
+      },
+    }).catch((logError) => {
+      console.error("Failed to log profile update activity:", logError);
+    });
+
     return NextResponse.json({ message: "Profile updated successfully" });
   } catch (err: unknown) {
     console.error("Update profile error:", err);
@@ -130,6 +147,25 @@ export async function PATCH(req: NextRequest) {
         { status: 500 },
       );
     }
+
+    // Log profile update (mobile)
+    logActivity({
+      userId: user.id,
+      action: "UPDATE",
+      type: "USER_UPDATE_PROFILE",
+      entityType: "USER",
+      entityId: user.id,
+      details: {
+        email: user.email,
+        update_type: "mobile_number",
+        platform: "web",
+      },
+    }).catch((logError) => {
+      console.error(
+        "Failed to log profile update (mobile) activity:",
+        logError,
+      );
+    });
 
     return NextResponse.json({ message: "Mobile updated" });
   } catch (err: unknown) {

@@ -9,6 +9,8 @@ const supabaseAdmin = createSupabaseServiceClient();
 export async function logActivity(args: {
   userId: string;
   action:
+    | "PASSWORD_CHANGE"
+    | "RESET_REQUEST"
     | "CREATE"
     | "STORE"
     | "UPDATE"
@@ -32,6 +34,8 @@ export async function logActivity(args: {
     | "SCAN"
     | "PURCHASE";
   type:
+    | "AUTH_FORGOT_PASSWORD"
+    | "AUTH_PASSWORD_CHANGE"
     | "USER_REQUEST_SCAN"
     | "USER_REQUEST_RELEASE"
     | "USER_REQUEST_DISPOSE"

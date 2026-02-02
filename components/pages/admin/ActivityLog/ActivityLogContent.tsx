@@ -74,6 +74,8 @@ const ACTIONS = [
   { label: "Login", value: "LOGIN" },
   { label: "Logout", value: "LOGOUT" },
   { label: "Register", value: "REGISTER" },
+  { label: "Password Change", value: "PASSWORD_CHANGE" },
+  { label: "Reset Request", value: "RESET_REQUEST" },
   { label: "Claim", value: "CLAIM" },
   { label: "Release", value: "RELEASE" },
   { label: "Dispose", value: "DISPOSE" },
@@ -331,19 +333,37 @@ export default function ActivityLogContent() {
       mailroom_plan_name = "",
       mailroom_location_name = "",
       mailroom_locker_qty = "",
+      email = "",
+      provider = "",
+      platform = "",
+      method = "",
+      update_type = "",
     } = log.activity_details || {};
 
     return (
       <Box>
         <Text size="sm" fw={500} tt="capitalize">
-          {logAction} {entity}
+          {entity} {logAction.replaceAll("_", " ")}
         </Text>
 
         {(package_name ||
           (payment_amount && payment_method) ||
           kyc_description ||
-          mailroom_plan_name) && (
+          mailroom_plan_name ||
+          email) && (
           <Box mt={2}>
+            {email && (
+              <Text size="xs" c="dimmed" lineClamp={1}>
+                User: {email}
+                {provider ? ` via ${provider}` : ""}
+                {platform ? ` on ${platform}` : ""}
+                {method ? ` (Method: ${method})` : ""}
+                {update_type
+                  ? ` (Update: ${update_type.replace(/_/g, " ")})`
+                  : ""}
+              </Text>
+            )}
+
             {package_name && (
               <Text size="xs" c="dimmed" lineClamp={1}>
                 {package_name}{" "}

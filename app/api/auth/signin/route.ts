@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(request: Request) {
   try {
@@ -18,6 +19,24 @@ export async function POST(request: Request) {
 
     const accessToken = data.session?.access_token ?? null;
     const refreshToken = data.session?.refresh_token ?? null;
+
+    // Log successful sign-in
+    if (data.user) {
+      logActivity({
+        userId: data.user.id,
+        action: "LOGIN",
+        type: "USER_LOGIN",
+        entityType: "USER",
+        entityId: data.user.id,
+        details: {
+          email: data.user.email,
+          provider: data.user.app_metadata.provider || "email",
+          platform: "web",
+        },
+      }).catch((logError) => {
+        console.error("Failed to log sign-in activity:", logError);
+      });
+    }
 
     return NextResponse.json({
       ok: true,

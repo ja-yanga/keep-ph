@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +37,21 @@ export async function POST(req: NextRequest) {
     });
 
     if (updateError) throw updateError;
+
+    // Log successful password change
+    logActivity({
+      userId: user.id,
+      action: "PASSWORD_CHANGE",
+      type: "AUTH_PASSWORD_CHANGE",
+      entityType: "USER",
+      entityId: user.id,
+      details: {
+        email: user.email,
+        platform: "web",
+      },
+    }).catch((logError) => {
+      console.error("Failed to log password change activity:", logError);
+    });
 
     return NextResponse.json({ message: "Password updated successfully" });
   } catch (err: unknown) {
