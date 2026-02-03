@@ -619,24 +619,46 @@ export default function KycPage() {
                           data-testid="barangay-select"
                           label="Barangay"
                           placeholder="Select Barangay"
-                          data={barangays}
+                          data={[
+                            ...barangays,
+                            { label: "Others", value: "others", zip: "" },
+                          ]}
                           value={addressIds.barangayId}
                           onChange={(val) => {
-                            const b = barangays.find(
-                              (bar) => bar.value === val,
-                            );
-                            setBarangay(b?.label || "");
-                            setPostal(b?.zip || "");
-                            setAddressIds((prev) => ({
-                              ...prev,
-                              barangayId: val || "",
-                            }));
+                            if (val === "others") {
+                              setBarangay("");
+                              setPostal("");
+                              setAddressIds((prev) => ({
+                                ...prev,
+                                barangayId: "others",
+                              }));
+                            } else {
+                              const b = barangays.find(
+                                (bar) => bar.value === val,
+                              );
+                              setBarangay(b?.label || "");
+                              setPostal(b?.zip || "");
+                              setAddressIds((prev) => ({
+                                ...prev,
+                                barangayId: val || "",
+                              }));
+                            }
                           }}
                           required
                           disabled={isLocked || !addressIds.cityId}
                           searchable
                           clearable
                         />
+                        {addressIds.barangayId === "others" && (
+                          <TextInput
+                            label="Custom Barangay Name"
+                            placeholder="Enter your barangay"
+                            value={barangay}
+                            onChange={(e) => setBarangay(e.currentTarget.value)}
+                            required
+                            disabled={isLocked}
+                          />
+                        )}
                         <TextInput
                           label="Postal Code"
                           placeholder="Postal Code"
@@ -647,7 +669,9 @@ export default function KycPage() {
                           inputMode="numeric"
                           pattern="\d*"
                           required
-                          disabled={isLocked || !!addressIds.barangayId}
+                          disabled={
+                            isLocked || addressIds.barangayId !== "others"
+                          }
                         />
                       </SimpleGrid>
                     </Stack>
