@@ -511,6 +511,8 @@ export type LocationsResponse = {
     city: string | null;
     barangay: string | null;
     zip: string | null;
+    is_hidden: boolean;
+    max_locker_limit: number | null;
   }>;
 };
 
@@ -525,6 +527,8 @@ export type Location = {
   city?: string;
   barangay?: string;
   zip?: string;
+  is_hidden?: boolean;
+  max_locker_limit?: number;
 };
 
 export type MailroomRegistrationStats = {

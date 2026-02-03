@@ -537,10 +537,10 @@ export default function RegisterForm({
               <LocationStep
                 locations={locations}
                 selectedLocation={selectedLocation}
-                setSelectedLocation={setSelectedLocation}
+                setSelectedLocationAction={setSelectedLocation}
                 locationAvailability={locationAvailability}
                 lockerQty={lockerQty}
-                setLockerQty={setLockerQty}
+                setLockerQtyAction={setLockerQty}
                 availableCount={availableCount}
               />
             </Stepper.Step>

@@ -64,6 +64,8 @@ export default async function RegisterMailroomPage() {
     city: l.city ?? undefined,
     barangay: l.barangay ?? undefined,
     zip: l.zip ?? undefined,
+    is_hidden: l.is_hidden,
+    max_locker_limit: l.max_locker_limit ?? undefined,
   }));
 
   return (
