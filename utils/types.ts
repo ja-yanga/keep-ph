@@ -727,3 +727,21 @@ export type AdminListActivityLogsResult = {
   total_count: number;
   logs: ActivityLogEntry[];
 };
+
+export type AdminIpWhitelistEntry = {
+  admin_ip_whitelist_id: string;
+  ip_cidr: string;
+  description: string | null;
+  created_at: string;
+  created_by: string | null;
+  created_by_name?: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
+export type AdminIpWhitelistListResponse = {
+  entries: AdminIpWhitelistEntry[];
+  total_count: number;
+  current_ip: string | null;
+  current_match_ids: string[];
+};

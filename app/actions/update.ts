@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity-log";
 import type {
   AdminUpdateClaimResponse,
   AdminUpdateMailroomPlanArgs,
+  AdminIpWhitelistEntry,
   MailroomPlanRow,
   RpcAdminClaim,
   T_NotificationType,
@@ -50,6 +51,34 @@ export const updateRewardClaim = async ({
     ok: true,
     claim: parsed.claim as RpcAdminClaim,
   };
+};
+
+export const adminUpdateIpWhitelist = async (args: {
+  id: string;
+  ipCidr: string;
+  description?: string | null;
+  updatedBy?: string | null;
+}): Promise<AdminIpWhitelistEntry> => {
+  const { data, error } = await supabaseAdmin.rpc("admin_update_ip_whitelist", {
+    input_id: args.id,
+    input_ip_cidr: args.ipCidr,
+    input_description: args.description ?? null,
+    input_updated_by: args.updatedBy ?? null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data) as AdminIpWhitelistEntry;
+    } catch {
+      throw new Error("Failed to parse IP whitelist response");
+    }
+  }
+
+  return data as AdminIpWhitelistEntry;
 };
 
 export const adminUpdateUserKyc = async ({

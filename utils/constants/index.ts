@@ -183,6 +183,7 @@ export const ENTITY_TYPES = [
   { label: "Mailroom File", value: "MAILROOM_FILE" },
   { label: "Mailroom Assigned Locker", value: "MAILROOM_ASSIGNED_LOCKER" },
   { label: "User", value: "USER" },
+  { label: "Admin IP Whitelist", value: "ADMIN_IP_WHITELIST" },
 ] as const;
 
 export const ACTIONS = [

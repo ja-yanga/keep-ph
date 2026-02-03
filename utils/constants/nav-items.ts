@@ -25,6 +25,11 @@ export const NAV_ITMES: Record<
     { path: "/admin/users", key: "users", title: "Users" },
     { path: "/admin/transactions", key: "transactions", title: "Transactions" },
     {
+      path: "/admin/ip-whitelist",
+      key: "ip-whitelist",
+      title: "IP Whitelist",
+    },
+    {
       path: "/admin/activity-logs",
       key: "activity-logs",
       title: "Activity Logs",
@@ -52,6 +57,11 @@ export const NAV_ITMES: Record<
     { path: "/admin/stats", key: "stats", title: "Stats" },
     { path: "/admin/users", key: "users", title: "Users" },
     { path: "/admin/transactions", key: "transactions", title: "Transactions" },
+    {
+      path: "/admin/ip-whitelist",
+      key: "ip-whitelist",
+      title: "IP Whitelist",
+    },
     {
       path: "/admin/activity-logs",
       key: "activity-logs",

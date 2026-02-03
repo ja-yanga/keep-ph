@@ -11,6 +11,7 @@ import { T_RawTransaction } from "@/utils/transform/transaction";
 import {
   AdminClaim,
   AdminDashboardStats,
+  AdminIpWhitelistEntry,
   AdminUserKyc,
   AdminUsersRpcResult,
   BarangayTableRow,
@@ -708,6 +709,22 @@ export async function getUserRole(userId: string) {
   }
 
   return data ?? null;
+}
+
+/**
+ * Lists admin IP whitelist entries via RPC.
+ *
+ * Used in:
+ * - app/api/admin/ip-whitelist/route.ts
+ */
+export async function adminListIpWhitelist(): Promise<AdminIpWhitelistEntry[]> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_ip_whitelist");
+
+  if (error) {
+    throw error;
+  }
+
+  return parseRpcArray<AdminIpWhitelistEntry>(data);
 }
 
 export async function getDashboardContent(): Promise<AdminDashboardStats | null> {

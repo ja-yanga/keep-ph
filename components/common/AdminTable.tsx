@@ -38,6 +38,8 @@ export function AdminTable<T>(props: AdminTableProps<T>) {
     striped: true,
     highlightOnHover: true,
     verticalSpacing: "md" as const,
+    // Ensure rows have unique keys; pass idAccessor from props or default to "id"
+    idAccessor: props.idAccessor ?? ("id" as keyof T & string),
     ...props,
     minHeight,
     ...(props.totalRecords !== undefined ? { recordsPerPage } : {}),
