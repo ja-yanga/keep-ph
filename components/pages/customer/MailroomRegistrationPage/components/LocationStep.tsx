@@ -119,16 +119,18 @@ export const LocationStep = ({
                         </Text>
                       </div>
                     </Group>
-                    <Badge
-                      color={(() => {
-                        if (isFull) return "red";
-                        if (count < 5) return "orange";
-                        return "green";
-                      })()}
-                      variant="light"
-                    >
-                      {isFull ? "FULL" : `${count} Available Lockers`}
-                    </Badge>
+                    <Group gap="xs">
+                      <Badge
+                        color={(() => {
+                          if (isFull) return "red";
+                          if (count < 5) return "orange";
+                          return "green";
+                        })()}
+                        variant="light"
+                      >
+                        {isFull ? "FULL" : `${count} Available Lockers`}
+                      </Badge>
+                    </Group>
                   </Group>
                 </Box>
               );
@@ -156,7 +158,9 @@ export const LocationStep = ({
                   How many lockers?
                 </Text>
                 <Text size="sm" c="dimmed">
-                  Max available:{" "}
+                  {selectedMaxLimit && selectedMaxLimit > 0
+                    ? "Max Lockers per User: "
+                    : "Available Lockers: "}
                   <Text span fw={700}>
                     {effectiveMaxForSelected}
                   </Text>
