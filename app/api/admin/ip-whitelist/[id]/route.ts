@@ -13,12 +13,13 @@ import { resolveClientIp } from "@/lib/ip-utils";
 
 const ALLOWED_ADMIN_ROLES = ["admin", "owner"] as const;
 
-type RouteParams = {
-  params: { id: string };
+type RouteContext = {
+  params: Promise<{ id: string }>;
 };
 
-export async function PUT(req: Request, { params }: RouteParams) {
+export async function PUT(req: Request, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -53,7 +54,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
 
     const entries = await adminListIpWhitelist();
     const existing = entries.find(
-      (entry) => entry.admin_ip_whitelist_id === params.id,
+      (entry) => entry.admin_ip_whitelist_id === id,
     );
 
     if (!existing) {
@@ -63,7 +64,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     const clientIp = resolveClientIp(req.headers, null);
     if (clientIp) {
       const remaining = entries.filter(
-        (entry) => entry.admin_ip_whitelist_id !== params.id,
+        (entry) => entry.admin_ip_whitelist_id !== id,
       );
       const stillAllowed = isIpWhitelisted(clientIp, remaining);
       const newAllows = isIpWhitelisted(clientIp, [
@@ -84,7 +85,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
     let data;
     try {
       data = await adminUpdateIpWhitelist({
-        id: params.id,
+        id,
         ipCidr: normalizedCidr,
         description,
         updatedBy: user.id,
@@ -134,8 +135,9 @@ export async function PUT(req: Request, { params }: RouteParams) {
   }
 }
 
-export async function DELETE(req: Request, { params }: RouteParams) {
+export async function DELETE(req: Request, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -152,7 +154,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
     const entries = await adminListIpWhitelist();
     const existing = entries.find(
-      (entry) => entry.admin_ip_whitelist_id === params.id,
+      (entry) => entry.admin_ip_whitelist_id === id,
     );
 
     if (!existing) {
@@ -160,7 +162,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     }
 
     const remaining = entries.filter(
-      (entry) => entry.admin_ip_whitelist_id !== params.id,
+      (entry) => entry.admin_ip_whitelist_id !== id,
     );
 
     if (remaining.length === 0) {
@@ -182,7 +184,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     }
 
     try {
-      await adminDeleteIpWhitelist({ id: params.id });
+      await adminDeleteIpWhitelist({ id });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Server error";
       if (message.toLowerCase().includes("not found")) {

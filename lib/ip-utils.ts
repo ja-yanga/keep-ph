@@ -40,9 +40,12 @@ export function normalizeCidr(input: string): string {
 
 export function isIpInCidr(ip: string, cidr: string): boolean {
   const normalizedIp = ipaddr.process(ip);
-  const cidrValue = cidr.includes("/")
-    ? ipaddr.parseCIDR(cidr)
-    : [ipaddr.parse(cidr), ipaddr.parse(cidr).kind() === "ipv6" ? 128 : 32];
-
+  let cidrValue: [ipaddr.IPv4 | ipaddr.IPv6, number];
+  if (cidr.includes("/")) {
+    cidrValue = ipaddr.parseCIDR(cidr);
+  } else {
+    const addr = ipaddr.parse(cidr);
+    cidrValue = [addr, addr.kind() === "ipv6" ? 128 : 32];
+  }
   return normalizedIp.match(cidrValue);
 }
