@@ -734,6 +734,21 @@ export type AdminListActivityLogsResult = {
   logs: ActivityLogEntry[];
 };
 
+export type ErrorLogEntryRow =
+  Database["public"]["Tables"]["error_log_table"]["Row"];
+
+export type ErrorLogEntry = ErrorLogEntryRow & {
+  user_email?: string | null;
+  user_name?: string | null;
+  resolved_by_email?: string | null;
+  resolved_by_name?: string | null;
+};
+
+export type AdminListErrorLogsResult = {
+  total_count: number;
+  logs: ErrorLogEntry[];
+};
+
 export type AdminIpWhitelistEntry = {
   admin_ip_whitelist_id: string;
   ip_cidr: string;

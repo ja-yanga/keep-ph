@@ -79,6 +79,7 @@ describe("PrivateNavigationHeader (admin) — admin role", () => {
     expect(screen.getByText(/Rewards/i)).toBeTruthy();
     expect(screen.getByText(/Stats/i)).toBeTruthy();
     expect(screen.getByText(/Users/i)).toBeTruthy();
+    expect(screen.getByText(/Error Logs/i)).toBeTruthy();
   });
 
   it("admin nav links have expected hrefs (no router push from anchors)", async () => {
@@ -139,6 +140,12 @@ describe("PrivateNavigationHeader (admin) — admin role", () => {
     const usersLink = screen.getByText(/Users/i).closest("a");
     expect(usersLink).toBeTruthy();
     expect(String(usersLink?.getAttribute("href"))).toContain("/admin/users");
+
+    const errorLogsLink = screen.getByText(/Error Logs/i).closest("a");
+    expect(errorLogsLink).toBeTruthy();
+    expect(String(errorLogsLink?.getAttribute("href"))).toContain(
+      "/admin/error-logs",
+    );
   });
 
   it("does not render user-only notifications control for admin role", async () => {

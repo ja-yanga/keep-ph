@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { resend } from "@/lib/resend";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
     if (!process.env.RESEND_API_KEY?.trim()) {
+      void logApiError(req, {
+        status: 503,
+        message: "Email service is not configured (missing RESEND_API_KEY).",
+        errorCode: "EXTERNAL_SERVICE_ERROR",
+      });
       return NextResponse.json(
         { error: "Email service is not configured (missing RESEND_API_KEY)." },
         { status: 503 },
@@ -13,6 +19,10 @@ export async function POST(req: Request) {
     const { to, template, data } = await req.json();
 
     if (!to || !template) {
+      void logApiError(req, {
+        status: 400,
+        message: "Missing required fields: to, template",
+      });
       return NextResponse.json(
         { error: "Missing required fields: to, template" },
         { status: 400 },
@@ -210,6 +220,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, id: resendData?.id });
   } catch (err: unknown) {
     console.error("Email API error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

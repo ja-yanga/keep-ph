@@ -45,6 +45,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/transactions",
     "/admin/ip-whitelist",
     "/admin/activity-logs",
+    "/admin/error-logs",
     "/unauthorized",
   ],
   approver: [
@@ -54,6 +55,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/packages",
     "/admin/rewards",
     "/admin/activity-logs",
+    "/admin/error-logs",
     "/unauthorized",
   ],
   owner: [
@@ -71,6 +73,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/transactions",
     "/admin/ip-whitelist",
     "/admin/activity-logs",
+    "/admin/error-logs",
     "/unauthorized",
   ],
 };
@@ -190,25 +193,7 @@ export async function proxy(request: NextRequest) {
     }
 
     if (!isAllowed) {
-      let userId: string | null = null;
-      try {
-        const { user } = await updateSession(request);
-        userId = user?.id ?? null;
-      } catch {
-        userId = null;
-      }
-      await logError({
-        errorType: "AUTHORIZATION_ERROR",
-        errorMessage: "IP not whitelisted",
-        errorCode: "AUTH_403_FORBIDDEN",
-        requestPath: pathname,
-        requestMethod: request.method,
-        responseStatus: 403,
-        errorDetails: { reason: "IP not whitelisted" },
-        ipAddress: clientIp,
-        userAgent: request.headers.get("user-agent"),
-        userId,
-      });
+      // Do not log to error_log_table — would flood DB with unauthorized/403 traffic
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -267,19 +252,7 @@ export async function proxy(request: NextRequest) {
       }
 
       if (!isAllowed) {
-        await logError({
-          errorType: "AUTHORIZATION_ERROR",
-          errorMessage: "IP not whitelisted",
-          errorCode: "AUTH_403_FORBIDDEN",
-          requestPath: url.pathname,
-          requestMethod: request.method,
-          responseStatus: 403,
-          errorDetails: { reason: "IP not whitelisted" },
-          ipAddress: clientIp,
-          userAgent: request.headers.get("user-agent"),
-          userId: user?.id ?? null,
-        });
-
+        // Do not log to error_log_table — would flood DB with unauthorized/403 traffic
         const forbiddenResponse = new NextResponse("Forbidden", {
           status: 403,
         });

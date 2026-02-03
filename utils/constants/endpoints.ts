@@ -101,6 +101,8 @@ export const API_ENDPOINTS = {
     transactions: "/api/admin/transactions",
     approverStats: "/api/admin/dashboard/approver-stats",
     activityLogs: "/api/admin/activity-logs",
+    errorLogs: "/api/admin/error-logs",
+    errorLog: (id: string) => `/api/admin/error-logs/${id}`,
     ipWhitelist: "/api/admin/ip-whitelist",
     ipWhitelistEntry: (id: string) => `/api/admin/ip-whitelist/${id}`,
   },
