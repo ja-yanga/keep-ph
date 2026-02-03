@@ -1,8 +1,11 @@
 import { Metadata } from "next";
+import { baseMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = {
-  title: "Submit KYC | Keep-PH",
-  description: "Submit your KYC to verify your identity.",
+  ...baseMetadata,
+  title: "KYC Submission | Keep-PH",
+  description:
+    "Fill out your KYC form to verify your identity and submit necessary documents securely.",
 };
 
 export default function CustomerKycLayout({

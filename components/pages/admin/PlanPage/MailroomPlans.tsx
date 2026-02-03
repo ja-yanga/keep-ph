@@ -45,6 +45,7 @@ import {
 } from "mantine-datatable";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { Plan } from "@/utils/types";
+import { getStatusFormat } from "@/utils/helper";
 
 import { AdminTable } from "@/components/common/AdminTable";
 // Imports fixed above
@@ -339,18 +340,22 @@ export default function MailroomPlans() {
       {
         accessor: "price",
         title: "Price",
-        width: 150,
+        width: 120,
         sortable: true,
         render: ({ price }: Plan) => (
-          <Badge color="green.9" variant="filled" size="lg">
+          <Badge
+            color={`${getStatusFormat("PAID")}.9`}
+            variant="filled"
+            size="md"
+          >
             {formatCurrency(price)}
           </Badge>
         ),
       },
       {
         accessor: "storage_limit",
-        title: "Storage Limit",
-        width: 150,
+        title: "Storage",
+        width: 130,
         sortable: true,
         render: ({ storage_limit }: Plan) => (
           <Group gap={4} wrap="nowrap">
@@ -362,9 +367,22 @@ export default function MailroomPlans() {
       {
         accessor: "description",
         title: "Description",
+        width: 250,
         sortable: true,
         render: ({ description }: Plan) => (
-          <Text lineClamp={1} size="sm" c="#2D3748" truncate>
+          <Text
+            lineClamp={2}
+            size="sm"
+            c="#2D3748"
+            style={{
+              wordBreak: "break-word",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
             {description ?? "—"}
           </Text>
         ),
@@ -409,7 +427,7 @@ export default function MailroomPlans() {
       {globalSuccess && (
         <Alert
           variant="light"
-          color="green"
+          color={getStatusFormat("VERIFIED")}
           title="Success"
           icon={<IconCheck size={16} />}
           withCloseButton
@@ -512,7 +530,11 @@ export default function MailroomPlans() {
                 </Text>
                 <Title order={3}>{viewPlan.name}</Title>
               </Box>
-              <Badge size="lg" variant="filled" color="green.9">
+              <Badge
+                size="lg"
+                variant="filled"
+                color={`${getStatusFormat("PAID")}.9`}
+              >
                 {formatCurrency(viewPlan.price)}
               </Badge>
             </Group>
@@ -609,7 +631,7 @@ export default function MailroomPlans() {
             {formError && (
               <Alert
                 variant="filled"
-                color="red"
+                color={getStatusFormat("REJECTED")}
                 title="Error"
                 icon={<IconAlertCircle size={16} />}
                 withCloseButton

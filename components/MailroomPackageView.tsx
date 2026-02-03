@@ -31,6 +31,7 @@ import {
   IconMail,
   IconPackage,
   IconScan,
+  IconCheck,
   IconCopy,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
@@ -73,6 +74,7 @@ export default function MailroomPackageView({
   const [localItem, setLocalItem] = useState<MailroomPackageViewItem>(
     item ?? null,
   );
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setLocalItem(item ?? null);
@@ -393,6 +395,8 @@ export default function MailroomPackageView({
     }
     try {
       await navigator.clipboard.writeText(txt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
       notifications.show({
         title: "Copied",
         message: "Full shipping address copied to clipboard",
@@ -1125,8 +1129,13 @@ export default function MailroomPackageView({
                         variant="light"
                         onClick={copyFullShippingAddress}
                         title="Copy full shipping address"
+                        color={copied ? "teal" : "blue"}
                       >
-                        <IconCopy size={14} />
+                        {copied ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <IconCopy size={14} />
+                        )}
                       </ActionIcon>
                     </Group>
                   </Group>

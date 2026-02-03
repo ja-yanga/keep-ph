@@ -38,13 +38,17 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/rewards",
     "/admin/stats",
     "/admin/users",
+    "/admin/transactions",
+    "/admin/activity-logs",
     "/unauthorized",
   ],
   approver: [
     "/account",
+    "/admin/approver-dashboard",
     "/admin/kyc",
     "/admin/packages",
     "/admin/rewards",
+    "/admin/activity-logs",
     "/unauthorized",
   ],
   owner: [
@@ -59,6 +63,8 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/rewards",
     "/admin/stats",
     "/admin/users",
+    "/admin/transactions",
+    "/admin/activity-logs",
     "/unauthorized",
   ],
 };
@@ -67,7 +73,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
 const ROLE_DEFAULT_PAGES: Record<string, string> = {
   user: "/dashboard",
   admin: "/admin/dashboard",
-  approver: "/admin/kyc",
+  approver: "/admin/approver-dashboard",
   owner: "/admin/dashboard",
 };
 

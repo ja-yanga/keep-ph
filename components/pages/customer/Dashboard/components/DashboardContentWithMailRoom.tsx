@@ -246,6 +246,7 @@ export default function DashboardContentWithMailRoom({
               isMobile={isMobile}
               onCopyAddress={copyFullShippingAddress}
               onCancelRenewal={handleCancelRenewal}
+              isCanceling={canceling && selectedSubId === row.id}
             />
           ))}
         </SimpleGrid>

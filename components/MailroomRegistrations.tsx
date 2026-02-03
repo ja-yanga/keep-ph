@@ -5,6 +5,7 @@ import "mantine-datatable/styles.layer.css";
 import React, { useEffect, useState } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
 import {
+  ActionIcon,
   Badge,
   Button,
   Group,
@@ -22,6 +23,7 @@ import {
   Tabs,
 } from "@mantine/core";
 import {
+  IconEye,
   IconSearch,
   IconKey,
   IconMail,
@@ -42,6 +44,7 @@ import {
 } from "mantine-datatable";
 import dayjs from "dayjs";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { getStatusFormat } from "@/utils/helper";
 
 type Registration = {
   id: string;
@@ -335,42 +338,43 @@ export default function MailroomRegistrations() {
     () => [
       {
         accessor: "mailroom_code",
-        title: "Mailroom Code",
-        width: 140,
+        title: "Code",
+        width: 120,
         sortable: true,
         render: (r: Registration) =>
           r.mailroom_code ? (
             <Badge
-              size="md"
+              size="sm"
               variant="filled"
               color="violet.9"
               radius="sm"
-              styles={{ root: { textTransform: "none", fontSize: "13px" } }}
+              styles={{ root: { textTransform: "none" } }}
             >
               {r.mailroom_code}
             </Badge>
           ) : (
-            <Text size="sm" c="#4A5568" fs="italic">
+            <Text size="xs" c="dimmed" fs="italic">
               Pending
             </Text>
           ),
       },
       {
         accessor: "full_name",
-        title: "User Details",
+        title: "User",
+        width: 220,
         sortable: true,
         render: (r: Registration) => (
-          <Group gap="sm" wrap="nowrap">
+          <Group gap="xs" wrap="nowrap">
             <Avatar color="blue" radius="xl" size="sm">
               {r.full_name.charAt(0)}
             </Avatar>
-            <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
-              <Text size="sm" fw={500} truncate>
+            <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
+              <Text size="sm" fw={500} lineClamp={1}>
                 {r.full_name}
               </Text>
               <Group gap={4} wrap="nowrap">
                 <IconMail size={12} style={{ flexShrink: 0 }} color="gray" />
-                <Text size="xs" c="#4A5568" truncate>
+                <Text size="xs" c="dimmed" lineClamp={1}>
                   {r.email}
                 </Text>
               </Group>
@@ -381,10 +385,15 @@ export default function MailroomRegistrations() {
       {
         accessor: "status",
         title: "Status",
-        width: 120,
+        width: 100,
         sortable: true,
+        textAlign: "center",
         render: (r: Registration) => (
-          <Badge color={r.is_active ? "green.9" : "red.9"} variant="filled">
+          <Badge
+            color={r.is_active ? "green.9" : "red.9"}
+            variant="filled"
+            size="sm"
+          >
             {r.is_active ? "Active" : "Inactive"}
           </Badge>
         ),
@@ -392,27 +401,26 @@ export default function MailroomRegistrations() {
       {
         accessor: "subscription",
         title: "Subscription",
-        width: 200,
+        width: 180,
         sortable: true,
         render: (r: Registration) => {
           const expiresAt = dayjs(r.created_at).add(r.months, "month");
           const isExpired = dayjs().isAfter(expiresAt);
-
-          const planName = r.plan_name || `${r.months} Month Plan`;
+          const planName = r.plan_name || `${r.months}mo`;
 
           return (
             <Stack gap={2}>
-              <Text size="sm" fw={500} truncate>
+              <Text size="xs" fw={500} lineClamp={1}>
                 {planName}
               </Text>
               <Group gap={4} wrap="nowrap">
                 <IconCalendar
-                  size={14}
+                  size={12}
                   style={{ flexShrink: 0 }}
                   color={isExpired ? "red" : "gray"}
                 />
-                <Text size="xs" c={isExpired ? "red" : "#4A5568"}>
-                  Expires: {expiresAt.format("MMM D, YYYY")}
+                <Text size="xs" c={isExpired ? "red" : "dimmed"}>
+                  {expiresAt.format("MMM D, YYYY")}
                 </Text>
               </Group>
             </Stack>
@@ -422,14 +430,14 @@ export default function MailroomRegistrations() {
       {
         accessor: "location",
         title: "Location",
-        width: 200,
+        width: 160,
         sortable: true,
         render: (r: Registration) => {
           const name = r.location_name || "Main Branch";
           return (
             <Group gap={4} wrap="nowrap">
-              <IconMapPin size={14} style={{ flexShrink: 0 }} color="gray" />
-              <Text size="sm" truncate>
+              <IconMapPin size={12} style={{ flexShrink: 0 }} color="gray" />
+              <Text size="xs" lineClamp={1}>
                 {name}
               </Text>
             </Group>
@@ -439,19 +447,21 @@ export default function MailroomRegistrations() {
       {
         accessor: "actions",
         title: "Actions",
-        width: 120,
-        textAlign: "right" as const,
+        width: 80,
+        textAlign: "center" as const,
         render: (r: Registration) => (
-          <Group gap="xs" justify="flex-end" wrap="nowrap">
-            <Button
-              size="compact-xs"
-              variant="filled"
-              color="blue.9"
-              leftSection={<IconInfoCircle size={14} aria-hidden="true" />}
-              onClick={() => handleOpenLockerModal(r)}
-            >
-              View Details
-            </Button>
+          <Group gap="xs" justify="center">
+            <Tooltip label="View Details">
+              <ActionIcon
+                variant="subtle"
+                color="dark.7"
+                size="lg"
+                onClick={() => handleOpenLockerModal(r)}
+                aria-label={`View details of ${r.full_name}`}
+              >
+                <IconEye size={16} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
           </Group>
         ),
       },
@@ -477,70 +487,63 @@ export default function MailroomRegistrations() {
 
   return (
     <Stack align="center" gap="lg" w="100%">
-      <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
-        {isMobile ? (
-          <Stack mb="md">
+      <Paper
+        p={isMobile ? "md" : "xl"}
+        radius="lg"
+        withBorder
+        shadow="sm"
+        w="100%"
+      >
+        <Stack mb="md" gap="sm">
+          <Group
+            justify="space-between"
+            gap="xs"
+            align="center"
+            wrap={isMobile ? "wrap" : "nowrap"}
+          >
             <TextInput
               placeholder="Search users..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: isMobile ? "100%" : "200px" }}
             />
-            <Group grow>
-              <Tooltip label="Force check for expired subscriptions">
-                <Button
-                  variant="filled"
-                  color="orange.9"
-                  onClick={handleRefreshStatus}
-                  loading={refreshingStatus}
-                  leftSection={<IconRefresh size={16} />}
-                >
-                  Sync Statuses
-                </Button>
-              </Tooltip>
-            </Group>
-          </Stack>
-        ) : (
-          <Group
-            justify="space-between"
-            mb="md"
-            gap="xs"
-            align="center"
-            wrap="nowrap"
-          >
-            <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
-              <TextInput
-                placeholder="Search users..."
-                leftSection={<IconSearch size={16} />}
-                value={search}
-                onChange={(e) => setSearch(e.currentTarget.value)}
-                style={{ flex: 1 }}
-              />
-              <Tooltip label="Force check for expired subscriptions">
-                <Button
-                  variant="filled"
-                  color="orange.9"
-                  onClick={handleRefreshStatus}
-                  loading={refreshingStatus}
-                  leftSection={<IconRefresh size={16} />}
-                >
-                  Sync Statuses
-                </Button>
-              </Tooltip>
-            </Group>
+            <Tooltip label="Force check for expired subscriptions">
+              <Button
+                variant="filled"
+                color="orange.9"
+                onClick={handleRefreshStatus}
+                loading={refreshingStatus}
+                leftSection={<IconRefresh size={16} />}
+                style={{ flexShrink: 0 }}
+              >
+                {isMobile ? "Sync" : "Sync Statuses"}
+              </Button>
+            </Tooltip>
+            {!isMobile && (
+              <Badge
+                size="lg"
+                variant="filled"
+                color="violet.9"
+                style={{ flexShrink: 0 }}
+              >
+                {registrations.length} Users
+              </Badge>
+            )}
+          </Group>
+          {isMobile && (
             <Badge
-              size="lg"
+              size="md"
               variant="filled"
               color="violet.9"
-              style={{ flexShrink: 0 }}
+              style={{ width: "fit-content" }}
             >
               {registrations.length} Registered Users
             </Badge>
-          </Group>
-        )}
+          )}
+        </Stack>
 
-        {/* NEW: Tabs Component */}
+        {/* Tabs Component */}
         <Tabs
           value={activeTab}
           onChange={(value) => setActiveTab(value || "all")}
@@ -551,19 +554,19 @@ export default function MailroomRegistrations() {
           <Tabs.List>
             <Tabs.Tab
               value="all"
-              leftSection={<IconUsers size={16} aria-hidden="true" />}
+              leftSection={<IconUsers size={14} aria-hidden="true" />}
             >
-              All Users
+              All
             </Tabs.Tab>
             <Tabs.Tab
               value="active"
-              leftSection={<IconUserCheck size={16} aria-hidden="true" />}
+              leftSection={<IconUserCheck size={14} aria-hidden="true" />}
             >
               Active
             </Tabs.Tab>
             <Tabs.Tab
               value="inactive"
-              leftSection={<IconUserOff size={16} aria-hidden="true" />}
+              leftSection={<IconUserOff size={14} aria-hidden="true" />}
             >
               Inactive
             </Tabs.Tab>
@@ -576,6 +579,7 @@ export default function MailroomRegistrations() {
                     marginTop: "1rem",
                     contentVisibility: "auto",
                     containIntrinsicSize: "400px",
+                    overflowX: "auto",
                   }}
                 >
                   <AdminTable<Registration>
@@ -605,7 +609,7 @@ export default function MailroomRegistrations() {
         opened={lockerModalOpen}
         onClose={closeLockerModal}
         title={
-          <Group>
+          <Group gap="xs">
             <IconInfoCircle size={20} />
             <Text fw={600}>Registration Details</Text>
           </Group>
@@ -621,38 +625,48 @@ export default function MailroomRegistrations() {
               radius="md"
               bg="var(--mantine-color-gray-0)"
             >
-              <Grid>
-                <Grid.Col span={6}>
-                  <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
+              <Grid gutter="md">
+                <Grid.Col span={{ base: 12, sm: 6 }}>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700} mb="xs">
                     Contact Information
                   </Text>
-                  <Text fw={500} size="lg" mt={4}>
+                  <Text fw={500} size="lg">
                     {selectedUser.full_name}
                   </Text>
 
-                  <Stack gap={4} mt="xs">
-                    <Group gap={8}>
-                      <IconMail size={16} color="gray" />
-                      <Text size="sm">{selectedUser.email}</Text>
+                  <Stack gap={8} mt="sm">
+                    <Group gap={8} wrap="nowrap">
+                      <IconMail
+                        size={16}
+                        color="gray"
+                        style={{ flexShrink: 0 }}
+                      />
+                      <Text size="sm" lineClamp={1}>
+                        {selectedUser.email}
+                      </Text>
                     </Group>
                     {selectedUser.phone_number ? (
-                      <Group gap={8}>
-                        <IconPhone size={16} color="gray" />
+                      <Group gap={8} wrap="nowrap">
+                        <IconPhone
+                          size={16}
+                          color="gray"
+                          style={{ flexShrink: 0 }}
+                        />
                         <Text size="sm">{selectedUser.phone_number}</Text>
                       </Group>
                     ) : (
-                      <Text size="sm" c="#4A5568" fs="italic">
-                        No phone number provided
+                      <Text size="sm" c="dimmed" fs="italic">
+                        No phone number
                       </Text>
                     )}
                   </Stack>
                 </Grid.Col>
 
-                <Grid.Col span={6}>
-                  <Text size="xs" c="#4A5568" tt="uppercase" fw={700}>
+                <Grid.Col span={{ base: 12, sm: 6 }}>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={700} mb="xs">
                     Plan Details
                   </Text>
-                  <Stack gap={4} mt="xs">
+                  <Stack gap={8}>
                     <Text size="sm">
                       <Text span fw={500}>
                         Duration:
@@ -681,7 +695,7 @@ export default function MailroomRegistrations() {
                               "Main Branch"}
                           </Text>
                           {foundLoc && (
-                            <Text size="xs" c="#4A5568" mt={4}>
+                            <Text size="xs" c="dimmed" mt={4}>
                               {foundLoc.barangay
                                 ? `${foundLoc.barangay}, `
                                 : ""}
@@ -705,52 +719,51 @@ export default function MailroomRegistrations() {
                 Assigned Lockers:
               </Text>
               {getAssignedLockers(selectedUser.id).length > 0 ? (
-                <Table withTableBorder withColumnBorders>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Locker Code</Table.Th>
-                      <Table.Th>Capacity Status</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {getAssignedLockers(selectedUser.id).map((l) => (
-                      <Table.Tr key={l.assignmentId}>
-                        <Table.Td>
-                          <Badge
-                            variant="filled"
-                            color="blue"
-                            leftSection={<IconKey size={12} />}
-                          >
-                            {l.code}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge
-                            variant="filled"
-                            color={(() => {
-                              if (l.status === "Full") return "red";
-                              if (l.status === "Near Full") return "orange";
-                              if (l.status === "Empty") return "gray";
-                              return "blue";
-                            })()}
-                          >
-                            {l.status}
-                          </Badge>
-                        </Table.Td>
+                <div style={{ overflowX: "auto" }}>
+                  <Table withTableBorder withColumnBorders>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Locker Code</Table.Th>
+                        <Table.Th>Capacity Status</Table.Th>
                       </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {getAssignedLockers(selectedUser.id).map((l) => (
+                        <Table.Tr key={l.assignmentId}>
+                          <Table.Td>
+                            <Badge
+                              variant="filled"
+                              color="blue"
+                              leftSection={<IconKey size={12} />}
+                              size="sm"
+                            >
+                              {l.code}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge
+                              variant="filled"
+                              size="sm"
+                              color={`${getStatusFormat(l.status)}.9`}
+                            >
+                              {l.status}
+                            </Badge>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </div>
               ) : (
                 <Paper p="sm" withBorder bg="var(--mantine-color-gray-0)">
-                  <Text size="sm" c="#4A5568" ta="center">
+                  <Text size="sm" c="dimmed" ta="center">
                     No lockers assigned yet.
                   </Text>
                 </Paper>
               )}
             </Stack>
 
-            <Group align="flex-end" grow>
+            <Stack gap="sm">
               <Select
                 label="Assign New Locker"
                 placeholder="Select available locker"
@@ -762,16 +775,17 @@ export default function MailroomRegistrations() {
                 value={selectedLockerId}
                 onChange={setSelectedLockerId}
               />
-              <Button
-                color="violet"
-                disabled={!selectedLockerId}
-                loading={submitting}
-                onClick={handleSaveAssignment}
-                style={{ maxWidth: 120 }}
-              >
-                Add
-              </Button>
-            </Group>
+              <Group justify="flex-end">
+                <Button
+                  color="violet"
+                  disabled={!selectedLockerId}
+                  loading={submitting}
+                  onClick={handleSaveAssignment}
+                >
+                  Add Locker
+                </Button>
+              </Group>
+            </Stack>
 
             <Group justify="flex-end" mt="md">
               <Button variant="default" onClick={closeLockerModal}>

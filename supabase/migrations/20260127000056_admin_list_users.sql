@@ -3,7 +3,8 @@ CREATE OR REPLACE FUNCTION public.admin_list_users(
   input_limit INT DEFAULT 10,
   input_offset INT DEFAULT 0,
   input_sort TEXT DEFAULT 'users_created_at',
-  input_direction TEXT DEFAULT 'desc'
+  input_direction TEXT DEFAULT 'desc',
+  input_role TEXT DEFAULT ''
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -14,6 +15,7 @@ DECLARE
   sort_col TEXT;
   sort_dir TEXT;
   where_sql TEXT;
+  role_sql TEXT;
   base_sql TEXT;
   data_sql TEXT;
   count_sql TEXT;
@@ -33,6 +35,13 @@ BEGIN
     ELSE 'DESC'
   END;
 
+  role_sql := '';
+  IF input_role IS NOT NULL AND btrim(input_role) <> '' THEN
+    IF LOWER(btrim(input_role)) IN ('owner','admin','approver','user') THEN
+      role_sql := format(' AND u.users_role = %L', LOWER(btrim(input_role)));
+    END IF;
+  END IF;
+
   IF input_search IS NULL OR btrim(input_search) = '' THEN
     where_sql := 'TRUE';
   ELSE
@@ -49,7 +58,7 @@ BEGIN
   base_sql := '
     FROM public.users_table u
     LEFT JOIN public.user_kyc_table k ON k.user_id = u.users_id
-    WHERE ' || where_sql;
+    WHERE ' || where_sql || role_sql;
 
   IF input_sort = 'full_name' THEN
     data_sql := '

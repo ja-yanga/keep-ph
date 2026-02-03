@@ -370,7 +370,7 @@ describe("MailroomRegistrations (admin)", () => {
     const optionNodes = await screen.findAllByText(/L-101/i);
     await userEvent.click(optionNodes[optionNodes.length - 1]);
 
-    const addBtn = within(modal).getByRole("button", { name: "Add" });
+    const addBtn = within(modal).getByRole("button", { name: "Add Locker" });
     await userEvent.click(addBtn);
 
     // assert assigned-lockers POST occurred

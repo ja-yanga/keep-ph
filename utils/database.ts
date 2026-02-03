@@ -182,6 +182,7 @@ export type Database = {
           activity_ip_address: string | null;
           activity_log_id: string;
           activity_type: Database["public"]["Enums"]["activity_type"];
+          activity_user_agent: string | null;
           user_id: string;
         };
         Insert: {
@@ -195,6 +196,7 @@ export type Database = {
           activity_ip_address?: string | null;
           activity_log_id?: string;
           activity_type: Database["public"]["Enums"]["activity_type"];
+          activity_user_agent?: string | null;
           user_id: string;
         };
         Update: {
@@ -208,6 +210,7 @@ export type Database = {
           activity_ip_address?: string | null;
           activity_log_id?: string;
           activity_type?: Database["public"]["Enums"]["activity_type"];
+          activity_user_agent?: string | null;
           user_id?: string;
         };
         Relationships: [
@@ -1147,6 +1150,7 @@ export type Database = {
       admin_dashboard_stats: { Args: never; Returns: Json };
       admin_delete_mailbox_item: { Args: { input_data: Json }; Returns: Json };
       admin_get_assigned_lockers: { Args: never; Returns: Json };
+      admin_list_activity_logs: { Args: { input_data: Json }; Returns: Json };
       admin_list_mailroom_plans: { Args: never; Returns: Json };
       admin_list_reward_claims: { Args: never; Returns: Json };
       admin_list_user_kyc: {
@@ -1246,6 +1250,18 @@ export type Database = {
       };
       get_registration_scans: { Args: { input_data: Json }; Returns: Json };
       get_rewards_status: { Args: { input_user_id: string }; Returns: Json };
+      get_transactions: {
+        Args: {
+          include_user_details?: boolean;
+          input_user_ids?: string[];
+          page_limit?: number;
+          page_offset?: number;
+          search_query?: string;
+          sort_by?: string;
+          sort_dir?: string;
+        };
+        Returns: Json;
+      };
       get_user_assigned_lockers: { Args: { input_data: Json }; Returns: Json };
       get_user_kyc_by_user_id: {
         Args: { input_user_id: string };
@@ -1447,6 +1463,7 @@ export type Database = {
     Enums: {
       activity_action:
         | "CREATE"
+        | "STORE"
         | "UPDATE"
         | "DELETE"
         | "VIEW"
@@ -1465,7 +1482,8 @@ export type Database = {
         | "CLAIM"
         | "RELEASE"
         | "DISPOSE"
-        | "SCAN";
+        | "SCAN"
+        | "PURCHASE";
       activity_entity_type:
         | "MAIL_ACTION_REQUEST"
         | "USER_KYC"
@@ -1756,6 +1774,7 @@ export const Constants = {
     Enums: {
       activity_action: [
         "CREATE",
+        "STORE",
         "UPDATE",
         "DELETE",
         "VIEW",
@@ -1775,6 +1794,7 @@ export const Constants = {
         "RELEASE",
         "DISPOSE",
         "SCAN",
+        "PURCHASE",
       ],
       activity_entity_type: [
         "MAIL_ACTION_REQUEST",

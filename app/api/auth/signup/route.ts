@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { checkEmailExistsAction } from "@/app/actions/get";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: Request) {
   try {
@@ -30,8 +31,6 @@ export async function POST(req: Request) {
       }
     } catch (rpcError) {
       console.error("Error checking email existence:", rpcError);
-      // We continue if the check fails, or we could return an error.
-      // Given the requirement, we should probably handle it gracefully or return a generic error.
     }
 
     const origin = new URL(req.url).origin;
@@ -41,11 +40,32 @@ export async function POST(req: Request) {
       password,
       options: {
         emailRedirectTo: `${origin}/api/auth/callback`,
+        data: {
+          role: "user", // Set role in metadata during signup
+        },
       },
     });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Log successful sign-up
+    if (data.user) {
+      logActivity({
+        userId: data.user.id,
+        action: "REGISTER",
+        type: "USER_LOGIN",
+        entityType: "USER",
+        entityId: data.user.id,
+        details: {
+          email: data.user.email,
+          provider: data.user.app_metadata.provider || "email",
+          platform: "web",
+        },
+      }).catch((logError) => {
+        console.error("Failed to log sign-up activity:", logError);
+      });
     }
 
     return NextResponse.json({

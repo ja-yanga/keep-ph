@@ -1,8 +1,13 @@
 "use client";
 
-import AdminUserKyc from "@/components/pages/admin/KycPage/AdminUserKyc";
+import dynamic from "next/dynamic";
 import { Container, Group, Text, Title } from "@mantine/core";
 import PrivateMainLayout from "@/components/Layout/PrivateMainLayout";
+
+const AdminUserKyc = dynamic(
+  () => import("@/components/pages/admin/KycPage/AdminUserKyc"),
+  { ssr: false },
+);
 
 export default function AdminKycPage() {
   return (

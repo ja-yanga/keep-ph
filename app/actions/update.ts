@@ -55,7 +55,8 @@ export const updateRewardClaim = async ({
 export const adminUpdateUserKyc = async ({
   userId,
   status,
-}: UpdateUserKycStatusArgs) => {
+  actorUserId,
+}: UpdateUserKycStatusArgs & { actorUserId?: string }) => {
   if (!userId) {
     throw new Error("userId is required");
   }
@@ -72,6 +73,31 @@ export const adminUpdateUserKyc = async ({
 
   if (error) {
     throw error;
+  }
+
+  // Log activity
+  if (actorUserId) {
+    try {
+      // Fetch user's KYC details for logging
+      const { data: kycData } = await supabaseAdmin
+        .from("user_kyc_table")
+        .select("user_kyc_first_name, user_kyc_last_name")
+        .eq("user_id", userId)
+        .single();
+
+      await logActivity({
+        userId: actorUserId,
+        action: normalizedStatus === "VERIFIED" ? "APPROVE" : "REJECT",
+        type: "ADMIN_ACTION",
+        entityType: "USER_KYC",
+        entityId: userId,
+        details: {
+          kyc_description: `Admin ${normalizedStatus === "VERIFIED" ? "verified" : "rejected"} KYC for ${kycData?.user_kyc_first_name}${kycData?.user_kyc_last_name}`,
+        },
+      });
+    } catch (logErr) {
+      console.error("KYC activity log failed:", logErr);
+    }
   }
 
   // Background trigger for Resend email notification
@@ -253,25 +279,36 @@ export async function adminUpdateMailroomPackage(args: {
   }
 
   // Log activity
+  let activityAction: "UPDATE" | "RELEASE" | "DISPOSE" = "UPDATE";
+  if (args.status === "RELEASED") activityAction = "RELEASE";
+  if (args.status === "DISPOSED") activityAction = "DISPOSE";
+
+  // Fetch locker code if locker_id exists
+  let locker_code: string | null = null;
+  const locker_id = args.locker_id ?? result.item.location_locker_id;
+  if (locker_id) {
+    const { data: lockerData } = await supabaseAdmin
+      .from("location_locker_table")
+      .select("location_locker_code")
+      .eq("location_locker_id", locker_id)
+      .single();
+    locker_code = lockerData?.location_locker_code || null;
+  }
+
   await logActivity({
     userId: args.userId,
-    action: "UPDATE",
+    action: activityAction,
     type: "ADMIN_ACTION",
     entityType: "MAILBOX_ITEM",
     entityId: args.id,
     details: {
-      mailbox_item_id: args.id,
-      updates: {
-        package_name: args.package_name,
-        registration_id: args.registration_id,
-        locker_id: args.locker_id,
-        package_type: args.package_type,
-        status: args.status,
-        package_photo: args.package_photo !== undefined ? "updated" : undefined,
-        locker_status: args.locker_status,
-      },
-      old_status: result.old_status,
-      new_status: args.status,
+      package_status: args.status ?? result.old_status,
+      package_name: (args.package_name ??
+        result.item.mailbox_item_name) as string,
+      package_type: (args.package_type ??
+        result.item.mailbox_item_type ??
+        "Parcel") as string,
+      ...(locker_code && { package_locker_code: locker_code }),
     },
   });
 
@@ -310,6 +347,66 @@ export const updateMailboxItem = async (args: {
 
   if (error) {
     throw error;
+  }
+
+  // Log user-initiated activity
+  if (args.status) {
+    let activityAction: "SCAN" | "RELEASE" | "DISPOSE" | "CANCEL" | "UPDATE" =
+      "UPDATE";
+    let activityType:
+      | "USER_REQUEST_SCAN"
+      | "USER_REQUEST_RELEASE"
+      | "USER_REQUEST_DISPOSE"
+      | "USER_REQUEST_CANCEL"
+      | "USER_REQUEST_OTHERS" = "USER_REQUEST_OTHERS";
+
+    // Map status to action and type
+    if (args.status === "REQUEST_TO_SCAN") {
+      activityAction = "SCAN";
+      activityType = "USER_REQUEST_SCAN";
+    } else if (args.status === "REQUEST_TO_RELEASE") {
+      activityAction = "RELEASE";
+      activityType = "USER_REQUEST_RELEASE";
+    } else if (args.status === "REQUEST_TO_DISPOSE") {
+      activityAction = "DISPOSE";
+      activityType = "USER_REQUEST_DISPOSE";
+    }
+
+    try {
+      // Fetch package details for consistent logging
+      const { data: pkgDetails } = await supabaseAdmin
+        .from("mailbox_item_table")
+        .select("mailbox_item_name, mailbox_item_type, location_locker_id")
+        .eq("mailbox_item_id", args.id)
+        .single();
+
+      // Fetch locker code if locker exists
+      let locker_code: string | null = null;
+      if (pkgDetails?.location_locker_id) {
+        const { data: lockerData } = await supabaseAdmin
+          .from("location_locker_table")
+          .select("location_locker_code")
+          .eq("location_locker_id", pkgDetails.location_locker_id)
+          .single();
+        locker_code = lockerData?.location_locker_code || null;
+      }
+
+      await logActivity({
+        userId: args.userId,
+        action: activityAction,
+        type: activityType,
+        entityType: "MAILBOX_ITEM",
+        entityId: args.id,
+        details: {
+          package_status: args.status,
+          package_name: pkgDetails?.mailbox_item_name || "Unknown",
+          package_type: pkgDetails?.mailbox_item_type || "Parcel",
+          ...(locker_code && { package_locker_code: locker_code }),
+        },
+      });
+    } catch (logErr) {
+      console.error("User package action activity log failed:", logErr);
+    }
   }
 
   return data;

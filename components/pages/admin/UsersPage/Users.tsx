@@ -20,6 +20,7 @@ import {
   Title,
   SimpleGrid,
   ThemeIcon,
+  Tabs,
 } from "@mantine/core";
 import {
   IconEdit,
@@ -39,16 +40,25 @@ import {
 } from "mantine-datatable";
 import { AdminTable } from "@/components/common/AdminTable";
 import type { AdminUserPage, ApiUserPage, UserRole } from "@/utils/types";
+import { getStatusFormat } from "@/utils/helper";
 
 const SearchInput = memo(
-  ({ onSearch }: { onSearch: (value: string) => void }) => {
+  ({
+    onSearch,
+    disabled,
+  }: {
+    onSearch: (value: string) => void;
+    disabled?: boolean;
+  }) => {
     const [value, setValue] = useState("");
 
     const handleSearch = () => {
+      if (disabled) return;
       onSearch(value);
     };
 
     const handleClear = () => {
+      if (disabled) return;
       setValue("");
       onSearch("");
     };
@@ -70,6 +80,7 @@ const SearchInput = memo(
                 onClick={handleClear}
                 aria-label="Clear search"
                 title="Clear search"
+                disabled={disabled}
               >
                 <IconX size={16} />
               </ActionIcon>
@@ -80,6 +91,7 @@ const SearchInput = memo(
                 onClick={handleSearch}
                 aria-label="Submit search"
                 title="Submit search"
+                disabled={disabled}
               >
                 <IconArrowRight size={16} />
               </ActionIcon>
@@ -92,6 +104,7 @@ const SearchInput = memo(
               onClick={handleSearch}
               aria-label="Submit search"
               title="Submit search"
+              disabled={disabled}
             >
               <IconArrowRight size={16} />
             </ActionIcon>
@@ -105,6 +118,7 @@ const SearchInput = memo(
           }
         }}
         style={{ width: 300 }}
+        disabled={disabled}
       />
     );
   },
@@ -141,6 +155,9 @@ export default function Users() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const isModalBusy = isSaving || isTransferring;
 
   useEffect(() => {
     const loadSessionRole = async () => {
@@ -187,6 +204,7 @@ export default function Users() {
           pageSize: String(pageSize),
           sort: sortField,
           direction: sortStatus.direction,
+          role: roleFilter === "all" ? "" : roleFilter,
         });
 
         const res = await fetch(`/api/admin/users?${params.toString()}`, {
@@ -225,19 +243,55 @@ export default function Users() {
       }
     };
     loadUsers();
-  }, [page, pageSize, search, sortStatus]);
+  }, [page, pageSize, search, sortStatus, roleFilter, refreshKey]);
 
-  const openView = (u: AdminUserPage) => {
-    setViewUser(u);
-    setViewOpen(true);
+  const roleBadgeColor = useCallback((role: UserRole) => {
+    return `${getStatusFormat(role)}.9`;
+  }, []);
+
+  const roleRank: Record<UserRole, number> = {
+    owner: 4,
+    admin: 3,
+    approver: 2,
+    user: 1,
   };
 
-  const openEdit = (u: AdminUserPage) => {
+  const isEditingBlocked =
+    !!editUser &&
+    !!currentUserRole &&
+    roleRank[editUser.role] > roleRank[currentUserRole];
+
+  const isSameRoleBlocked =
+    !!editUser && !!currentUserRole && editUser.role === currentUserRole;
+
+  const isRoleEditHidden = isEditingBlocked || isSameRoleBlocked;
+
+  const roleOptions = useMemo(
+    () =>
+      currentUserRole === "admin"
+        ? [
+            { value: "approver", label: "Approver" },
+            { value: "user", label: "User" },
+          ]
+        : [
+            { value: "admin", label: "Admin" },
+            { value: "approver", label: "Approver" },
+            { value: "user", label: "User" },
+          ],
+    [currentUserRole],
+  );
+
+  const openView = useCallback((u: AdminUserPage) => {
+    setViewUser(u);
+    setViewOpen(true);
+  }, []);
+
+  const openEdit = useCallback((u: AdminUserPage) => {
     setEditUser(u);
     setEditRole(u.role);
     setEditError(null);
     setEditOpen(true);
-  };
+  }, []);
 
   const handleEditSave = async () => {
     if (!editUser || !editRole) {
@@ -278,9 +332,9 @@ export default function Users() {
     }
   };
 
-  const openTransfer = () => {
+  const openTransfer = useCallback(() => {
     setTransferOpen(true);
-  };
+  }, []);
 
   const handleTransferConfirm = async () => {
     if (!editUser || !currentUserId) return;
@@ -327,49 +381,39 @@ export default function Users() {
     setSearch("");
     setSortBy(null);
     setSortStatus({ columnAccessor: "full_name", direction: "asc" });
+    setRoleFilter("all");
     setPage(1);
   };
 
-  const hasFilters = search || sortBy;
+  const hasFilters = search || sortBy || roleFilter !== "all";
 
   const filteredUsers = useMemo(() => users, [users]);
 
-  const roleBadgeColor = (role: UserRole) => {
-    if (role === "owner") return "violet.9";
-    if (role === "admin") return "blue.9";
-    if (role === "approver") return "orange.9";
-    return "gray.8";
-  };
+  const handleSortByChange = useCallback((value: string | null) => {
+    setSortBy(value);
+    if (!value) {
+      setSortStatus({ columnAccessor: "full_name", direction: "asc" });
+      setPage(1);
+      return;
+    }
+    if (value === "name_asc")
+      setSortStatus({ columnAccessor: "full_name", direction: "asc" });
+    if (value === "name_desc")
+      setSortStatus({ columnAccessor: "full_name", direction: "desc" });
+    if (value === "role_asc")
+      setSortStatus({ columnAccessor: "role", direction: "asc" });
+    setPage(1);
+  }, []);
 
-  const roleRank: Record<UserRole, number> = {
-    owner: 4,
-    admin: 3,
-    approver: 2,
-    user: 1,
-  };
-
-  const isEditingBlocked =
-    !!editUser &&
-    !!currentUserRole &&
-    roleRank[editUser.role] > roleRank[currentUserRole];
-
-  const isSameRoleBlocked =
-    !!editUser && !!currentUserRole && editUser.role === currentUserRole;
-
-  const isRoleEditHidden = isEditingBlocked || isSameRoleBlocked;
-
-  const roleOptions =
-    currentUserRole === "admin"
-      ? [
-          { value: "approver", label: "Approver" },
-          { value: "user", label: "User" },
-        ]
-      : [
-          { value: "owner", label: "Owner" },
-          { value: "admin", label: "Admin" },
-          { value: "approver", label: "Approver" },
-          { value: "user", label: "User" },
-        ];
+  const handleSearchSubmit = useCallback(
+    (val: string) => {
+      if (val === search && page === 1) return;
+      setIsSearching(true);
+      setSearch(val);
+      setPage(1);
+    },
+    [search, page],
+  );
 
   const tableColumns: DataTableColumn<AdminUserPage>[] = useMemo(
     () => [
@@ -428,6 +472,7 @@ export default function Users() {
                 color="gray.7"
                 onClick={() => openView(user)}
                 aria-label={`View details for ${user.full_name}`}
+                disabled={isModalBusy}
               >
                 <IconUser size={16} />
               </ActionIcon>
@@ -438,6 +483,7 @@ export default function Users() {
                 color="blue.8"
                 onClick={() => openEdit(user)}
                 aria-label={`Edit role for ${user.full_name}`}
+                disabled={isModalBusy}
               >
                 <IconEdit size={16} />
               </ActionIcon>
@@ -446,33 +492,7 @@ export default function Users() {
         ),
       },
     ],
-    [],
-  );
-
-  const handleSortByChange = (value: string | null) => {
-    setSortBy(value);
-    if (!value) {
-      setSortStatus({ columnAccessor: "full_name", direction: "asc" });
-      setPage(1);
-      return;
-    }
-    if (value === "name_asc")
-      setSortStatus({ columnAccessor: "full_name", direction: "asc" });
-    if (value === "name_desc")
-      setSortStatus({ columnAccessor: "full_name", direction: "desc" });
-    if (value === "role_asc")
-      setSortStatus({ columnAccessor: "role", direction: "asc" });
-    setPage(1);
-  };
-
-  const handleSearchSubmit = useCallback(
-    (val: string) => {
-      if (val === search && page === 1) return;
-      setIsSearching(true);
-      setSearch(val);
-      setPage(1);
-    },
-    [search, page],
+    [isModalBusy, openEdit, openView, roleBadgeColor],
   );
 
   return (
@@ -480,7 +500,7 @@ export default function Users() {
       {loadError && (
         <Alert
           variant="light"
-          color="red"
+          color={getStatusFormat("REJECTED")}
           title="Error"
           withCloseButton
           onClose={() => setLoadError(null)}
@@ -492,7 +512,7 @@ export default function Users() {
       {globalSuccess && (
         <Alert
           variant="light"
-          color="green"
+          color={getStatusFormat("VERIFIED")}
           title="Success"
           icon={<IconCheck size={16} />}
           withCloseButton
@@ -512,7 +532,7 @@ export default function Users() {
           wrap="nowrap"
         >
           <Group style={{ flex: 1 }} gap="xs" wrap="nowrap">
-            <SearchInput onSearch={handleSearchSubmit} />
+            <SearchInput onSearch={handleSearchSubmit} disabled={isModalBusy} />
             <Select
               placeholder="Sort By"
               data={[
@@ -524,6 +544,7 @@ export default function Users() {
               onChange={handleSortByChange}
               clearable
               style={{ width: 180 }}
+              disabled={isModalBusy}
             />
             {hasFilters && (
               <Button
@@ -531,6 +552,8 @@ export default function Users() {
                 color="red.8"
                 size="sm"
                 onClick={clearFilters}
+                disabled={isModalBusy}
+                style={{ width: 150 }}
               >
                 Clear Filters
               </Button>
@@ -541,16 +564,49 @@ export default function Users() {
               variant="filled"
               leftSection={<IconRefresh size={16} />}
               onClick={() => {
-                setLoading(true);
-                setTimeout(() => setLoading(false), 400);
+                setRefreshKey((k) => k + 1);
               }}
               color="#1e3a8a"
               aria-label="Refresh users list"
+              disabled={isModalBusy}
             >
               Refresh
             </Button>
           </Tooltip>
         </Group>
+
+        <Tabs
+          value={roleFilter}
+          onChange={(value) => {
+            setRoleFilter((value as "all" | UserRole) || "all");
+            setPage(1);
+          }}
+          keepMounted={false}
+          mb="md"
+        >
+          <Tabs.List>
+            <Tabs.Tab value="all" disabled={isModalBusy}>
+              All
+            </Tabs.Tab>
+            <Tabs.Tab value="owner" disabled={isModalBusy}>
+              Owner
+            </Tabs.Tab>
+            <Tabs.Tab value="admin" disabled={isModalBusy}>
+              Admin
+            </Tabs.Tab>
+            <Tabs.Tab value="approver" disabled={isModalBusy}>
+              Approver
+            </Tabs.Tab>
+            <Tabs.Tab value="user" disabled={isModalBusy}>
+              User
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="all">{null}</Tabs.Panel>
+          <Tabs.Panel value="owner">{null}</Tabs.Panel>
+          <Tabs.Panel value="admin">{null}</Tabs.Panel>
+          <Tabs.Panel value="approver">{null}</Tabs.Panel>
+          <Tabs.Panel value="user">{null}</Tabs.Panel>
+        </Tabs>
 
         <Box
           style={{
@@ -564,7 +620,7 @@ export default function Users() {
             totalRecords={totalRecords}
             recordsPerPage={pageSize}
             page={page}
-            onPageChange={(p) => setPage(p)}
+            onPageChange={setPage}
             recordsPerPageOptions={[10, 20, 50]}
             onRecordsPerPageChange={setPageSize}
             columns={tableColumns}
@@ -579,28 +635,154 @@ export default function Users() {
       </Paper>
 
       {/* View modal (MailroomPlans styling) */}
-      <Modal
-        opened={viewOpen}
-        onClose={() => setViewOpen(false)}
-        title="User Details"
-        centered
-        size="lg"
-      >
-        {viewUser && (
+      {viewOpen && (
+        <Modal
+          opened={viewOpen}
+          onClose={() => setViewOpen(false)}
+          title="User Details"
+          centered
+          size="lg"
+        >
+          {viewUser && (
+            <Stack gap="md">
+              <Group justify="space-between" align="flex-start">
+                <Box>
+                  <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
+                    Full Name
+                  </Text>
+                  <Title order={3}>{viewUser.full_name}</Title>
+                </Box>
+                <Badge
+                  size="lg"
+                  variant="filled"
+                  color={roleBadgeColor(viewUser.role)}
+                >
+                  {viewUser.role}
+                </Badge>
+              </Group>
+
+              <SimpleGrid cols={2}>
+                <Paper
+                  withBorder
+                  p="md"
+                  radius="md"
+                  bg="var(--mantine-color-gray-0)"
+                >
+                  <Stack gap="xs">
+                    <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
+                      Email
+                    </Text>
+                    <Group gap="xs">
+                      <ThemeIcon variant="light" color="blue" size="sm">
+                        <IconMail size={14} />
+                      </ThemeIcon>
+                      <Text size="sm">{viewUser.email}</Text>
+                    </Group>
+                  </Stack>
+                </Paper>
+
+                <Paper
+                  withBorder
+                  p="md"
+                  radius="md"
+                  bg="var(--mantine-color-gray-0)"
+                >
+                  <Stack gap="xs">
+                    <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
+                      Created
+                    </Text>
+                    <Group gap="xs">
+                      <ThemeIcon variant="light" color="gray" size="sm">
+                        <IconCalendar size={14} />
+                      </ThemeIcon>
+                      <Text size="sm">{viewUser.created_at}</Text>
+                    </Group>
+                  </Stack>
+                </Paper>
+              </SimpleGrid>
+
+              <Paper withBorder p="md" radius="md">
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700} mb="sm">
+                  Identifiers
+                </Text>
+                <Stack gap="xs">
+                  <Group>
+                    <ThemeIcon variant="light" color="violet" size="sm">
+                      <IconId size={14} />
+                    </ThemeIcon>
+                    <Text size="sm">User ID: {viewUser.id}</Text>
+                  </Group>
+                </Stack>
+              </Paper>
+
+              <Group justify="flex-end" mt="sm">
+                <Button variant="default" onClick={() => setViewOpen(false)}>
+                  Close
+                </Button>
+              </Group>
+            </Stack>
+          )}
+        </Modal>
+      )}
+
+      {/* Edit Role modal (MailroomPlans styling) */}
+      {editOpen && (
+        <Modal
+          opened={editOpen}
+          onClose={() => setEditOpen(false)}
+          title="Edit Role"
+          centered
+          size="lg"
+          closeOnClickOutside={!isModalBusy}
+          closeOnEscape={!isModalBusy}
+          withCloseButton={!isModalBusy}
+        >
           <Stack gap="md">
+            {editError && (
+              <Alert
+                variant="filled"
+                color={getStatusFormat("REJECTED")}
+                title="Error"
+                icon={<IconX size={16} />}
+                withCloseButton
+                onClose={() => setEditError(null)}
+              >
+                {editError}
+              </Alert>
+            )}
+
+            {isEditingBlocked && (
+              <Alert
+                variant="light"
+                color={getStatusFormat("REFUNDED")}
+                title="Not allowed"
+              >
+                You cannot edit a user with a higher role than yours.
+              </Alert>
+            )}
+            {isSameRoleBlocked && (
+              <Alert
+                variant="light"
+                color={getStatusFormat("REFUNDED")}
+                title="Not allowed"
+              >
+                You cannot edit a user with the same role as yours.
+              </Alert>
+            )}
+
             <Group justify="space-between" align="flex-start">
               <Box>
                 <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
                   Full Name
                 </Text>
-                <Title order={3}>{viewUser.full_name}</Title>
+                <Title order={3}>{editUser?.full_name ?? "—"}</Title>
               </Box>
               <Badge
                 size="lg"
                 variant="filled"
-                color={roleBadgeColor(viewUser.role)}
+                color={roleBadgeColor(editUser?.role ?? "user")}
               >
-                {viewUser.role}
+                {editUser?.role ?? "User"}
               </Badge>
             </Group>
 
@@ -612,14 +794,14 @@ export default function Users() {
                 bg="var(--mantine-color-gray-0)"
               >
                 <Stack gap="xs">
-                  <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
+                  <Text size="xs" c="#2D374D" tt="uppercase" fw={700}>
                     Email
                   </Text>
                   <Group gap="xs">
                     <ThemeIcon variant="light" color="blue" size="sm">
                       <IconMail size={14} />
                     </ThemeIcon>
-                    <Text size="sm">{viewUser.email}</Text>
+                    <Text size="sm">{editUser?.email ?? "—"}</Text>
                   </Group>
                 </Stack>
               </Paper>
@@ -631,14 +813,14 @@ export default function Users() {
                 bg="var(--mantine-color-gray-0)"
               >
                 <Stack gap="xs">
-                  <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
+                  <Text size="xs" c="#2D334D" tt="uppercase" fw={700}>
                     Created
                   </Text>
                   <Group gap="xs">
                     <ThemeIcon variant="light" color="gray" size="sm">
                       <IconCalendar size={14} />
                     </ThemeIcon>
-                    <Text size="sm">{viewUser.created_at}</Text>
+                    <Text size="sm">{editUser?.created_at ?? "—"}</Text>
                   </Group>
                 </Stack>
               </Paper>
@@ -653,207 +835,106 @@ export default function Users() {
                   <ThemeIcon variant="light" color="violet" size="sm">
                     <IconId size={14} />
                   </ThemeIcon>
-                  <Text size="sm">User ID: {viewUser.id}</Text>
+                  <Text size="sm">User ID: {editUser?.id ?? "—"}</Text>
                 </Group>
               </Stack>
             </Paper>
+
+            {!isRoleEditHidden && (
+              <Select
+                label="Role"
+                placeholder="Select role"
+                data={roleOptions}
+                value={editRole}
+                onChange={(v) => setEditRole((v as UserRole) ?? null)}
+                disabled={isModalBusy}
+              />
+            )}
 
             <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={() => setViewOpen(false)}>
-                Close
-              </Button>
+              {currentUserRole === "owner" && (
+                <Button
+                  variant="outline"
+                  color={getStatusFormat("REJECTED")}
+                  onClick={openTransfer}
+                  disabled={isModalBusy || isEditingBlocked}
+                >
+                  Transfer Ownership
+                </Button>
+              )}
+              <Group ml="auto">
+                <Button
+                  variant="default"
+                  onClick={() => setEditOpen(false)}
+                  disabled={isModalBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  color="blue"
+                  onClick={handleEditSave}
+                  loading={isSaving}
+                  disabled={isRoleEditHidden || isModalBusy}
+                >
+                  Save Changes
+                </Button>
+              </Group>
             </Group>
           </Stack>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
-      {/* Edit Role modal (MailroomPlans styling) */}
-      <Modal
-        opened={editOpen}
-        onClose={() => setEditOpen(false)}
-        title="Edit Role"
-        centered
-        size="lg"
-      >
-        <Stack gap="md">
-          {editError && (
+      {/* Transfer Ownership confirmation */}
+      {transferOpen && (
+        <Modal
+          opened={transferOpen}
+          onClose={() => setTransferOpen(false)}
+          title="Confirm Transfer Ownership"
+          centered
+          size="lg"
+          closeOnClickOutside={!isModalBusy}
+          closeOnEscape={!isModalBusy}
+          withCloseButton={!isModalBusy}
+        >
+          <Stack gap="md">
             <Alert
-              variant="filled"
-              color="red"
-              title="Error"
-              icon={<IconCheck size={16} />}
-              withCloseButton
-              onClose={() => setEditError(null)}
+              variant="light"
+              color={getStatusFormat("REJECTED")}
+              title="This action is sensitive"
             >
-              {editError}
+              You are about to transfer ownership to this user. Your role will
+              be downgraded to admin.
             </Alert>
-          )}
 
-          {isEditingBlocked && (
-            <Alert variant="light" color="orange" title="Not allowed">
-              You cannot edit a user with a higher role than yours.
-            </Alert>
-          )}
-          {isSameRoleBlocked && (
-            <Alert variant="light" color="orange" title="Not allowed">
-              You cannot edit a user with the same role as yours.
-            </Alert>
-          )}
-
-          <Group justify="space-between" align="flex-start">
-            <Box>
-              <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
-                Full Name
+            <Paper withBorder p="md" radius="md">
+              <Text size="sm">
+                New Owner: <b>{editUser?.full_name ?? "—"}</b>
               </Text>
-              <Title order={3}>{editUser?.full_name ?? "—"}</Title>
-            </Box>
-            <Badge
-              size="lg"
-              variant="filled"
-              color={roleBadgeColor(editUser?.role ?? "user")}
-            >
-              {editUser?.role ?? "User"}
-            </Badge>
-          </Group>
-
-          <SimpleGrid cols={2}>
-            <Paper
-              withBorder
-              p="md"
-              radius="md"
-              bg="var(--mantine-color-gray-0)"
-            >
-              <Stack gap="xs">
-                <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
-                  Email
-                </Text>
-                <Group gap="xs">
-                  <ThemeIcon variant="light" color="blue" size="sm">
-                    <IconMail size={14} />
-                  </ThemeIcon>
-                  <Text size="sm">{editUser?.email ?? "—"}</Text>
-                </Group>
-              </Stack>
+              <Text size="sm" c="dimmed">
+                {editUser?.email ?? "—"}
+              </Text>
             </Paper>
 
-            <Paper
-              withBorder
-              p="md"
-              radius="md"
-              bg="var(--mantine-color-gray-0)"
-            >
-              <Stack gap="xs">
-                <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
-                  Created
-                </Text>
-                <Group gap="xs">
-                  <ThemeIcon variant="light" color="gray" size="sm">
-                    <IconCalendar size={14} />
-                  </ThemeIcon>
-                  <Text size="sm">{editUser?.created_at ?? "—"}</Text>
-                </Group>
-              </Stack>
-            </Paper>
-          </SimpleGrid>
-
-          <Paper withBorder p="md" radius="md">
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700} mb="sm">
-              Identifiers
-            </Text>
-            <Stack gap="xs">
-              <Group>
-                <ThemeIcon variant="light" color="violet" size="sm">
-                  <IconId size={14} />
-                </ThemeIcon>
-                <Text size="sm">User ID: {editUser?.id ?? "—"}</Text>
-              </Group>
-            </Stack>
-          </Paper>
-
-          {!isRoleEditHidden && (
-            <Select
-              label="Role"
-              placeholder="Select role"
-              data={roleOptions}
-              value={editRole}
-              onChange={(v) => setEditRole((v as UserRole) ?? null)}
-              disabled={isSaving}
-            />
-          )}
-
-          <Group justify="flex-end" mt="sm">
-            {currentUserRole === "owner" && (
-              <Button
-                variant="outline"
-                color="red"
-                onClick={openTransfer}
-                disabled={isSaving || isTransferring || isEditingBlocked}
-              >
-                Transfer Ownership
-              </Button>
-            )}
-            <Group ml="auto">
+            <Group justify="flex-end">
               <Button
                 variant="default"
-                onClick={() => setEditOpen(false)}
-                disabled={isSaving || isTransferring}
+                onClick={() => setTransferOpen(false)}
+                disabled={isModalBusy}
               >
                 Cancel
               </Button>
               <Button
-                color="blue"
-                onClick={handleEditSave}
-                loading={isSaving}
-                disabled={isRoleEditHidden}
+                color={getStatusFormat("REJECTED")}
+                onClick={handleTransferConfirm}
+                loading={isTransferring}
+                disabled={isModalBusy}
               >
-                Save Changes
+                Confirm Transfer
               </Button>
             </Group>
-          </Group>
-        </Stack>
-      </Modal>
-
-      {/* Transfer Ownership confirmation */}
-      <Modal
-        opened={transferOpen}
-        onClose={() => setTransferOpen(false)}
-        title="Confirm Transfer Ownership"
-        centered
-        size="lg"
-      >
-        <Stack gap="md">
-          <Alert variant="light" color="red" title="This action is sensitive">
-            You are about to transfer ownership to this user. Your role will be
-            downgraded to admin.
-          </Alert>
-
-          <Paper withBorder p="md" radius="md">
-            <Text size="sm">
-              New Owner: <b>{editUser?.full_name ?? "—"}</b>
-            </Text>
-            <Text size="sm" c="dimmed">
-              {editUser?.email ?? "—"}
-            </Text>
-          </Paper>
-
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              onClick={() => setTransferOpen(false)}
-              disabled={isTransferring}
-            >
-              Cancel
-            </Button>
-            <Button
-              color="red"
-              onClick={handleTransferConfirm}
-              loading={isTransferring}
-            >
-              Confirm Transfer
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+          </Stack>
+        </Modal>
+      )}
     </Stack>
   );
 }

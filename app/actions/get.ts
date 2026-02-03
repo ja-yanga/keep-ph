@@ -7,6 +7,7 @@ import {
   toBoolean,
   toNumber,
 } from "@/utils/helper";
+import { T_RawTransaction } from "@/utils/transform/transaction";
 import {
   AdminClaim,
   AdminDashboardStats,
@@ -25,7 +26,12 @@ import {
   RpcClaim,
   RpcMailroomPlan,
   UserAddressRow,
+  ActivityLogEntry,
 } from "@/utils/types";
+import {
+  T_TransactionPaginationMeta,
+  T_TransactionStats,
+} from "@/utils/types/transaction";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -1356,6 +1362,191 @@ export async function checkEmailExistsAction(email: string): Promise<boolean> {
   }
 }
 
+/**
+ * Gets payment transactions with pagination, sorting, filtering, and search capabilities.
+ * Supports both customer view (filtered by user_ids) and admin view (all transactions when user_ids is NULL).
+ * Search works across payment_transaction_reference_id, payment_transaction_reference, and payment_transaction_order_id fields.
+ * Sorting supports payment_transaction_date, payment_transaction_created_at, and payment_transaction_updated_at fields.
+ *
+ * Used in:
+ * - app/api/user/transactions/route.ts - API endpoint for user transactions
+ * - app/api/admin/transactions/route.ts - API endpoint for admin transactions
+ *
+ * @param options - Optional parameters for filtering, pagination, sorting, and search
+ * @returns Promise with transactions array and pagination metadata
+ */
+export async function getTransactions(options?: {
+  userIds?: string[] | null;
+  search?: string | null;
+  sortBy?:
+    | "payment_transaction_date"
+    | "payment_transaction_created_at"
+    | "payment_transaction_updated_at";
+  sortDir?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+  include_user_details?: boolean;
+}): Promise<{
+  transactions: T_RawTransaction[];
+  pagination: T_TransactionPaginationMeta;
+  stats: T_TransactionStats;
+}> {
+  const {
+    userIds = null,
+    search = null,
+    sortBy = "payment_transaction_date",
+    sortDir = "desc",
+    page = 1,
+    limit = 10,
+    include_user_details = true,
+  } = options || {};
+
+  // Validate and sanitize inputs
+  const validSortBy =
+    sortBy &&
+    [
+      "payment_transaction_date",
+      "payment_transaction_created_at",
+      "payment_transaction_updated_at",
+    ].includes(sortBy)
+      ? sortBy
+      : "payment_transaction_date";
+  const validSortDir =
+    sortDir && ["asc", "desc"].includes(sortDir) ? sortDir : "desc";
+  const validPage = Math.max(1, page);
+  const validLimit = Math.min(Math.max(1, limit), 100); // Max 100 items per page
+  const validOffset = (validPage - 1) * validLimit;
+
+  // Convert userIds string array to UUID array if provided
+  let userIdsArray: string[] | null = null;
+  if (userIds && Array.isArray(userIds) && userIds.length > 0) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validUserIds = userIds.filter((id) => {
+      if (!uuidRegex.test(id)) {
+        console.warn(`Invalid userId format: ${id}`);
+        return false;
+      }
+      return true;
+    });
+    userIdsArray = validUserIds.length > 0 ? validUserIds : null;
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc("get_transactions", {
+      input_user_ids: userIdsArray,
+      search_query: search || null,
+      sort_by: validSortBy,
+      sort_dir: validSortDir,
+      page_limit: validLimit,
+      page_offset: validOffset,
+      include_user_details: include_user_details,
+    });
+
+    if (error) {
+      console.error("Supabase RPC error in getTransactions:", {
+        error,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw new Error(
+        `Database error: ${error.message || "Unknown error"}${error.code ? ` (${error.code})` : ""}`,
+      );
+    }
+
+    // Handle null or undefined data
+    if (data === null || data === undefined) {
+      return {
+        transactions: [],
+        pagination: {
+          total: 0,
+          limit: validLimit,
+          offset: validOffset,
+          has_more: false,
+        },
+        stats: {
+          total_revenue: 0,
+          total_transactions: 0,
+          successful_transactions: 0,
+          avg_transaction: 0,
+        },
+      };
+    }
+
+    // Parse data if it's a string, otherwise use as is
+    let payload: unknown;
+    try {
+      payload = typeof data === "string" ? JSON.parse(data) : data;
+    } catch (parseError) {
+      console.error("Failed to parse RPC response:", {
+        data,
+        parseError,
+      });
+      throw new Error("Failed to parse transactions response");
+    }
+
+    if (!payload || typeof payload !== "object") {
+      console.error("Invalid payload structure:", { payload });
+      return {
+        transactions: [],
+        pagination: {
+          total: 0,
+          limit: validLimit,
+          offset: validOffset,
+          has_more: false,
+        },
+        stats: {
+          total_revenue: 0,
+          total_transactions: 0,
+          successful_transactions: 0,
+          avg_transaction: 0,
+        },
+      };
+    }
+
+    const payloadRecord = payload as Record<string, unknown>;
+    const transactionsArray = Array.isArray(payloadRecord.transactions)
+      ? payloadRecord.transactions
+      : [];
+    const paginationData = payloadRecord.pagination as {
+      total?: number;
+      limit?: number;
+      offset?: number;
+      has_more?: boolean;
+    } | null;
+    const statsData = payloadRecord.stats as {
+      total_revenue?: number;
+      total_transactions?: number;
+      successful_transactions?: number;
+      avg_transaction?: number;
+    } | null;
+
+    return {
+      transactions: transactionsArray,
+      pagination: {
+        total: paginationData?.total ?? 0,
+        limit: paginationData?.limit ?? validLimit,
+        offset: paginationData?.offset ?? validOffset,
+        has_more: paginationData?.has_more ?? false,
+      },
+      stats: {
+        total_revenue: statsData?.total_revenue ?? 0,
+        total_transactions: statsData?.total_transactions ?? 0,
+        successful_transactions: statsData?.successful_transactions ?? 0,
+        avg_transaction: statsData?.avg_transaction ?? 0,
+      },
+    };
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Unexpected error: ${String(err)}`);
+  }
+}
+
 export const getRegion = async () => {
   const { data, error } = await supabaseAdmin
     .schema("address_schema")
@@ -1419,6 +1610,7 @@ export async function adminListUsers(args: {
   offset?: number;
   sort?: string;
   direction?: "asc" | "desc";
+  role?: string;
 }): Promise<{ data: AdminUsersRpcResult["data"]; total_count: number }> {
   const {
     search = "",
@@ -1426,6 +1618,7 @@ export async function adminListUsers(args: {
     offset = 0,
     sort = "users_created_at",
     direction = "desc",
+    role = "",
   } = args;
 
   const { data, error } = await supabaseAdmin.rpc("admin_list_users", {
@@ -1434,17 +1627,10 @@ export async function adminListUsers(args: {
     input_offset: offset,
     input_sort: sort,
     input_direction: direction,
+    input_role: role,
   });
 
-  if (error) {
-    console.error("admin_list_users RPC error:", {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw error;
-  }
+  if (error) throw error;
 
   const payload =
     typeof data === "string" ? JSON.parse(data) : (data as unknown);
@@ -1463,5 +1649,57 @@ export async function adminListUsers(args: {
   return {
     data: Array.isArray(result.data) ? result.data : [],
     total_count: Number(result.total_count) || 0,
+  };
+}
+
+/**
+ * Lists activity logs for admin review using RPC.
+ * This follows the API pattern by being the "Action" layer.
+ *
+ * Used in:
+ * - app/api/admin/activity-logs/route.ts
+ */
+export async function adminListActivityLogs(args: {
+  limit?: number;
+  offset?: number;
+  search?: string | null;
+  entity_type?: string | null;
+  action?: string | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  sort_by?: string | null;
+  sort_direction?: string | null;
+}): Promise<{
+  total_count: number;
+  logs: ActivityLogEntry[];
+}> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_activity_logs", {
+    input_data: {
+      limit: args.limit ?? 10,
+      offset: args.offset ?? 0,
+      search: args.search || null,
+      entity_type: args.entity_type || null,
+      action: args.action || null,
+      date_from: args.date_from || null,
+      date_to: args.date_to || null,
+      sort_by: args.sort_by || null,
+      sort_direction: args.sort_direction || null,
+    },
+  });
+
+  if (error) {
+    console.error("Error fetching activity logs action:", error);
+    throw error;
+  }
+
+  // Handle difference between raw RPC return and possibly parsed object
+  const result = (typeof data === "string" ? JSON.parse(data) : data) as {
+    total_count: number;
+    logs: ActivityLogEntry[];
+  };
+
+  return {
+    total_count: Number(result?.total_count || 0),
+    logs: Array.isArray(result?.logs) ? result.logs : [],
   };
 }

@@ -1,4 +1,4 @@
-import { memo, useMemo, useCallback } from "react";
+import { memo, useMemo, useCallback, useState } from "react";
 import {
   Card,
   Group,
@@ -15,6 +15,7 @@ import {
 import {
   IconMapPin,
   IconCopy,
+  IconCheck,
   IconChevronRight,
   IconPackage,
 } from "@tabler/icons-react";
@@ -22,12 +23,14 @@ import Link from "next/link";
 import dayjs from "dayjs";
 import { getStatusColor } from "@/utils/get-color";
 import { MailroomRow } from "@/utils/types";
+import { startRouteProgress } from "@/lib/route-progress";
 
 type SubscriptionCardProps = {
   row: MailroomRow;
   isMobile: boolean;
   onCopyAddress: (row: MailroomRow) => void;
   onCancelRenewal: (id: string) => void;
+  isCanceling?: boolean;
 };
 
 const cardStyle = { display: "flex", flexDirection: "column" as const };
@@ -52,10 +55,22 @@ function SubscriptionCardComponent({
   isMobile,
   onCopyAddress,
   onCancelRenewal,
+  isCanceling = false,
 }: SubscriptionCardProps) {
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const [copied, setCopied] = useState(false);
+
   const handleCopyAddress = useCallback(() => {
     onCopyAddress(row);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [onCopyAddress, row]);
+
+  const handleManageMailbox = useCallback(() => {
+    setIsNavigating(true);
+    startRouteProgress();
+  }, []);
 
   const handleCancelRenewal = useCallback(() => {
     onCancelRenewal(row.id);
@@ -97,8 +112,9 @@ function SubscriptionCardComponent({
               size="sm"
               onClick={handleCopyAddress}
               title="Copy full shipping address"
+              color={copied ? "teal" : "blue"}
             >
-              <IconCopy size={14} />
+              {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
             </ActionIcon>
           </Group>
           <Badge
@@ -197,10 +213,15 @@ function SubscriptionCardComponent({
       {/* Action Buttons */}
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" mt="xl">
         <Button
+          className="mailroom-btn"
           component={Link}
           href={`/mailroom/${row.id}`}
           radius="md"
           fullWidth
+          onClick={handleManageMailbox}
+          loaderProps={{ size: "sm" }}
+          loading={isNavigating}
+          disabled={isNavigating}
           bg="#26316D"
           rightSection={<IconChevronRight size={16} />}
         >
@@ -209,10 +230,14 @@ function SubscriptionCardComponent({
 
         {row.auto_renew && row.mailroom_status === "ACTIVE" && (
           <Button
+            className="mailroom-btn"
             variant="filled"
             radius="md"
             fullWidth
             size="sm"
+            loaderProps={{ size: "sm" }}
+            loading={isCanceling}
+            disabled={isCanceling || isNavigating}
             styles={cancelButtonStyles}
             onClick={handleCancelRenewal}
           >

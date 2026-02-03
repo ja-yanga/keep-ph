@@ -141,12 +141,15 @@ jest.mock("@/components/Layout/PrivateMainLayout", () => ({
   ),
 }));
 
-// Mock next/navigation
+// Mock next/navigation (include useSearchParams used by the component)
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: jest.fn(),
   }),
   usePathname: () => "/admin/kyc",
+  useSearchParams: () => ({
+    get: () => null,
+  }),
 }));
 
 const mockKycData = [
@@ -243,7 +246,7 @@ describe("Admin KYC Workflow", () => {
   it("should fetch data when searching", async () => {
     renderWithProviders(<AdminKycPage />);
 
-    const searchInput = screen.getByPlaceholderText(
+    const searchInput = await screen.findByPlaceholderText(
       /Search by name or user id\.\.\./i,
     );
     await userEvent.type(searchInput, "John");

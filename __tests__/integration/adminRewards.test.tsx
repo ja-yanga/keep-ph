@@ -281,7 +281,6 @@ const waitForRowWithText = async (text: string) => {
 describe("AdminRewards (admin)", () => {
   it("displays the title 'Reward Claims'", async () => {
     renderComponent();
-    // heading renders as h1 in the page; assert by text only
     expect(
       screen.getByRole("heading", { name: /Rewards & Referral Claims/i }),
     ).toBeInTheDocument();
@@ -290,11 +289,9 @@ describe("AdminRewards (admin)", () => {
   it("renders claims list and supports search & tabs", async () => {
     renderComponent();
 
-    // wait for table and a row containing claim id snippet
     await screen.findByRole("table");
     await waitForRowWithText("claim-1");
 
-    // search by email
     const search = screen.getByPlaceholderText("Search claims...");
     await userEvent.type(search, "user3@example.com");
 
@@ -303,7 +300,6 @@ describe("AdminRewards (admin)", () => {
       expect(
         rows.some((r) => r.textContent?.includes("user3@example.com")),
       ).toBe(true);
-      // user1 should be filtered out
       expect(
         rows.some((r) => r.textContent?.includes("user1@example.com")),
       ).toBe(false);
@@ -328,49 +324,43 @@ describe("AdminRewards (admin)", () => {
     renderComponent();
     await screen.findByRole("table");
 
-    const revealBtn = screen.getAllByRole("button", {
-      name: /Reveal account details/i,
-    })[0];
-    const row = revealBtn.closest("tr")!;
+    // find a row that contains masked account (maskAccount returns stars)
+    const rows = screen.queryAllByRole("row");
+    const maskedRow = rows.find((r) => r.textContent?.includes("****"));
+    expect(maskedRow).toBeDefined();
 
-    // Initial state: masked
-    expect(row.textContent).toContain("****");
+    // find the icon-only button in that row (ActionIcon renders svg-only button)
+    const buttons = within(maskedRow!).queryAllByRole("button");
+    const iconOnlyBtn = buttons.find(
+      (b) => (b.textContent ?? "").trim() === "",
+    );
+    expect(iconOnlyBtn).toBeDefined();
 
-    // Click reveal
-    await userEvent.click(revealBtn);
-    expect(row.textContent).not.toContain("****");
+    // click to reveal
+    await userEvent.click(iconOnlyBtn!);
+    expect(maskedRow!.textContent).not.toContain("****");
 
-    // Icon should change to hide
-    const hideBtn = within(row).getByRole("button", {
-      name: /Hide account details/i,
-    });
-    expect(hideBtn).toBeInTheDocument();
-
-    // Click hide
-    await userEvent.click(hideBtn);
-    expect(row.textContent).toContain("****");
+    // click again to hide
+    await userEvent.click(iconOnlyBtn!);
+    expect(maskedRow!.textContent).toContain("****");
   });
 
   it("opens and closes the upload proof modal", async () => {
     renderComponent();
     await screen.findByRole("table");
 
-    const uploadBtn = screen.getAllByRole("button", {
-      name: /Upload proof for claim/i,
-    })[0];
+    // find first Upload button in table and click
+    const uploadBtn = screen.getAllByRole("button", { name: /Upload/i })[0];
     await userEvent.click(uploadBtn);
 
-    // Modal should be visible
     const modal = await screen.findByRole("dialog", {
       name: /Upload Proof of Payment/i,
     });
     expect(modal).toBeInTheDocument();
 
-    // Click cancel
     const cancelBtn = within(modal).getByRole("button", { name: /Cancel/i });
     await userEvent.click(cancelBtn);
 
-    // Modal should be gone
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", { name: /Upload Proof of Payment/i }),
@@ -382,22 +372,16 @@ describe("AdminRewards (admin)", () => {
     renderComponent();
     await screen.findByRole("table");
 
-    // open Upload Proof for first claim (PENDING)
     const row = screen
       .getAllByRole("row")
       .find((r) => r.textContent?.includes("user1@example.com"));
-    // match aria-label used by component for Upload button
-    const uploadBtn = within(row!).getByRole("button", {
-      name: /Upload proof for claim/i,
-    });
+    const uploadBtn = within(row!).getByRole("button", { name: /Upload/i });
     await userEvent.click(uploadBtn);
 
-    // modal opened
     const modal = await screen.findByRole("dialog", {
       name: /Upload Proof of Payment/i,
     });
 
-    // find native file input rendered into the document (Mantine FileInput may render external input)
     const fileInputEl = document.querySelector(
       'input[type="file"]',
     ) as HTMLInputElement | null;
@@ -405,16 +389,13 @@ describe("AdminRewards (admin)", () => {
       throw new Error("file input not found in Upload Proof modal");
 
     const file = new File(["dummy"], "proof.png", { type: "image/png" });
-    // upload to the real <input type="file">
     await userEvent.upload(fileInputEl, file);
 
-    // click Upload & Mark Paid (match aria-label)
     const submit = within(modal).getByRole("button", {
-      name: /Upload proof and mark claim as paid/i,
+      name: /Upload\s*&\s*Mark\s*Paid/i,
     });
     await userEvent.click(submit);
 
-    // assert PUT called for claim-1
     await waitFor(() => {
       expect(
         fetchCalls.some(
@@ -425,26 +406,32 @@ describe("AdminRewards (admin)", () => {
       ).toBe(true);
     });
 
-    // assert success notification title shown
     expect(await screen.findByText("Marked Paid")).toBeInTheDocument();
   });
 
   it("marks a PROCESSING claim as PAID via Confirm modal (Mark Paid flow)", async () => {
-    // adjust mock data to include a PROCESSING claim
     mockClaims[0].status = "PROCESSING";
     renderComponent();
     await screen.findByRole("table");
 
+    // switch to Processing tab so the row is visible
+    const processingTab = screen.getByRole("tab", { name: /Processing/i });
+    await userEvent.click(processingTab);
+
+    // wait for the row to appear
+    await waitFor(() => {
+      const rows = screen.queryAllByRole("row");
+      expect(
+        rows.some((r) => r.textContent?.includes("user1@example.com")),
+      ).toBe(true);
+    });
+
     const row = screen
       .getAllByRole("row")
       .find((r) => r.textContent?.includes("user1@example.com"));
-    // target aria-label used by component for Mark Paid button
-    const markBtn = within(row!).getByRole("button", {
-      name: /Mark claim .* as paid/i,
-    });
+    const markBtn = within(row!).getByRole("button", { name: /Mark Paid/i });
     await userEvent.click(markBtn);
 
-    // confirm modal appears
     const confirm = await screen.findByRole("dialog", {
       name: /Confirm Action/i,
     });
@@ -461,7 +448,6 @@ describe("AdminRewards (admin)", () => {
       ).toBe(true);
     });
 
-    // confirm flow sets a global success alert/notification — accept multiple matches
     const successNodes = await screen.findAllByText(/Claim marked PAID/i);
     expect(successNodes.length).toBeGreaterThan(0);
   });

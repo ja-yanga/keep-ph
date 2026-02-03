@@ -18,7 +18,8 @@ export async function PUT(
 
     // verify requester is admin
     const requesterRole = await getUserRole(user.id);
-    if (requesterRole !== "admin") {
+    const ALLOWED_ADMIN_ROLES = ["admin", "approver", "owner"];
+    if (!requesterRole || !ALLOWED_ADMIN_ROLES.includes(requesterRole)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -49,6 +50,7 @@ export async function PUT(
     const data = await adminUpdateUserKyc({
       userId,
       status: statusDb as "VERIFIED" | "REJECTED",
+      actorUserId: user.id,
     });
 
     return NextResponse.json(data);

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(req: Request) {
   try {
@@ -22,6 +26,30 @@ export async function POST(req: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Log the request if the user exists
+    const supabaseAdmin = createSupabaseServiceClient();
+    const { data: userData } = await supabaseAdmin
+      .from("users_table")
+      .select("users_id")
+      .eq("users_email", email)
+      .single();
+
+    if (userData) {
+      logActivity({
+        userId: userData.users_id,
+        action: "RESET_REQUEST",
+        type: "AUTH_FORGOT_PASSWORD",
+        entityType: "USER",
+        entityId: userData.users_id,
+        details: {
+          email,
+          platform: "web",
+        },
+      }).catch((logError) => {
+        console.error("Failed to log forgot-password activity:", logError);
+      });
     }
 
     return NextResponse.json({ message: "Password reset email sent" });

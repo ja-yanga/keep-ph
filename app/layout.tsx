@@ -8,11 +8,13 @@ import "@mantine/core/styles.css";
 import "mantine-datatable/styles.css";
 import "nprogress/nprogress.css";
 import "@/app/globals.css";
+import "@mantine/notifications/styles.css";
 import {
   ColorSchemeScript,
   MantineProvider,
   mantineHtmlProps,
 } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import ServerSessionProvider from "@/components/ServerSessionProvider";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import TopLoaderProvider from "@/components/provider/TopLoaderProvider";
@@ -33,16 +35,16 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Keep PH - Admin Dashboard",
+  title: "Keep PH",
   description:
-    "Admin dashboard for managing packages, users, and mailroom operations",
+    "Keep PH is a mailroom management system for the Philippine Postal Corporation (PPC)",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
   ),
   openGraph: {
-    title: "Keep PH - Admin Dashboard",
+    title: "Keep PH",
     description:
-      "Admin dashboard for managing packages, users, and mailroom operations",
+      "Keep PH is a mailroom management system for the Philippine Postal Corporation (PPC)",
     type: "website",
   },
 };
@@ -67,6 +69,7 @@ export default function RootLayout({
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
         )}
         <MantineProvider>
+          <Notifications />
           <StoreProvider>
             <ServerSessionProvider>
               <TopLoaderProvider />

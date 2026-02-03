@@ -23,8 +23,19 @@ export const NAV_ITMES: Record<
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },
     { path: "/admin/stats", key: "stats", title: "Stats" },
     { path: "/admin/users", key: "users", title: "Users" },
+    { path: "/admin/transactions", key: "transactions", title: "Transactions" },
+    {
+      path: "/admin/activity-logs",
+      key: "activity-logs",
+      title: "Activity Logs",
+    },
   ],
   approver: [
+    {
+      path: "/admin/approver-dashboard",
+      key: "approver-dashboard",
+      title: "Dashboard",
+    },
     { path: "/admin/kyc", key: "kyc", title: "KYC" },
     { path: "/admin/packages", key: "packages", title: "Packages" },
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },
@@ -40,5 +51,11 @@ export const NAV_ITMES: Record<
     { path: "/admin/rewards", key: "rewards", title: "Rewards" },
     { path: "/admin/stats", key: "stats", title: "Stats" },
     { path: "/admin/users", key: "users", title: "Users" },
+    { path: "/admin/transactions", key: "transactions", title: "Transactions" },
+    {
+      path: "/admin/activity-logs",
+      key: "activity-logs",
+      title: "Activity Logs",
+    },
   ],
 };

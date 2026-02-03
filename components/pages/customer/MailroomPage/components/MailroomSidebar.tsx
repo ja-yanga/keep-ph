@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ActionIcon,
   Box,
@@ -9,6 +10,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import {
+  IconCheck,
   IconCopy,
   IconCreditCard,
   IconMail,
@@ -31,6 +33,13 @@ export default function MailroomSidebar({
   plan,
   expiry,
 }: MailroomSidebarProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyFullShippingAddress(src);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   return (
     <Stack gap="md">
       <Paper p="md" radius="md" withBorder shadow="sm">
@@ -102,10 +111,11 @@ export default function MailroomSidebar({
             <ActionIcon
               size="sm"
               variant="light"
-              onClick={() => copyFullShippingAddress(src)}
+              onClick={handleCopy}
               title="Copy full shipping address"
+              color={copied ? "teal" : "blue"}
             >
-              <IconCopy size={14} />
+              {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
             </ActionIcon>
           </Group>
         </Group>
