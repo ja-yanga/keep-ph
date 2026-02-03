@@ -1,5 +1,4 @@
 "use client";
-import "mantine-datatable/styles.css";
 
 import React from "react";
 import dynamic from "next/dynamic";

@@ -46,7 +46,7 @@ const ActivityLogContent = dynamic(
   () => import("@/components/pages/admin/ActivityLog/ActivityLogContent"),
   {
     loading: () => <ActivityLogSkeleton />,
-    ssr: true, // Allow SSR for the container but individual parts inside might be client-only
+    ssr: false,
   },
 );
 

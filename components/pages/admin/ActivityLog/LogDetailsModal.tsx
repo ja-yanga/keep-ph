@@ -19,19 +19,18 @@ import {
 } from "@tabler/icons-react";
 import { formatDate } from "@/utils/format";
 import { type ActivityLogEntry } from "@/utils/types";
+import { LogDescription } from "./ActivityLogCells";
 
 type LogDetailsModalProps = {
   opened: boolean;
   onClose: () => void;
   selectedLog: ActivityLogEntry | null;
-  generateDescription: (log: ActivityLogEntry) => React.ReactNode;
 };
 
 const LogDetailsModal = ({
   opened,
   onClose,
   selectedLog,
-  generateDescription,
 }: LogDetailsModalProps) => {
   if (!selectedLog) return null;
 
@@ -141,7 +140,7 @@ const LogDetailsModal = ({
           <Text size="sm" fw={700} mb={8} c="dark.7">
             Parsed Details
           </Text>
-          {generateDescription(selectedLog)}
+          <LogDescription log={selectedLog} />
         </Box>
 
         <Button
