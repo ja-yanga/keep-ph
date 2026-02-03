@@ -556,6 +556,8 @@ export async function getMailroomLocations(): Promise<
     city: string | null;
     barangay: string | null;
     zip: string | null;
+    is_hidden: boolean;
+    max_locker_limit: number | null;
   }>
 > {
   try {

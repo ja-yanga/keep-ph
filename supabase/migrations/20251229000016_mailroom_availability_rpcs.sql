@@ -13,7 +13,9 @@ BEGIN
             'region', mailroom_location_region,
             'city', mailroom_location_city,
             'barangay', mailroom_location_barangay,
-            'zip', mailroom_location_zip
+            'zip', mailroom_location_zip,
+            'is_hidden', mailroom_location_is_hidden,
+            'max_locker_limit', mailroom_location_max_locker_limit
         )
     )
     INTO return_data
@@ -24,7 +26,9 @@ BEGIN
             mailroom_location_region,
             mailroom_location_city,
             mailroom_location_barangay,
-            mailroom_location_zip
+            mailroom_location_zip,
+            mailroom_location_is_hidden,
+            mailroom_location_max_locker_limit
         FROM public.mailroom_location_table
         ORDER BY mailroom_location_name ASC
     ) AS mailroom_location_table;
