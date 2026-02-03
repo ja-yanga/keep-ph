@@ -118,6 +118,7 @@ export default function PrivateNavigationHeader({
                         size="sm"
                         aria-label="Toggle sidebar"
                         aria-expanded={opened}
+                        aria-controls="admin-sidebar"
                         color="#1A237E"
                       />
                       <Link
@@ -125,7 +126,7 @@ export default function PrivateNavigationHeader({
                         style={{ textDecoration: "none" }}
                         aria-label="Keep PH - Home"
                       >
-                        <Title order={3} fw={800} c="#1A237E">
+                        <Title order={2} fw={800} c="#1A237E" size="h3">
                           Keep PH
                         </Title>
                       </Link>
@@ -147,7 +148,7 @@ export default function PrivateNavigationHeader({
                         style={{ textDecoration: "none" }}
                         aria-label="Keep PH - Home"
                       >
-                        <Title order={1} fw={800} c="#1A237E">
+                        <Title order={2} fw={800} c="#1A237E" size="h3">
                           Keep PH
                         </Title>
                       </Link>
