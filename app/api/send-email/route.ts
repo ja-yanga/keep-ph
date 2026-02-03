@@ -3,6 +3,13 @@ import { resend } from "@/lib/resend";
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      return NextResponse.json(
+        { error: "Email service is not configured (missing RESEND_API_KEY)." },
+        { status: 503 },
+      );
+    }
+
     const { to, template, data } = await req.json();
 
     if (!to || !template) {

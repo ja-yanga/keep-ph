@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity-log";
 import { parseAddressRow } from "@/utils/helper";
 import {
   AdminCreateMailroomLocationArgs,
+  AdminIpWhitelistEntry,
   CreateUserAddressArgs,
   LocationRow,
   RequestRewardClaimArgs,
@@ -15,6 +16,32 @@ import {
 } from "@/utils/types";
 
 const supabase = createSupabaseServiceClient();
+
+export async function adminCreateIpWhitelist(args: {
+  ipCidr: string;
+  description?: string | null;
+  createdBy?: string | null;
+}): Promise<AdminIpWhitelistEntry> {
+  const { data, error } = await supabase.rpc("admin_create_ip_whitelist", {
+    input_ip_cidr: args.ipCidr,
+    input_description: args.description ?? null,
+    input_created_by: args.createdBy ?? null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data) as AdminIpWhitelistEntry;
+    } catch {
+      throw new Error("Failed to parse IP whitelist response");
+    }
+  }
+
+  return data as AdminIpWhitelistEntry;
+}
 
 export async function getUserKYC(userId: string) {
   if (!userId) {

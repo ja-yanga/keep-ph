@@ -64,7 +64,7 @@ BEGIN
       current_timestamp,
       current_timestamp,
       '{"provider":"email","providers":["email"]}',
-      '{"role":"admin"}',
+      '{"role":"super_admin"}',
       current_timestamp,
       current_timestamp,
       '',

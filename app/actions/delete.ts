@@ -2,8 +2,31 @@
 
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
+import type { AdminIpWhitelistEntry } from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
+
+export async function adminDeleteIpWhitelist(args: {
+  id: string;
+}): Promise<AdminIpWhitelistEntry> {
+  const { data, error } = await supabaseAdmin.rpc("admin_delete_ip_whitelist", {
+    input_id: args.id,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data) as AdminIpWhitelistEntry;
+    } catch {
+      throw new Error("Failed to parse IP whitelist response");
+    }
+  }
+
+  return data as AdminIpWhitelistEntry;
+}
 
 /**
  * Deletes a user storage file (scan) via RPC and removes it from storage.

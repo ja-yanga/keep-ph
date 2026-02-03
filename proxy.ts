@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getUserRole } from "@/app/actions/get";
 import { updateSession } from "@/lib/supabase/middleware";
+import { getAdminIpWhitelist, isIpWhitelisted } from "@/lib/admin-ip-whitelist";
+import { resolveClientIp } from "@/lib/ip-utils";
+import { logError } from "@/lib/error-log";
 
 // Auth pages - only for non-authenticated users
 const AUTH_PAGES = [
@@ -39,6 +43,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/stats",
     "/admin/users",
     "/admin/transactions",
+    "/admin/ip-whitelist",
     "/admin/activity-logs",
     "/unauthorized",
   ],
@@ -64,6 +69,7 @@ const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
     "/admin/stats",
     "/admin/users",
     "/admin/transactions",
+    "/admin/ip-whitelist",
     "/admin/activity-logs",
     "/unauthorized",
   ],
@@ -141,9 +147,147 @@ function isPathAllowed(currentPath: string, allowedPath: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl.clone();
+  const pathname = url.pathname;
 
-  // Get session data
+  // API admin: enforce IP whitelist (owner can bypass to recover from lockout)
+  if (pathname.startsWith("/api/admin")) {
+    const { user } = await updateSession(request);
+    let role: string | null = null;
+    if (user?.id) {
+      try {
+        role = await getUserRole(user.id);
+      } catch {
+        role = null;
+      }
+    }
+    if (role === "owner") {
+      return NextResponse.next();
+    }
+
+    const clientIp = resolveClientIp(request.headers, null);
+    let whitelist: Awaited<ReturnType<typeof getAdminIpWhitelist>> = [];
+    try {
+      whitelist = await getAdminIpWhitelist();
+    } catch {
+      await logError({
+        errorType: "SYSTEM_ERROR",
+        errorMessage: "Failed to load IP whitelist",
+        errorCode: "AUTH_403_FORBIDDEN",
+        requestPath: pathname,
+        requestMethod: request.method,
+        responseStatus: 403,
+        errorDetails: { reason: "Whitelist lookup failed" },
+        ipAddress: clientIp,
+        userAgent: request.headers.get("user-agent"),
+        userId: null,
+      });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    let isAllowed = whitelist.length === 0;
+    if (!isAllowed) {
+      isAllowed = clientIp ? isIpWhitelisted(clientIp, whitelist) : false;
+    }
+
+    if (!isAllowed) {
+      let userId: string | null = null;
+      try {
+        const { user } = await updateSession(request);
+        userId = user?.id ?? null;
+      } catch {
+        userId = null;
+      }
+      await logError({
+        errorType: "AUTHORIZATION_ERROR",
+        errorMessage: "IP not whitelisted",
+        errorCode: "AUTH_403_FORBIDDEN",
+        requestPath: pathname,
+        requestMethod: request.method,
+        responseStatus: 403,
+        errorDetails: { reason: "IP not whitelisted" },
+        ipAddress: clientIp,
+        userAgent: request.headers.get("user-agent"),
+        userId,
+      });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    return NextResponse.next();
+  }
+
+  // Other API routes: pass through
+  if (pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+
+  // Get session data for page routes
   const { supabaseResponse, user } = await updateSession(request);
+
+  const isAdminPath = pathname.startsWith("/admin");
+  if (isAdminPath) {
+    let role: string | null = null;
+    if (user?.id) {
+      try {
+        role = await getUserRole(user.id);
+      } catch {
+        role = null;
+      }
+    }
+    if (role === "owner") {
+      // Owner bypasses IP whitelist so they can fix it if admins lock themselves out
+    } else {
+      const clientIp = resolveClientIp(request.headers, null);
+      let whitelist = [];
+      try {
+        whitelist = await getAdminIpWhitelist();
+      } catch {
+        await logError({
+          errorType: "SYSTEM_ERROR",
+          errorMessage: "Failed to load IP whitelist",
+          errorCode: "AUTH_403_FORBIDDEN",
+          requestPath: url.pathname,
+          requestMethod: request.method,
+          responseStatus: 403,
+          errorDetails: { reason: "Whitelist lookup failed" },
+          ipAddress: clientIp,
+          userAgent: request.headers.get("user-agent"),
+          userId: user?.id ?? null,
+        });
+
+        const forbiddenResponse = new NextResponse("Forbidden", {
+          status: 403,
+        });
+        copyCookies(supabaseResponse, forbiddenResponse);
+        return forbiddenResponse;
+      }
+
+      let isAllowed = whitelist.length === 0;
+      if (!isAllowed) {
+        isAllowed = clientIp ? isIpWhitelisted(clientIp, whitelist) : false;
+      }
+
+      if (!isAllowed) {
+        await logError({
+          errorType: "AUTHORIZATION_ERROR",
+          errorMessage: "IP not whitelisted",
+          errorCode: "AUTH_403_FORBIDDEN",
+          requestPath: url.pathname,
+          requestMethod: request.method,
+          responseStatus: 403,
+          errorDetails: { reason: "IP not whitelisted" },
+          ipAddress: clientIp,
+          userAgent: request.headers.get("user-agent"),
+          userId: user?.id ?? null,
+        });
+
+        const forbiddenResponse = new NextResponse("Forbidden", {
+          status: 403,
+        });
+        copyCookies(supabaseResponse, forbiddenResponse);
+        return forbiddenResponse;
+      }
+    }
+  }
 
   // Check if current path is auth or public
   const isAuthPage = (AUTH_PAGES as readonly string[]).includes(url.pathname);
@@ -207,10 +351,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - api (API routes)
-     *
-     * Note: If you want middleware to run on /api routes too, remove |api from the negative lookahead.
+     * - files with extensions
+     * Includes /api so /api/admin IP whitelist is enforced here.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\..*|api).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };

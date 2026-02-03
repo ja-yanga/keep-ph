@@ -63,7 +63,8 @@ export async function logActivity(args: {
     | "NOTIFICATION"
     | "MAILROOM_FILE"
     | "MAILROOM_ASSIGNED_LOCKER"
-    | "USER";
+    | "USER"
+    | "ADMIN_IP_WHITELIST";
   entityId?: string;
   details: Record<string, unknown>;
   ipAddress?: string;
