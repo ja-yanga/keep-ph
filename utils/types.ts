@@ -370,6 +370,8 @@ export type LocationRow = {
   mailroom_location_zip?: string | null;
   mailroom_location_total_lockers?: number | null;
   mailroom_location_prefix?: string | null;
+  mailroom_location_is_hidden?: boolean;
+  mailroom_location_max_locker_limit?: number | null;
 };
 
 export type AdminCreateMailroomLocationArgs = {

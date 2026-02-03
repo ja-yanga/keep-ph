@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminCreateMailroomLocation } from "@/app/actions/post";
+import { adminListMailroomLocationsPaginated } from "@/app/actions/get";
 import type { LocationRow } from "@/utils/types";
 
 const normalizeLocation = (row: LocationRow) => ({
@@ -12,6 +13,8 @@ const normalizeLocation = (row: LocationRow) => ({
   barangay: row.mailroom_location_barangay ?? null,
   zip: row.mailroom_location_zip ?? null,
   total_lockers: row.mailroom_location_total_lockers ?? 0,
+  is_hidden: row.mailroom_location_is_hidden,
+  max_locker_limit: row.mailroom_location_max_locker_limit,
 });
 
 export async function GET(req: Request) {
@@ -27,71 +30,22 @@ export async function GET(req: Request) {
     const city = searchParams.get("city")?.trim() || "";
     const sortBy = searchParams.get("sortBy")?.trim() || "";
 
-    const offset = (page - 1) * pageSize;
+    const result = await adminListMailroomLocationsPaginated({
+      search,
+      region,
+      city,
+      sortBy,
+      page,
+      pageSize,
+    });
 
-    const supabase = await createClient();
-
-    // Call the optimized RPC
-    const { data, error } = await supabase.rpc(
-      "rpc_list_mailroom_locations_paginated",
-      {
-        p_search: search,
-        p_region: region,
-        p_city: city,
-        p_sort_by: sortBy || "name_asc",
-        p_limit: pageSize,
-        p_offset: offset,
+    return NextResponse.json(result, {
+      status: 200,
+      headers: {
+        "Cache-Control":
+          "private, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
       },
-    );
-
-    if (error) {
-      throw error;
-    }
-
-    type RpcLocationResult = {
-      id: string;
-      name: string;
-      code: string;
-      region: string;
-      city: string;
-      barangay: string;
-      zip: string;
-      total_lockers: number;
-      total_count: string | number;
-    };
-
-    const rows = (data as RpcLocationResult[]) || [];
-    const count = rows.length > 0 ? Number(rows[0].total_count) : 0;
-
-    const normalized = rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      code: row.code,
-      region: row.region,
-      city: row.city,
-      barangay: row.barangay,
-      zip: row.zip,
-      total_lockers: row.total_lockers,
-    }));
-
-    return NextResponse.json(
-      {
-        data: normalized,
-        pagination: {
-          page,
-          pageSize,
-          totalCount: count,
-          totalPages: Math.ceil(count / pageSize),
-        },
-      },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control":
-            "private, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
-        },
-      },
-    );
+    });
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";

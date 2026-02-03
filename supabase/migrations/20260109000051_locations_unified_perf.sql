@@ -25,6 +25,8 @@ RETURNS TABLE (
     city TEXT,
     barangay TEXT,
     zip TEXT,
+    is_hidden BOOLEAN,
+    max_locker_limit INT,
     total_lockers INT,
     total_count BIGINT
 ) 
@@ -42,6 +44,8 @@ AS $$
         l.mailroom_location_city,
         l.mailroom_location_barangay,
         l.mailroom_location_zip,
+        l.mailroom_location_is_hidden,
+        l.mailroom_location_max_locker_limit,
         l.mailroom_location_total_lockers,
         COUNT(*) OVER()
     FROM public.mailroom_location_table l
