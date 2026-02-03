@@ -185,9 +185,16 @@ export default function KycPage() {
         setFrontPreview(row.user_kyc_id_front_url ?? null);
         setBackPreview(row.user_kyc_id_back_url ?? null);
 
-        // For address, need to fetch from user_kyc_address_table if separate
-        // But since the route doesn't return address, perhaps fetch separately or assume not populated on load for now
-        // TODO: If address needs to be shown, add fetch for address
+        // Populate address fields if returned
+        if (row.address) {
+          setAddressLine1(row.address.user_kyc_address_line_one ?? "");
+          setAddressLine2(row.address.user_kyc_address_line_two ?? "");
+          setCity(row.address.user_kyc_address_city ?? "");
+          setProvince(row.address.user_kyc_address_province ?? "");
+          setRegion(row.address.user_kyc_address_region ?? "");
+          setBarangay(row.address.user_kyc_address_barangay ?? "");
+          setPostal(String(row.address.user_kyc_address_postal_code ?? ""));
+        }
       } catch {
         if (mounted) setStatus("NONE");
       } finally {

@@ -33,7 +33,9 @@ export type KycRow = {
     line1?: string;
     line2?: string | null;
     city?: string;
+    province?: string;
     region?: string;
+    barangay?: string;
     postal?: string;
   } | null;
   submitted_at?: string | null;
@@ -68,11 +70,17 @@ function formatAddress(address?: KycRow["address"]): React.ReactNode {
   if (address.line1) parts.push(address.line1);
   if (address.line2) parts.push(address.line2);
 
-  const cityRegionPostal = [address.city, address.region, address.postal]
+  const cityProvinceRegionPostal = [
+    address.barangay,
+    address.city,
+    address.province,
+    address.region,
+    address.postal,
+  ]
     .filter(Boolean)
     .join(", ");
 
-  if (cityRegionPostal) parts.push(cityRegionPostal);
+  if (cityProvinceRegionPostal) parts.push(cityProvinceRegionPostal);
 
   if (parts.length === 0) return <Text c="gray.9">—</Text>;
 

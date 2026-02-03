@@ -55,7 +55,9 @@ export async function submitKYC(formData: FormData, userId: string) {
   const address_line1 = String(formData.get("address_line1") ?? "");
   const address_line2 = String(formData.get("address_line2") ?? "");
   const city = String(formData.get("city") ?? "");
+  const province = String(formData.get("province") ?? "");
   const region = String(formData.get("region") ?? "");
+  const barangay = String(formData.get("barangay") ?? "");
   const postal = String(formData.get("postal") ?? "");
   const birth_date = String(formData.get("birth_date") ?? "");
 
@@ -127,7 +129,9 @@ export async function submitKYC(formData: FormData, userId: string) {
       address_line1: address_line1 || null,
       address_line2: address_line2 || null,
       city: city || null,
+      province: province || null,
       region: region || null,
+      barangay: barangay || null,
       postal: postal || null,
     },
   });
@@ -175,7 +179,9 @@ export async function submitKYC(formData: FormData, userId: string) {
             user_address_line1: address_line1,
             user_address_line2: address_line2 || null,
             user_address_city: city || null,
+            user_address_province: province || null,
             user_address_region: region || null,
+            user_address_barangay: barangay || null,
             user_address_postal: postal || null,
             user_address_is_default: isDefault,
           },
