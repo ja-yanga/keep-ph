@@ -1163,6 +1163,7 @@ export default function MailroomLocations() {
               required
               {...editForm.getInputProps("code")}
               readOnly
+              disabled
             />
             <SimpleGrid cols={2}>
               <TextInput
@@ -1193,6 +1194,7 @@ export default function MailroomLocations() {
               required
               {...editForm.getInputProps("total_lockers")}
               readOnly
+              disabled
             />
             <NumberInput
               label="Max Lockers Per User"

@@ -457,3 +457,109 @@ export async function adminUpdateUserRole(args: {
 
   return result;
 }
+
+export async function adminUpdateMailroomLocation(args: {
+  id: string;
+  body: Record<string, unknown>;
+}) {
+  const { id, body } = args;
+
+  if (!id) {
+    throw new Error("Missing id parameter");
+  }
+
+  const name = body.name !== undefined ? String(body.name) : undefined;
+
+  let code: string | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "code")) {
+    code = body.code ? String(body.code) : null;
+  } else {
+    code = undefined;
+  }
+
+  let region: string | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "region")) {
+    region = body.region ? String(body.region) : null;
+  } else {
+    region = undefined;
+  }
+
+  let city: string | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "city")) {
+    city = body.city ? String(body.city) : null;
+  } else {
+    city = undefined;
+  }
+
+  let barangay: string | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "barangay")) {
+    barangay = body.barangay ? String(body.barangay) : null;
+  } else {
+    barangay = undefined;
+  }
+
+  let zip: string | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "zip")) {
+    zip = body.zip ? String(body.zip) : null;
+  } else {
+    zip = undefined;
+  }
+
+  let totalLockers: number | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "total_lockers")) {
+    const n = Number(body.total_lockers);
+    totalLockers = Number.isNaN(n) ? 0 : n;
+  } else {
+    totalLockers = undefined;
+  }
+
+  let isHidden: boolean | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "is_hidden")) {
+    isHidden = Boolean(body.is_hidden);
+  } else {
+    isHidden = undefined;
+  }
+
+  let maxLockerLimit: number | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "max_locker_limit")) {
+    const n = Number(body.max_locker_limit);
+    maxLockerLimit = Number.isNaN(n) ? null : n;
+  } else {
+    maxLockerLimit = undefined;
+  }
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "rpc_update_mailroom_location",
+    {
+      p_id: id,
+      p_name: name ?? null,
+      p_code: code ?? null,
+      p_region: region ?? null,
+      p_city: city ?? null,
+      p_barangay: barangay ?? null,
+      p_zip: zip ?? null,
+      p_total_lockers: totalLockers ?? null,
+      p_is_hidden: isHidden ?? null,
+      p_max_locker_limit: maxLockerLimit ?? null,
+    },
+  );
+
+  if (error || !data || data.length === 0) {
+    throw new Error(error?.message ?? "Location not found");
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code ?? null,
+    region: row.region ?? null,
+    city: row.city ?? null,
+    barangay: row.barangay ?? null,
+    zip: row.zip ?? null,
+    total_lockers: row.total_lockers ?? 0,
+    is_hidden: row.is_hidden ?? false,
+    max_locker_limit: row.max_locker_limit ?? null,
+  };
+}
