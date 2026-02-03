@@ -54,7 +54,9 @@ export const LocationStep = ({
     null;
 
   const selectedMaxLimit =
-    rawSelectedMax != null && rawSelectedMax !== ""
+    rawSelectedMax != null &&
+    rawSelectedMax !== "" &&
+    Number(rawSelectedMax) > 0
       ? Number(rawSelectedMax)
       : null;
 
@@ -157,9 +159,9 @@ export const LocationStep = ({
                 <Text fw={600} size="lg" c="#26316D">
                   How many lockers?
                 </Text>
-                <Text size="sm" c="dimmed">
+                <Text size="sm" c="dimmed" fw={600}>
                   {selectedMaxLimit && selectedMaxLimit > 0
-                    ? "Max Lockers per User: "
+                    ? "Locker Limit per User: "
                     : "Available Lockers: "}
                   <Text span fw={700}>
                     {effectiveMaxForSelected}
