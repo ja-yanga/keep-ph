@@ -14,10 +14,12 @@ const DataTableDynamic = dynamic(
     ssr: false,
     loading: () => (
       <Stack gap="md" p="xl">
-        <Skeleton height={40} />
-        <Skeleton height={60} />
-        <Skeleton height={60} />
-        <Skeleton height={60} />
+        {/* Header skeleton */}
+        <Skeleton height={40} radius="md" />
+        {/* Row skeletons - 10 rows to match default recordsPerPage */}
+        {Array.from({ length: 10 }).map((_, i) => (
+          <Skeleton key={i} height={60} radius="md" />
+        ))}
       </Stack>
     ),
   },
