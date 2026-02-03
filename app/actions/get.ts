@@ -557,6 +557,8 @@ export async function getMailroomLocations(): Promise<
     city: string | null;
     barangay: string | null;
     zip: string | null;
+    is_hidden: boolean;
+    max_locker_limit: number | null;
   }>
 > {
   try {
@@ -1719,4 +1721,83 @@ export async function adminListActivityLogs(args: {
     total_count: Number(result?.total_count || 0),
     logs: Array.isArray(result?.logs) ? result.logs : [],
   };
+}
+
+// ...existing code...
+export async function adminListMailroomLocationsPaginated(options?: {
+  search?: string;
+  region?: string;
+  city?: string;
+  sortBy?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const {
+    search = "",
+    region = "",
+    city = "",
+    sortBy = "",
+    page = 1,
+    pageSize = 10,
+  } = options || {};
+
+  const offset = (Math.max(1, page) - 1) * Math.max(1, pageSize);
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc(
+      "rpc_list_mailroom_locations_paginated",
+      {
+        p_search: search,
+        p_region: region,
+        p_city: city,
+        p_sort_by: sortBy || "name_asc",
+        p_limit: pageSize,
+        p_offset: offset,
+      },
+    );
+
+    if (error) throw error;
+
+    type RpcLocationResult = {
+      id: string;
+      name: string;
+      code: string;
+      region: string;
+      city: string;
+      barangay: string;
+      zip: string;
+      total_lockers: number;
+      total_count: string | number;
+      is_hidden: boolean;
+      max_locker_limit: number;
+    };
+
+    const rows = (data as RpcLocationResult[]) || [];
+    const count = rows.length > 0 ? Number(rows[0].total_count) : 0;
+
+    const normalized = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      code: row.code,
+      region: row.region,
+      city: row.city,
+      barangay: row.barangay,
+      zip: row.zip,
+      total_lockers: row.total_lockers,
+      is_hidden: row.is_hidden,
+      max_locker_limit: row.max_locker_limit,
+    }));
+
+    return {
+      data: normalized,
+      pagination: {
+        page,
+        pageSize,
+        totalCount: count,
+        totalPages: Math.ceil(count / pageSize),
+      },
+    };
+  } catch (err) {
+    throw err;
+  }
 }

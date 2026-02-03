@@ -8,6 +8,9 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- Drop the old slow function if exists (optional but recommended to avoid confusion)
 -- DROP FUNCTION IF EXISTS public.admin_list_mailroom_locations();
 
+-- Ensure existing RPC is removed first to avoid signature/language conflicts
+DROP FUNCTION IF EXISTS public.rpc_list_mailroom_locations_paginated(TEXT, TEXT, TEXT, TEXT, INT, INT);
+
 -- NEW: High-performance Paginated RPC
 CREATE OR REPLACE FUNCTION public.rpc_list_mailroom_locations_paginated(
     p_search TEXT DEFAULT '',
@@ -25,10 +28,12 @@ RETURNS TABLE (
     city TEXT,
     barangay TEXT,
     zip TEXT,
+    is_hidden BOOLEAN,
+    max_locker_limit INT,
     total_lockers INT,
     total_count BIGINT
 ) 
-LANGUAGE sql -- SQL functions are generally faster and more optimizable than PL/pgSQL for simple SELECTs
+LANGUAGE sql
 STABLE
 PARALLEL SAFE
 SECURITY DEFINER
@@ -42,6 +47,8 @@ AS $$
         l.mailroom_location_city,
         l.mailroom_location_barangay,
         l.mailroom_location_zip,
+        l.mailroom_location_is_hidden,
+        l.mailroom_location_max_locker_limit,
         l.mailroom_location_total_lockers,
         COUNT(*) OVER()
     FROM public.mailroom_location_table l

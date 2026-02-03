@@ -370,6 +370,8 @@ export type LocationRow = {
   mailroom_location_zip?: string | null;
   mailroom_location_total_lockers?: number | null;
   mailroom_location_prefix?: string | null;
+  mailroom_location_is_hidden?: boolean;
+  mailroom_location_max_locker_limit?: number | null;
 };
 
 export type AdminCreateMailroomLocationArgs = {
@@ -511,6 +513,8 @@ export type LocationsResponse = {
     city: string | null;
     barangay: string | null;
     zip: string | null;
+    is_hidden: boolean;
+    max_locker_limit: number | null;
   }>;
 };
 
@@ -525,6 +529,8 @@ export type Location = {
   city?: string;
   barangay?: string;
   zip?: string;
+  is_hidden?: boolean;
+  max_locker_limit?: number;
 };
 
 export type MailroomRegistrationStats = {

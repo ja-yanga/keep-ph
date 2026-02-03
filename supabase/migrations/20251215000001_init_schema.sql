@@ -245,6 +245,8 @@ CREATE TABLE mailroom_location_table (
   mailroom_location_zip TEXT,
   mailroom_location_total_lockers INTEGER NOT NULL DEFAULT 0,
   mailroom_location_prefix TEXT,
+  mailroom_location_is_hidden boolean DEFAULT false,
+  mailroom_location_max_locker_limit integer,
   CONSTRAINT mailroom_location_table_pkey PRIMARY KEY (mailroom_location_id)
 );
 

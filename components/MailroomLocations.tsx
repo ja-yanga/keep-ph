@@ -24,6 +24,7 @@ import {
   Loader,
   Popover,
   Divider,
+  Switch,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
@@ -52,9 +53,12 @@ type Location = {
   barangay?: string | null;
   zip?: string | null;
   total_lockers?: number | null;
+  is_hidden?: boolean;
+  max_locker_limit?: number | null;
 };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+const fetcher = (url: string) =>
+  fetch(url, { cache: "no-store" }).then((res) => res.json());
 
 const SearchInput = React.memo(
   ({
@@ -209,7 +213,13 @@ export default function MailroomLocations() {
   const { data, isLoading, mutate, isValidating } = useSWR(
     `${API_ENDPOINTS.admin.mailroom.locations}?${queryParams.toString()}`,
     fetcher,
-    { keepPreviousData: true },
+    {
+      keepPreviousData: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      refreshInterval: 0,
+      dedupingInterval: 0,
+    },
   );
 
   useEffect(() => {
@@ -267,6 +277,8 @@ export default function MailroomLocations() {
       barangay: "",
       zip: "",
       total_lockers: 0,
+      is_hidden: false,
+      max_locker_limit: 0,
     },
   });
 
@@ -279,6 +291,8 @@ export default function MailroomLocations() {
       barangay: "",
       zip: "",
       total_lockers: 0,
+      is_hidden: false,
+      max_locker_limit: 0,
     },
   });
 
@@ -343,6 +357,8 @@ export default function MailroomLocations() {
         barangay: values.barangay || null,
         zip: values.zip || null,
         total_lockers: values.total_lockers || 0,
+        is_hidden: values.is_hidden || false,
+        max_locker_limit: values.max_locker_limit || null,
       };
       const res = await fetch(API_ENDPOINTS.admin.mailroom.locations, {
         method: "POST",
@@ -386,6 +402,8 @@ export default function MailroomLocations() {
       barangay: loc.barangay ?? "",
       zip: loc.zip ?? "",
       total_lockers: loc.total_lockers ?? 0,
+      is_hidden: loc.is_hidden ?? false,
+      max_locker_limit: loc.max_locker_limit ?? 0,
     });
     setEditOpen(true);
   };
@@ -406,6 +424,8 @@ export default function MailroomLocations() {
         city: values.city || null,
         barangay: values.barangay || null,
         zip: values.zip || null,
+        is_hidden: values.is_hidden || false,
+        max_locker_limit: values.max_locker_limit || null,
       };
       const res = await fetch(
         API_ENDPOINTS.admin.mailroom.location(editLocation.id),
@@ -728,10 +748,17 @@ export default function MailroomLocations() {
                 title: "Name",
                 width: 200,
                 sortable: true,
-                render: ({ name }: Location) => (
-                  <Text fw={700} c="dark.7" size="sm">
-                    {name}
-                  </Text>
+                render: ({ name, is_hidden }: Location) => (
+                  <Stack gap={4}>
+                    <Text fw={700} c="dark.7" size="sm">
+                      {name}
+                    </Text>
+                    {is_hidden && (
+                      <Badge size="xs" color="red" variant="dot">
+                        Hidden from customers
+                      </Badge>
+                    )}
+                  </Stack>
                 ),
               },
               {
@@ -741,11 +768,11 @@ export default function MailroomLocations() {
                 sortable: true,
                 render: ({ code }: Location) =>
                   code ? (
-                    <Text fw={700} c="dark.7" size="sm">
+                    <Badge variant="light" color="gray" size="md">
                       {code}
-                    </Text>
+                    </Badge>
                   ) : (
-                    <Text size="sm" c="dark.7">
+                    <Text size="sm" c="dimmed">
                       —
                     </Text>
                   ),
@@ -809,10 +836,30 @@ export default function MailroomLocations() {
                 ),
               },
               {
+                accessor: "max_locker_limit",
+                title: "User Limit",
+                width: 120,
+                textAlign: "center",
+                render: ({ max_locker_limit }: Location) =>
+                  max_locker_limit && max_locker_limit > 0 ? (
+                    <Tooltip label="Maximum lockers per customer">
+                      <Badge color="violet" variant="light" size="md">
+                        {max_locker_limit}
+                      </Badge>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip label="No limit set">
+                      <Text size="sm" c="dimmed" fw={500}>
+                        ∞
+                      </Text>
+                    </Tooltip>
+                  ),
+              },
+              {
                 accessor: "actions",
                 title: "Actions",
                 width: 100,
-                textAlign: "right" as const,
+                textAlign: "center" as const,
                 render: (loc: Location) => (
                   <Group gap="xs" justify="flex-end">
                     <Tooltip label="View">
@@ -858,6 +905,7 @@ export default function MailroomLocations() {
           </Text>
         }
         centered
+        size="lg"
         aria-labelledby="create-location-title"
       >
         <form onSubmit={handleCreate}>
@@ -889,35 +937,52 @@ export default function MailroomLocations() {
               description="Used as prefix for lockers (e.g. MKT-001...100)"
               {...form.getInputProps("code")}
             />
-            <TextInput
-              required
-              label="Region"
-              placeholder="NCR"
-              {...form.getInputProps("region")}
-            />
-            <TextInput
-              required
-              label="City"
-              placeholder="Makati"
-              {...form.getInputProps("city")}
-            />
-            <TextInput
-              required
-              label="Barangay"
-              placeholder="Bel-Air"
-              {...form.getInputProps("barangay")}
-            />
-            <TextInput
-              required
-              label="Zip"
-              placeholder="1227"
-              {...form.getInputProps("zip")}
-            />
-            <NumberInput
-              label="Total Lockers"
-              min={1}
-              {...form.getInputProps("total_lockers")}
-              required
+            <SimpleGrid cols={2}>
+              <TextInput
+                required
+                label="Region"
+                placeholder="NCR"
+                {...form.getInputProps("region")}
+              />
+              <TextInput
+                required
+                label="City"
+                placeholder="Makati"
+                {...form.getInputProps("city")}
+              />
+            </SimpleGrid>
+            <SimpleGrid cols={2}>
+              <TextInput
+                required
+                label="Barangay"
+                placeholder="Bel-Air"
+                {...form.getInputProps("barangay")}
+              />
+              <TextInput
+                required
+                label="Zip"
+                placeholder="1227"
+                {...form.getInputProps("zip")}
+              />
+            </SimpleGrid>
+            <SimpleGrid cols={2}>
+              <NumberInput
+                label="Total Lockers"
+                min={1}
+                {...form.getInputProps("total_lockers")}
+                required
+              />
+              <NumberInput
+                label="Max Lockers Per User"
+                description="0 = no limit"
+                min={0}
+                {...form.getInputProps("max_locker_limit")}
+              />
+            </SimpleGrid>
+            <Switch
+              label="Hide from customers"
+              description="Hidden locations won't appear in customer registration"
+              {...form.getInputProps("is_hidden", { type: "checkbox" })}
             />
             <Group justify="flex-end" mt="sm">
               <Button
@@ -954,12 +1019,12 @@ export default function MailroomLocations() {
       >
         {viewLocation && (
           <Stack gap="md">
-            <Group justify="space-between" align="flex-start">
+            <Group justify="space-between" align="flex-start" wrap="nowrap">
               <Box>
                 <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                   Location Name
                 </Text>
-                <Group gap="xs">
+                <Group gap="xs" wrap="wrap">
                   <Title order={2}>{viewLocation.name}</Title>
                   {viewLocation.code && (
                     <Badge
@@ -972,15 +1037,19 @@ export default function MailroomLocations() {
                   )}
                 </Group>
               </Box>
-              <Badge
-                size="lg"
-                variant="light"
-                color="blue"
-                aria-label={`${viewLocation.total_lockers ?? 0} total lockers`}
-              >
-                {viewLocation.total_lockers ?? 0} Lockers
-              </Badge>
+              <Stack gap="xs" align="flex-end">
+                <Badge
+                  size="lg"
+                  variant="light"
+                  color="blue"
+                  aria-label={`${viewLocation.total_lockers ?? 0} total lockers`}
+                >
+                  {viewLocation.total_lockers ?? 0} Lockers
+                </Badge>
+              </Stack>
             </Group>
+
+            <Divider />
 
             <Paper
               withBorder
@@ -989,6 +1058,25 @@ export default function MailroomLocations() {
               bg="var(--mantine-color-gray-0)"
             >
               <SimpleGrid cols={2} spacing="md" verticalSpacing="lg">
+                <Box>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
+                    Visibility
+                  </Text>
+                  <Text fw={500} size="sm">
+                    {viewLocation.is_hidden ? "Hidden" : "Visible"}
+                  </Text>
+                </Box>
+                <Box>
+                  <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
+                    Max Lockers Per User
+                  </Text>
+                  <Text fw={500} size="sm">
+                    {viewLocation.max_locker_limit &&
+                    viewLocation.max_locker_limit > 0
+                      ? viewLocation.max_locker_limit
+                      : "No limit"}
+                  </Text>
+                </Box>
                 <Box>
                   <Text size="xs" c="dark.4" tt="uppercase" fw={700}>
                     Region
@@ -1046,6 +1134,7 @@ export default function MailroomLocations() {
           </Text>
         }
         centered
+        size="lg"
         aria-labelledby="edit-location-title"
       >
         <form onSubmit={handleEdit}>
@@ -1074,32 +1163,49 @@ export default function MailroomLocations() {
               required
               {...editForm.getInputProps("code")}
               readOnly
+              disabled
             />
-            <TextInput
-              label="Region"
-              required
-              {...editForm.getInputProps("region")}
-            />
-            <TextInput
-              label="City"
-              required
-              {...editForm.getInputProps("city")}
-            />
-            <TextInput
-              label="Barangay"
-              required
-              {...editForm.getInputProps("barangay")}
-            />
-            <TextInput
-              label="Zip"
-              required
-              {...editForm.getInputProps("zip")}
-            />
+            <SimpleGrid cols={2}>
+              <TextInput
+                label="Region"
+                required
+                {...editForm.getInputProps("region")}
+              />
+              <TextInput
+                label="City"
+                required
+                {...editForm.getInputProps("city")}
+              />
+            </SimpleGrid>
+            <SimpleGrid cols={2}>
+              <TextInput
+                label="Barangay"
+                required
+                {...editForm.getInputProps("barangay")}
+              />
+              <TextInput
+                label="Zip"
+                required
+                {...editForm.getInputProps("zip")}
+              />
+            </SimpleGrid>
             <TextInput
               label="Total Lockers"
               required
               {...editForm.getInputProps("total_lockers")}
               readOnly
+              disabled
+            />
+            <NumberInput
+              label="Max Lockers Per User"
+              description="0 = no limit"
+              min={0}
+              {...editForm.getInputProps("max_locker_limit")}
+            />
+            <Switch
+              label="Hide from customers"
+              description="Hidden locations won't appear in customer registration"
+              {...editForm.getInputProps("is_hidden", { type: "checkbox" })}
             />
             <Group justify="flex-end" mt="sm">
               <Button variant="default" onClick={() => setEditOpen(false)}>
