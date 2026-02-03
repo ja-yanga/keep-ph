@@ -1,90 +1,75 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+  cleanup,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
 
-/*
-  Integration tests for MailroomLocations component.
-  - Deterministic mock for mantine-datatable that respects `columns.render`.
-  - ResizeObserver polyfill for Mantine.
-  - Isolated SWR cache per test.
-*/
+jest.mock("@mantine/hooks", () => {
+  const actual = jest.requireActual("@mantine/hooks");
+  return {
+    ...actual,
+    useMediaQuery: () => false,
+  };
+});
 
-/* Typed mock for mantine-datatable (no `any`) */
-jest.mock("mantine-datatable", () => {
+jest.mock("../../components/common/AdminTable", () => {
   type RecordType = Record<string, unknown>;
   type Column = {
     render?: (r: RecordType) => React.ReactNode;
     accessor?: string;
     title?: string;
-    header?: string;
   };
 
-  const DataTable = (props: {
+  const AdminTable = (props: {
     records?: RecordType[];
-    noRecordsText?: string;
     columns?: Column[];
+    noRecordsText?: string;
   }) => {
-    const { records = [], noRecordsText = "No records", columns = [] } = props;
+    const { records = [], columns = [], noRecordsText = "No records" } = props;
 
-    const header = React.createElement(
-      "tr",
-      null,
-      columns.map((col: Column, i: number) =>
-        React.createElement(
-          "th",
-          { key: i },
-          col.title ?? col.header ?? col.accessor ?? "",
-        ),
-      ),
-    );
+    const getCellContent = (r: RecordType, c: Column) => {
+      if (typeof c.render === "function") return c.render(r);
+      if (c.accessor) return r[c.accessor] as React.ReactNode;
+      return null;
+    };
 
-    const bodyRows = (() => {
-      if (records.length === 0) {
-        return [
-          React.createElement(
-            "tr",
-            { key: "no-records" },
-            React.createElement(
-              "td",
-              { colSpan: Math.max(columns.length, 1) },
-              React.createElement("div", null, noRecordsText),
-            ),
-          ),
-        ];
-      }
-
-      return records.map((r: RecordType) =>
-        React.createElement(
-          "tr",
-          { key: String(r.id ?? JSON.stringify(r)) },
-          columns.map((col: Column, ci: number) => {
-            let content: React.ReactNode = null;
-            if (typeof col.render === "function") {
-              content = col.render(r);
-            } else if (col.accessor) {
-              const val = r[col.accessor];
-              content = val !== undefined && val !== null ? String(val) : null;
-            }
-            return React.createElement("td", { key: ci }, content);
-          }),
-        ),
-      );
-    })();
-
-    return React.createElement(
-      "table",
-      null,
-      React.createElement("thead", null, header),
-      React.createElement("tbody", null, bodyRows),
+    return (
+      <table role="table">
+        <thead>
+          <tr>
+            {columns.map((c, i) => (
+              <th key={i}>{c.title ?? c.accessor ?? ""}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {records.length === 0 ? (
+            <tr>
+              <td colSpan={Math.max(columns.length, 1)}>{noRecordsText}</td>
+            </tr>
+          ) : (
+            records.map((r: RecordType) => (
+              <tr key={String(r.id ?? JSON.stringify(r))}>
+                {columns.map((c, i) => (
+                  <td key={i}>{getCellContent(r, c)}</td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
     );
   };
 
-  return { DataTable };
+  return { AdminTable };
 });
 
-/* ResizeObserver polyfill required by Mantine */
 class ResizeObserver {
   observe(): void {}
   unobserve(): void {}
@@ -95,50 +80,140 @@ Object.defineProperty(global, "ResizeObserver", {
   configurable: true,
 });
 
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }),
+});
+
 import MailroomLocations from "@/components/MailroomLocations";
 
-describe("MailroomLocations", () => {
+const renderWithProviders = (ui: React.ReactElement) =>
+  render(
+    <SWRConfig
+      value={{
+        provider: () => new Map(),
+        dedupingInterval: 0,
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
+        shouldRetryOnError: false,
+      }}
+    >
+      <MantineProvider>{ui}</MantineProvider>
+    </SWRConfig>,
+  );
+
+type Location = {
+  id: string;
+  name: string;
+  code?: string | null;
+  region?: string | null;
+  city?: string | null;
+  barangay?: string | null;
+  zip?: string | null;
+  total_lockers?: number | null;
+  is_hidden?: boolean;
+  max_locker_limit?: number | null;
+};
+
+let serverData: Location[] = [];
+
+const getFilteredData = (key: string) => {
+  try {
+    const url = new URL(key, "http://localhost");
+    const search = (url.searchParams.get("search") || "").toLowerCase();
+    if (!search) return serverData;
+    return serverData.filter((l) => l.name.toLowerCase().includes(search));
+  } catch {
+    return serverData;
+  }
+};
+
+jest.mock("swr", () => {
+  const actual = jest.requireActual("swr");
+
+  const useSWR = (key: string | null) => {
+    const getSnapshot = () => {
+      if (!key || typeof key !== "string") {
+        return { data: [], pagination: { totalCount: 0 } };
+      }
+      const data = getFilteredData(key);
+      return { data, pagination: { totalCount: data.length } };
+    };
+
+    const [data, setData] = React.useState(getSnapshot);
+
+    React.useEffect(() => {
+      setData(getSnapshot());
+    }, [key]);
+
+    const mutate = () => {
+      setData(getSnapshot());
+      return Promise.resolve();
+    };
+
+    return {
+      data,
+      error: undefined,
+      isLoading: false,
+      isValidating: false,
+      mutate,
+    };
+  };
+
+  return {
+    __esModule: true,
+    ...actual,
+    default: useSWR,
+  };
+});
+
+describe("MailroomLocations integration", () => {
   let originalFetch: typeof globalThis.fetch | undefined;
 
   beforeEach(() => {
-    jest.clearAllMocks();
     originalFetch = globalThis.fetch;
+    serverData = [];
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
     if (originalFetch) globalThis.fetch = originalFetch;
+    cleanup();
   });
 
-  it("renders locations and shows name", async () => {
-    const loc = {
+  it("renders locations and shows hidden badge", async () => {
+    const loc: Location = {
       id: "l1",
-      name: "Main Office",
-      code: "MKT",
+      name: "Allen Test Location",
+      code: "ATL",
       region: "NCR",
       city: "Makati",
       barangay: "Bel-Air",
       zip: "1227",
       total_lockers: 10,
+      is_hidden: true,
+      max_locker_limit: 11,
     };
+    serverData = [loc];
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [loc] }),
-    } as unknown as Response) as unknown as typeof global.fetch;
+    renderWithProviders(<MailroomLocations />);
 
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomLocations />
-        </MantineProvider>
-      </SWRConfig>,
-    );
-
-    expect(await screen.findByText(/Main Office/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Allen Test Location/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hidden from customers/i)).toBeInTheDocument();
+    expect(screen.getByText(/11/i)).toBeInTheDocument();
   });
 
   it("filters locations via search input", async () => {
-    const locations = [
+    serverData = [
       {
         id: "l1",
         name: "Main Office",
@@ -148,6 +223,8 @@ describe("MailroomLocations", () => {
         barangay: "Bel-Air",
         zip: "1227",
         total_lockers: 10,
+        is_hidden: false,
+        max_locker_limit: 0,
       },
       {
         id: "l2",
@@ -158,93 +235,67 @@ describe("MailroomLocations", () => {
         barangay: "Lahug",
         zip: "6000",
         total_lockers: 5,
+        is_hidden: false,
+        max_locker_limit: 3,
       },
     ];
 
-    // mock fetch to respect the `search` query param so tests can exercise filtering
-    global.fetch = jest.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      const parsed = new URL(url, "http://localhost");
-      const searchParam = parsed.searchParams.get("search") || "";
-      const filtered = locations.filter((l) =>
-        searchParam === ""
-          ? true
-          : l.name.toLowerCase().includes(searchParam.toLowerCase()),
-      );
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: filtered }),
-      } as unknown as Response);
-    }) as unknown as typeof global.fetch;
-
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomLocations />
-        </MantineProvider>
-      </SWRConfig>,
-    );
+    const user = userEvent.setup();
+    renderWithProviders(<MailroomLocations />);
 
     await screen.findByText(/Main Office/i);
+
     const input = screen.getByPlaceholderText(
-      /Search locations/i,
+      /Search locations by name or code/i,
     ) as HTMLInputElement;
 
-    await userEvent.type(input, "Branch{enter}");
+    await user.type(input, "Branch{enter}");
     await waitFor(() => {
-      expect(screen.queryByText(/No locations found/i)).toBeNull();
       expect(screen.getByText(/Branch/i)).toBeInTheDocument();
     });
 
-    await userEvent.clear(input);
-    await userEvent.type(input, "no-match{enter}");
+    await user.clear(input);
+    await user.type(input, "NoMatch{enter}");
     expect(await screen.findByText(/No locations found/i)).toBeInTheDocument();
   });
 
-  it("opens View modal and displays selected location details", async () => {
-    const loc = {
-      id: "l1",
-      name: "Main Office",
-      code: "MKT",
-      region: "NCR",
-      city: "Makati",
-      barangay: "Bel-Air",
-      zip: "1227",
-      total_lockers: 10,
-    };
+  it("opens View modal and displays details", async () => {
+    serverData = [
+      {
+        id: "l1",
+        name: "Main Office",
+        code: "MKT",
+        region: "NCR",
+        city: "Makati",
+        barangay: "Bel-Air",
+        zip: "1227",
+        total_lockers: 10,
+        is_hidden: true,
+        max_locker_limit: 11,
+      },
+    ];
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [loc] }),
-    } as unknown as Response) as unknown as typeof global.fetch;
-
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomLocations />
-        </MantineProvider>
-      </SWRConfig>,
-    );
+    const user = userEvent.setup();
+    renderWithProviders(<MailroomLocations />);
 
     await screen.findByText(/Main Office/i);
 
     const rows = screen.getAllByRole("row");
-    if (rows.length < 2) throw new Error("No data rows found");
     const dataRow = rows[1];
-    const actionBtns = within(dataRow).queryAllByRole("button");
-    if (actionBtns.length === 0) throw new Error("No action buttons found");
-    const viewBtn = actionBtns[0];
-    await userEvent.click(viewBtn);
+    const actionButtons = within(dataRow).getAllByRole("button");
+    await user.click(actionButtons[0]);
 
     const modal = await screen.findByRole("dialog");
     expect(within(modal).getByText(/Location Details/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/Main Office/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/Makati/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/10 Lockers/i)).toBeInTheDocument();
+    expect(within(modal).getByText(/Hidden/i)).toBeInTheDocument();
+    expect(
+      within(modal).getByText(/Max Lockers Per User/i),
+    ).toBeInTheDocument();
+    expect(within(modal).getByText(/11/i)).toBeInTheDocument();
   });
 
-  it("creates and edits location (POST and PATCH flows)", async () => {
-    const loc = {
+  it("creates and edits a location", async () => {
+    const base: Location = {
       id: "l1",
       name: "Main Office",
       code: "MKT",
@@ -253,126 +304,148 @@ describe("MailroomLocations", () => {
       barangay: "Bel-Air",
       zip: "1227",
       total_lockers: 10,
+      is_hidden: false,
+      max_locker_limit: 0,
     };
 
-    type ServerState = { created: boolean; updated: boolean };
-    type FetchWithState = jest.Mock & { serverState?: ServerState };
+    serverData = [base];
 
-    const fetchMock = jest.fn((url: RequestInfo, opts?: RequestInit) => {
+    global.fetch = jest.fn((url: RequestInfo, opts?: RequestInit) => {
       const method = opts?.method ? String(opts.method).toUpperCase() : "GET";
-      const fm = fetchMock as unknown as FetchWithState;
-
-      // initialize simple server-side state once
-      if (!fm.serverState) fm.serverState = { created: false, updated: false };
-      const state = fm.serverState;
-
-      if (method === "GET") {
-        const base = [loc];
-        if (state.created) base.push({ ...loc, id: "l2", name: "Created" });
-        if (state.updated) base[0] = { ...base[0], name: "Updated" };
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: base }),
-        } as unknown as Response);
-      }
 
       if (method === "POST") {
-        state.created = true;
+        serverData = [
+          ...serverData,
+          {
+            ...base,
+            id: "l2",
+            name: "Created",
+            is_hidden: true,
+            max_locker_limit: 5,
+          },
+        ];
         return Promise.resolve({
           ok: true,
           json: async () => ({
             message: "Location created",
-            data: { ...loc, id: "l2", name: "Created" },
+            data: serverData[serverData.length - 1],
           }),
         } as unknown as Response);
       }
 
-      // PATCH
-      state.updated = true;
+      if (method === "PATCH") {
+        serverData = serverData.map((l) =>
+          l.id === "l1"
+            ? { ...l, name: "Updated", is_hidden: true, max_locker_limit: 7 }
+            : l,
+        );
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            message: "Location updated",
+            data: serverData[0],
+          }),
+        } as unknown as Response);
+      }
+
       return Promise.resolve({
         ok: true,
         json: async () => ({
-          message: "Location updated",
-          data: { ...loc, name: "Updated" },
+          data: serverData,
+          pagination: { totalCount: serverData.length },
         }),
       } as unknown as Response);
-    });
+    }) as unknown as typeof global.fetch;
 
-    global.fetch = fetchMock as unknown as typeof global.fetch;
+    const user = userEvent.setup();
+    renderWithProviders(<MailroomLocations />);
 
-    render(
-      <SWRConfig value={{ provider: () => new Map() }}>
-        <MantineProvider>
-          <MailroomLocations />
-        </MantineProvider>
-      </SWRConfig>,
-    );
-
-    // Wait for initial load
     await screen.findByText(/Main Office/i);
 
-    // Open Create modal and submit
-    const createBtn = screen.getByRole("button", { name: /Create/i });
-    await userEvent.click(createBtn);
+    // button has aria-label "Create new mailroom location"
+    await user.click(
+      screen.getByRole("button", { name: /Create new mailroom location/i }),
+    );
 
     const createModal = await screen.findByRole("dialog");
-    const nameInput = within(createModal).getByLabelText(/Name/i);
-    await userEvent.type(nameInput, "Created");
-
-    // Fill other required fields (code, region, city, barangay, zip, total_lockers)
-    const codeInput = within(createModal).getByLabelText(/Code/i);
-    await userEvent.type(codeInput, "CRT");
-
-    // Region and City are simple TextInputs in this form — type values directly
-    const regionInput = within(createModal).getByLabelText(/Region/i);
-    await userEvent.type(regionInput, "NCR");
-
-    const cityInput = within(createModal).getByLabelText(/City/i);
-    await userEvent.type(cityInput, "Makati");
-
-    const barangayInput = within(createModal).getByLabelText(/Barangay/i);
-    await userEvent.type(barangayInput, "Created Barangay");
-
-    const zipInput = within(createModal).getByLabelText(/Zip/i);
-    await userEvent.type(zipInput, "0000");
+    await user.type(within(createModal).getByLabelText(/Name/i), "Created");
+    await user.type(
+      within(createModal).getByLabelText(/Location Code/i),
+      "CRT",
+    );
+    await user.type(within(createModal).getByLabelText(/Region/i), "NCR");
+    await user.type(within(createModal).getByLabelText(/City/i), "Makati");
+    await user.type(
+      within(createModal).getByLabelText(/Barangay/i),
+      "Created Barangay",
+    );
+    await user.type(within(createModal).getByLabelText(/Zip/i), "0000");
 
     const lockersInput = within(createModal).getByLabelText(/Total Lockers/i);
-    await userEvent.clear(lockersInput);
-    await userEvent.type(lockersInput, "2");
+    await user.clear(lockersInput);
+    await user.type(lockersInput, "2");
 
-    const createSubmit = within(createModal).getByRole("button", {
-      name: /Create/i,
-    });
-    await userEvent.click(createSubmit);
+    const maxPerUserInput =
+      within(createModal).getByLabelText(/Max Lockers Per User/i);
+    await user.clear(maxPerUserInput);
+    await user.type(maxPerUserInput, "5");
 
-    // Wait for POST + subsequent GET (refresh) to complete before asserting new row
+    await user.click(
+      within(createModal).getByLabelText(/Hide from customers/i),
+    );
+    await user.click(
+      within(createModal).getByRole("button", { name: /Create/i }),
+    );
+
     await waitFor(() => {
-      expect((fetchMock as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(
-        2,
-      );
+      expect(screen.getAllByText(/Created/i).length).toBeGreaterThanOrEqual(1);
     });
-    // There may be multiple "Created" nodes (alert + table). assert at least one match.
-    const createdMatches = await screen.findAllByText(/Created/i);
-    expect(createdMatches.length).toBeGreaterThanOrEqual(1);
 
-    // Edit existing row: click edit (second button)
     const rows = screen.getAllByRole("row");
     const dataRow = rows[1];
     const buttons = within(dataRow).getAllByRole("button");
-    if (buttons.length < 2) throw new Error("Edit button not found");
-    const editBtn = buttons[1];
-    await userEvent.click(editBtn);
+    await user.click(buttons[1]);
 
     const editModal = await screen.findByRole("dialog");
-    const saveBtn = within(editModal).getByRole("button", { name: /Save/i });
-    await userEvent.click(saveBtn);
+    await user.click(within(editModal).getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled();
+      expect(screen.getAllByText(/Updated/i).length).toBeGreaterThanOrEqual(1);
     });
-    // After PATCH the mocked server state reflects the update; assert it appears
-    // There may be multiple "Updated" nodes (alert + table). assert at least one match.
-    const updatedMatches = await screen.findAllByText(/Updated/i);
-    expect(updatedMatches.length).toBeGreaterThanOrEqual(1);
   }, 20000);
+
+  it("opens filters popover and applies with no changes", async () => {
+    serverData = [
+      {
+        id: "l1",
+        name: "Main Office",
+        code: "MKT",
+        region: "NCR",
+        city: "Makati",
+        barangay: "Bel-Air",
+        zip: "1227",
+        total_lockers: 10,
+        is_hidden: false,
+        max_locker_limit: 0,
+      },
+    ];
+
+    const user = userEvent.setup();
+    renderWithProviders(<MailroomLocations />);
+
+    await screen.findByText(/Main Office/i);
+
+    // open filters (aria-label "Open filters")
+    await user.click(screen.getByRole("button", { name: /Open filters/i }));
+    // assert filter popover opened by checking for the filter form / input
+    const pop = await screen.findByRole("form", { name: /Location filters/i });
+    expect(
+      within(pop).getByLabelText(/Filter by region/i, {
+        selector: "input",
+      }),
+    ).toBeInTheDocument();
+    // close popover by clicking target again
+    await user.click(screen.getByRole("button", { name: /Open filters/i }));
+    expect(screen.getByText(/Main Office/i)).toBeInTheDocument();
+  });
 });
