@@ -17,6 +17,12 @@ BEGIN
           'users_id', users.users_id,
           'users_email', users.users_email,
           'users_avatar_url', users.users_avatar_url
+        ),
+        'address', (
+          SELECT to_jsonb(addr.*)
+          FROM public.user_kyc_address_table AS addr
+          WHERE addr.user_kyc_id = kyc.user_kyc_id
+          LIMIT 1
         )
       )
     FROM public.user_kyc_table AS kyc

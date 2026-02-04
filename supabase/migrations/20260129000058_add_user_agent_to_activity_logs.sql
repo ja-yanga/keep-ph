@@ -92,6 +92,10 @@ DECLARE
   input_date_from TIMESTAMPTZ := (input_data->>'date_from')::TIMESTAMPTZ;
   input_date_to TIMESTAMPTZ := (input_data->>'date_to')::TIMESTAMPTZ;
   input_search TEXT := (input_data->>'search')::TEXT;
+  
+  -- Sorting
+  input_sort_by TEXT := COALESCE((input_data->>'sort_by')::TEXT, 'activity_created_at');
+  input_sort_direction TEXT := COALESCE(LOWER((input_data->>'sort_direction')::TEXT), 'desc');
 
   -- End date adjustment: make it inclusive of the entire day if provided
   adjusted_date_to TIMESTAMPTZ := CASE 
@@ -150,7 +154,29 @@ BEGIN
         OR uk.user_kyc_last_name ILIKE '%' || input_search || '%'
       )
     ORDER BY
-      al.activity_created_at DESC,
+      -- Handle Timestamp Sorting
+      CASE WHEN input_sort_direction = 'asc' AND input_sort_by = 'activity_created_at' THEN al.activity_created_at END ASC,
+      CASE WHEN input_sort_direction = 'desc' AND input_sort_by = 'activity_created_at' THEN al.activity_created_at END DESC,
+      
+      -- Handle Text/Enum Sorting
+      CASE WHEN input_sort_direction = 'asc' THEN
+        CASE 
+          WHEN input_sort_by = 'actor_email' THEN u.users_email
+          WHEN input_sort_by = 'activity_entity_type' THEN al.activity_entity_type::TEXT
+          WHEN input_sort_by = 'activity_action' THEN al.activity_action::TEXT
+          ELSE NULL 
+        END
+      END ASC,
+      CASE WHEN input_sort_direction = 'desc' THEN
+        CASE 
+          WHEN input_sort_by = 'actor_email' THEN u.users_email
+          WHEN input_sort_by = 'activity_entity_type' THEN al.activity_entity_type::TEXT
+          WHEN input_sort_by = 'activity_action' THEN al.activity_action::TEXT
+          ELSE NULL 
+        END
+      END DESC,
+      
+      -- tie-breaker
       al.activity_log_id DESC
     LIMIT input_limit
     OFFSET input_offset

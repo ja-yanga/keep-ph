@@ -258,7 +258,9 @@ export type AdminUserKyc = {
     line1?: string | null;
     line2?: string | null;
     city?: string | null;
+    province?: string | null;
     region?: string | null;
+    barangay?: string | null;
     postal?: number | string | null;
   } | null;
 };
@@ -555,7 +557,9 @@ export type KycRow = {
     line1?: string;
     line2?: string | null;
     city?: string;
+    province?: string;
     region?: string;
+    barangay?: string;
     postal?: string;
   } | null;
   submitted_at?: string | null;

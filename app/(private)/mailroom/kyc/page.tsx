@@ -185,9 +185,16 @@ export default function KycPage() {
         setFrontPreview(row.user_kyc_id_front_url ?? null);
         setBackPreview(row.user_kyc_id_back_url ?? null);
 
-        // For address, need to fetch from user_kyc_address_table if separate
-        // But since the route doesn't return address, perhaps fetch separately or assume not populated on load for now
-        // TODO: If address needs to be shown, add fetch for address
+        // Populate address fields if returned
+        if (row.address) {
+          setAddressLine1(row.address.user_kyc_address_line_one ?? "");
+          setAddressLine2(row.address.user_kyc_address_line_two ?? "");
+          setCity(row.address.user_kyc_address_city ?? "");
+          setProvince(row.address.user_kyc_address_province ?? "");
+          setRegion(row.address.user_kyc_address_region ?? "");
+          setBarangay(row.address.user_kyc_address_barangay ?? "");
+          setPostal(String(row.address.user_kyc_address_postal_code ?? ""));
+        }
       } catch {
         if (mounted) setStatus("NONE");
       } finally {
@@ -619,24 +626,46 @@ export default function KycPage() {
                           data-testid="barangay-select"
                           label="Barangay"
                           placeholder="Select Barangay"
-                          data={barangays}
+                          data={[
+                            ...barangays,
+                            { label: "Others", value: "others", zip: "" },
+                          ]}
                           value={addressIds.barangayId}
                           onChange={(val) => {
-                            const b = barangays.find(
-                              (bar) => bar.value === val,
-                            );
-                            setBarangay(b?.label || "");
-                            setPostal(b?.zip || "");
-                            setAddressIds((prev) => ({
-                              ...prev,
-                              barangayId: val || "",
-                            }));
+                            if (val === "others") {
+                              setBarangay("");
+                              setPostal("");
+                              setAddressIds((prev) => ({
+                                ...prev,
+                                barangayId: "others",
+                              }));
+                            } else {
+                              const b = barangays.find(
+                                (bar) => bar.value === val,
+                              );
+                              setBarangay(b?.label || "");
+                              setPostal(b?.zip || "");
+                              setAddressIds((prev) => ({
+                                ...prev,
+                                barangayId: val || "",
+                              }));
+                            }
                           }}
                           required
                           disabled={isLocked || !addressIds.cityId}
                           searchable
                           clearable
                         />
+                        {addressIds.barangayId === "others" && (
+                          <TextInput
+                            label="Custom Barangay Name"
+                            placeholder="Enter your barangay"
+                            value={barangay}
+                            onChange={(e) => setBarangay(e.currentTarget.value)}
+                            required
+                            disabled={isLocked}
+                          />
+                        )}
                         <TextInput
                           label="Postal Code"
                           placeholder="Postal Code"
@@ -647,7 +676,9 @@ export default function KycPage() {
                           inputMode="numeric"
                           pattern="\d*"
                           required
-                          disabled={isLocked || !!addressIds.barangayId}
+                          disabled={
+                            isLocked || addressIds.barangayId !== "others"
+                          }
                         />
                       </SimpleGrid>
                     </Stack>
