@@ -1,6 +1,7 @@
 import { getUserSession } from "@/app/actions/get";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { logApiError } from "@/lib/error-log";
 
 // Admin client for fetching profile data (bypassing RLS if needed)
 
@@ -60,6 +61,13 @@ export async function GET(_request: Request) {
     return response;
   } catch (err: unknown) {
     console.error("session GET error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Unexpected server error";
+    void logApiError(_request, {
+      status: 500,
+      message: errorMessage,
+      error: err,
+    });
     return NextResponse.json(
       { error: "Unexpected server error" },
       { status: 500 },

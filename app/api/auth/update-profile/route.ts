@@ -4,6 +4,7 @@ import {
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
 // Admin client for database/storage operations (bypassing RLS)
 const supabaseAdmin = createSupabaseServiceClient();
@@ -32,6 +33,10 @@ export async function POST(req: NextRequest) {
         /^data:(.+);base64,(.+)$/,
       );
       if (!matches) {
+        void logApiError(req, {
+          status: 400,
+          message: "Invalid avatar data",
+        });
         return NextResponse.json(
           { error: "Invalid avatar data" },
           { status: 400 },
@@ -52,6 +57,11 @@ export async function POST(req: NextRequest) {
 
       if (uploadError) {
         console.error("Upload error:", uploadError);
+        void logApiError(req, {
+          status: 500,
+          message: "Failed to upload avatar",
+          error: uploadError,
+        });
         return NextResponse.json(
           { error: "Failed to upload avatar" },
           { status: 500 },
@@ -101,6 +111,7 @@ export async function POST(req: NextRequest) {
     console.error("Update profile error:", err);
     const errorMessage =
       err instanceof Error ? err.message : "Unknown error occurred";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
@@ -121,6 +132,7 @@ export async function PATCH(req: NextRequest) {
     const mobile = typeof body?.mobile === "string" ? body.mobile.trim() : "";
 
     if (!mobile) {
+      void logApiError(req, { status: 400, message: "mobile is required" });
       return NextResponse.json(
         { error: "mobile is required" },
         { status: 400 },
@@ -129,6 +141,10 @@ export async function PATCH(req: NextRequest) {
 
     // basic mobile validation (09XXXXXXXXX)
     if (!/^09\d{9}$/.test(mobile)) {
+      void logApiError(req, {
+        status: 400,
+        message: "Invalid mobile format",
+      });
       return NextResponse.json(
         { error: "Invalid mobile format" },
         { status: 400 },
@@ -142,6 +158,11 @@ export async function PATCH(req: NextRequest) {
 
     if (updateError) {
       console.error("Update profile (mobile) error:", updateError);
+      void logApiError(req, {
+        status: 500,
+        message: "Failed to update profile",
+        error: updateError,
+      });
       return NextResponse.json(
         { error: "Failed to update profile" },
         { status: 500 },
@@ -171,6 +192,7 @@ export async function PATCH(req: NextRequest) {
   } catch (err: unknown) {
     console.error("Update profile (mobile) exception:", err);
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/error-log";
 
 const supabase = createSupabaseServiceClient();
 
@@ -10,7 +11,10 @@ export async function PATCH(
 ) {
   try {
     const id = (await params).id;
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    if (!id) {
+      void logApiError(request, { status: 400, message: "Missing id" });
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
 
     const body = await request
       .json()
@@ -19,6 +23,7 @@ export async function PATCH(
 
     const validStatuses = ["Empty", "Normal", "Near Full", "Full"];
     if (!validStatuses.includes(status)) {
+      void logApiError(request, { status: 400, message: "Invalid status" });
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
@@ -28,12 +33,21 @@ export async function PATCH(
       .eq("mailroom_assigned_locker_id", id);
 
     if (error) {
+      void logApiError(request, {
+        status: 500,
+        message: error.message,
+        error,
+      });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (err: unknown) {
-    void err;
+    void logApiError(request, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },
@@ -47,7 +61,10 @@ export async function DELETE(
 ) {
   try {
     const id = (await params).id;
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    if (!id) {
+      void logApiError(request, { status: 400, message: "Missing id" });
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
 
     // fetch assignment to get locker id
     const { data: assignRow, error: fetchErr } = await supabase
@@ -57,6 +74,11 @@ export async function DELETE(
       .maybeSingle();
 
     if (fetchErr) {
+      void logApiError(request, {
+        status: 500,
+        message: fetchErr.message,
+        error: fetchErr,
+      });
       return NextResponse.json({ error: fetchErr.message }, { status: 500 });
     }
 
@@ -68,6 +90,11 @@ export async function DELETE(
       .eq("mailroom_assigned_locker_id", id);
 
     if (delErr) {
+      void logApiError(request, {
+        status: 500,
+        message: delErr.message,
+        error: delErr,
+      });
       return NextResponse.json({ error: delErr.message }, { status: 500 });
     }
 
@@ -80,7 +107,11 @@ export async function DELETE(
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (err: unknown) {
-    void err;
+    void logApiError(request, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

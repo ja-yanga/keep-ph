@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { adminListIpWhitelist, getUserRole } from "@/app/actions/get";
 import { adminCreateIpWhitelist } from "@/app/actions/post";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 import {
   findMatchingWhitelistIds,
   invalidateAdminIpWhitelistCache,
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
   } catch (err: unknown) {
     console.error("API error fetching IP whitelist:", err);
     const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
@@ -74,6 +76,7 @@ export async function POST(req: Request) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Invalid IP or CIDR.";
+      void logApiError(req, { status: 400, message, error: err });
       return NextResponse.json({ error: message }, { status: 400 });
     }
     const description =
@@ -117,6 +120,7 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     console.error("API error creating IP whitelist entry:", err);
     const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

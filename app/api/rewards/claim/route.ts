@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { claimReferralRewards } from "@/app/actions/post";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
@@ -16,10 +17,9 @@ export async function POST(req: Request) {
     );
 
     if (!payload?.success) {
-      return NextResponse.json(
-        { error: payload?.message ?? "Unable to submit claim" },
-        { status: 400 },
-      );
+      const msg = payload?.message ?? "Unable to submit claim";
+      void logApiError(req, { status: 400, message: msg });
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     // Log the reward claim activity
@@ -41,6 +41,11 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("rewards.claim:", message);
+    void logApiError(req, {
+      status: 500,
+      message: message || "Server error",
+      error: err,
+    });
     return NextResponse.json(
       { error: message || "Server error" },
       { status: 500 },

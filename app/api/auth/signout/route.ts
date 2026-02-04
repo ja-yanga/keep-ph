@@ -1,39 +1,44 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
-export async function POST() {
-  // 1. Initialize Supabase Client
-  // This automatically connects to the correct cookies (sb-*-auth-token)
-  const supabase = await createClient();
+export async function POST(req: Request) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase.auth.signOut();
 
-  // Get user before signing out for logging
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    if (user) {
+      logActivity({
+        userId: user.id,
+        action: "LOGOUT",
+        type: "USER_LOGOUT",
+        entityType: "USER",
+        entityId: user.id,
+        details: {
+          email: user.email,
+          platform: "web",
+        },
+      }).catch((logError) => {
+        console.error("Failed to log sign-out activity:", logError);
+      });
+    }
 
-  // 2. Sign Out
-  // This revokes the token on Supabase servers AND triggers the 'remove' cookie method above
-  await supabase.auth.signOut();
-
-  if (user) {
-    logActivity({
-      userId: user.id,
-      action: "LOGOUT",
-      type: "USER_LOGOUT",
-      entityType: "USER",
-      entityId: user.id,
-      details: {
-        email: user.email,
-        platform: "web",
-      },
-    }).catch((logError) => {
-      console.error("Failed to log sign-out activity:", logError);
-    });
+    return NextResponse.json(
+      { message: "Signed out successfully" },
+      { status: 200 },
+    );
+  } catch (err: unknown) {
+    console.error("Signout error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
-
-  return NextResponse.json(
-    { message: "Signed out successfully" },
-    { status: 200 },
-  );
 }

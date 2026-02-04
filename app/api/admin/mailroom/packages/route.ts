@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminGetMailroomPackages } from "@/app/actions/get";
 import { adminCreateMailroomPackage } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function GET(req?: Request) {
   try {
@@ -61,6 +62,10 @@ export async function POST(request: Request) {
     // Require package_name
     const packageName = body.package_name ?? null;
     if (!packageName) {
+      void logApiError(request, {
+        status: 400,
+        message: "package_name is required",
+      });
       return NextResponse.json(
         { error: "package_name is required" },
         { status: 400 },
@@ -83,6 +88,11 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
+    void logApiError(request, {
+      status: 500,
+      message: errorMessage,
+      error,
+    });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

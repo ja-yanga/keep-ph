@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminUpdateMailroomPlan } from "@/app/actions/update";
+import { logApiError } from "@/lib/error-log";
 
 export async function PATCH(
   req: Request,
@@ -8,6 +9,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     if (!id) {
+      void logApiError(req, { status: 400, message: "Missing id parameter" });
       return NextResponse.json(
         { error: "Missing id parameter" },
         { status: 400 },
@@ -51,6 +53,10 @@ export async function PATCH(
     }
 
     if (Object.keys(updates).length === 0) {
+      void logApiError(req, {
+        status: 400,
+        message: "No fields provided to update",
+      });
       return NextResponse.json(
         { error: "No fields provided to update" },
         { status: 400 },
@@ -97,6 +103,7 @@ export async function PATCH(
     const message =
       err instanceof Error ? err.message : "Internal Server Error";
     console.error(`admin.mailroom.plans.${(await params).id}.PATCH:`, err);
+    void logApiError(req, { status: 500, message, error: err });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

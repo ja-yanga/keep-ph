@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
@@ -77,6 +78,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Password updated successfully" });
   } catch (err: unknown) {
     console.error("Reset password error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

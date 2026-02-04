@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { resend } from "@/lib/resend";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
     if (!process.env.RESEND_API_KEY?.trim()) {
+      void logApiError(req, {
+        status: 503,
+        message: "Email service is not configured (missing RESEND_API_KEY).",
+        errorCode: "EXTERNAL_SERVICE_ERROR",
+      });
       return NextResponse.json(
         { error: "Email service is not configured (missing RESEND_API_KEY)." },
         { status: 503 },
@@ -13,6 +19,10 @@ export async function POST(req: Request) {
     const { to, template, data } = await req.json();
 
     if (!to || !template) {
+      void logApiError(req, {
+        status: 400,
+        message: "Missing required fields: to, template",
+      });
       return NextResponse.json(
         { error: "Missing required fields: to, template" },
         { status: 400 },
@@ -204,12 +214,41 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("Resend error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // Use 500 and EXTERNAL_SERVICE_ERROR because the failure is from Resend's API (external service),
+      // not from our validation or database. This distinguishes it in the error log from VALIDATION_ERROR / DB_QUERY_ERROR.
+      const resendMessage =
+        (error as { message?: string }).message ?? "Resend API error";
+      const errWithStack = new Error(resendMessage);
+      if (
+        typeof (error as { stack?: string }).stack === "string" &&
+        (error as { stack?: string }).stack
+      ) {
+        errWithStack.stack = (error as { stack?: string }).stack;
+      }
+      void logApiError(req, {
+        status: 500,
+        message: resendMessage,
+        error: errWithStack,
+        errorCode: "EXTERNAL_SERVICE_ERROR",
+        errorDetails: {
+          source: "resend",
+          resendStatusCode: (error as { statusCode?: number }).statusCode,
+          resendName: (error as { name?: string }).name,
+          raw: error as Record<string, unknown>,
+        },
+      });
+      return NextResponse.json(
+        { error: (error as { message?: string }).message },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ success: true, id: resendData?.id });
   } catch (err: unknown) {
     console.error("Email API error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

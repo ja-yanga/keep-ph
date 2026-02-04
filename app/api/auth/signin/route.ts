@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(request: Request) {
   try {
@@ -55,6 +56,13 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("Signin error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(request, {
+      status: 500,
+      message: errorMessage,
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

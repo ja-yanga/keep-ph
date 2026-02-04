@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminGetAssignedLockers } from "@/app/actions/get";
 import { adminCreateAssignedLocker } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function GET() {
   try {
@@ -20,6 +21,10 @@ export async function POST(req: Request) {
     const lockerId = String(body.locker_id ?? "");
 
     if (!registrationId || !lockerId) {
+      void logApiError(req, {
+        status: 400,
+        message: "registration_id and locker_id are required",
+      });
       return NextResponse.json(
         { error: "registration_id and locker_id are required" },
         { status: 400 },
@@ -36,7 +41,7 @@ export async function POST(req: Request) {
     const errorMessage =
       err instanceof Error ? err.message : "Internal Server Error";
     const status = errorMessage.includes("available") ? 409 : 500;
-
+    void logApiError(req, { status, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status });
   }
 }

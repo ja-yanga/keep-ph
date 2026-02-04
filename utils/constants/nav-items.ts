@@ -34,6 +34,11 @@ export const NAV_ITMES: Record<
       key: "activity-logs",
       title: "Activity Logs",
     },
+    {
+      path: "/admin/error-logs",
+      key: "error-logs",
+      title: "Error Logs",
+    },
   ],
   approver: [
     {
@@ -66,6 +71,11 @@ export const NAV_ITMES: Record<
       path: "/admin/activity-logs",
       key: "activity-logs",
       title: "Activity Logs",
+    },
+    {
+      path: "/admin/error-logs",
+      key: "error-logs",
+      title: "Error Logs",
     },
   ],
 };

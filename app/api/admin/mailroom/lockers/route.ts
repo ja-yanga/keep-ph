@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/error-log";
 import { LockerRow } from "@/utils/types";
 
 const supabase = createSupabaseServiceClient();
@@ -154,6 +155,7 @@ export async function POST(req: Request) {
     try {
       body = (await req.json()) as Record<string, unknown>;
     } catch {
+      void logApiError(req, { status: 400, message: "Invalid JSON body" });
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
@@ -182,10 +184,9 @@ export async function POST(req: Request) {
       .single();
 
     if (error || !data) {
-      return NextResponse.json(
-        { error: (error as Error)?.message || "Failed to create locker" },
-        { status: 500 },
-      );
+      const msg = (error as Error)?.message || "Failed to create locker";
+      void logApiError(req, { status: 500, message: msg, error });
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
 
     // increment total_lockers on location (best-effort)
@@ -220,7 +221,11 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (err: unknown) {
-    void err;
+    void logApiError(req, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

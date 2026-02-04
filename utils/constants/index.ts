@@ -184,6 +184,7 @@ export const ENTITY_TYPES = [
   { label: "Mailroom Assigned Locker", value: "MAILROOM_ASSIGNED_LOCKER" },
   { label: "User", value: "USER" },
   { label: "Admin IP Whitelist", value: "ADMIN_IP_WHITELIST" },
+  { label: "Error Log", value: "ERROR_LOG" },
 ] as const;
 
 export const ACTIONS = [
@@ -212,4 +213,23 @@ export const ACTIONS = [
   { label: "Dispose", value: "DISPOSE" },
   { label: "Scan", value: "SCAN" },
   { label: "Purchase", value: "PURCHASE" },
+] as const;
+
+export const ERROR_TYPES = [
+  { label: "All Types", value: "" },
+  { label: "API Error", value: "API_ERROR" },
+  { label: "Database Error", value: "DATABASE_ERROR" },
+  { label: "Validation Error", value: "VALIDATION_ERROR" },
+  { label: "Authentication Error", value: "AUTHENTICATION_ERROR" },
+  { label: "Authorization Error", value: "AUTHORIZATION_ERROR" },
+  { label: "Payment Error", value: "PAYMENT_ERROR" },
+  { label: "External Service Error", value: "EXTERNAL_SERVICE_ERROR" },
+  { label: "System Error", value: "SYSTEM_ERROR" },
+  { label: "Unknown Error", value: "UNKNOWN_ERROR" },
+] as const;
+
+export const ERROR_RESOLUTION_STATUSES = [
+  { label: "All Statuses", value: "" },
+  { label: "Unresolved", value: "false" },
+  { label: "Resolved", value: "true" },
 ] as const;

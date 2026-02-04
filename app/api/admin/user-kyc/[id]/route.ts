@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/app/actions/get";
 import { adminUpdateUserKyc } from "@/app/actions/update";
+import { logApiError } from "@/lib/error-log";
 
 export async function PUT(
   req: Request,
@@ -28,11 +29,13 @@ export async function PUT(
     // support both [id] and [user_id] route param names
     const userId = resolvedParams.user_id ?? resolvedParams.id;
     if (!userId) {
+      void logApiError(req, { status: 400, message: "Missing user id" });
       return NextResponse.json({ error: "Missing user id" }, { status: 400 });
     }
     // basic uuid validation to avoid DB cast errors
     const uuidRegex = /^[0-9a-fA-F-]{36}$/;
     if (!uuidRegex.test(userId)) {
+      void logApiError(req, { status: 400, message: "Invalid user id" });
       return NextResponse.json({ error: "Invalid user id" }, { status: 400 });
     }
     const body = await req.json().catch(() => ({}));
@@ -57,6 +60,7 @@ export async function PUT(
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("admin KYC action error:", err);
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
