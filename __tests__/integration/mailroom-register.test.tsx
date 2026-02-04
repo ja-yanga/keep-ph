@@ -1,11 +1,12 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
 import RegisterForm from "@/components/pages/customer/MailroomRegistrationPage/RegisterForm";
 import { OrderSummary } from "@/components/pages/customer/MailroomRegistrationPage/components/OrderSummary";
 import { ReviewStep } from "@/components/pages/customer/MailroomRegistrationPage/components/ReviewStep";
+import { LocationStep } from "@/components/pages/customer/MailroomRegistrationPage/components/LocationStep";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import type { Plan } from "@/utils/types";
 
@@ -332,5 +333,87 @@ describe("ReviewStep component", () => {
     expect(screen.getByText("John Doe")).toBeTruthy();
     expect(screen.getByLabelText("Referral Code (Optional)")).toBeTruthy();
     expect(screen.getByRole("button", { name: /apply/i })).toBeTruthy();
+  });
+});
+
+describe("LocationStep", () => {
+  it("clamps locker qty to max_locker_limit", async () => {
+    const Wrapper = () => {
+      const [selectedLocation, setSelectedLocation] = React.useState<
+        string | null
+      >("l1");
+      const [lockerQty, setLockerQty] = React.useState<number | string>(5);
+
+      const locations = [
+        {
+          id: "l1",
+          name: "Main",
+          city: "Makati",
+          max_locker_limit: 2,
+        } as unknown as Location,
+      ];
+
+      const availability: Record<string, number> = { l1: 5 };
+      const availableCount = selectedLocation
+        ? availability[selectedLocation] || 0
+        : 0;
+
+      return (
+        <LocationStep
+          locations={locations}
+          selectedLocation={selectedLocation}
+          setSelectedLocationAction={setSelectedLocation}
+          locationAvailability={availability}
+          lockerQty={lockerQty}
+          setLockerQtyAction={setLockerQty}
+          availableCount={availableCount}
+        />
+      );
+    };
+
+    renderWithProviders(<Wrapper />);
+
+    // max should be min(availableCount=5, max_locker_limit=2)
+    const label = screen.getByText(/Locker Limit per User/i).closest("div");
+    expect(label ? within(label).getByText("2") : null).toBeTruthy();
+
+    await waitFor(() => {
+      const qtyInput = screen.getByRole("textbox");
+      expect(qtyInput).toHaveValue("2");
+    });
+  });
+
+  it("uses provided availability count in the badge", async () => {
+    const Wrapper = () => {
+      const [selectedLocation, setSelectedLocation] = React.useState<
+        string | null
+      >(null);
+      const [lockerQty, setLockerQty] = React.useState<number | string>(1);
+
+      const locations = [
+        { id: "l1", name: "Main", city: "Makati" } as unknown as Location,
+      ];
+
+      // availability should already exclude non-assignable lockers (server-side)
+      const availability: Record<string, number> = { l1: 3 };
+      const availableCount = selectedLocation
+        ? availability[selectedLocation] || 0
+        : 0;
+
+      return (
+        <LocationStep
+          locations={locations}
+          selectedLocation={selectedLocation}
+          setSelectedLocationAction={setSelectedLocation}
+          locationAvailability={availability}
+          lockerQty={lockerQty}
+          setLockerQtyAction={setLockerQty}
+          availableCount={availableCount}
+        />
+      );
+    };
+
+    renderWithProviders(<Wrapper />);
+    expect(screen.getByText(/3 Available Lockers/i)).toBeInTheDocument();
   });
 });
