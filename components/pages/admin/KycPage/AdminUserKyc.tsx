@@ -176,11 +176,11 @@ export default function AdminUserKyc() {
   const swrKey = useMemo(() => {
     const base = `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(
       query,
-    )}&page=${page}&pageSize=${pageSize}`;
+    )}&page=${page}&pageSize=${pageSize}&sortBy=${sortStatus.columnAccessor}&sortOrder=${sortStatus.direction.toUpperCase()}`;
     return statusFilter === "ALL"
       ? base
       : `${base}&status=${encodeURIComponent(statusFilter)}`;
-  }, [query, page, pageSize, statusFilter]);
+  }, [query, page, pageSize, statusFilter, sortStatus]);
 
   const { data, error, isValidating } = useSWR(swrKey, fetcher, {
     revalidateOnFocus: false,
@@ -195,7 +195,7 @@ export default function AdminUserKyc() {
 
   const rows = useMemo<FormattedKycRow[]>(() => {
     const rawData = data?.data || [];
-    const formatted = rawData.map((r: KycRow) => ({
+    return rawData.map((r: KycRow) => ({
       ...r,
       _formattedName:
         (r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`) ||
@@ -207,41 +207,7 @@ export default function AdminUserKyc() {
         ? dayjs(r.verified_at).format("MMM D, YYYY")
         : "—",
     }));
-
-    return [...formatted].sort((a, b) => {
-      const { columnAccessor, direction } = sortStatus;
-      let valA: string | number | boolean | null | undefined;
-      let valB: string | number | boolean | null | undefined;
-
-      if (columnAccessor === "user") {
-        valA = a._formattedName;
-        valB = b._formattedName;
-      } else if (columnAccessor === "doc") {
-        valA = a.id_document_type;
-        valB = b.id_document_type;
-      } else {
-        valA = a[columnAccessor as keyof FormattedKycRow] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-        valB = b[columnAccessor as keyof FormattedKycRow] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-      }
-
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
-
-      const result = valA < valB ? -1 : 1;
-      return direction === "asc" ? result : -result;
-    });
-  }, [data, sortStatus]);
+  }, [data]);
   const totalRecords = data?.total_count || 0;
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -268,9 +234,7 @@ export default function AdminUserKyc() {
           message: `Set ${status}`,
           color: "green",
         });
-        await swrMutate(
-          `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
-        );
+        await swrMutate(swrKey);
         setModalOpen(false);
       } catch (e) {
         console.error(e);

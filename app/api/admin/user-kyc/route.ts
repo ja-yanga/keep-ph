@@ -29,11 +29,16 @@ export async function GET(req: Request) {
     );
     const offset = (page - 1) * pageSize;
     const status = url.searchParams.get("status");
+    const sortBy = url.searchParams.get("sortBy") ?? "created_at";
+    const sortOrder = url.searchParams.get("sortOrder") ?? "DESC";
+
     const { data: raw, total_count } = await adminListUserKyc(
       q,
       pageSize,
       offset,
       status ?? undefined,
+      sortBy,
+      sortOrder,
     );
 
     const processed = raw.map((row) => {

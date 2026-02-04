@@ -232,7 +232,9 @@ CREATE OR REPLACE FUNCTION public.admin_list_user_kyc(
   input_search TEXT DEFAULT '',
   input_limit INTEGER DEFAULT 500,
   input_offset INTEGER DEFAULT 0,
-  input_status TEXT DEFAULT NULL
+  input_status TEXT DEFAULT NULL,
+  input_sort_by TEXT DEFAULT 'created_at',
+  input_sort_order TEXT DEFAULT 'DESC'
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -244,6 +246,8 @@ DECLARE
   sanitized_offset INTEGER := GREATEST(COALESCE(input_offset, 0), 0);
   search_term TEXT := COALESCE(input_search, '');
   status_term TEXT := NULLIF(UPPER(COALESCE(input_status, '')), '');
+  sort_by_term TEXT := COALESCE(input_sort_by, 'created_at');
+  sort_order_term TEXT := UPPER(COALESCE(input_sort_order, 'DESC'));
   final_data JSON := '[]'::JSON;
   total_count INTEGER;
 BEGIN
@@ -297,7 +301,41 @@ BEGIN
         OR uk.user_kyc_last_name ILIKE '%' || search_term || '%'
       )
     ORDER BY
-      -- simply order by created_at if no status filter
+      -- String sorting
+      CASE WHEN sort_order_term = 'ASC' THEN
+        CASE
+          WHEN sort_by_term = 'user' THEN uk.user_kyc_first_name
+          WHEN sort_by_term = 'doc' THEN uk.user_kyc_id_document_type
+          WHEN sort_by_term = 'status' THEN uk.user_kyc_status::text
+          ELSE NULL
+        END
+      END ASC,
+      CASE WHEN sort_order_term = 'DESC' THEN
+        CASE
+          WHEN sort_by_term = 'user' THEN uk.user_kyc_first_name
+          WHEN sort_by_term = 'doc' THEN uk.user_kyc_id_document_type
+          WHEN sort_by_term = 'status' THEN uk.user_kyc_status::text
+          ELSE NULL
+        END
+      END DESC,
+      -- Timestamp sorting
+      CASE WHEN sort_order_term = 'ASC' THEN
+        CASE
+          WHEN sort_by_term = 'submitted_at' THEN uk.user_kyc_submitted_at
+          WHEN sort_by_term = 'verified_at' THEN uk.user_kyc_verified_at
+          WHEN sort_by_term = 'created_at' THEN uk.user_kyc_created_at
+          ELSE NULL
+        END
+      END ASC NULLS LAST,
+      CASE WHEN sort_order_term = 'DESC' THEN
+        CASE
+          WHEN sort_by_term = 'submitted_at' THEN uk.user_kyc_submitted_at
+          WHEN sort_by_term = 'verified_at' THEN uk.user_kyc_verified_at
+          WHEN sort_by_term = 'created_at' THEN uk.user_kyc_created_at
+          ELSE NULL
+        END
+      END DESC NULLS LAST,
+      -- Default fallback
       uk.user_kyc_created_at DESC
     LIMIT sanitized_limit
     OFFSET sanitized_offset
