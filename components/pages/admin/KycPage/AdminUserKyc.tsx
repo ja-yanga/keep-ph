@@ -34,7 +34,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { getStatusFormat, fetcher } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { FormattedKycRow, KycRow } from "@/utils/types";
+import { FormattedKycRow, KycTableRow } from "@/utils/types";
 import { useSearchParams } from "next/navigation";
 
 import { AdminTable } from "@/components/common/AdminTable";
@@ -155,7 +155,7 @@ export default function AdminUserKyc() {
   const [sortStatus, setSortStatus] = useState<
     DataTableSortStatus<FormattedKycRow>
   >({
-    columnAccessor: "submitted_at",
+    columnAccessor: "user_kyc_submitted_at",
     direction: "desc",
   });
 
@@ -195,32 +195,30 @@ export default function AdminUserKyc() {
 
   const rows = useMemo<FormattedKycRow[]>(() => {
     const rawData = data?.data || [];
-    return rawData.map((r: KycRow) => ({
+    return rawData.map((r: KycTableRow) => ({
       ...r,
-      _formattedName:
-        (r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`) ||
-        "Unknown",
-      _formattedSub: r.submitted_at
-        ? dayjs(r.submitted_at).format("MMM D, YYYY")
+      _formattedName: `${r.user_kyc_first_name ?? ""} ${r.user_kyc_last_name ?? ""}`,
+      _formattedSub: r.user_kyc_submitted_at
+        ? dayjs(r.user_kyc_submitted_at).format("MMM D, YYYY")
         : "—",
-      _formattedVer: r.verified_at
-        ? dayjs(r.verified_at).format("MMM D, YYYY")
+      _formattedVer: r.user_kyc_verified_at
+        ? dayjs(r.user_kyc_verified_at).format("MMM D, YYYY")
         : "—",
     }));
   }, [data]);
   const totalRecords = data?.total_count || 0;
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<KycRow | null>(null);
+  const [selected, setSelected] = useState<KycTableRow | null>(null);
   const [processing, setProcessing] = useState(false);
 
-  const openDetails = useCallback((r: KycRow) => {
+  const openDetails = useCallback((r: KycTableRow) => {
     setSelected(r);
     setModalOpen(true);
   }, []);
 
   const actionVerify = useCallback(
-    async (r: KycRow, status: "VERIFIED" | "REJECTED") => {
+    async (r: KycTableRow, status: "VERIFIED" | "REJECTED") => {
       setProcessing(true);
       try {
         const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
@@ -286,33 +284,33 @@ export default function AdminUserKyc() {
         },
       },
       {
-        accessor: "doc",
+        accessor: "user_kyc_id_document_type",
         title: "Document",
         sortable: true,
         render: (r: FormattedKycRow) => (
           <Text size="sm" c="dark.4" fw={500}>
-            {(r.id_document_type ?? "—").replace("_", " ")}
+            {(r.user_kyc_id_document_type ?? "—").replace("_", " ")}
           </Text>
         ),
       },
       {
-        accessor: "status",
+        accessor: "user_kyc_status",
         title: "Status",
         width: 140,
         sortable: true,
         render: (r: FormattedKycRow) => (
           <Badge
-            color={getStatusFormat(r.status)}
+            color={getStatusFormat(r.user_kyc_status)}
             variant="dot"
             size="md"
             radius="md"
           >
-            {r.status}
+            {r.user_kyc_status}
           </Badge>
         ),
       },
       {
-        accessor: "submitted_at",
+        accessor: "user_kyc_submitted_at",
         title: "Dates",
         width: 200,
         sortable: true,
@@ -321,7 +319,7 @@ export default function AdminUserKyc() {
             <Text size="sm" c="dark.3">
               Sub: {r._formattedSub}
             </Text>
-            {r.verified_at && (
+            {r.user_kyc_verified_at && (
               <Text size="sm" c="dark.3">
                 Ver: {r._formattedVer}
               </Text>
@@ -410,6 +408,7 @@ export default function AdminUserKyc() {
             <div style={{ marginTop: "1rem" }}>
               <AdminTable<FormattedKycRow>
                 records={isSearching ? [] : rows}
+                idAccessor="user_kyc_id"
                 columns={columns}
                 page={page}
                 onPageChange={setPage}

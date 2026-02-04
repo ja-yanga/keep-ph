@@ -17,37 +17,12 @@ import Image from "next/image";
 import dayjs from "dayjs";
 import { useDisclosure } from "@mantine/hooks";
 import { normalizeImageUrl } from "@/utils/helper";
-
-export type KycRow = {
-  id: string;
-  user_id: string;
-  status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
-  id_document_type?: string | null;
-  id_number?: string | null;
-  id_front_url?: string | null;
-  id_back_url?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  full_name?: string | null;
-  address?: {
-    line1?: string;
-    line2?: string | null;
-    city?: string;
-    province?: string;
-    region?: string;
-    barangay?: string;
-    postal?: string;
-  } | null;
-  submitted_at?: string | null;
-  verified_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
+import { KycTableRow } from "@/utils/types";
 
 type KycDetailsProps = {
-  selected: KycRow | null;
+  selected: KycTableRow | null;
   processing: boolean;
-  onVerify: (r: KycRow, status: "VERIFIED" | "REJECTED") => Promise<void>;
+  onVerify: (r: KycTableRow, status: "VERIFIED" | "REJECTED") => Promise<void>;
   onClose: () => void;
 };
 
@@ -63,19 +38,19 @@ const DetailStack = memo(
 );
 DetailStack.displayName = "DetailStack";
 
-function formatAddress(address?: KycRow["address"]): React.ReactNode {
+function formatAddress(address?: KycTableRow["address"]): React.ReactNode {
   if (!address) return <Text c="gray.8">—</Text>;
 
   const parts = [];
-  if (address.line1) parts.push(address.line1);
-  if (address.line2) parts.push(address.line2);
+  if (address.user_address_line1) parts.push(address.user_address_line1);
+  if (address.user_address_line2) parts.push(address.user_address_line2);
 
   const cityProvinceRegionPostal = [
-    address.barangay,
-    address.city,
-    address.province,
-    address.region,
-    address.postal,
+    address.user_address_barangay,
+    address.user_address_city,
+    address.user_address_province,
+    address.user_address_region,
+    address.user_address_postal,
   ]
     .filter(Boolean)
     .join(", ");
@@ -112,9 +87,7 @@ const KycDetails = ({
     );
   }
 
-  const fullName =
-    selected.full_name ??
-    `${selected.first_name ?? ""} ${selected.last_name ?? ""}`;
+  const fullName = `${selected.user_kyc_first_name ?? ""} ${selected.user_kyc_last_name ?? ""}`;
 
   return (
     <>
@@ -129,13 +102,13 @@ const KycDetails = ({
 
             <DetailStack label="Document ID Number">
               <Text size="sm" fw={500}>
-                {selected.id_number ?? "—"}
+                {selected.user_kyc_id_number ?? "—"}
               </Text>
             </DetailStack>
 
             <DetailStack label="Document Type">
               <Text size="sm" fw={500}>
-                {selected.id_document_type ?? "—"}
+                {selected.user_kyc_id_document_type ?? "—"}
               </Text>
             </DetailStack>
           </Grid.Col>
@@ -149,16 +122,20 @@ const KycDetails = ({
               <Text size="sm">
                 Submitted:{" "}
                 <Text span fw={500}>
-                  {selected.submitted_at
-                    ? dayjs(selected.submitted_at).format("MMM D, YYYY hh:mm A")
+                  {selected.user_kyc_submitted_at
+                    ? dayjs(selected.user_kyc_submitted_at).format(
+                        "MMM D, YYYY hh:mm A",
+                      )
                     : "—"}
                 </Text>
               </Text>
               <Text size="sm">
                 Verified:{" "}
                 <Text span fw={500}>
-                  {selected.verified_at
-                    ? dayjs(selected.verified_at).format("MMM D, YYYY hh:mm A")
+                  {selected.user_kyc_verified_at
+                    ? dayjs(selected.user_kyc_verified_at).format(
+                        "MMM D, YYYY hh:mm A",
+                      )
                     : "—"}
                 </Text>
               </Text>
@@ -169,13 +146,15 @@ const KycDetails = ({
         <Grid>
           <Grid.Col span={6}>
             <DetailStack label="ID Front">
-              {selected.id_front_url ? (
+              {selected.user_kyc_id_front_url ? (
                 <div>
                   <Text size="xs" c="gray.9">
                     Front
                   </Text>
                   {(() => {
-                    const src = normalizeImageUrl(selected.id_front_url);
+                    const src = normalizeImageUrl(
+                      selected.user_kyc_id_front_url,
+                    );
                     return src ? (
                       <UnstyledButton
                         aria-label="Enlarge front ID image"
@@ -219,13 +198,15 @@ const KycDetails = ({
 
           <Grid.Col span={6}>
             <DetailStack label="ID Back">
-              {selected.id_back_url ? (
+              {selected.user_kyc_id_back_url ? (
                 <div>
                   <Text size="xs" c="gray.9">
                     Back
                   </Text>
                   {(() => {
-                    const src = normalizeImageUrl(selected.id_back_url);
+                    const src = normalizeImageUrl(
+                      selected.user_kyc_id_back_url,
+                    );
                     return src ? (
                       <UnstyledButton
                         aria-label="Enlarge back ID image"
@@ -273,7 +254,7 @@ const KycDetails = ({
             Close
           </Button>
 
-          {selected.status === "SUBMITTED" && (
+          {selected.user_kyc_status === "SUBMITTED" && (
             <Button
               color="red.9"
               variant="filled"
@@ -285,7 +266,7 @@ const KycDetails = ({
             </Button>
           )}
 
-          {selected.status !== "VERIFIED" && (
+          {selected.user_kyc_status !== "VERIFIED" && (
             <Button
               color="green.9"
               variant="filled"

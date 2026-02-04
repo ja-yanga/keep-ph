@@ -240,30 +240,30 @@ export type RawRow = {
   [key: string]: unknown;
 };
 
-export type AdminUserKyc = {
-  user_kyc_id: string;
-  user_id: string;
-  user_kyc_status: string | null;
-  user_kyc_id_document_type: string | null;
-  user_kyc_id_number: string | null;
-  user_kyc_id_front_url: string | null;
-  user_kyc_id_back_url: string | null;
-  user_kyc_first_name: string | null;
-  user_kyc_last_name: string | null;
-  user_kyc_submitted_at: string | null;
-  user_kyc_verified_at: string | null;
-  user_kyc_created_at: string | null;
-  user_kyc_updated_at: string | null;
-  address: {
-    line1?: string | null;
-    line2?: string | null;
-    city?: string | null;
-    province?: string | null;
-    region?: string | null;
-    barangay?: string | null;
-    postal?: number | string | null;
-  } | null;
-};
+// export type AdminUserKyc = {
+//   user_kyc_id: string;
+//   user_id: string;
+//   user_kyc_status: string | null;
+//   user_kyc_id_document_type: string | null;
+//   user_kyc_id_number: string | null;
+//   user_kyc_id_front_url: string | null;
+//   user_kyc_id_back_url: string | null;
+//   user_kyc_first_name: string | null;
+//   user_kyc_last_name: string | null;
+//   user_kyc_submitted_at: string | null;
+//   user_kyc_verified_at: string | null;
+//   user_kyc_created_at: string | null;
+//   user_kyc_updated_at: string | null;
+//   address: {
+//     line1?: string | null;
+//     line2?: string | null;
+//     city?: string | null;
+//     province?: string | null;
+//     region?: string | null;
+//     barangay?: string | null;
+//     postal?: number | string | null;
+//   } | null;
+// };
 
 export type UpdateRewardClaimArgs = {
   claimId: string;
@@ -542,33 +542,32 @@ export type MailroomRegistrationStats = {
   released: number;
 };
 
-export type KycRow = {
-  id: string;
-  user_id: string;
-  status: "SUBMITTED" | "VERIFIED" | "UNVERIFIED" | "REJECTED" | string;
-  id_document_type?: string | null;
-  id_number?: string | null;
-  id_front_url?: string | null;
-  id_back_url?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  full_name?: string | null;
-  address?: {
-    line1?: string;
-    line2?: string | null;
-    city?: string;
-    province?: string;
-    region?: string;
-    barangay?: string;
-    postal?: string;
-  } | null;
-  submitted_at?: string | null;
-  verified_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+export type UserKYCTableRow =
+  Database["public"]["Tables"]["user_kyc_table"]["Row"];
+export type UserKYCTableInsert =
+  Database["public"]["Tables"]["user_kyc_table"]["Insert"];
+export type UserKYCTableUpdate =
+  Database["public"]["Tables"]["user_kyc_table"]["Update"];
+
+export type UserAddressTableRow =
+  Database["public"]["Tables"]["user_address_table"]["Row"];
+
+export type KycTableRow = Omit<
+  UserKYCTableRow,
+  "user_date_of_birth" | "user_kyc_agreements_accepted"
+> & {
+  address?:
+    | (Omit<
+        UserAddressTableRow,
+        "user_address_id" | "user_address_user_id" | "user_address_created_at"
+      > & {
+        user_address_barangay?: string | null;
+        user_address_province?: string | null;
+      })
+    | null;
 };
 
-export type FormattedKycRow = KycRow & {
+export type FormattedKycRow = KycTableRow & {
   _formattedName: string;
   _formattedSub: string;
   _formattedVer: string;

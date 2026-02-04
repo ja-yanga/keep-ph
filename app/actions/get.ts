@@ -12,7 +12,6 @@ import {
   AdminClaim,
   AdminDashboardStats,
   AdminIpWhitelistEntry,
-  AdminUserKyc,
   AdminUsersRpcResult,
   BarangayTableRow,
   CityTableRow,
@@ -30,6 +29,7 @@ import {
   ActivityLogEntry,
   T_LocationLocker,
   T_LockerData,
+  KycTableRow,
 } from "@/utils/types";
 import {
   T_TransactionPaginationMeta,
@@ -669,7 +669,7 @@ export async function adminListUserKyc(
   status?: string,
   sortBy = "created_at",
   sortOrder = "DESC",
-): Promise<{ data: AdminUserKyc[]; total_count: number }> {
+): Promise<{ data: KycTableRow[]; total_count: number }> {
   const { data, error } = await supabaseAdmin.rpc("admin_list_user_kyc", {
     input_search: search,
     input_limit: limit,
@@ -695,7 +695,7 @@ export async function adminListUserKyc(
     return { data: [], total_count: 0 };
   }
 
-  const result = payload as { data: AdminUserKyc[]; total_count: number };
+  const result = payload as { data: KycTableRow[]; total_count: number };
 
   return {
     data: Array.isArray(result.data) ? result.data : [],
