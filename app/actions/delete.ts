@@ -109,3 +109,27 @@ export async function adminDeleteMailroomPackage(args: {
 
   return result;
 }
+/**
+ * Soft deletes a locker for admin.
+ */
+export async function adminDeleteLocker(args: {
+  id: string;
+}): Promise<boolean> {
+  const { id } = args;
+
+  if (!id) {
+    throw new Error("Missing id");
+  }
+
+  // soft delete locker
+  const { error: delErr } = await supabaseAdmin
+    .from("location_locker_table")
+    .update({ location_locker_deleted_at: new Date() })
+    .eq("location_locker_id", id);
+
+  if (delErr) {
+    throw delErr;
+  }
+
+  return true;
+}

@@ -755,3 +755,69 @@ export type AdminIpWhitelistListResponse = {
   current_ip: string | null;
   current_match_ids: string[];
 };
+
+export type MailroomLocationRow =
+  Database["public"]["Tables"]["mailroom_location_table"]["Row"];
+export type MailroomLocationInsert =
+  Database["public"]["Tables"]["mailroom_location_table"]["Insert"];
+export type MailroomLocationUpdate =
+  Database["public"]["Tables"]["mailroom_location_table"]["Update"];
+export type LocationLockerRow =
+  Database["public"]["Tables"]["location_locker_table"]["Row"];
+export type LocationLockerAssignedRow =
+  Database["public"]["Tables"]["mailroom_assigned_locker_table"]["Row"];
+export type LocationLockerInsert =
+  Database["public"]["Tables"]["location_locker_table"]["Insert"];
+export type LocationLockerUpdate =
+  Database["public"]["Tables"]["location_locker_table"]["Update"];
+
+export type T_LocationLocker = LocationLockerRow & {
+  location: Pick<
+    MailroomLocationRow,
+    "mailroom_location_id" | "mailroom_location_name"
+  > | null;
+  assigned?: Pick<
+    LocationLockerAssignedRow,
+    | "mailroom_assigned_locker_id"
+    | "mailroom_registration_id"
+    | "mailroom_assigned_locker_status"
+  > & {
+    registration?: {
+      id?: string;
+      full_name?: string;
+      email: string;
+    } | null;
+  };
+  is_assigned: boolean;
+};
+
+export type T_LockerData = Pick<
+  LocationLockerRow,
+  | "location_locker_id"
+  | "mailroom_location_id"
+  | "location_locker_code"
+  | "location_locker_created_at"
+  | "location_locker_is_available"
+> &
+  Pick<MailroomLocationRow, "mailroom_location_name"> &
+  Partial<
+    Pick<
+      LocationLockerAssignedRow,
+      | "mailroom_assigned_locker_id"
+      | "mailroom_registration_id"
+      | "mailroom_assigned_locker_status"
+    >
+  >;
+
+export type T_LocationLockerInsert = Pick<
+  LocationLockerInsert,
+  | "location_locker_id"
+  | "location_locker_code"
+  | "mailroom_location_id"
+  | "location_locker_is_available"
+>;
+
+export type T_LocationLockerUpdate = Pick<
+  MailroomLocationUpdate,
+  "mailroom_location_prefix" | "mailroom_location_total_lockers"
+>;

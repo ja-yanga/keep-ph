@@ -28,6 +28,8 @@ import {
   RpcMailroomPlan,
   UserAddressRow,
   ActivityLogEntry,
+  T_LocationLocker,
+  T_LockerData,
 } from "@/utils/types";
 import {
   T_TransactionPaginationMeta,
@@ -1804,4 +1806,88 @@ export async function adminListMailroomLocationsPaginated(options?: {
   } catch (err) {
     throw err;
   }
+}
+
+/**
+ * Lists all lockers for admin review via RPC.
+ * Returns an array of normalized lockers with their location and assignment status.
+ *
+ * Used in:
+ * - app/api/admin/mailroom/lockers/route.ts - API endpoint for admin lockers list
+ * - components/MailroomLockers.tsx - Admin lockers management page (via API)
+ */
+export async function adminListLockers(args: {
+  search?: string;
+  locationId?: string | null;
+  activeTab?: string;
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortOrder?: string;
+}): Promise<{ data: T_LocationLocker[]; total_count: number }> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_lockers", {
+    input_search: args.search ?? "",
+    input_location_id: args.locationId || null,
+    input_active_tab: args.activeTab ?? "all",
+    input_limit: args.limit ?? 10,
+    input_offset: args.offset ?? 0,
+    input_sort_by: args.sortBy ?? "locker_code",
+    input_sort_order: args.sortOrder ?? "ASC",
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const payload =
+    typeof data === "string" ? JSON.parse(data) : (data as unknown);
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("data" in payload) ||
+    !("total_count" in payload)
+  ) {
+    return { data: [], total_count: 0 };
+  }
+
+  const result = payload as {
+    data: T_LockerData[];
+    total_count: number;
+  };
+  const lockerRows = Array.isArray(result.data) ? result.data : [];
+
+  const normalized = lockerRows.map((r): T_LocationLocker => {
+    const isAvailable = r.location_locker_is_available ?? true;
+    const isAssigned =
+      Boolean(r.mailroom_assigned_locker_id) || isAvailable === false;
+
+    const result = {
+      location_locker_id: r.location_locker_id,
+      mailroom_location_id: r.mailroom_location_id,
+      location_locker_code: r.location_locker_code || null,
+      location_locker_is_available: isAvailable,
+      location_locker_created_at: r.location_locker_created_at || null,
+      location: {
+        mailroom_location_id: r.mailroom_location_id,
+        mailroom_location_name: r.mailroom_location_name,
+      },
+      assigned: r.mailroom_assigned_locker_id
+        ? {
+            mailroom_assigned_locker_id: r.mailroom_assigned_locker_id,
+            mailroom_registration_id: r.mailroom_registration_id,
+            mailroom_assigned_locker_status:
+              r.mailroom_assigned_locker_status || null,
+          }
+        : null,
+      is_assigned: isAssigned,
+    } as T_LocationLocker;
+
+    return result;
+  });
+
+  return {
+    data: normalized,
+    total_count: Number(result.total_count) || 0,
+  };
 }
