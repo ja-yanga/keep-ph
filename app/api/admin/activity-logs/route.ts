@@ -48,6 +48,24 @@ export async function GET(req: Request) {
     return NextResponse.json(data);
   } catch (err: unknown) {
     console.error("API error fetching activity logs:", err);
+
+    // Handle statement timeout (PostgreSQL error 57014)
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "57014"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The request timed out because the activity log table is too large. Please try refreshing or using more specific filters (like a date range or specific action).",
+          code: "TIMEOUT",
+        },
+        { status: 408 },
+      );
+    }
+
     const errorMessage = err instanceof Error ? err.message : "Server error";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

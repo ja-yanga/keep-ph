@@ -932,6 +932,10 @@ export async function adminGetMailroomPackages(args: {
   offset?: number;
   compact?: boolean;
   status?: string[];
+  sortBy?: string;
+  sortOrder?: string;
+  search?: string;
+  type?: string;
 }): Promise<{
   packages: unknown[];
   registrations: unknown[];
@@ -944,6 +948,10 @@ export async function adminGetMailroomPackages(args: {
   const offset = args.offset ?? 0;
   const compact = args.compact ?? false;
   const status = args.status ?? null;
+  const sortBy = args.sortBy ?? "received_at";
+  const sortOrder = args.sortOrder ?? "DESC";
+  const search = args.search ?? null;
+  const type = args.type ?? null;
 
   const { data, error } = await supabaseAdmin.rpc(
     "get_admin_mailroom_packages",
@@ -952,6 +960,10 @@ export async function adminGetMailroomPackages(args: {
       input_offset: offset,
       input_compact: compact,
       input_status: status,
+      input_sort_by: sortBy,
+      input_sort_order: sortOrder.toUpperCase(),
+      input_search: search,
+      input_type: type,
     },
   );
 
@@ -999,18 +1011,24 @@ export async function adminGetMailroomPackages(args: {
 export async function adminGetArchivedPackages(args: {
   limit?: number;
   offset?: number;
+  sortBy?: string;
+  sortOrder?: string;
 }): Promise<{
   packages: unknown[];
   totalCount: number;
 }> {
   const limit = Math.min(args.limit ?? 50, 200);
   const offset = args.offset ?? 0;
+  const sortBy = args.sortBy ?? "deleted_at";
+  const sortOrder = args.sortOrder ?? "DESC";
 
   const { data, error } = await supabaseAdmin.rpc(
     "get_admin_archived_packages",
     {
       input_limit: limit,
       input_offset: offset,
+      input_sort_by: sortBy,
+      input_sort_order: sortOrder.toUpperCase(),
     },
   );
 
