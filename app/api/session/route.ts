@@ -61,7 +61,7 @@ export async function GET(_request: Request) {
     console.error("session GET error:", err);
     const errorMessage =
       err instanceof Error ? err.message : "Unexpected server error";
-    void logApiError(request, {
+    void logApiError(_request, {
       status: 500,
       message: errorMessage,
       error: err,
