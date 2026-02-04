@@ -101,10 +101,14 @@ export async function GET(
       );
     }
 
+    const userRow = Array.isArray(data.user) ? data.user[0] : data.user;
+    const resolvedByRow = Array.isArray(data.resolved_by)
+      ? data.resolved_by[0]
+      : data.resolved_by;
     const response = {
       ...data,
-      user_email: data.user?.users_email ?? null,
-      resolved_by_email: data.resolved_by?.users_email ?? null,
+      user_email: userRow?.users_email ?? null,
+      resolved_by_email: resolvedByRow?.users_email ?? null,
       user: undefined,
       resolved_by: undefined,
     };
