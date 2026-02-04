@@ -3,6 +3,7 @@ import {
   createClient,
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/error-log";
 
 // Admin client for database/storage operations (bypassing RLS)
 const supabaseAdmin = createSupabaseServiceClient();
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest) {
         /^data:(.+);base64,(.+)$/,
       );
       if (!matches) {
+        void logApiError(req, {
+          status: 400,
+          message: "Invalid avatar data",
+        });
         return NextResponse.json(
           { error: "Invalid avatar data" },
           { status: 400 },
@@ -86,6 +91,7 @@ export async function POST(req: NextRequest) {
     console.error("Update profile error:", err);
     const errorMessage =
       err instanceof Error ? err.message : "Unknown error occurred";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

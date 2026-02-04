@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/error-log";
 
 const supabase = createSupabaseServiceClient();
 
@@ -47,6 +48,10 @@ export async function PUT(
       isAvailable === undefined &&
       locationId === undefined
     ) {
+      void logApiError(req, {
+        status: 400,
+        message: "No updatable fields provided",
+      });
       return NextResponse.json(
         { error: "No updatable fields provided" },
         { status: 400 },
@@ -66,6 +71,11 @@ export async function PUT(
       .eq("location_locker_id", id)
       .maybeSingle();
     if (currErr) {
+      void logApiError(req, {
+        status: 500,
+        message: currErr.message,
+        error: currErr,
+      });
       return NextResponse.json({ error: currErr.message }, { status: 500 });
     }
     const originalLocationId =
@@ -132,7 +142,11 @@ export async function PUT(
 
     return NextResponse.json({ data: updated }, { status: 200 });
   } catch (err: unknown) {
-    void err;
+    void logApiError(req, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },
@@ -141,12 +155,13 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
     if (!id) {
+      void logApiError(req, { status: 400, message: "Missing id" });
       return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
@@ -158,6 +173,11 @@ export async function DELETE(
       .maybeSingle();
 
     if (lockerErr) {
+      void logApiError(req, {
+        status: 500,
+        message: "Failed to fetch locker",
+        error: lockerErr,
+      });
       return NextResponse.json(
         { error: "Failed to fetch locker" },
         { status: 500 },
@@ -175,6 +195,11 @@ export async function DELETE(
       .eq("location_locker_id", id);
 
     if (delErr) {
+      void logApiError(req, {
+        status: 500,
+        message: (delErr as Error).message,
+        error: delErr,
+      });
       return NextResponse.json(
         { error: (delErr as Error).message },
         { status: 500 },
@@ -203,7 +228,11 @@ export async function DELETE(
 
     return NextResponse.json({ message: "Locker deleted" }, { status: 200 });
   } catch (err: unknown) {
-    void err;
+    void logApiError(req, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

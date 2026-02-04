@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminUpdateMailroomPackage } from "@/app/actions/update";
 import { adminDeleteMailroomPackage } from "@/app/actions/delete";
+import { logApiError } from "@/lib/error-log";
 
 export async function PUT(
   req: Request,
@@ -58,6 +59,11 @@ export async function DELETE(
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
+    void logApiError(request, {
+      status: 500,
+      message: errorMessage,
+      error,
+    });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

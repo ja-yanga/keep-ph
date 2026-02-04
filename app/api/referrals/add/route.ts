@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addReferral } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Referral API Error:", message);
+    void logApiError(req, { status: 500, message, error: err });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

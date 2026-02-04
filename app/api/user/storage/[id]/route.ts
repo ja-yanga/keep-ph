@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deleteUserStorageFile } from "@/app/actions/delete";
+import { logApiError } from "@/lib/error-log";
 
 export async function DELETE(
   request: NextRequest,
@@ -33,6 +34,10 @@ export async function DELETE(
     }
 
     if (!scanId) {
+      void logApiError(request, {
+        status: 400,
+        message: "scan id required",
+      });
       return NextResponse.json({ error: "scan id required" }, { status: 400 });
     }
 
@@ -52,6 +57,11 @@ export async function DELETE(
     };
 
     const status = statusMap[errorMessage] || 500;
+    void logApiError(request, {
+      status,
+      message: errorMessage,
+      error: err,
+    });
     return NextResponse.json({ error: errorMessage }, { status });
   }
 }

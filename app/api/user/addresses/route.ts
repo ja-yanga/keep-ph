@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserAddresses } from "@/app/actions/get";
 import { createUserAddress } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function GET() {
   try {
@@ -61,9 +62,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ data });
   } catch (err: unknown) {
     console.error("user.addresses.POST:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Server error" },
-      { status: 500 },
-    );
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

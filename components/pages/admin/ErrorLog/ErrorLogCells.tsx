@@ -55,17 +55,29 @@ const ERROR_CODE_SHORT: Record<string, string> = {
   AUTH_INVALID_CREDENTIALS: "Bad credentials",
   AUTH_EMAIL_NOT_VERIFIED: "Email unverified",
   DB_CONN_TIMEOUT: "DB timeout",
-  DB_QUERY_ERROR: "Query error",
+  DB_QUERY_ERROR: "DB error",
   DB_CONSTRAINT_VIOLATION: "Constraint",
   DB_FOREIGN_KEY_VIOLATION: "FK violation",
-  DB_UNIQUE_VIOLATION: "Unique violation",
+  DB_UNIQUE_VIOLATION: "Unique",
   DB_TRANSACTION_FAILED: "TX failed",
   DB_CONNECTION_LOST: "DB disconnected",
+  VALIDATION_ERROR: "Validation",
+  VALIDATION_FIELD_REQUIRED: "Invalid field",
+  EXTERNAL_SERVICE_ERROR: "External API",
+  PAYMENT_ERROR: "Payment",
+  SYSTEM_ERROR: "System",
+  API_ERROR: "API",
+  UNKNOWN_ERROR: "Unknown",
 };
+
+const MAX_CODE_LENGTH = 14;
 
 export function getErrorCodeDisplay(code?: string | null): string {
   if (!code) return "N/A";
-  return ERROR_CODE_SHORT[code] ?? code;
+  const mapped = ERROR_CODE_SHORT[code];
+  if (mapped) return mapped;
+  if (code.length <= MAX_CODE_LENGTH) return code;
+  return `${code.slice(0, MAX_CODE_LENGTH - 1)}…`;
 }
 
 export const ErrorCodeCell = memo(({ code }: { code?: string | null }) => {

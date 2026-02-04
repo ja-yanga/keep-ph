@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/error-log";
 
 // Admin client for database updates (bypassing RLS)
 const supabaseAdmin = createSupabaseServiceClient();
@@ -43,6 +44,10 @@ export async function POST(req: Request) {
         /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/,
       );
       if (!dataUrlMatch) {
+        void logApiError(req, {
+          status: 400,
+          message: "Invalid avatar data",
+        });
         return NextResponse.json(
           { error: "Invalid avatar data" },
           { status: 400 },
@@ -63,6 +68,11 @@ export async function POST(req: Request) {
 
       if (uploadError) {
         console.error("storage upload error:", uploadError);
+        void logApiError(req, {
+          status: 500,
+          message: "Failed to upload avatar",
+          error: uploadError,
+        });
         return NextResponse.json(
           { error: "Failed to upload avatar" },
           { status: 500 },
@@ -97,6 +107,11 @@ export async function POST(req: Request) {
 
     if (updateError) {
       console.error("users update error:", updateError);
+      void logApiError(req, {
+        status: 500,
+        message: "Failed to update profile",
+        error: updateError,
+      });
       return NextResponse.json(
         { error: "Failed to update profile" },
         { status: 500 },
@@ -106,6 +121,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, needs_onboarding: false });
   } catch (err) {
     console.error(err);
+    const message =
+      err instanceof Error ? err.message : "Unexpected server error";
+    void logApiError(req, { status: 500, message, error: err });
     return NextResponse.json(
       { error: "Unexpected server error" },
       { status: 500 },

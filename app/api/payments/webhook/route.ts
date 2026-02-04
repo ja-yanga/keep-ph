@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { upsertPaymentResource } from "@/app/actions/post";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
@@ -11,7 +12,13 @@ export async function POST(req: Request) {
   );
 
   const data = payload?.data;
-  if (!data) return NextResponse.json({ ok: false }, { status: 400 });
+  if (!data) {
+    void logApiError(req, {
+      status: 400,
+      message: "Webhook payload missing data",
+    });
+    return NextResponse.json({ ok: false }, { status: 400 });
+  }
 
   /**
    * Creates a mailroom registration with locker assignments.
@@ -36,6 +43,11 @@ export async function POST(req: Request) {
               await upsertPaymentResource(p);
             } catch (err) {
               console.error("[webhook] upsert nested payment failed:", err);
+              void logApiError(req, {
+                status: 500,
+                message: "upsert_nested_failed",
+                error: err,
+              });
               return NextResponse.json(
                 { error: "upsert_nested_failed", details: String(err) },
                 { status: 500 },
@@ -114,6 +126,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     console.error("[webhook] error:", err);
+    void logApiError(req, {
+      status: 500,
+      message: err instanceof Error ? err.message : String(err),
+      error: err,
+    });
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

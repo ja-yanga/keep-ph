@@ -214,7 +214,33 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("Resend error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // Use 500 and EXTERNAL_SERVICE_ERROR because the failure is from Resend's API (external service),
+      // not from our validation or database. This distinguishes it in the error log from VALIDATION_ERROR / DB_QUERY_ERROR.
+      const resendMessage =
+        (error as { message?: string }).message ?? "Resend API error";
+      const errWithStack = new Error(resendMessage);
+      if (
+        typeof (error as { stack?: string }).stack === "string" &&
+        (error as { stack?: string }).stack
+      ) {
+        errWithStack.stack = (error as { stack?: string }).stack;
+      }
+      void logApiError(req, {
+        status: 500,
+        message: resendMessage,
+        error: errWithStack,
+        errorCode: "EXTERNAL_SERVICE_ERROR",
+        errorDetails: {
+          source: "resend",
+          resendStatusCode: (error as { statusCode?: number }).statusCode,
+          resendName: (error as { name?: string }).name,
+          raw: error as Record<string, unknown>,
+        },
+      });
+      return NextResponse.json(
+        { error: (error as { message?: string }).message },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ success: true, id: resendData?.id });

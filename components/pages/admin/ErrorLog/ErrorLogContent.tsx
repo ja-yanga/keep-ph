@@ -337,8 +337,8 @@ export default function ErrorLogContent() {
       },
       {
         accessor: "error_code",
-        title: "Code",
-        width: 110,
+        title: "Error code",
+        width: 120,
         sortable: true,
         render: (log: ErrorLogEntry) => <ErrorCodeCell code={log.error_code} />,
       },

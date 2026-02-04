@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateReferralCode } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
@@ -18,6 +19,11 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("referrals.validate error:", message);
+    void logApiError(req, {
+      status: 500,
+      message: message || "Server error",
+      error: err,
+    });
     return NextResponse.json(
       { valid: false, message: "Server error" },
       { status: 500 },
