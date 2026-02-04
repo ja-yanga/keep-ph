@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminCreateMailroomLocation } from "@/app/actions/post";
 import { adminListMailroomLocationsPaginated } from "@/app/actions/get";
+import { logApiError } from "@/lib/error-log";
 import type { LocationRow } from "@/utils/types";
 
 const normalizeLocation = (row: LocationRow) => ({
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
     const name = String(body.name ?? "").trim();
 
     if (!name) {
+      void logApiError(req, { status: 400, message: "Name is required" });
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
@@ -93,6 +95,7 @@ export async function POST(req: Request) {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";
     console.error("admin.mailroom.locations.POST:", err);
+    void logApiError(req, { status: 500, message, error: err });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

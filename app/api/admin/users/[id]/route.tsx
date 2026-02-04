@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminUpdateUserRole } from "@/app/actions/update";
+import { logApiError } from "@/lib/error-log";
 
 export async function PATCH(
   request: Request,
@@ -19,6 +20,10 @@ export async function PATCH(
       | undefined;
 
     if (!targetUserId || !role || !actorUserId) {
+      void logApiError(request, {
+        status: 400,
+        message: "id, role, and actor_user_id are required.",
+      });
       return NextResponse.json(
         { error: "id, role, and actor_user_id are required." },
         { status: 400 },
@@ -41,6 +46,7 @@ export async function PATCH(
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
+    void logApiError(request, { status: 500, message, error: err });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminUpdateMailroomLocation } from "@/app/actions/update";
+import { logApiError } from "@/lib/error-log";
 
 export async function PATCH(
   req: Request,
@@ -11,6 +12,7 @@ export async function PATCH(
       body = (await req.json()) as Record<string, unknown>;
     } catch (parseErr) {
       void parseErr;
+      void logApiError(req, { status: 400, message: "Invalid JSON body" });
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
@@ -48,6 +50,7 @@ export async function PATCH(
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message, error: err });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

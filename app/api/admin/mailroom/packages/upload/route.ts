@@ -1,5 +1,6 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { logApiError } from "@/lib/error-log";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     console.error("upload error", err);
     const errorMessage = err instanceof Error ? err.message : String(err);
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

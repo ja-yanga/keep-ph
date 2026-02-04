@@ -5,6 +5,7 @@ import {
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
 // Initialize Admin Client (Service Role needed for Storage uploads if RLS is strict)
 const supabase = createSupabaseServiceClient();
@@ -25,6 +26,10 @@ export async function POST(request: Request) {
     const packageId = formData.get("packageId") as string;
 
     if (!file || !packageId) {
+      void logApiError(request, {
+        status: 400,
+        message: "File and Package ID are required",
+      });
       return NextResponse.json(
         { error: "File and Package ID are required" },
         { status: 400 },
@@ -67,6 +72,11 @@ export async function POST(request: Request) {
       });
 
     if (dbError) {
+      void logApiError(request, {
+        status: 500,
+        message: dbError.message,
+        error: dbError,
+      });
       return NextResponse.json({ error: dbError.message }, { status: 500 });
     }
 
@@ -128,6 +138,11 @@ export async function POST(request: Request) {
     console.error("Scan upload error:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Internal Server Error";
+    void logApiError(request, {
+      status: 500,
+      message: errorMessage,
+      error,
+    });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

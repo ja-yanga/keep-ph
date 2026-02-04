@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteUserAddress, updateUserAddress } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function PUT(
   req: Request,
@@ -11,6 +12,7 @@ export async function PUT(
     const { label, line1, line2, city, region, postal, is_default } = body;
 
     if (!line1) {
+      void logApiError(req, { status: 400, message: "line1 required" });
       return NextResponse.json({ error: "line1 required" }, { status: 400 });
     }
 
@@ -28,6 +30,7 @@ export async function PUT(
     return NextResponse.json({ ok: true, address });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
@@ -40,6 +43,10 @@ export async function DELETE(
     const { id } = await params;
     const ok = await deleteUserAddress(id);
     if (!ok) {
+      void logApiError(req, {
+        status: 404,
+        message: "Not found or already removed",
+      });
       return NextResponse.json(
         { error: "Not found or already removed" },
         { status: 404 },
@@ -48,6 +55,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

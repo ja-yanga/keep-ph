@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getNotificationByUserId } from "@/app/actions/get";
 import { markAsReadNotification } from "@/app/actions/update";
 import { sendNotification } from "@/lib/notifications";
+import { logApiError } from "@/lib/error-log";
 import { T_NotificationType } from "@/utils/types";
 
 export async function GET(request: Request) {
@@ -34,6 +35,10 @@ export async function PUT(request: Request) {
     const userId = searchParams.get("userId");
 
     if (!userId) {
+      void logApiError(request, {
+        status: 400,
+        message: "Missing userId parameter",
+      });
       return NextResponse.json(
         { error: "Missing userId parameter" },
         { status: 400 },
@@ -56,6 +61,10 @@ export async function POST(request: Request) {
     const { userId, title, message, type, link } = body;
 
     if (!userId || !title || !message || !type) {
+      void logApiError(request, {
+        status: 400,
+        message: "Missing required fields",
+      });
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 },
@@ -74,6 +83,7 @@ export async function POST(request: Request) {
     console.error("Unexpected error in sendNotification route:", error);
     const message =
       error instanceof Error ? error.message : "Internal server error";
+    void logApiError(request, { status: 500, message, error });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

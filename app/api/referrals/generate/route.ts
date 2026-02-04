@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateReferralCode } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
-export async function POST(_req: Request) {
-  void _req;
+export async function POST(req: Request) {
   try {
     const supabase = await createClient();
 
@@ -22,6 +22,7 @@ export async function POST(_req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Referral generation error:", message);
+    void logApiError(req, { status: 500, message, error: err });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

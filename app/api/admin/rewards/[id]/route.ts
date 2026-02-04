@@ -2,6 +2,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { sendNotification } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 import type {
   AdminUpdateClaimResponse,
   RewardDbRow,
@@ -133,6 +134,7 @@ export async function PUT(
     };
 
     if (!status || !["PROCESSING", "PAID"].includes(status)) {
+      void logApiError(req, { status: 400, message: "Invalid status" });
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
@@ -240,20 +242,16 @@ export async function PUT(
       proof_url,
     });
   } catch (err: unknown) {
-    // Properly handle and log the error object
     const message = err instanceof Error ? err.message : String(err);
-
-    // Log detailed error information
     console.error("admin.rewards.update:error", {
       message,
       error: err instanceof Error ? err.stack : String(err),
-      errorType: typeof err,
-      errorObject: JSON.stringify(
-        err,
-        Object.getOwnPropertyNames(err instanceof Object ? err : {}),
-      ),
     });
-
+    void logApiError(req, {
+      status: 500,
+      message: message || "Server error",
+      error: err,
+    });
     return NextResponse.json(
       { error: message || "Server error" },
       { status: 500 },

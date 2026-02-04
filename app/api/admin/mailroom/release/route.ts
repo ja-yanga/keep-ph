@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminReleaseMailroomPackage } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(request: Request) {
   try {
@@ -26,10 +27,16 @@ export async function POST(request: Request) {
 
     // Validation
     if (!file || !packageId) {
+      const details = !file ? "File is required" : "Package ID is required";
+      void logApiError(request, {
+        status: 400,
+        message: "Missing file or package ID",
+        errorDetails: { details } as Record<string, unknown>,
+      });
       return NextResponse.json(
         {
           error: "Missing file or package ID",
-          details: !file ? "File is required" : "Package ID is required",
+          details,
         },
         { status: 400 },
       );
@@ -54,6 +61,11 @@ export async function POST(request: Request) {
 
     // Handle specific error messages
     if (errorMessage.includes("Package not found")) {
+      void logApiError(request, {
+        status: 404,
+        message: "Package not found",
+        error,
+      });
       return NextResponse.json(
         {
           error: "Package not found",
@@ -67,6 +79,7 @@ export async function POST(request: Request) {
       errorMessage.includes("Selected address not found") ||
       errorMessage.includes("Address does not belong")
     ) {
+      void logApiError(request, { status: 400, message: errorMessage, error });
       return NextResponse.json(
         {
           error: errorMessage,
@@ -75,6 +88,11 @@ export async function POST(request: Request) {
       );
     }
 
+    void logApiError(request, {
+      status: 500,
+      message: errorMessage,
+      error,
+    });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

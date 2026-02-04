@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { updateMailboxItem } from "@/app/actions/update";
+import { logApiError } from "@/lib/error-log";
 
 export async function PATCH(
   request: Request,
@@ -40,7 +41,11 @@ export async function PATCH(
     };
 
     const status = statusMap[errorMessage] || 500;
-
+    void logApiError(request, {
+      status,
+      message: errorMessage,
+      error: err,
+    });
     return NextResponse.json({ error: errorMessage }, { status });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/error-log";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
     const totalRaw = body.total;
 
     if (!locationIdRaw) {
+      void logApiError(req, { status: 400, message: "Missing location_id" });
       return NextResponse.json(
         { error: "Missing location_id" },
         { status: 400 },
@@ -41,6 +43,7 @@ export async function POST(req: Request) {
       .single();
 
     if (locErr || !locData) {
+      void logApiError(req, { status: 404, message: "Location not found" });
       return NextResponse.json(
         { error: "Location not found" },
         { status: 404 },
@@ -90,6 +93,11 @@ export async function POST(req: Request) {
       .eq("mailroom_location_id", locationId);
 
     if (updErr) {
+      void logApiError(req, {
+        status: 500,
+        message: "Created lockers but failed to update location total",
+        error: updErr,
+      });
       return NextResponse.json(
         { error: "Created lockers but failed to update location total" },
         { status: 500 },
@@ -114,7 +122,11 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (err: unknown) {
-    void err;
+    void logApiError(req, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

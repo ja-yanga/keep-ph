@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminRestoreMailboxItem } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(
   request: NextRequest,
@@ -11,6 +12,7 @@ export async function POST(
     id = solvedParams.id;
     console.log("[Restore] ID from params:", id);
     if (!id) {
+      void logApiError(request, { status: 400, message: "ID is required" });
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
     }
 
@@ -23,6 +25,7 @@ export async function POST(
       `Error in POST /api/admin/mailroom/archive/${id}/restore:`,
       error,
     );
+    void logApiError(request, { status: 500, message, error });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

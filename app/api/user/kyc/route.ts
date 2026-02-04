@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserKYC, submitKYC } from "@/app/actions/post";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
@@ -21,15 +22,14 @@ export async function POST(req: Request) {
     return NextResponse.json(result);
   } catch (err: unknown) {
     console.error("KYC submit error:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Server error" },
-      { status: 500 },
-    );
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 // NEW: GET handler returns current user's KYC row (if any)
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = await createClient();
 
@@ -44,6 +44,8 @@ export async function GET() {
     return NextResponse.json({ ok: true, kyc });
   } catch (err) {
     console.error("KYC fetch error:", err);
-    return NextResponse.json({ error: err as string }, { status: 500 });
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
