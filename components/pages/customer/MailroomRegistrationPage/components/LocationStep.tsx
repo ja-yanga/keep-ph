@@ -68,10 +68,19 @@ export const LocationStep = ({
   // clamp lockerQty if it exceeds effective max
   useEffect(() => {
     const current = Number(lockerQty) || 0;
+    if (selectedLocation && current < 1) {
+      setLockerQtyAction(1);
+      return;
+    }
     if (effectiveMaxForSelected != null && current > effectiveMaxForSelected) {
       setLockerQtyAction(effectiveMaxForSelected);
     }
-  }, [effectiveMaxForSelected, lockerQty, setLockerQtyAction]);
+  }, [
+    effectiveMaxForSelected,
+    lockerQty,
+    selectedLocation,
+    setLockerQtyAction,
+  ]);
 
   return (
     <Stack mt="lg">
