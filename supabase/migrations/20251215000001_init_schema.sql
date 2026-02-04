@@ -258,6 +258,7 @@ CREATE TABLE location_locker_table (
   location_locker_is_available BOOLEAN DEFAULT true,
   location_locker_created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   location_locker_deleted_at TIMESTAMP WITH TIME ZONE,
+  location_locker_is_assignable boolean DEFAULT true,
   CONSTRAINT location_locker_table_pkey PRIMARY KEY (location_locker_id)
 );
 
