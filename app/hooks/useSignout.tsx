@@ -1,17 +1,20 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useSession } from "@/components/SessionProvider";
 
 export function useSignout() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+  const { clearSession } = useSession();
 
   const handleSignOut = useCallback(async () => {
     setLoading(true);
     try {
       await fetch("/api/auth/signout", { method: "POST" });
       await supabase.auth.signOut();
+      clearSession();
       router.push("/signin");
     } catch (err) {
       console.error("signout error:", err);
@@ -19,7 +22,7 @@ export function useSignout() {
     } finally {
       setLoading(false);
     }
-  }, [router, supabase]);
+  }, [router, supabase, clearSession]);
 
   return { handleSignOut, loading };
 }

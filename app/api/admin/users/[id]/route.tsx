@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { adminUpdateUserRole } from "@/app/actions/update";
 import { logApiError } from "@/lib/error-log";
+import { logActivity } from "@/lib/activity-log";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export async function PATCH(
   request: Request,
@@ -30,6 +32,17 @@ export async function PATCH(
       );
     }
 
+    // Fetch target user details before update for logging
+    const supabaseAdmin = createSupabaseServiceClient();
+    const { data: targetUser } = await supabaseAdmin
+      .from("users_table")
+      .select("users_email, users_role")
+      .eq("users_id", targetUserId)
+      .single();
+
+    const previousRole = targetUser?.users_role || "unknown";
+    const targetEmail = targetUser?.users_email || "unknown";
+
     const result = await adminUpdateUserRole({
       targetUserId,
       newRole: role,
@@ -42,6 +55,22 @@ export async function PATCH(
         { status: 403 },
       );
     }
+
+    // Log activity
+    void logActivity({
+      userId: actorUserId,
+      action: "UPDATE",
+      type: "ADMIN_ACTION",
+      entityType: "ROLE",
+      entityId: targetUserId,
+      details: {
+        action: "UPDATE_USER_ROLE",
+        email: targetEmail,
+        previous_role: previousRole,
+        new_role: role,
+        update_type: "ROLE_CHANGE",
+      },
+    });
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {

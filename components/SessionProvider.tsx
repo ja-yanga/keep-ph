@@ -48,6 +48,7 @@ type ContextValue = {
   loading: boolean;
   error: unknown;
   refresh: () => Promise<void>;
+  clearSession: () => void;
 };
 
 const SessionContext = createContext<ContextValue>({
@@ -55,6 +56,7 @@ const SessionContext = createContext<ContextValue>({
   loading: true,
   error: null,
   refresh: async () => {},
+  clearSession: () => {},
 });
 
 export function SessionProvider({
@@ -146,6 +148,12 @@ export function SessionProvider({
     };
   };
 
+  const clearSession = () => {
+    setSession(null);
+    setLoading(false);
+    setError(null);
+  };
+
   const fetchSession = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
@@ -154,6 +162,7 @@ export function SessionProvider({
         method: "GET",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         signal,
       });
 
@@ -214,7 +223,7 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider
-      value={{ session, loading, error, refresh: fetchSession }}
+      value={{ session, loading, error, refresh: fetchSession, clearSession }}
     >
       {children}
     </SessionContext.Provider>

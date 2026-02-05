@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminListUsers } from "@/app/actions/get";
+import { logApiError } from "@/lib/error-log";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -26,6 +27,13 @@ export async function GET(request: Request) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to fetch users";
+
+    void logApiError(request, {
+      status: 500,
+      message,
+      error: err,
+    });
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
