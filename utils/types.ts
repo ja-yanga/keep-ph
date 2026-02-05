@@ -664,46 +664,28 @@ export type CustomerKycAddress = Pick<RegionTableRow, "region_id" | "region"> &
   Pick<CityTableRow, "city_id" | "city"> &
   Pick<BarangayTableRow, "barangay_id" | "barangay" | "barangay_zip_code">;
 
+export type UserTableRow = Database["public"]["Tables"]["users_table"]["Row"];
+
 export type AdminUsersRpcResult = {
-  data: Array<{
-    users_id: string;
-    users_email: string;
-    users_role: string;
-    users_created_at: string;
-    users_is_verified: boolean;
-    user_kyc_table?: {
-      user_kyc_first_name?: string | null;
-      user_kyc_last_name?: string | null;
-    } | null;
-  }>;
+  data: Array<UserTableRow>;
   total_count: number;
 };
 
 export type UserRole = "owner" | "admin" | "approver" | "user";
 
-export type AdminUserPage = {
-  id: string;
-  full_name: string;
-  email: string;
-  role: UserRole;
-  created_at: string;
-};
+export type AdminUserPage = Pick<
+  UserTableRow,
+  "users_id" | "users_email" | "users_role" | "users_created_at"
+> & { users_full_name: string; users_role: UserRole };
 
-export type ApiUserPage = {
-  users_id: string;
-  users_email: string;
-  users_role: UserRole;
-  users_created_at: string;
+export type ApiUserPage = Pick<
+  UserTableRow,
+  "users_id" | "users_email" | "users_role" | "users_created_at"
+> & { users_role: UserRole } & {
   users_is_verified: boolean;
   user_kyc_table?:
-    | {
-        user_kyc_first_name?: string | null;
-        user_kyc_last_name?: string | null;
-      }
-    | Array<{
-        user_kyc_first_name?: string | null;
-        user_kyc_last_name?: string | null;
-      }>
+    | Pick<UserKYCTableRow, "user_kyc_first_name" | "user_kyc_last_name">
+    | Array<Pick<UserKYCTableRow, "user_kyc_first_name" | "user_kyc_last_name">>
     | null;
 };
 
@@ -725,6 +707,12 @@ export type ActivityLogDetails = {
   platform?: string;
   method?: string;
   update_type?: string;
+  search_query?: string | null;
+  role_filter?: string | null;
+  new_role?: string | null;
+  previous_role?: string | null;
+  total_results?: string | number | null;
+  action?: string | null;
 };
 
 export type ActivityLogEntry = ActivityLogEntryRow & {
