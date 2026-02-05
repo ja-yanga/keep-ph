@@ -230,9 +230,11 @@ export default function Users() {
             id: u.users_id,
             full_name: fullName,
             email: u.users_email,
-            role: u.users_role,
-            created_at: new Date(u.users_created_at).toISOString().slice(0, 10),
-          } as AdminUserPage;
+            role: (u.users_role ?? "user") as UserRole,
+            created_at: new Date(u.users_created_at ?? Date.now())
+              .toISOString()
+              .slice(0, 10),
+          };
         });
         setUsers(mapped);
         setTotalRecords(json.count ?? mapped.length);

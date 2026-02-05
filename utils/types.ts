@@ -673,10 +673,13 @@ export type AdminUsersRpcResult = {
 
 export type UserRole = "owner" | "admin" | "approver" | "user";
 
-export type AdminUserPage = Pick<
-  UserTableRow,
-  "users_id" | "users_email" | "users_role" | "users_created_at"
-> & { users_full_name: string; users_role: UserRole };
+export type AdminUserPage = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+};
 
 export type ApiUserPage = Pick<
   UserTableRow,
