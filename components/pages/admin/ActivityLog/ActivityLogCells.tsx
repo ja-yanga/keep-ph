@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { Box, Text, Group } from "@mantine/core";
 import { IconUser } from "@tabler/icons-react";
-import { type ActivityLogEntry } from "@/utils/types";
+import { type ActivityLogEntry, type ActivityLogDetails } from "@/utils/types";
 
 export const LogDescription = memo(({ log }: { log: ActivityLogEntry }) => {
   const logAction = log.activity_action?.toLowerCase() || "performed an action";
@@ -25,7 +25,9 @@ export const LogDescription = memo(({ log }: { log: ActivityLogEntry }) => {
     platform = "",
     method = "",
     update_type = "",
-  } = log.activity_details || {};
+    new_role = "",
+    previous_role = "",
+  } = (log.activity_details as ActivityLogDetails) || {};
 
   return (
     <Box>
@@ -39,7 +41,7 @@ export const LogDescription = memo(({ log }: { log: ActivityLogEntry }) => {
         mailroom_plan_name ||
         email) && (
         <Box mt={2}>
-          {email && (
+          {email && !previous_role && (
             <Text size="xs" c="gray.7" lineClamp={1}>
               User: {email}
               {provider ? ` via ${provider}` : ""}
@@ -76,6 +78,20 @@ export const LogDescription = memo(({ log }: { log: ActivityLogEntry }) => {
               {mailroom_locker_qty}
             </Text>
           )}
+
+          {previous_role &&
+            (() => {
+              if (email && new_role && previous_role) {
+                return (
+                  <Text size="xs" c="gray.7" lineClamp={1}>
+                    User {email} role has been changed to{" "}
+                    {new_role.toUpperCase()} from {previous_role.toUpperCase()}
+                  </Text>
+                );
+              }
+
+              return null;
+            })()}
         </Box>
       )}
     </Box>

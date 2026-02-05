@@ -53,6 +53,7 @@ export async function logActivity(args: {
     | "ADMIN_ACTION"
     | "SYSTEM_EVENT";
   entityType?:
+    | "ROLE"
     | "MAIL_ACTION_REQUEST"
     | "USER_KYC"
     | "PAYMENT_TRANSACTION"

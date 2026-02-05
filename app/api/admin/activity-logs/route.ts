@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminListActivityLogs } from "@/app/actions/get";
-import { logApiError } from "@/lib/error-log";
+import { logError } from "@/lib/error-log";
+import { resolveClientIp } from "@/lib/ip-utils";
 
 export async function GET(req: Request) {
   try {
@@ -50,25 +51,37 @@ export async function GET(req: Request) {
   } catch (err: unknown) {
     console.error("API error fetching activity logs:", err);
 
-    // Handle statement timeout (PostgreSQL error 57014)
-    if (
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      err.code === "57014"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "The request timed out because the activity log table is too large. Please try refreshing or using more specific filters (like a date range or specific action).",
-          code: "TIMEOUT",
-        },
-        { status: 408 },
-      );
-    }
+    const url = new URL(req.url);
+    const ipAddress = resolveClientIp(req.headers, null);
+    const userAgent = req.headers.get("user-agent") ?? null;
 
-    const errorMessage = err instanceof Error ? err.message : "Server error";
-    void logApiError(req, { status: 500, message: errorMessage, error: err });
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    // Log the error directly (logApiError skips GET requests)
+    void logError({
+      errorType: "DATABASE_ERROR",
+      errorMessage: "Activity log query timed out",
+      errorCode: "SYSTEM_RATE_LIMIT_EXCEEDED",
+      errorStack: err instanceof Error ? (err.stack ?? null) : null,
+      requestPath: url.pathname,
+      requestMethod: req.method,
+      requestBody: null,
+      requestHeaders: null, // Don't log headers for GET requests
+      responseStatus: 408,
+      errorDetails:
+        err && typeof err === "object"
+          ? (err as Record<string, unknown>)
+          : null,
+      ipAddress,
+      userAgent,
+      userId: null,
+    });
+
+    return NextResponse.json(
+      {
+        error:
+          "The request timed out because the activity log table is too large. Please try refreshing or using more specific filters (like a date range or specific action).",
+        code: "TIMEOUT",
+      },
+      { status: 408 },
+    );
   }
 }
