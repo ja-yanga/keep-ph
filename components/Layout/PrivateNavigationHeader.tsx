@@ -228,7 +228,7 @@ export default function PrivateNavigationHeader({
                 fw={600}
                 c="#26316D"
                 px={18}
-                visibleFrom="xs"
+                visibleFrom={role === "user" ? "xs" : ""}
                 aria-label="Sign out of your account"
               >
                 Logout
