@@ -601,10 +601,18 @@ export async function adminUpdateLocker(args: {
   id: string;
   lockerCode?: string;
   isAvailable?: boolean;
+  isAssignable?: boolean;
   locationId?: string;
   assignmentStatus?: string;
 }): Promise<unknown> {
-  const { id, lockerCode, isAvailable, locationId, assignmentStatus } = args;
+  const {
+    id,
+    lockerCode,
+    isAvailable,
+    locationId,
+    assignmentStatus,
+    isAssignable,
+  } = args;
 
   if (!id) {
     throw new Error("Missing id");
@@ -626,6 +634,8 @@ export async function adminUpdateLocker(args: {
   if (isAvailable !== undefined)
     updates.location_locker_is_available = isAvailable;
   if (locationId !== undefined) updates.mailroom_location_id = locationId;
+  if (isAssignable !== undefined)
+    updates.location_locker_is_assignable = isAssignable;
 
   if (Object.keys(updates).length > 0) {
     const { error } = await supabaseAdmin

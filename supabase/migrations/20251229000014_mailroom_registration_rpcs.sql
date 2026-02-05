@@ -21,6 +21,7 @@ BEGIN
         FROM public.location_locker_table AS location_locker
         WHERE location_locker.mailroom_location_id = input_location_id
           AND location_locker.location_locker_is_available = TRUE
+          AND location_locker.location_locker_is_assignable = TRUE
         LIMIT input_locker_qty
     ) AS subquery;
 
@@ -131,6 +132,7 @@ BEGIN
         FROM public.location_locker_table AS location_locker
         WHERE location_locker.mailroom_location_id = input_location_id
           AND location_locker.location_locker_is_available = TRUE
+          AND location_locker.location_locker_is_assignable = TRUE
         LIMIT input_locker_qty
         FOR UPDATE
     );

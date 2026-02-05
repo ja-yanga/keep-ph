@@ -11,6 +11,7 @@ import React, {
 type Profile = {
   first_name?: string | null;
   last_name?: string | null;
+  mobile_number?: string | null;
   user_role?: string | null;
   users_role?: string | null;
   needs_onboarding?: boolean | string | null;
@@ -96,6 +97,8 @@ export function SessionProvider({
     return {
       first_name: typeof rec.first_name === "string" ? rec.first_name : null,
       last_name: typeof rec.last_name === "string" ? rec.last_name : null,
+      mobile_number:
+        typeof rec.mobile_number === "string" ? rec.mobile_number : null,
       user_role:
         (typeof rec.user_role === "string" ? rec.user_role : null) ??
         (typeof rec.users_role === "string" ? rec.users_role : null) ??

@@ -5,6 +5,12 @@
 // - Ensures correct API calls (GET/POST/PUT/DELETE) are made.
 // - Mocks mantine-datatable to render a simple table in tests.
 // - Provides JSDOM polyfills (ResizeObserver) and a scrollIntoView mock for Mantine.
+//
+// Notes:
+// - Tests stub global.fetch per test to return deterministic data.
+// - The DataTable mock renders columns via the provided `render` functions so tests
+//   can assert visible values without relying on the real datatable implementation.
+// - Keep tests focused: assert API calls and key UI behaviors rather than full visual rendering.
 
 import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -12,7 +18,8 @@ import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
 
-// Mock mantine-datatable so DataTable renders synchronously in tests
+// Mock mantine-datatable so DataTable renders synchronously in tests.
+// The mock converts each cell to a simple string/element so table rows are stable.
 jest.mock("mantine-datatable", () => {
   const safeRender = (node: unknown): React.ReactNode => {
     if (node === null || node === undefined) return null;
@@ -37,13 +44,21 @@ jest.mock("mantine-datatable", () => {
       records = [],
       columns = [],
       "aria-label": ariaLabel,
+      sortStatus,
+      onSortStatusChange,
     }: {
       records?: Record<string, unknown>[];
       columns?: {
         title?: React.ReactNode;
         accessor?: string;
         render?: (r: Record<string, unknown>) => React.ReactNode;
+        sortable?: boolean;
       }[];
+      sortStatus?: { columnAccessor: string; direction: "asc" | "desc" };
+      onSortStatusChange?: (s: {
+        columnAccessor: string;
+        direction: "asc" | "desc";
+      }) => void;
       [key: string]: unknown;
     }) =>
       React.createElement(
@@ -55,9 +70,38 @@ jest.mock("mantine-datatable", () => {
           React.createElement(
             "tr",
             null,
-            (columns || []).map((c, i) =>
-              React.createElement("th", { key: i }, safeRender(c.title)),
-            ),
+            (columns || []).map((c, i) => {
+              const accessor = String(c.accessor ?? "");
+              const handleSort = () => {
+                if (!c.sortable || !onSortStatusChange || !accessor) return;
+
+                // Determine next sort direction without nested ternaries:
+                // - default to "asc" on first click
+                // - toggle to "desc" if already sorting by this column
+                let direction: "asc" | "desc" = "asc";
+                if (
+                  sortStatus &&
+                  sortStatus.columnAccessor === accessor &&
+                  sortStatus.direction === "asc"
+                ) {
+                  direction = "desc";
+                }
+
+                onSortStatusChange({
+                  columnAccessor: accessor,
+                  direction,
+                });
+              };
+              return React.createElement(
+                "th",
+                {
+                  key: i,
+                  role: "columnheader",
+                  onClick: handleSort,
+                },
+                safeRender(c.title),
+              );
+            }),
           ),
         ),
         React.createElement(
@@ -100,7 +144,7 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
-// polyfill ResizeObserver for JSDOM
+// polyfill ResizeObserver for JSDOM (Mantine components expect it)
 type TestRO = { observe(): void; unobserve(): void; disconnect(): void };
 const g = globalThis as unknown as { ResizeObserver?: new () => TestRO };
 if (typeof g.ResizeObserver === "undefined") {
@@ -111,12 +155,13 @@ if (typeof g.ResizeObserver === "undefined") {
   };
 }
 
-// Polyfill scrollIntoView for Mantine dropdown navigation
+// Polyfill scrollIntoView used by Mantine combobox behavior in tests
 Element.prototype.scrollIntoView = jest.fn();
 
 jest.setTimeout(15000);
 
 describe("MailroomLockers (admin)", () => {
+  // Minimal location and locker fixtures used across tests.
   const locations = [
     { id: "loc-1", name: "Main Office" },
     { id: "loc-2", name: "Branch" },
@@ -124,22 +169,30 @@ describe("MailroomLockers (admin)", () => {
 
   const lockers = [
     {
-      id: "L1",
-      locker_code: "A-101",
-      location_id: "loc-1",
-      is_available: true,
-      location: { id: "loc-1", name: "Main Office" },
+      location_locker_id: "L1",
+      location_locker_code: "A-101",
+      mailroom_location_id: "loc-1",
+      location_locker_is_available: true,
+      location_locker_is_assignable: true,
+      location: {
+        mailroom_location_id: "loc-1",
+        mailroom_location_name: "Main Office",
+      },
       assigned: null,
     },
     {
-      id: "L2",
-      locker_code: "B-201",
-      location_id: "loc-2",
-      is_available: false,
-      location: { id: "loc-2", name: "Branch" },
+      location_locker_id: "L2",
+      location_locker_code: "B-201",
+      mailroom_location_id: "loc-2",
+      location_locker_is_available: false,
+      location_locker_is_assignable: false,
+      location: {
+        mailroom_location_id: "loc-2",
+        mailroom_location_name: "Branch",
+      },
       assigned: {
-        id: "asg-1",
-        status: "Near Full",
+        mailroom_assigned_locker_id: "asg-1",
+        mailroom_assigned_locker_status: "Near Full",
         registration: { full_name: "Jane Doe" },
       },
     },
@@ -148,6 +201,8 @@ describe("MailroomLockers (admin)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    // Default fetch handler: supports locations GET and lockers GET (with search/tab).
+    // Individual tests override globalThis.fetch when they need POST/PUT/DELETE assertions.
     (globalThis.fetch as unknown) = jest.fn(
       async (input: RequestInfo | URL) => {
         const url = String(input);
@@ -164,12 +219,12 @@ describe("MailroomLockers (admin)", () => {
           let filtered = lockers.slice();
           if (search)
             filtered = filtered.filter((l) =>
-              l.locker_code.toLowerCase().includes(search),
+              l.location_locker_code?.toLowerCase().includes(search),
             );
           if (activeTab === "available")
-            filtered = filtered.filter((l) => l.is_available);
+            filtered = filtered.filter((l) => l.location_locker_is_available);
           if (activeTab === "occupied")
-            filtered = filtered.filter((l) => !l.is_available);
+            filtered = filtered.filter((l) => !l.location_locker_is_available);
           return {
             ok: true,
             json: async () => ({
@@ -192,6 +247,7 @@ describe("MailroomLockers (admin)", () => {
   });
 
   function renderComponent() {
+    // SWRConfig with Map provider prevents shared test cache between renders.
     return render(
       <SWRConfig value={{ provider: () => new Map() }}>
         <MantineProvider>
@@ -204,11 +260,11 @@ describe("MailroomLockers (admin)", () => {
   it("renders lockers list with locations and statuses", async () => {
     renderComponent();
 
-    // wait for table element
+    // wait for table element to appear
     const table = await screen.findByRole("table", { name: /Lockers list/i });
     expect(table).toBeInTheDocument();
 
-    // verify the lockers endpoint was requested and table has rows
+    // confirm fetch was called and rows are present
     await waitFor(() => {
       expect(
         (globalThis.fetch as jest.Mock).mock.calls.some((c: unknown[]) =>
@@ -229,7 +285,7 @@ describe("MailroomLockers (admin)", () => {
       expect(table.querySelectorAll("tbody tr").length).toBeGreaterThan(0);
     });
 
-    // Search for B-201 -> assert fetch was invoked with search param (UI rendering may vary)
+    // Search for B-201 -> assert API called with search param.
     const searchInput = screen.getByLabelText(
       "Search lockers",
     ) as HTMLInputElement;
@@ -250,7 +306,7 @@ describe("MailroomLockers (admin)", () => {
       ).toBe(true);
     });
 
-    // Clear search -> ensure fetch called without search filter
+    // Clear search and verify fetch called without search filter
     const clearBtn = screen.getByLabelText("Clear search");
     await userEvent.click(clearBtn);
     await waitFor(() => {
@@ -265,7 +321,7 @@ describe("MailroomLockers (admin)", () => {
       ).toBe(true);
     });
 
-    // Switch to "Available" tab -> fetch should include activeTab=available
+    // Switch to "Available" tab -> backend should receive activeTab=available
     const availableTab = screen.getByRole("tab", { name: /Available/i });
     await userEvent.click(availableTab);
     await waitFor(() => {
@@ -281,7 +337,7 @@ describe("MailroomLockers (admin)", () => {
       ).toBe(true);
     });
 
-    // Switch to "Occupied" tab -> fetch should include activeTab=occupied
+    // Switch to "Occupied" tab -> backend should receive activeTab=occupied
     const occupiedTab = screen.getByRole("tab", { name: /Occupied/i });
     await userEvent.click(occupiedTab);
     await waitFor(() => {
@@ -299,7 +355,7 @@ describe("MailroomLockers (admin)", () => {
   });
 
   it("adds a locker via the Add Locker form", async () => {
-    // install a fetch handler that supports GET/POST/PUT/DELETE for this test
+    // install a fetch handler supporting GET/POST for this test so we can assert POST payload.
     const serverFetch = jest.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -328,11 +384,24 @@ describe("MailroomLockers (admin)", () => {
         }
 
         if (url.includes("/api/admin/mailroom/lockers") && method === "POST") {
-          // echo created locker
+          // echo created locker, include is_assignable returned value
           const body = init?.body ? JSON.parse(String(init.body)) : {};
           return {
             ok: true,
-            json: async () => ({ data: { id: "NEW", ...body } }),
+            json: async () => ({
+              data: {
+                location_locker_id: "NEW",
+                location_locker_code: body.locker_code,
+                mailroom_location_id: body.location_id,
+                location_locker_is_available: true,
+                location_locker_is_assignable: body.is_assignable ?? true,
+                location: {
+                  mailroom_location_id: body.location_id,
+                  mailroom_location_name: "Main Office",
+                },
+                assigned: null,
+              },
+            }),
           } as unknown as Response;
         }
 
@@ -347,10 +416,10 @@ describe("MailroomLockers (admin)", () => {
 
     renderComponent();
 
-    // wait for table to render so UI is stabilised
+    // wait for table to render
     await screen.findByRole("table", { name: /Lockers list/i });
 
-    // open add modal (accept aria-label or visible text fallback)
+    // open add modal
     let addBtn;
     try {
       addBtn = await screen.findByLabelText("Add new locker");
@@ -361,30 +430,25 @@ describe("MailroomLockers (admin)", () => {
     }
     await userEvent.click(addBtn);
 
-    // wait for modal and scope to it
+    // fill modal fields and select location via type + keyboard
     const addDialog = await screen.findByRole("dialog", {
       name: /Add Locker/i,
     });
-
-    // type locker code scoped to dialog
     const codeInput = await within(addDialog).findByLabelText(/Locker Code/i);
     await userEvent.type(codeInput, "C-300");
 
-    // select location: verify input exists, then type and enter to select (avoids portal visibility issues)
     const locInput = within(addDialog).getByPlaceholderText("Select location");
     await userEvent.click(locInput);
     await userEvent.type(locInput, "Main Office");
-    // wait a tick for internal filtering
     await userEvent.keyboard("{ArrowDown}");
     await userEvent.keyboard("{Enter}");
 
-    // submit
+    // submit and assert POST called with expected body
     const saveBtn = await within(addDialog).findByLabelText(
       "Save locker details",
     );
     await userEvent.click(saveBtn);
 
-    // assert POST occurred with expected payload
     await waitFor(() => {
       const calls = (serverFetch as jest.Mock).mock.calls.map((c) => ({
         url: String(c[0]),
@@ -409,10 +473,12 @@ describe("MailroomLockers (admin)", () => {
           : {};
       expect(sent.locker_code).toBe("C-300");
       expect(sent.location_id).toBeDefined();
+      expect(sent.is_assignable).toBe(true);
     });
   });
 
   it("edits an existing locker and saves changes", async () => {
+    // server returns lockers on GET and echoes PUT updates for L1
     const serverFetch = jest.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -440,7 +506,7 @@ describe("MailroomLockers (admin)", () => {
           } as unknown as Response;
         }
 
-        // accept PUT to specific locker id
+        // accept PUT to specific locker id and return updated locker shape
         if (
           url.match(/\/api\/admin\/mailroom\/lockers\/.+/) &&
           method === "PUT"
@@ -448,7 +514,20 @@ describe("MailroomLockers (admin)", () => {
           const body = init?.body ? JSON.parse(String(init.body)) : {};
           return {
             ok: true,
-            json: async () => ({ data: { ...body } }),
+            json: async () => ({
+              data: {
+                location_locker_id: "L1",
+                location_locker_code: body.locker_code,
+                mailroom_location_id: body.location_id,
+                location_locker_is_available: true,
+                location_locker_is_assignable: body.is_assignable ?? true,
+                location: {
+                  mailroom_location_id: body.location_id,
+                  mailroom_location_name: "Main Office",
+                },
+                assigned: lockers[0].assigned,
+              },
+            }),
           } as unknown as Response;
         }
 
@@ -463,22 +542,19 @@ describe("MailroomLockers (admin)", () => {
 
     renderComponent();
 
-    // ensure table rendered and open the edit control for the A-101 row
+    // open edit for A-101 and change locker code
     await screen.findByRole("table", { name: /Lockers list/i });
     const editBtn = await screen.findByLabelText(/Edit locker A-101/i);
     await userEvent.click(editBtn);
 
-    // change locker code
     const codeInput = (await screen.findByLabelText(
       /Locker Code/i,
     )) as HTMLInputElement;
     await userEvent.clear(codeInput);
     await userEvent.type(codeInput, "A-101-UPDATED");
 
-    // save
+    // save and assert PUT called with updated code
     await userEvent.click(screen.getByLabelText("Save locker details"));
-
-    // assert PUT was called
     await waitFor(() => {
       const calls = (serverFetch as jest.Mock).mock.calls.map((c) => ({
         url: String(c[0]),
@@ -505,6 +581,7 @@ describe("MailroomLockers (admin)", () => {
   });
 
   it("deletes a locker after confirming the delete modal", async () => {
+    // server supports DELETE for L1 and returns success
     const serverFetch = jest.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -550,12 +627,11 @@ describe("MailroomLockers (admin)", () => {
 
     renderComponent();
 
-    // ensure table rendered and click the delete control for A-101
+    // open delete for A-101 and confirm
     await screen.findByRole("table", { name: /Lockers list/i });
     const deleteBtn = await screen.findByLabelText(/Delete locker A-101/i);
     await userEvent.click(deleteBtn);
 
-    // confirm deletion in modal (scope to the confirm dialog)
     const confirmDialog = await screen.findByRole("dialog", {
       name: /Confirm Deletion/i,
     });
@@ -564,7 +640,7 @@ describe("MailroomLockers (admin)", () => {
     );
     await userEvent.click(confirmBtn);
 
-    // assert DELETE called and success alert shows
+    // assert DELETE called
     await waitFor(() => {
       const calls = (serverFetch as jest.Mock).mock.calls.map((c) => ({
         url: String(c[0]),
@@ -579,9 +655,163 @@ describe("MailroomLockers (admin)", () => {
       ).toBe(true);
     });
 
-    // global success alert should appear
+    // global success alert should appear in UI
     expect(
       await screen.findByText(/Locker deleted successfully/i),
     ).toBeInTheDocument();
+  });
+
+  it("toggles assignable in edit modal and sends is_assignable", async () => {
+    // server responds to GET and echoes back PUT updates for L2 so we can assert payload
+    const serverFetch = jest.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method || "GET").toUpperCase();
+
+        if (url.includes("/api/admin/mailroom/locations")) {
+          return {
+            ok: true,
+            json: async () => ({ data: locations }),
+          } as unknown as Response;
+        }
+
+        if (url.includes("/api/admin/mailroom/lockers") && method === "GET") {
+          return {
+            ok: true,
+            json: async () => ({
+              data: lockers,
+              pagination: {
+                page: 1,
+                pageSize: 10,
+                totalCount: lockers.length,
+                totalPages: 1,
+              },
+            }),
+          } as unknown as Response;
+        }
+
+        if (
+          url.match(/\/api\/admin\/mailroom\/lockers\/.+/) &&
+          method === "PUT"
+        ) {
+          const body = init?.body ? JSON.parse(String(init.body)) : {};
+          return {
+            ok: true,
+            json: async () => ({
+              data: {
+                location_locker_id: "L2",
+                location_locker_code: body.locker_code,
+                mailroom_location_id: body.location_id,
+                location_locker_is_available: true,
+                location_locker_is_assignable: body.is_assignable ?? true,
+                location: {
+                  mailroom_location_id: body.location_id,
+                  mailroom_location_name: "Branch",
+                },
+                assigned: lockers[1].assigned,
+              },
+            }),
+          } as unknown as Response;
+        }
+
+        return {
+          ok: false,
+          text: async () => "not found",
+        } as unknown as Response;
+      },
+    ) as unknown as typeof global.fetch;
+
+    globalThis.fetch = serverFetch;
+
+    renderComponent();
+
+    // open edit modal for B-201 (initial assignable=false in fixture)
+    await screen.findByRole("table", { name: /Lockers list/i });
+    const editBtn = await screen.findByLabelText(/Edit locker B-201/i);
+    await userEvent.click(editBtn);
+
+    const dialog = await screen.findByRole("dialog", { name: /Edit Locker/i });
+
+    // the Assignable control is a Switch -> role "switch"
+    const assignableSwitch = within(dialog).getByRole("switch", {
+      name: /Set locker assignable/i,
+    });
+    // initial state should reflect fixture (unchecked == not assignable)
+    expect(assignableSwitch).not.toBeChecked();
+
+    // toggle to true (assignable) and save
+    await userEvent.click(assignableSwitch);
+    expect(assignableSwitch).toBeChecked();
+
+    const saveBtn = within(dialog).getByLabelText("Save locker details");
+    await userEvent.click(saveBtn);
+
+    // assert PUT payload includes is_assignable: true
+    await waitFor(() => {
+      const calls = (serverFetch as jest.Mock).mock.calls.map((c) => ({
+        url: String(c[0]),
+        init: c[1],
+      }));
+      const putCall = calls.find(
+        (c) =>
+          c.url.match(/\/api\/admin\/mailroom\/lockers\/L2/) &&
+          c.init?.method === "PUT",
+      );
+      expect(putCall).toBeTruthy();
+      const sent =
+        putCall && putCall.init && putCall.init.body
+          ? JSON.parse(String(putCall.init.body))
+          : {};
+      expect(sent.is_assignable).toBe(true);
+    });
+  });
+
+  it("renders Assignable badge values in the table", async () => {
+    renderComponent();
+
+    // table should render both Yes and No based on fixture data
+    await screen.findByRole("table", { name: /Lockers list/i });
+    expect(screen.getByText("Yes")).toBeInTheDocument();
+    expect(screen.getByText("No")).toBeInTheDocument();
+  });
+
+  it("requests sorting by Assignable when the column header is clicked", async () => {
+    renderComponent();
+
+    // click Assignable header to trigger sort
+    const header = await screen.findByRole("columnheader", {
+      name: /Assignable/i,
+    });
+    await userEvent.click(header);
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as jest.Mock).mock.calls.map((c) =>
+        String(c[0]),
+      );
+      expect(
+        calls.some(
+          (u: string) =>
+            u.includes("/api/admin/mailroom/lockers") &&
+            u.includes("sortBy=location_locker_is_assignable") &&
+            u.includes("sortOrder=asc"),
+        ),
+      ).toBe(true);
+    });
+
+    // click again to toggle to desc
+    await userEvent.click(header);
+    await waitFor(() => {
+      const calls = (globalThis.fetch as jest.Mock).mock.calls.map((c) =>
+        String(c[0]),
+      );
+      expect(
+        calls.some(
+          (u: string) =>
+            u.includes("/api/admin/mailroom/lockers") &&
+            u.includes("sortBy=location_locker_is_assignable") &&
+            u.includes("sortOrder=desc"),
+        ),
+      ).toBe(true);
+    });
   });
 });

@@ -97,6 +97,8 @@ export default function RegisterForm({
   // if logged-in user already has a mobile, use it and lock the input
   useEffect(() => {
     const userId = sess?.user?.id;
+    console.log("RegisterForm session:", sess);
+    console.log("RegisterForm user_metadata:", sess?.user?.user_metadata);
     if (!userId) return;
 
     const profile = sess?.profile ?? {};
@@ -105,6 +107,13 @@ export default function RegisterForm({
     // immediate: populate mobile from profile/session (show this first)
     const mobileFromProfile =
       getString(profileRec, "users_phone", "mobile_number") ||
+      getString(
+        (sess?.user?.user_metadata as Record<string, unknown> | undefined) ??
+          undefined,
+        "mobile_number",
+        "phone_number",
+        "phone",
+      ) ||
       (typeof sess?.user?.phone === "string" ? sess.user.phone : "") ||
       (typeof sess?.user?.phone_number === "string"
         ? sess.user.phone_number

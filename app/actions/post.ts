@@ -1113,8 +1113,9 @@ export async function adminCreateLocker(args: {
   locationId: string;
   lockerCode: string;
   isAvailable?: boolean;
+  isAssignable?: boolean;
 }): Promise<{ id: string; code: string | null }> {
-  const { locationId, lockerCode, isAvailable = true } = args;
+  const { locationId, lockerCode, isAvailable, isAssignable = true } = args;
 
   if (!locationId || !lockerCode) {
     throw new Error("locationId and lockerCode are required");
@@ -1127,6 +1128,7 @@ export async function adminCreateLocker(args: {
         mailroom_location_id: locationId,
         location_locker_code: lockerCode,
         location_locker_is_available: isAvailable,
+        location_locker_is_assignable: isAssignable,
       },
     ])
     .select()
@@ -1193,6 +1195,7 @@ export async function adminGenerateLockers(args: {
       mailroom_location_id: locationId,
       location_locker_code: `${codePrefix}${i}`,
       location_locker_is_available: true,
+      location_locker_is_assignable: true,
     });
   }
 

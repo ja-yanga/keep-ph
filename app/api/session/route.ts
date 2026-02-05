@@ -45,6 +45,8 @@ export async function GET(_request: Request) {
       profile,
       role,
       kyc,
+      mobile_number:
+        (profile as Record<string, unknown> | null)?.mobile_number ?? null,
       // isKycVerified: kyc.status === "VERIFIED",
       needs_onboarding: false,
     });
