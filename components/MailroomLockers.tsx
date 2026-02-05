@@ -25,6 +25,7 @@ import { useSearchParams } from "next/navigation";
 import {
   IconEdit,
   IconPlus,
+  IconRefresh,
   IconSearch,
   IconTrash,
   IconLock,
@@ -39,6 +40,7 @@ import { notifications } from "@mantine/notifications";
 import { AdminTable } from "./common/AdminTable";
 import { DataTableColumn, type DataTableSortStatus } from "mantine-datatable";
 import { getStatusFormat } from "@/utils/helper";
+import { T_LocationLocker } from "@/utils/types";
 
 const SearchInput = React.memo(
   ({
@@ -119,30 +121,11 @@ const SearchInput = React.memo(
 SearchInput.displayName = "SearchInput";
 
 type Location = {
-  id: string;
-  name: string;
+  mailroom_location_id: string;
+  mailroom_location_name: string;
 };
 
-type Locker = {
-  id: string;
-  locker_code: string;
-  location_id: string;
-  is_available: boolean;
-  location?: Location | null;
-  // keep optional DB-style keys that may appear in payloads
-  location_locker_id?: string;
-  // optional assigned payload embedded on lockers (overview expanded)
-  assigned?: {
-    id?: string;
-    registration_id?: string;
-    status?: string;
-    registration?: {
-      id?: string;
-      full_name?: string;
-      email: string;
-    } | null;
-  } | null;
-};
+type Locker = T_LocationLocker;
 
 const fetcherLockers = async (
   url: string,
@@ -164,7 +147,7 @@ const fetcherLockers = async (
 };
 
 export default function MailroomLockers() {
-  const [lockers, setLockers] = useState<Locker[]>([]);
+  // const [lockers, setLockers] = useState<Locker[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [query, setQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -214,7 +197,7 @@ export default function MailroomLockers() {
     [query, page],
   );
 
-  const lockersKey = `/api/admin/mailroom/lockers?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(query)}&locationId=${filterLocation || ""}&activeTab=${activeTab}`;
+  const lockersKey = `/api/admin/mailroom/lockers?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(query)}&locationId=${filterLocation || ""}&activeTab=${activeTab}&sortBy=${sortStatus.columnAccessor}&sortOrder=${sortStatus.direction}`;
   const fetcherLocations = async (url: string): Promise<Location[]> => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -229,8 +212,10 @@ export default function MailroomLockers() {
     return (data as unknown[]).map((r) => {
       const row = r as Record<string, unknown>;
       return {
-        id: String(row.id ?? row.mailroom_location_id ?? ""),
-        name: String(row.name ?? row.mailroom_location_name ?? ""),
+        mailroom_location_id: String(row.id ?? row.mailroom_location_id ?? ""),
+        mailroom_location_name: String(
+          row.name ?? row.mailroom_location_name ?? "",
+        ),
       } as Location;
     });
   };
@@ -272,46 +257,7 @@ export default function MailroomLockers() {
     },
   );
 
-  const sortedLockers = useMemo(() => {
-    const data = overviewData?.data || [];
-    return [...data].sort((a, b) => {
-      const { columnAccessor, direction } = sortStatus;
-      let valA: string | number | boolean | null | undefined;
-      let valB: string | number | boolean | null | undefined;
-
-      if (columnAccessor === "location.name") {
-        valA = a.location?.name;
-        valB = b.location?.name;
-      } else if (columnAccessor === "capacity") {
-        valA = a.assigned?.status;
-        valB = b.assigned?.status;
-      } else {
-        valA = a[columnAccessor as keyof Locker] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-        valB = b[columnAccessor as keyof Locker] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-      }
-
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
-
-      const result = valA < valB ? -1 : 1;
-      return direction === "asc" ? result : -result;
-    });
-  }, [overviewData, sortStatus]);
-
-  useEffect(() => {
-    setLockers(sortedLockers);
-  }, [sortedLockers]);
+  const lockers = useMemo(() => overviewData?.data || [], [overviewData]);
 
   const refreshAll = async () => {
     try {
@@ -320,6 +266,12 @@ export default function MailroomLockers() {
       // noop
     }
   };
+
+  useEffect(() => {
+    if (overviewData) {
+      setIsSearching(false);
+    }
+  }, [overviewData]);
 
   useEffect(() => {
     if (globalSuccess) {
@@ -344,11 +296,13 @@ export default function MailroomLockers() {
     if (locker) {
       setEditingLocker(locker);
       setFormData({
-        locker_code: locker.locker_code,
-        location_id: locker.location_id,
-        is_available: locker.is_available,
+        locker_code: locker.location_locker_code || "",
+        location_id: locker.mailroom_location_id || "",
+        is_available: locker.location_locker_is_available ?? true,
       });
-      setCapacityStatus(locker.assigned?.status ?? "Normal");
+      setCapacityStatus(
+        locker.assigned?.mailroom_assigned_locker_status ?? "Normal",
+      );
     } else {
       setEditingLocker(null);
       setFormData({ locker_code: "", location_id: "", is_available: true });
@@ -369,14 +323,19 @@ export default function MailroomLockers() {
 
     try {
       const url = editingLocker
-        ? `/api/admin/mailroom/lockers/${editingLocker.id}`
+        ? `/api/admin/mailroom/lockers/${editingLocker.location_locker_id}`
         : "/api/admin/mailroom/lockers";
       const method = editingLocker ? "PUT" : "POST";
+
+      const payload = {
+        ...formData,
+        ...(editingLocker && { assignment_status: capacityStatus }),
+      };
 
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -384,31 +343,11 @@ export default function MailroomLockers() {
         throw new Error(txt || "Failed to save locker");
       }
 
-      // if locker has an assignment, update its capacity status
-      const assignment = editingLocker?.assigned;
-
-      if (editingLocker && assignment && capacityStatus !== assignment.status) {
-        const assignmentId = assignment.id;
-        if (assignmentId) {
-          const statusRes = await fetch(
-            `/api/admin/mailroom/assigned-lockers/${assignmentId}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: capacityStatus }),
-            },
-          );
-          if (!statusRes.ok) {
-            void (await statusRes.text().catch(() => ""));
-          }
-        }
-      }
-
       setGlobalSuccess(
         `Locker ${editingLocker ? "updated" : "created"} successfully`,
       );
       close();
-      await refreshAll();
+      void refreshAll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setFormError(msg || "Failed to save locker");
@@ -436,7 +375,8 @@ export default function MailroomLockers() {
         throw new Error(txt || "Failed to delete");
       }
       setGlobalSuccess("Locker deleted successfully");
-      await refreshAll();
+      closeDeleteModal();
+      void refreshAll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       notifications.show({
@@ -453,86 +393,75 @@ export default function MailroomLockers() {
   const columns = React.useMemo<DataTableColumn<Locker>[]>(
     () => [
       {
-        accessor: "locker_code",
+        accessor: "location_locker_code",
         title: "Locker Code",
-        width: 150,
         sortable: true,
-        render: ({ locker_code }: Locker) => (
+        render: ({ location_locker_code }: Locker) => (
           <Text fw={700} c="dark.4" size="sm">
-            {locker_code}
+            {location_locker_code}
           </Text>
         ),
       },
       {
-        accessor: "location.name",
+        accessor: "mailroom_location_name",
         title: "Location",
         sortable: true,
         render: ({ location }: Locker) => (
           <Text size="sm" c="dark.3" fw={500}>
-            {location?.name ?? "Unknown"}
+            {location?.mailroom_location_name ?? "Unknown"}
           </Text>
         ),
       },
       {
-        accessor: "is_available",
+        accessor: "location_locker_is_available",
         title: "Status",
-        width: 150,
-        sortable: true,
-        render: ({ is_available }: Locker) => (
-          <Badge
-            color={is_available ? "teal" : "red"}
-            variant="dot"
-            size="md"
-            radius="md"
-          >
-            {is_available ? "Available" : "Occupied"}
-          </Badge>
-        ),
-      },
-      {
-        accessor: "capacity",
-        title: "Capacity Status",
-        width: 180,
         sortable: true,
         render: (locker: Locker) => {
-          const assignment = locker.assigned;
-
-          if (!assignment) {
-            return (
-              <Text size="sm" c="gray.4">
-                —
-              </Text>
-            );
-          }
-
-          const color = getStatusFormat(assignment.status);
-
+          const isAvail = locker.location_locker_is_available;
           return (
-            <Badge
-              color={color}
-              variant="outline"
-              size="sm"
-              fw={700}
-              tt="uppercase"
-            >
-              {assignment.status ?? "NORMAL"}
+            <Badge color={isAvail ? "teal" : "red"} variant="dot">
+              {isAvail ? "Available" : "Occupied"}
             </Badge>
           );
         },
       },
       {
+        accessor: "mailroom_assigned_locker_status",
+        title: "Capacity Status",
+        sortable: true,
+        render: ({ assigned }: Locker) => {
+          const status = assigned?.mailroom_assigned_locker_status || "-";
+          return (
+            <Badge color={getStatusFormat(status)} variant="outline">
+              {status}
+            </Badge>
+          );
+        },
+      },
+      // {
+      //   accessor: "location_locker_created_at",
+      //   title: "Date Added",
+      //   sortable: true,
+      //   render: ({ location_locker_created_at }: Locker) => (
+      //     <Text size="sm" c="dark.3">
+      //       {location_locker_created_at
+      //         ? new Date(location_locker_created_at).toLocaleDateString()
+      //         : "-"}
+      //     </Text>
+      //   ),
+      // },
+      {
         accessor: "actions",
         title: "Actions",
-        width: 100,
-        textAlign: "right" as const,
+        textAlign: "right",
         render: (locker: Locker) => (
-          <Group gap="xs" justify="flex-end" wrap="nowrap">
-            <Tooltip label="Edit locker details">
+          <Group gap={4} justify="right" wrap="nowrap">
+            <Tooltip label="Edit locker">
               <ActionIcon
                 variant="subtle"
-                color="blue"
+                color="blue.8"
                 onClick={() => handleOpenModal(locker)}
-                aria-label={`Edit locker ${locker.locker_code}`}
+                aria-label={`Edit locker ${locker.location_locker_code}`}
               >
                 <IconEdit size={16} aria-hidden="true" />
               </ActionIcon>
@@ -541,8 +470,8 @@ export default function MailroomLockers() {
               <ActionIcon
                 variant="subtle"
                 color="red.8"
-                onClick={() => handleDelete(locker.id)}
-                aria-label={`Delete locker ${locker.locker_code}`}
+                onClick={() => handleDelete(locker.location_locker_id)}
+                aria-label={`Delete locker ${locker.location_locker_code}`}
               >
                 <IconTrash size={16} aria-hidden="true" />
               </ActionIcon>
@@ -579,7 +508,10 @@ export default function MailroomLockers() {
               <Select
                 placeholder="Filter by Location"
                 aria-label="Filter by location"
-                data={locations.map((l) => ({ value: l.id, label: l.name }))}
+                data={locations.map((l) => ({
+                  value: l.mailroom_location_id,
+                  label: l.mailroom_location_name,
+                }))}
                 value={filterLocation}
                 onChange={(val) => {
                   setFilterLocation(val ?? null);
@@ -588,14 +520,27 @@ export default function MailroomLockers() {
                 clearable
                 searchable
               />
-              <Button
-                leftSection={<IconPlus size={16} aria-hidden="true" />}
-                onClick={() => handleOpenModal()}
-                aria-label="Add new locker"
-                color="#1e3a8a"
-              >
-                Add
-              </Button>
+              <Group gap="xs">
+                <Button
+                  leftSection={<IconPlus size={16} aria-hidden="true" />}
+                  onClick={() => handleOpenModal()}
+                  aria-label="Add new locker"
+                  color="#1e3a8a"
+                  style={{ flex: 1 }}
+                >
+                  Add
+                </Button>
+                <Tooltip label="Refresh data">
+                  <ActionIcon
+                    color="#1e3a8a"
+                    size="lg"
+                    onClick={refreshAll}
+                    loading={isValidating && !isSearching}
+                  >
+                    <IconRefresh size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
             </Group>
             {(query || filterLocation || activeTab !== "all") && (
               <Button
@@ -621,7 +566,10 @@ export default function MailroomLockers() {
               <Select
                 placeholder="Filter by Location"
                 aria-label="Filter by location"
-                data={locations.map((l) => ({ value: l.id, label: l.name }))}
+                data={locations.map((l) => ({
+                  value: l.mailroom_location_id,
+                  label: l.mailroom_location_name,
+                }))}
                 value={filterLocation}
                 onChange={(val) => {
                   setFilterLocation(val ?? null);
@@ -644,14 +592,25 @@ export default function MailroomLockers() {
                 </Button>
               )}
             </Group>
-            <Button
-              leftSection={<IconPlus size={16} aria-hidden="true" />}
-              onClick={() => handleOpenModal()}
-              aria-label="Add new locker"
-              color="#1e3a8a"
-            >
-              Add Locker
-            </Button>
+            <Group gap="xs">
+              <Button
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
+                onClick={() => handleOpenModal()}
+                aria-label="Add new locker"
+                color="#1e3a8a"
+              >
+                Add Locker
+              </Button>
+
+              <Button
+                aria-label="Refresh data"
+                color="#1e3a8a"
+                onClick={refreshAll}
+                loading={isValidating && !isSearching}
+              >
+                <IconRefresh size={18} />
+              </Button>
+            </Group>
           </Group>
         )}
 
@@ -691,6 +650,7 @@ export default function MailroomLockers() {
               }}
             >
               <AdminTable<Locker>
+                idAccessor="location_locker_id"
                 records={isSearching ? [] : lockers}
                 fetching={isValidating || isSearching}
                 totalRecords={overviewData?.pagination?.totalCount ?? 0}
@@ -778,7 +738,10 @@ export default function MailroomLockers() {
             clearable
             placeholder="Select location"
             aria-label="Select locker location"
-            data={locations.map((l) => ({ value: l.id, label: l.name }))}
+            data={locations.map((l) => ({
+              value: l.mailroom_location_id,
+              label: l.mailroom_location_name,
+            }))}
             value={formData.location_id}
             onChange={(val) =>
               setFormData({ ...formData, location_id: val ?? "" })
@@ -800,7 +763,7 @@ export default function MailroomLockers() {
                     Assigned To:
                   </Text>
                   <Text size="sm">
-                    {activeAssignment.registration?.full_name}
+                    {activeAssignment?.registration?.full_name}
                   </Text>
                 </Group>
 

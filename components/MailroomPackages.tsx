@@ -111,6 +111,7 @@ export default function MailroomPackages() {
   const [archivedTotalCount, setArchivedTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebouncedValue(search, 500);
 
   // Recipient search state for async autocomplete (performance optimization for 20k+ users)
   const [recipientSearch, setRecipientSearch] = useState("");
@@ -251,6 +252,10 @@ export default function MailroomPackages() {
     const params = new URLSearchParams();
     params.set("page", page.toString());
     params.set("limit", pageSize.toString());
+    params.set("sortBy", sortStatus.columnAccessor.toString());
+    params.set("sortOrder", sortStatus.direction);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (filterType) params.set("type", filterType);
 
     let statusFilter: string[] = [];
     if (activeTab === "active") statusFilter = ["STORED"];
@@ -271,7 +276,15 @@ export default function MailroomPackages() {
     }
 
     return `${baseUrl}?${params.toString()}`;
-  }, [page, pageSize, search, activeTab, filterStatus]);
+  }, [
+    page,
+    pageSize,
+    debouncedSearch,
+    activeTab,
+    filterStatus,
+    filterType,
+    sortStatus,
+  ]);
 
   const fetcher = async (url: string) => {
     // avoid stale cached responses when revalidating
@@ -289,7 +302,7 @@ export default function MailroomPackages() {
 
   const archivedKey =
     activeTab === "archive"
-      ? `${API_ENDPOINTS.admin.mailroom.archive}?limit=${pageSize}&offset=${(page - 1) * pageSize}`
+      ? `${API_ENDPOINTS.admin.mailroom.archive}?limit=${pageSize}&offset=${(page - 1) * pageSize}&sortBy=${sortStatus.columnAccessor}&sortOrder=${sortStatus.direction}`
       : null;
 
   const { data: archivedData, isValidating: isArchivedValidating } = useSWR(
@@ -1050,42 +1063,8 @@ export default function MailroomPackages() {
 
   // Memoize paginated packages
   const paginatedPackages = useMemo(() => {
-    const pkgs = activeTab === "archive" ? archivedPackages : filteredPackages;
-
-    return [...pkgs].sort((a, b) => {
-      const { columnAccessor, direction } = sortStatus;
-      let valA: string | number | boolean | null | undefined;
-      let valB: string | number | boolean | null | undefined;
-
-      if (columnAccessor === "registration.full_name") {
-        valA = a.registration?.full_name;
-        valB = b.registration?.full_name;
-      } else if (columnAccessor === "locker.locker_code") {
-        valA = a.locker?.locker_code;
-        valB = b.locker?.locker_code;
-      } else {
-        valA = a[columnAccessor as keyof Package] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-        valB = b[columnAccessor as keyof Package] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-      }
-
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
-
-      const result = valA < valB ? -1 : 1;
-      return direction === "asc" ? result : -result;
-    });
-  }, [activeTab, archivedPackages, filteredPackages, sortStatus]);
+    return activeTab === "archive" ? archivedPackages : filteredPackages;
+  }, [activeTab, archivedPackages, filteredPackages]);
 
   const totalRecords = useMemo(
     () => (activeTab === "archive" ? archivedTotalCount : serverTotalCount),

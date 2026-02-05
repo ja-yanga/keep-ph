@@ -34,7 +34,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { getStatusFormat, fetcher } from "@/utils/helper";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { FormattedKycRow, KycRow } from "@/utils/types";
+import { FormattedKycRow, KycTableRow } from "@/utils/types";
 import { useSearchParams } from "next/navigation";
 
 import { AdminTable } from "@/components/common/AdminTable";
@@ -155,7 +155,7 @@ export default function AdminUserKyc() {
   const [sortStatus, setSortStatus] = useState<
     DataTableSortStatus<FormattedKycRow>
   >({
-    columnAccessor: "submitted_at",
+    columnAccessor: "user_kyc_submitted_at",
     direction: "desc",
   });
 
@@ -176,11 +176,11 @@ export default function AdminUserKyc() {
   const swrKey = useMemo(() => {
     const base = `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(
       query,
-    )}&page=${page}&pageSize=${pageSize}`;
+    )}&page=${page}&pageSize=${pageSize}&sortBy=${sortStatus.columnAccessor}&sortOrder=${sortStatus.direction.toUpperCase()}`;
     return statusFilter === "ALL"
       ? base
       : `${base}&status=${encodeURIComponent(statusFilter)}`;
-  }, [query, page, pageSize, statusFilter]);
+  }, [query, page, pageSize, statusFilter, sortStatus]);
 
   const { data, error, isValidating } = useSWR(swrKey, fetcher, {
     revalidateOnFocus: false,
@@ -195,66 +195,30 @@ export default function AdminUserKyc() {
 
   const rows = useMemo<FormattedKycRow[]>(() => {
     const rawData = data?.data || [];
-    const formatted = rawData.map((r: KycRow) => ({
+    return rawData.map((r: KycTableRow) => ({
       ...r,
-      _formattedName:
-        (r.full_name ?? `${r.first_name ?? ""} ${r.last_name ?? ""}`) ||
-        "Unknown",
-      _formattedSub: r.submitted_at
-        ? dayjs(r.submitted_at).format("MMM D, YYYY")
+      _formattedName: `${r.user_kyc_first_name ?? ""} ${r.user_kyc_last_name ?? ""}`,
+      _formattedSub: r.user_kyc_submitted_at
+        ? dayjs(r.user_kyc_submitted_at).format("MMM D, YYYY")
         : "—",
-      _formattedVer: r.verified_at
-        ? dayjs(r.verified_at).format("MMM D, YYYY")
+      _formattedVer: r.user_kyc_verified_at
+        ? dayjs(r.user_kyc_verified_at).format("MMM D, YYYY")
         : "—",
     }));
-
-    return [...formatted].sort((a, b) => {
-      const { columnAccessor, direction } = sortStatus;
-      let valA: string | number | boolean | null | undefined;
-      let valB: string | number | boolean | null | undefined;
-
-      if (columnAccessor === "user") {
-        valA = a._formattedName;
-        valB = b._formattedName;
-      } else if (columnAccessor === "doc") {
-        valA = a.id_document_type;
-        valB = b.id_document_type;
-      } else {
-        valA = a[columnAccessor as keyof FormattedKycRow] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-        valB = b[columnAccessor as keyof FormattedKycRow] as
-          | string
-          | number
-          | boolean
-          | null
-          | undefined;
-      }
-
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
-
-      const result = valA < valB ? -1 : 1;
-      return direction === "asc" ? result : -result;
-    });
-  }, [data, sortStatus]);
+  }, [data]);
   const totalRecords = data?.total_count || 0;
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<KycRow | null>(null);
+  const [selected, setSelected] = useState<KycTableRow | null>(null);
   const [processing, setProcessing] = useState(false);
 
-  const openDetails = useCallback((r: KycRow) => {
+  const openDetails = useCallback((r: KycTableRow) => {
     setSelected(r);
     setModalOpen(true);
   }, []);
 
   const actionVerify = useCallback(
-    async (r: KycRow, status: "VERIFIED" | "REJECTED") => {
+    async (r: KycTableRow, status: "VERIFIED" | "REJECTED") => {
       setProcessing(true);
       try {
         const res = await fetch(API_ENDPOINTS.admin.userKyc(r.user_id), {
@@ -268,9 +232,7 @@ export default function AdminUserKyc() {
           message: `Set ${status}`,
           color: "green",
         });
-        await swrMutate(
-          `${API_ENDPOINTS.admin.userKyc()}?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
-        );
+        await swrMutate(swrKey);
         setModalOpen(false);
       } catch (e) {
         console.error(e);
@@ -322,33 +284,33 @@ export default function AdminUserKyc() {
         },
       },
       {
-        accessor: "doc",
+        accessor: "user_kyc_id_document_type",
         title: "Document",
         sortable: true,
         render: (r: FormattedKycRow) => (
           <Text size="sm" c="dark.4" fw={500}>
-            {(r.id_document_type ?? "—").replace("_", " ")}
+            {(r.user_kyc_id_document_type ?? "—").replace("_", " ")}
           </Text>
         ),
       },
       {
-        accessor: "status",
+        accessor: "user_kyc_status",
         title: "Status",
         width: 140,
         sortable: true,
         render: (r: FormattedKycRow) => (
           <Badge
-            color={getStatusFormat(r.status)}
+            color={getStatusFormat(r.user_kyc_status)}
             variant="dot"
             size="md"
             radius="md"
           >
-            {r.status}
+            {r.user_kyc_status}
           </Badge>
         ),
       },
       {
-        accessor: "submitted_at",
+        accessor: "user_kyc_submitted_at",
         title: "Dates",
         width: 200,
         sortable: true,
@@ -357,7 +319,7 @@ export default function AdminUserKyc() {
             <Text size="sm" c="dark.3">
               Sub: {r._formattedSub}
             </Text>
-            {r.verified_at && (
+            {r.user_kyc_verified_at && (
               <Text size="sm" c="dark.3">
                 Ver: {r._formattedVer}
               </Text>
@@ -446,6 +408,7 @@ export default function AdminUserKyc() {
             <div style={{ marginTop: "1rem" }}>
               <AdminTable<FormattedKycRow>
                 records={isSearching ? [] : rows}
+                idAccessor="user_kyc_id"
                 columns={columns}
                 page={page}
                 onPageChange={setPage}

@@ -12,6 +12,8 @@ import type {
   T_NotificationType,
   UpdateRewardClaimArgs,
   UpdateUserKycStatusArgs,
+  LocationLockerUpdate,
+  T_LocationLocker,
 } from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
@@ -591,4 +593,101 @@ export async function adminUpdateMailroomLocation(args: {
     is_hidden: row.is_hidden ?? false,
     max_locker_limit: row.max_locker_limit ?? null,
   };
+}
+/**
+ * Updates an existing locker for admin.
+ */
+export async function adminUpdateLocker(args: {
+  id: string;
+  lockerCode?: string;
+  isAvailable?: boolean;
+  locationId?: string;
+  assignmentStatus?: string;
+}): Promise<unknown> {
+  const { id, lockerCode, isAvailable, locationId, assignmentStatus } = args;
+
+  if (!id) {
+    throw new Error("Missing id");
+  }
+
+  // fetch current locker to know original location (for total_lockers adjustments)
+  const { data: currentLocker, error: currErr } = await supabaseAdmin
+    .from("location_locker_table")
+    .select("mailroom_location_id")
+    .eq("location_locker_id", id)
+    .maybeSingle();
+
+  if (currErr) throw currErr;
+
+  const originalLocationId = currentLocker?.mailroom_location_id ?? null;
+
+  const updates: LocationLockerUpdate = {};
+  if (lockerCode !== undefined) updates.location_locker_code = lockerCode;
+  if (isAvailable !== undefined)
+    updates.location_locker_is_available = isAvailable;
+  if (locationId !== undefined) updates.mailroom_location_id = locationId;
+
+  if (Object.keys(updates).length > 0) {
+    const { error } = await supabaseAdmin
+      .from("location_locker_table")
+      .update(updates)
+      .eq("location_locker_id", id);
+    if (error) throw error;
+  }
+
+  // if location changed, adjust total_lockers counters
+  if (locationId !== undefined && locationId !== originalLocationId) {
+    // Decrement old
+    if (originalLocationId) {
+      const { data: oldLoc } = await supabaseAdmin
+        .from("mailroom_location_table")
+        .select("mailroom_location_total_lockers")
+        .eq("mailroom_location_id", originalLocationId)
+        .maybeSingle();
+      if (oldLoc) {
+        const cur = oldLoc.mailroom_location_total_lockers ?? 0;
+        await supabaseAdmin
+          .from("mailroom_location_table")
+          .update({ mailroom_location_total_lockers: Math.max(0, cur - 1) })
+          .eq("mailroom_location_id", originalLocationId);
+      }
+    }
+    // Increment new
+    if (locationId) {
+      const { data: newLoc } = await supabaseAdmin
+        .from("mailroom_location_table")
+        .select("mailroom_location_total_lockers")
+        .eq("mailroom_location_id", locationId)
+        .maybeSingle();
+      if (newLoc) {
+        const cur = newLoc.mailroom_location_total_lockers ?? 0;
+        await supabaseAdmin
+          .from("mailroom_location_table")
+          .update({ mailroom_location_total_lockers: cur + 1 })
+          .eq("mailroom_location_id", locationId);
+      }
+    }
+  }
+
+  // Update assignment status if provided
+  if (assignmentStatus) {
+    const { error: assignErr } = await supabaseAdmin
+      .from("mailroom_assigned_locker_table")
+      .update({ mailroom_assigned_locker_status: assignmentStatus })
+      .eq("location_locker_id", id);
+
+    // We don't throw Error if no assignment exists, just ignore
+    void assignErr;
+  }
+
+  // fetch latest state to return
+  const { data, error: reloadErr } = await supabaseAdmin
+    .from("location_locker_table")
+    .select("*, mailroom_location_table(mailroom_location_name)")
+    .eq("location_locker_id", id)
+    .single();
+
+  if (reloadErr) throw reloadErr;
+
+  return data as T_LocationLocker;
 }

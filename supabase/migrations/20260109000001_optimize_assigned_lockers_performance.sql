@@ -23,7 +23,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-    var_return_data JSONB;
+    return_data JSONB;
 BEGIN
     -- Use a more efficient query that leverages indexes
     -- Only select necessary columns and use INNER JOINs for better performance
@@ -47,7 +47,7 @@ BEGIN
             )
         )
         ORDER BY malt.mailroom_assigned_locker_assigned_at DESC
-    ) INTO var_return_data
+    ) INTO return_data
     FROM mailroom_assigned_locker_table malt
     INNER JOIN mailroom_registration_table mrt 
         ON malt.mailroom_registration_id = mrt.mailroom_registration_id
@@ -57,7 +57,7 @@ BEGIN
         ON malt.location_locker_id = llt.location_locker_id
     WHERE llt.location_locker_deleted_at IS NULL; -- Exclude deleted lockers
 
-    RETURN COALESCE(var_return_data, '[]'::JSONB);
+    RETURN COALESCE(return_data, '[]'::JSONB);
 END;
 $$;
 
@@ -67,13 +67,18 @@ $$;
 -- Drop existing functions to avoid overloading issues
 DROP FUNCTION IF EXISTS public.get_admin_mailroom_packages(integer, integer, boolean);
 DROP FUNCTION IF EXISTS public.get_admin_mailroom_packages(integer, integer, boolean, text[]);
-DROP FUNCTION IF EXISTS public.get_admin_mailroom_packages(integer, integer, boolean, text[], text);
+DROP FUNCTION IF EXISTS public.get_admin_mailroom_packages(integer, integer, boolean, text[], text, text);
+DROP FUNCTION IF EXISTS public.get_admin_mailroom_packages(integer, integer, boolean, text[], text, text, text, text);
 
 CREATE OR REPLACE FUNCTION public.get_admin_mailroom_packages(
   input_limit INTEGER DEFAULT 50,
   input_offset INTEGER DEFAULT 0,
   input_compact BOOLEAN DEFAULT false,
-  input_status TEXT[] DEFAULT NULL
+  input_status TEXT[] DEFAULT NULL,
+  input_sort_by TEXT DEFAULT 'received_at',
+  input_sort_order TEXT DEFAULT 'DESC',
+  input_search TEXT DEFAULT NULL,
+  input_type TEXT DEFAULT NULL
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -88,7 +93,15 @@ DECLARE
   assigned_lockers_json JSON;
   total_count INTEGER;
   counts_json JSON;
+  search_query TEXT;
 BEGIN
+  -- Prepare search query
+  IF input_search IS NOT NULL AND input_search != '' THEN
+    search_query := '%' || LOWER(input_search) || '%';
+  ELSE
+    search_query := NULL;
+  END IF;
+
   -- Get tab counts (excluding soft-deleted)
   SELECT JSON_BUILD_OBJECT(
     'active', COUNT(*) FILTER (WHERE mailbox_item_status::TEXT = 'STORED'),
@@ -136,10 +149,31 @@ BEGIN
     LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = mr.mailroom_plan_id
     WHERE mi.mailbox_item_deleted_at IS NULL
       AND (input_status IS NULL OR mi.mailbox_item_status::TEXT = ANY(input_status))
+      AND (input_type IS NULL OR mi.mailbox_item_type::TEXT = input_type)
+      AND (
+        search_query IS NULL OR 
+        LOWER(mi.mailbox_item_name) LIKE search_query OR
+        LOWER(COALESCE(uk.user_kyc_first_name, '') || ' ' || COALESCE(uk.user_kyc_last_name, '')) LIKE search_query OR
+        LOWER(u.users_email) LIKE search_query OR
+        LOWER(ll.location_locker_code) LIKE search_query OR
+        LOWER(mi.mailbox_item_status::TEXT) LIKE search_query
+      )
   ),
   paginated_items AS (
     SELECT * FROM filtered_items
-    ORDER BY mailbox_item_received_at DESC NULLS LAST
+    ORDER BY
+      CASE WHEN input_sort_by = 'received_at' AND input_sort_order = 'ASC' THEN mailbox_item_received_at END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'received_at' AND input_sort_order = 'DESC' THEN mailbox_item_received_at END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'package_name' AND input_sort_order = 'ASC' THEN mailbox_item_name END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'package_name' AND input_sort_order = 'DESC' THEN mailbox_item_name END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'registration.full_name' AND input_sort_order = 'ASC' THEN COALESCE(user_kyc_first_name, '') || ' ' || COALESCE(user_kyc_last_name, '') END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'registration.full_name' AND input_sort_order = 'DESC' THEN COALESCE(user_kyc_first_name, '') || ' ' || COALESCE(user_kyc_last_name, '') END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'locker.locker_code' AND input_sort_order = 'ASC' THEN location_locker_code END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'locker.locker_code' AND input_sort_order = 'DESC' THEN location_locker_code END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'package_type' AND input_sort_order = 'ASC' THEN mailbox_item_type END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'package_type' AND input_sort_order = 'DESC' THEN mailbox_item_type END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'status' AND input_sort_order = 'ASC' THEN mailbox_item_status END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'status' AND input_sort_order = 'DESC' THEN mailbox_item_status END DESC NULLS LAST
     LIMIT input_limit
     OFFSET input_offset
   )
@@ -201,7 +235,7 @@ BEGIN
   INTO total_count, packages_json
   FROM paginated_items pi;
 
-  -- Get registrations (keep as is for now, maybe optimize later if needed)
+  -- Get registrations
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(

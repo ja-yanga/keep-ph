@@ -31,6 +31,8 @@ export async function logActivity(args: {
     | "CLAIM"
     | "RELEASE"
     | "DISPOSE"
+    | "ARCHIVE"
+    | "RESTORE"
     | "SCAN"
     | "PURCHASE";
   type:

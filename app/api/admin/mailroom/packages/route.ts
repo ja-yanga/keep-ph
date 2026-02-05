@@ -12,12 +12,20 @@ export async function GET(req?: Request) {
     const offset = (page - 1) * limit;
     const compact = url.searchParams.get("compact") === "1";
     const status = url.searchParams.get("status")?.split(",") ?? undefined;
+    const sortBy = url.searchParams.get("sortBy") ?? "received_at";
+    const sortOrder = url.searchParams.get("sortOrder") ?? "desc";
+    const search = url.searchParams.get("search") ?? undefined;
+    const type = url.searchParams.get("type") ?? undefined;
 
     const result = await adminGetMailroomPackages({
       limit,
       offset,
       compact,
       status,
+      sortBy,
+      sortOrder,
+      search,
+      type,
     });
 
     return NextResponse.json(

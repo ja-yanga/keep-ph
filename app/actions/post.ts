@@ -11,6 +11,8 @@ import {
   LocationRow,
   RequestRewardClaimArgs,
   RpcClaimResponse,
+  T_LocationLockerInsert,
+  T_LocationLockerUpdate,
   UpdateUserAddressArgs,
   UserAddressRow,
 } from "@/utils/types";
@@ -1103,4 +1105,115 @@ export async function adminPermanentDeleteMailboxItem(id: string) {
   }
 
   return typeof data === "string" ? JSON.parse(data) : data;
+}
+/**
+ * Creates a new locker for admin.
+ */
+export async function adminCreateLocker(args: {
+  locationId: string;
+  lockerCode: string;
+  isAvailable?: boolean;
+}): Promise<{ id: string; code: string | null }> {
+  const { locationId, lockerCode, isAvailable = true } = args;
+
+  if (!locationId || !lockerCode) {
+    throw new Error("locationId and lockerCode are required");
+  }
+
+  const { data, error } = await supabase
+    .from("location_locker_table")
+    .insert([
+      {
+        mailroom_location_id: locationId,
+        location_locker_code: lockerCode,
+        location_locker_is_available: isAvailable,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Failed to create locker");
+  }
+
+  const created = data as T_LocationLockerInsert;
+
+  return {
+    id: created.location_locker_id as string,
+    code: created.location_locker_code,
+  };
+}
+
+/**
+ * Bulk generates lockers for a location.
+ */
+export async function adminGenerateLockers(args: {
+  locationId: string;
+  total: number;
+}): Promise<{
+  location_id: string;
+  created_count: number;
+  created_lockers: Array<{ id: string; code: string | null }>;
+  total_lockers: number;
+}> {
+  const { locationId, total } = args;
+
+  if (!locationId) {
+    throw new Error("Missing locationId");
+  }
+
+  if (!Number.isInteger(total) || total <= 0) {
+    throw new Error("Invalid total; must be a positive integer");
+  }
+
+  // Fetch location to get prefix and current total_lockers
+  const { data: locData, error: locErr } = await supabase
+    .from("mailroom_location_table")
+    .select("mailroom_location_prefix, mailroom_location_total_lockers")
+    .eq("mailroom_location_id", locationId)
+    .single();
+
+  if (locErr || !locData) {
+    throw new Error("Location not found");
+  }
+
+  const prefix = (locData as T_LocationLockerUpdate).mailroom_location_prefix;
+  const currentTotal =
+    (locData as T_LocationLockerUpdate).mailroom_location_total_lockers ?? 0;
+
+  const startIndex = currentTotal + 1;
+  const endIndex = currentTotal + total;
+
+  const lockersToInsert: T_LocationLockerInsert[] = [];
+  const cleanPrefix = prefix ? String(prefix).trim() : null;
+  const codePrefix = cleanPrefix ? `${cleanPrefix}-` : "L-";
+
+  for (let i = startIndex; i <= endIndex; i += 1) {
+    lockersToInsert.push({
+      mailroom_location_id: locationId,
+      location_locker_code: `${codePrefix}${i}`,
+      location_locker_is_available: true,
+    });
+  }
+
+  const { data: insertData, error: insertErr } = await supabase
+    .from("location_locker_table")
+    .insert(lockersToInsert)
+    .select();
+
+  if (insertErr) {
+    throw new Error("Failed to create lockers");
+  }
+
+  const created = insertData as T_LocationLockerInsert[];
+
+  return {
+    location_id: locationId,
+    created_count: created.length,
+    created_lockers: created.map((r) => ({
+      id: r.location_locker_id as string,
+      code: r.location_locker_code as string,
+    })),
+    total_lockers: currentTotal + created.length,
+  };
 }

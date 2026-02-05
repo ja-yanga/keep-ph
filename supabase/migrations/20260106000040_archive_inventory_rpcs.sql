@@ -1,7 +1,12 @@
--- RPC to fetch archived (soft-deleted) inventory records
+DROP FUNCTION IF EXISTS public.get_admin_archived_packages(integer, integer);
+DROP FUNCTION IF EXISTS public.get_admin_archived_packages(integer, integer, text, text);
+
+-- UPDATE: Archived Packages RPC with Sorting
 CREATE OR REPLACE FUNCTION public.get_admin_archived_packages(
   input_limit INTEGER DEFAULT 50,
-  input_offset INTEGER DEFAULT 0
+  input_offset INTEGER DEFAULT 0,
+  input_sort_by TEXT DEFAULT 'deleted_at',
+  input_sort_order TEXT DEFAULT 'DESC'
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -53,7 +58,16 @@ BEGIN
     LEFT JOIN public.mailroom_location_table ml ON ml.mailroom_location_id = mr.mailroom_location_id
     LEFT JOIN public.mailroom_plan_table p ON p.mailroom_plan_id = mr.mailroom_plan_id
     WHERE mi.mailbox_item_deleted_at IS NOT NULL
-    ORDER BY mi.mailbox_item_deleted_at DESC
+  ),
+  sorted_archived AS (
+    SELECT * FROM archived_items
+    ORDER BY
+      CASE WHEN input_sort_by = 'deleted_at' AND input_sort_order = 'ASC' THEN mailbox_item_deleted_at END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'deleted_at' AND input_sort_order = 'DESC' THEN mailbox_item_deleted_at END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'received_at' AND input_sort_order = 'ASC' THEN mailbox_item_received_at END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'received_at' AND input_sort_order = 'DESC' THEN mailbox_item_received_at END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'package_name' AND input_sort_order = 'ASC' THEN mailbox_item_name END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'package_name' AND input_sort_order = 'DESC' THEN mailbox_item_name END DESC NULLS LAST
     LIMIT input_limit
     OFFSET input_offset
   )
@@ -105,7 +119,7 @@ BEGIN
     '[]'::JSON
   )
   INTO packages_json
-  FROM archived_items ai;
+  FROM sorted_archived ai;
 
   result := JSON_BUILD_OBJECT(
     'packages', packages_json,
@@ -126,7 +140,7 @@ AS $$
 DECLARE
   var_item_id UUID;
   var_package_name TEXT;
-  var_return_data JSONB;
+  return_data JSONB;
 BEGIN
   var_item_id := (input_data->>'id')::UUID;
 
@@ -140,16 +154,16 @@ BEGIN
     RAISE EXCEPTION 'Package not found';
   END IF;
 
-  var_return_data := JSONB_BUILD_OBJECT(
+  return_data := JSONB_BUILD_OBJECT(
     'success', TRUE,
     'package_name', var_package_name,
     'restored_at', NOW()
   );
 
-  RETURN var_return_data;
+  RETURN return_data;
 END;
 $$;
 
 -- Grant permissions
-GRANT EXECUTE ON FUNCTION public.get_admin_archived_packages(INTEGER, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_archived_packages(INTEGER, INTEGER, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_restore_mailbox_item(JSONB) TO authenticated;

@@ -16,6 +16,7 @@ import {
   Box,
   VisuallyHidden,
   Flex,
+  Alert,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -23,17 +24,14 @@ import {
   IconFilter,
   IconX,
   IconArrowRight,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { AdminTable } from "@/components/common/AdminTable";
 import { type DataTableSortStatus } from "mantine-datatable";
 import { formatDate } from "@/utils/format";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
-import { fetchFromAPI } from "@/utils/fetcher";
-import {
-  type ActivityLogEntry,
-  type AdminListActivityLogsResult,
-} from "@/utils/types";
+import { type ActivityLogEntry } from "@/utils/types";
 import { LogDescription, LogActor } from "./ActivityLogCells";
 import { ACTIONS, ENTITY_TYPES } from "@/utils/constants";
 
@@ -54,17 +52,20 @@ const SearchSection = memo(
     handleClearSearch,
     handleSearchSubmit,
     handleSearchKeyPress,
+    isLoading,
   }: {
     searchInput: string;
     setSearchInput: (v: string) => void;
     handleClearSearch: () => void;
     handleSearchSubmit: () => void;
     handleSearchKeyPress: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    isLoading: boolean;
   }) => (
     <TextInput
       placeholder="Search..."
       aria-label="Search activity logs"
       data-testid="search-input"
+      disabled={isLoading}
       leftSection={<IconSearch size={16} aria-hidden="true" />}
       rightSectionWidth={searchInput ? 70 : 42}
       rightSection={
@@ -82,6 +83,7 @@ const SearchSection = memo(
               <IconX size={16} aria-hidden="true" />
             </ActionIcon>
             <ActionIcon
+              disabled={isLoading}
               size="sm"
               variant="transparent"
               c="indigo"
@@ -90,7 +92,7 @@ const SearchSection = memo(
               title="Submit search"
               data-testid="submit-search-button"
             >
-              <IconArrowRight size={16} aria-hidden="true" />
+              <IconArrowRight size={16} aria-hidden="true" color="#26316e" />
             </ActionIcon>
           </Group>
         ) : (
@@ -208,6 +210,7 @@ ActiveFiltersDisplay.displayName = "ActiveFiltersDisplay";
 
 export default function ActivityLogContent() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
   const [totalRecords, setTotalRecords] = useState(0);
   const [page, setPage] = useState(1);
@@ -244,6 +247,7 @@ export default function ActivityLogContent() {
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         limit: recordsPerPage.toString(),
@@ -259,9 +263,14 @@ export default function ActivityLogContent() {
         ...(sortStatus.direction && { sort_direction: sortStatus.direction }),
       });
 
-      const result = await fetchFromAPI<AdminListActivityLogsResult>(
+      const response = await fetch(
         `${API_ENDPOINTS.admin.activityLogs}?${params.toString()}`,
       );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to fetch activity logs");
+      }
 
       if (result) {
         setLogs(result.logs || []);
@@ -269,6 +278,9 @@ export default function ActivityLogContent() {
       }
     } catch (err) {
       console.error("Error fetching logs:", err);
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred",
+      );
     } finally {
       setLoading(false);
     }
@@ -312,13 +324,6 @@ export default function ActivityLogContent() {
     setSearchInput("");
     setSearch("");
   }, []);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setSearch(searchInput);
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [searchInput]);
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -405,6 +410,7 @@ export default function ActivityLogContent() {
                 handleClearSearch={handleClearSearch}
                 handleSearchSubmit={handleSearchSubmit}
                 handleSearchKeyPress={handleSearchKeyPress}
+                isLoading={loading}
               />
 
               <Popover
@@ -417,6 +423,7 @@ export default function ActivityLogContent() {
               >
                 <Popover.Target>
                   <Button
+                    disabled={loading}
                     variant="filled"
                     color="#26316e"
                     leftSection={<IconFilter size={18} aria-hidden="true" />}
@@ -484,6 +491,29 @@ export default function ActivityLogContent() {
               setAction={setAction}
               setDateRange={setDateRange}
             />
+
+            {error && (
+              <Alert
+                variant="light"
+                color="red"
+                title="Error fetching logs"
+                icon={<IconAlertCircle size={18} />}
+              >
+                <Stack gap="xs">
+                  <Text size="sm">{error}</Text>
+                  <Button
+                    variant="outline"
+                    color="red"
+                    size="xs"
+                    onClick={() => fetchLogs()}
+                    leftSection={<IconRefresh size={14} />}
+                    style={{ width: "fit-content" }}
+                  >
+                    Retry Refresh
+                  </Button>
+                </Stack>
+              </Alert>
+            )}
 
             <Box
               style={{
