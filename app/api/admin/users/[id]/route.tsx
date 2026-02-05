@@ -4,6 +4,7 @@ import { adminUpdateUserRole } from "@/app/actions/update";
 import { getUserRole } from "@/app/actions/get";
 import { logActivity } from "@/lib/activity-log";
 import { logApiError } from "@/lib/error-log";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 const ALLOWED_ADMIN_ROLES = ["admin", "owner"] as const;
 
@@ -46,6 +47,17 @@ export async function PATCH(
       );
     }
 
+    // Fetch target user details before update for logging
+    const supabaseAdmin = createSupabaseServiceClient();
+    const { data: targetUser } = await supabaseAdmin
+      .from("users_table")
+      .select("users_email, users_role")
+      .eq("users_id", targetUserId)
+      .single();
+
+    const previousRole = targetUser?.users_role || "unknown";
+    const targetEmail = targetUser?.users_email || "unknown";
+
     const result = await adminUpdateUserRole({
       targetUserId,
       newRole,
@@ -59,15 +71,19 @@ export async function PATCH(
       );
     }
 
+    // Log activity
     void logActivity({
       userId: authUser.id,
       action: "UPDATE",
       type: "ADMIN_ACTION",
-      entityType: "USER",
+      entityType: "ROLE",
       entityId: targetUserId,
       details: {
-        role_update: newRole,
-        actor_user_id: authUser.id,
+        action: "UPDATE_USER_ROLE",
+        email: targetEmail,
+        previous_role: previousRole,
+        new_role: role,
+        update_type: "ROLE_CHANGE",
       },
     });
 

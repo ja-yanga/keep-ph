@@ -44,7 +44,13 @@ export async function GET(request: Request) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to fetch users";
-    void logApiError(request, { status: 500, message, error: err });
+
+    void logApiError(request, {
+      status: 500,
+      message,
+      error: err,
+    });
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
