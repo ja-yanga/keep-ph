@@ -47,13 +47,10 @@ export default function PrivateNavigationHeader({
   ] = useDisclosure(false);
 
   const supabase = createClient();
-  const { session, clearSession } = useSession();
+  const { session } = useSession();
 
   const role = session?.role;
   const isAdmin = role === "admin";
-  const isApprover = role === "approver";
-  const isOwner = role === "owner";
-  const hasAdminSidebar = isAdmin || isApprover || isOwner;
   const isCustomer = role === "user";
   const showLinks = !pathname.startsWith("/onboarding");
 
@@ -84,7 +81,6 @@ export default function PrivateNavigationHeader({
     try {
       await fetch("/api/auth/signout", { method: "POST" });
       await supabase.auth.signOut();
-      clearSession();
       router.push("/signin");
     } catch (err) {
       console.error("signout error:", err);
@@ -114,7 +110,7 @@ export default function PrivateNavigationHeader({
               {/* Mobile Burger and Logo */}
               {showLinks && (
                 <Group gap="xs" hiddenFrom="sm">
-                  {hasAdminSidebar && (
+                  {isAdmin && (
                     <>
                       <Burger
                         opened={opened}
@@ -126,11 +122,7 @@ export default function PrivateNavigationHeader({
                         color="#1A237E"
                       />
                       <Link
-                        href={
-                          isAdmin || isOwner
-                            ? "/admin/dashboard"
-                            : "/admin/approver-dashboard"
-                        }
+                        href={isAdmin ? "/admin/dashboard" : "/dashboard"}
                         style={{ textDecoration: "none" }}
                         aria-label="Keep PH - Home"
                       >
@@ -166,7 +158,7 @@ export default function PrivateNavigationHeader({
               )}
 
               {/* Desktop Logo */}
-              {showLinks && !hasAdminSidebar && (
+              {showLinks && !isAdmin && (
                 <Link
                   href="/dashboard"
                   style={{ textDecoration: "none" }}
@@ -236,7 +228,7 @@ export default function PrivateNavigationHeader({
                 fw={600}
                 c="#26316D"
                 px={18}
-                visibleFrom="xs"
+                visibleFrom={role === "user" ? "xs" : ""}
                 aria-label="Sign out of your account"
               >
                 Logout
