@@ -39,7 +39,7 @@ import { useSearchParams } from "next/navigation";
 
 import { AdminTable } from "@/components/common/AdminTable";
 import dynamic from "next/dynamic";
-// Imports fixed above
+import KycStatsCards from "./KycStatsCards";
 
 const KycDetails = dynamic(() => import("./KycDetails"), {
   ssr: false,
@@ -362,6 +362,7 @@ export default function AdminUserKyc() {
 
   return (
     <Stack align="center" gap="lg" w="100%">
+      <KycStatsCards />
       <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
         <Group justify="space-between" mb="md" w="100%" wrap="nowrap">
           <SearchInput onSearch={handleSearchSubmit} />

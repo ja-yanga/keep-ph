@@ -46,6 +46,7 @@ import { notifications } from "@mantine/notifications";
 import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { AdminTable } from "./common/AdminTable";
+import { MailroomPackageStatsCards } from "./MailroomPackageStatsCards";
 import {
   type DataTableColumn,
   type DataTableSortStatus,
@@ -228,7 +229,6 @@ export default function MailroomPackages() {
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [serverTotalCount, setServerTotalCount] = useState(0);
-  const [counts, setCounts] = useState<Record<string, number>>({});
 
   const searchParams = useSearchParams();
 
@@ -350,9 +350,6 @@ export default function MailroomPackages() {
 
       if (normalizedData.total !== undefined) {
         setServerTotalCount(normalizedData.total);
-      }
-      if (normalizedData.counts) {
-        setCounts(normalizedData.counts);
       }
     }
 
@@ -1080,9 +1077,6 @@ export default function MailroomPackages() {
     return getStatusFormat(status);
   }, []);
 
-  // Count requests for badge - memoized to prevent recalculation
-  const requestCount = useMemo(() => counts.requests || 0, [counts]);
-
   // Memoize DataTable columns to prevent recreation on each render
   const tableColumns: DataTableColumn<Package>[] = useMemo(
     () => [
@@ -1407,6 +1401,9 @@ export default function MailroomPackages() {
 
   return (
     <Stack align="center" gap="lg" w="100%">
+      {/* Stats cards are API-driven and independent of table filters */}
+      <MailroomPackageStatsCards />
+
       {/* GLOBAL SUCCESS ALERT */}
       {globalSuccess && (
         <Alert
@@ -1489,17 +1486,6 @@ export default function MailroomPackages() {
             <Tabs.Tab
               value="requests"
               leftSection={<IconAlertCircle size={16} aria-hidden="true" />}
-              rightSection={
-                requestCount > 0 && (
-                  <Badge
-                    size="xs"
-                    color="red"
-                    aria-label={`${requestCount} pending requests`}
-                  >
-                    {requestCount}
-                  </Badge>
-                )
-              }
             >
               Pending Requests
             </Tabs.Tab>
