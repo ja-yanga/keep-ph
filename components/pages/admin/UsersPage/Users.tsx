@@ -209,6 +209,7 @@ export default function Users() {
 
         const res = await fetch(`/api/admin/users?${params.toString()}`, {
           cache: "no-store",
+          credentials: "include",
         });
         if (!res.ok) {
           setLoadError("Failed to load users.");
@@ -308,10 +309,8 @@ export default function Users() {
       const res = await fetch(`/api/admin/users/${editUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          users_role: editRole,
-          actor_user_id: currentUserId,
-        }),
+        credentials: "include",
+        body: JSON.stringify({ users_role: editRole }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -344,10 +343,8 @@ export default function Users() {
       const res = await fetch(`/api/admin/users/${editUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          users_role: "owner",
-          actor_user_id: currentUserId,
-        }),
+        credentials: "include",
+        body: JSON.stringify({ users_role: "owner" }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -743,7 +740,6 @@ export default function Users() {
                 variant="filled"
                 color={getStatusFormat("REJECTED")}
                 title="Error"
-                icon={<IconX size={16} />}
                 withCloseButton
                 onClose={() => setEditError(null)}
               >

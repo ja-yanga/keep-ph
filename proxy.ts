@@ -19,6 +19,7 @@ const PUBLIC_PAGES = [
   "/api/auth/callback/google",
   "/update-password",
   "/unauthorized",
+  "/forbidden",
 ] as const;
 // Private routes - role-based access
 const PRIVATE_ROLE_PAGES: Record<string, Array<string>> = {
@@ -239,11 +240,8 @@ export async function proxy(request: NextRequest) {
           userId: user?.id ?? null,
         });
 
-        const forbiddenResponse = new NextResponse("Forbidden", {
-          status: 403,
-        });
-        copyCookies(supabaseResponse, forbiddenResponse);
-        return forbiddenResponse;
+        url.pathname = "/forbidden";
+        return createRedirect(url, supabaseResponse);
       }
 
       let isAllowed = whitelist.length === 0;
@@ -253,11 +251,8 @@ export async function proxy(request: NextRequest) {
 
       if (!isAllowed) {
         // Do not log to error_log_table — would flood DB with unauthorized/403 traffic
-        const forbiddenResponse = new NextResponse("Forbidden", {
-          status: 403,
-        });
-        copyCookies(supabaseResponse, forbiddenResponse);
-        return forbiddenResponse;
+        url.pathname = "/forbidden";
+        return createRedirect(url, supabaseResponse);
       }
     }
   }

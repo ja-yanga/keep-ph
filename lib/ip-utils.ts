@@ -47,5 +47,24 @@ export function isIpInCidr(ip: string, cidr: string): boolean {
     const addr = ipaddr.parse(cidr);
     cidrValue = [addr, addr.kind() === "ipv6" ? 128 : 32];
   }
+  const [cidrAddr, cidrBits] = cidrValue;
+  if (
+    normalizedIp.kind() !== cidrAddr.kind() &&
+    cidrAddr.kind() === "ipv6" &&
+    (cidrAddr as ipaddr.IPv6).isIPv4MappedAddress()
+  ) {
+    const mappedV4 = (cidrAddr as ipaddr.IPv6).toIPv4Address();
+    return normalizedIp.match([mappedV4, 32]);
+  }
+  if (
+    normalizedIp.kind() !== cidrAddr.kind() &&
+    normalizedIp.kind() === "ipv6" &&
+    (normalizedIp as ipaddr.IPv6).isIPv4MappedAddress()
+  ) {
+    const mappedV4 = (normalizedIp as ipaddr.IPv6).toIPv4Address();
+    if (cidrAddr.kind() === "ipv4") {
+      return mappedV4.match([cidrAddr as ipaddr.IPv4, cidrBits]);
+    }
+  }
   return normalizedIp.match(cidrValue);
 }

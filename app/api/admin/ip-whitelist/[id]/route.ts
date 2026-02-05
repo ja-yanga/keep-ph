@@ -180,19 +180,12 @@ export async function DELETE(req: Request, { params }: RouteContext) {
       (entry) => entry.admin_ip_whitelist_id !== id,
     );
 
-    if (remaining.length === 0) {
-      void logApiError(req, {
-        status: 400,
-        message: "Cannot remove the last whitelist entry.",
-      });
-      return NextResponse.json(
-        { error: "Cannot remove the last whitelist entry." },
-        { status: 400 },
-      );
-    }
-
     const clientIp = resolveClientIp(req.headers, null);
-    if (clientIp && !isIpWhitelisted(clientIp, remaining)) {
+    if (
+      clientIp &&
+      remaining.length > 0 &&
+      !isIpWhitelisted(clientIp, remaining)
+    ) {
       void logApiError(req, {
         status: 400,
         message:
