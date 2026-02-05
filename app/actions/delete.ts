@@ -109,3 +109,56 @@ export async function adminDeleteMailroomPackage(args: {
 
   return result;
 }
+/**
+ * Soft deletes a locker for admin.
+ */
+export async function adminDeleteLocker(args: {
+  id: string;
+}): Promise<boolean> {
+  const { id } = args;
+
+  if (!id) {
+    throw new Error("Missing id");
+  }
+  const { data: lockerData, error: lockerErr } = await supabaseAdmin
+    .from("location_locker_table")
+    .select("mailroom_location_id")
+    .eq("location_locker_id", id)
+    .maybeSingle();
+
+  if (lockerErr) {
+    throw new Error("Failed to fetch locker for deletion");
+  }
+
+  const locId = lockerData?.mailroom_location_id;
+
+  // soft delete locker
+  const { error: delErr } = await supabaseAdmin
+    .from("location_locker_table")
+    .update({ location_locker_deleted_at: new Date() })
+    .eq("location_locker_id", id);
+
+  if (delErr) {
+    throw delErr;
+  }
+
+  // decrement total_lockers if location present
+  if (locId) {
+    const { data: locData, error: locErr } = await supabaseAdmin
+      .from("mailroom_location_table")
+      .select("mailroom_location_total_lockers")
+      .eq("mailroom_location_id", locId)
+      .maybeSingle();
+
+    if (!locErr && locData) {
+      const current = locData.mailroom_location_total_lockers ?? 0;
+      const newTotal = Math.max(0, current - 1);
+      await supabaseAdmin
+        .from("mailroom_location_table")
+        .update({ mailroom_location_total_lockers: newTotal })
+        .eq("mailroom_location_id", locId);
+    }
+  }
+
+  return true;
+}
