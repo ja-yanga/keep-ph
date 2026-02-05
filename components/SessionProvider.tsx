@@ -11,6 +11,7 @@ import React, {
 type Profile = {
   first_name?: string | null;
   last_name?: string | null;
+  mobile_number?: string | null;
   user_role?: string | null;
   users_role?: string | null;
   needs_onboarding?: boolean | string | null;
@@ -47,6 +48,7 @@ type ContextValue = {
   loading: boolean;
   error: unknown;
   refresh: () => Promise<void>;
+  clearSession: () => void;
 };
 
 const SessionContext = createContext<ContextValue>({
@@ -54,6 +56,7 @@ const SessionContext = createContext<ContextValue>({
   loading: true,
   error: null,
   refresh: async () => {},
+  clearSession: () => {},
 });
 
 export function SessionProvider({
@@ -96,6 +99,8 @@ export function SessionProvider({
     return {
       first_name: typeof rec.first_name === "string" ? rec.first_name : null,
       last_name: typeof rec.last_name === "string" ? rec.last_name : null,
+      mobile_number:
+        typeof rec.mobile_number === "string" ? rec.mobile_number : null,
       user_role:
         (typeof rec.user_role === "string" ? rec.user_role : null) ??
         (typeof rec.users_role === "string" ? rec.users_role : null) ??
@@ -143,6 +148,12 @@ export function SessionProvider({
     };
   };
 
+  const clearSession = () => {
+    setSession(null);
+    setLoading(false);
+    setError(null);
+  };
+
   const fetchSession = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
@@ -151,6 +162,7 @@ export function SessionProvider({
         method: "GET",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         signal,
       });
 
@@ -211,7 +223,7 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider
-      value={{ session, loading, error, refresh: fetchSession }}
+      value={{ session, loading, error, refresh: fetchSession, clearSession }}
     >
       {children}
     </SessionContext.Provider>

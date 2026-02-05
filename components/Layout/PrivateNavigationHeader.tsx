@@ -47,10 +47,13 @@ export default function PrivateNavigationHeader({
   ] = useDisclosure(false);
 
   const supabase = createClient();
-  const { session } = useSession();
+  const { session, clearSession } = useSession();
 
   const role = session?.role;
   const isAdmin = role === "admin";
+  const isApprover = role === "approver";
+  const isOwner = role === "owner";
+  const hasAdminSidebar = isAdmin || isApprover || isOwner;
   const isCustomer = role === "user";
   const showLinks = !pathname.startsWith("/onboarding");
 
@@ -81,6 +84,7 @@ export default function PrivateNavigationHeader({
     try {
       await fetch("/api/auth/signout", { method: "POST" });
       await supabase.auth.signOut();
+      clearSession();
       router.push("/signin");
     } catch (err) {
       console.error("signout error:", err);
@@ -110,7 +114,7 @@ export default function PrivateNavigationHeader({
               {/* Mobile Burger and Logo */}
               {showLinks && (
                 <Group gap="xs" hiddenFrom="sm">
-                  {isAdmin && (
+                  {hasAdminSidebar && (
                     <>
                       <Burger
                         opened={opened}
@@ -122,7 +126,11 @@ export default function PrivateNavigationHeader({
                         color="#1A237E"
                       />
                       <Link
-                        href={isAdmin ? "/admin/dashboard" : "/dashboard"}
+                        href={
+                          isAdmin || isOwner
+                            ? "/admin/dashboard"
+                            : "/admin/approver-dashboard"
+                        }
                         style={{ textDecoration: "none" }}
                         aria-label="Keep PH - Home"
                       >
@@ -158,7 +166,7 @@ export default function PrivateNavigationHeader({
               )}
 
               {/* Desktop Logo */}
-              {showLinks && !isAdmin && (
+              {showLinks && !hasAdminSidebar && (
                 <Link
                   href="/dashboard"
                   style={{ textDecoration: "none" }}

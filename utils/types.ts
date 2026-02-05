@@ -579,6 +579,7 @@ export type DbLockerRow = {
   location_locker_code: string | null;
   location_locker_is_available: boolean | null;
   location_locker_created_at: string | null;
+  location_locker_is_assignable: boolean | null;
   mailroom_location_table: {
     mailroom_location_id: string;
     mailroom_location_name: string;
@@ -596,6 +597,7 @@ export type LockerRow = {
   location_locker_code?: string | null;
   location_locker_is_available?: boolean | null;
   location_locker_created_at?: string | null;
+  location_locker_is_assignable?: boolean | null;
   mailroom_location_table?: {
     mailroom_location_id?: string;
     mailroom_location_name?: string;
@@ -800,6 +802,7 @@ export type T_LockerData = Pick<
   | "location_locker_code"
   | "location_locker_created_at"
   | "location_locker_is_available"
+  | "location_locker_is_assignable"
 > &
   Pick<MailroomLocationRow, "mailroom_location_name"> &
   Partial<
@@ -817,6 +820,7 @@ export type T_LocationLockerInsert = Pick<
   | "location_locker_code"
   | "mailroom_location_id"
   | "location_locker_is_available"
+  | "location_locker_is_assignable"
 >;
 
 export type T_LocationLockerUpdate = Pick<

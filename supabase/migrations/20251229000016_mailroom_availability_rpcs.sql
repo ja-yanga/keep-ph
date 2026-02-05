@@ -53,6 +53,7 @@ BEGIN
             COUNT(*)::INTEGER as locker_count
         FROM public.location_locker_table
         WHERE location_locker_is_available = TRUE
+          AND location_locker_is_assignable = TRUE
         GROUP BY mailroom_location_id
     ) AS location_locker_counts;
 
