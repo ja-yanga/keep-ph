@@ -37,6 +37,7 @@ import type { AdminClaimApprove, ConfirmTarget } from "@/utils/types";
 import { getStatusFormat, maskAccount } from "@/utils/helper";
 import { type DataTableSortStatus } from "mantine-datatable";
 import { AdminTable } from "@/components/common/AdminTable";
+import RewardsStatsCards from "./RewardsStatsCards";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -522,6 +523,9 @@ export default function AdminRewards() {
 
   return (
     <Stack align="center" w="100%" gap="lg">
+      {/* Status counts are shown here instead of tabs */}
+      <RewardsStatsCards counts={statusCounts} />
+
       {globalSuccess && (
         <Alert
           variant="light"
@@ -565,54 +569,9 @@ export default function AdminRewards() {
             aria-label="Reward claim status tabs"
           >
             <Tabs.List>
-              <Tabs.Tab
-                value="PENDING"
-                rightSection={
-                  statusCounts.PENDING > 0 ? (
-                    <Badge
-                      size="xs"
-                      color={`${getStatusFormat("PENDING")}.9`}
-                      variant="filled"
-                    >
-                      {statusCounts.PENDING}
-                    </Badge>
-                  ) : null
-                }
-              >
-                Pending
-              </Tabs.Tab>
-              <Tabs.Tab
-                value="PROCESSING"
-                rightSection={
-                  statusCounts.PROCESSING > 0 ? (
-                    <Badge
-                      size="xs"
-                      color={`${getStatusFormat("PROCESSING")}.9`}
-                      variant="filled"
-                    >
-                      {statusCounts.PROCESSING}
-                    </Badge>
-                  ) : null
-                }
-              >
-                Processing
-              </Tabs.Tab>
-              <Tabs.Tab
-                value="PAID"
-                rightSection={
-                  statusCounts.PAID > 0 ? (
-                    <Badge
-                      size="xs"
-                      color={`${getStatusFormat("PAID")}.9`}
-                      variant="filled"
-                    >
-                      {statusCounts.PAID}
-                    </Badge>
-                  ) : null
-                }
-              >
-                Paid
-              </Tabs.Tab>
+              <Tabs.Tab value="PENDING">Pending</Tabs.Tab>
+              <Tabs.Tab value="PROCESSING">Processing</Tabs.Tab>
+              <Tabs.Tab value="PAID">Paid</Tabs.Tab>
             </Tabs.List>
           </Tabs>
         </Stack>
