@@ -25,7 +25,6 @@ import {
   IconPlus,
   IconRefresh,
   IconTrash,
-  IconX,
 } from "@tabler/icons-react";
 import { AdminTable } from "@/components/common/AdminTable";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
@@ -382,7 +381,6 @@ export default function IpWhitelist() {
               variant="light"
               color="red"
               title="Error"
-              icon={<IconX size={16} />}
               withCloseButton
               onClose={() => setFormError(null)}
             >
@@ -435,14 +433,7 @@ export default function IpWhitelist() {
       >
         <Stack gap="md">
           {deleteError && (
-            <Alert
-              variant="light"
-              color="red"
-              title="Error"
-              icon={<IconX size={16} />}
-              withCloseButton
-              onClose={() => setDeleteError(null)}
-            >
+            <Alert variant="light" color="red" title="Error">
               {deleteError}
             </Alert>
           )}

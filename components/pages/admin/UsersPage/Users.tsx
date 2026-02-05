@@ -41,8 +41,6 @@ import {
 import { AdminTable } from "@/components/common/AdminTable";
 import type { AdminUserPage, ApiUserPage, UserRole } from "@/utils/types";
 import { getStatusFormat } from "@/utils/helper";
-import { formatDate } from "@/utils/format";
-import { notifications } from "@mantine/notifications";
 
 const SearchInput = memo(
   ({
@@ -131,6 +129,7 @@ SearchInput.displayName = "SearchInput";
 export default function Users() {
   const [users, setUsers] = useState<AdminUserPage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [totalRecords, setTotalRecords] = useState(0);
   const [search, setSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -144,11 +143,13 @@ export default function Users() {
     direction: "asc",
   });
 
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewUser, setViewUser] = useState<AdminUserPage | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUserPage | null>(null);
   const [editRole, setEditRole] = useState<UserRole | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -186,6 +187,7 @@ export default function Users() {
   useEffect(() => {
     const loadUsers = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const sortMap: Record<string, string> = {
           full_name: "full_name",
@@ -209,11 +211,7 @@ export default function Users() {
           cache: "no-store",
         });
         if (!res.ok) {
-          notifications.show({
-            title: "Error",
-            message: "Failed to load users.",
-            color: "red",
-          });
+          setLoadError("Failed to load users.");
           setLoading(false);
           return;
         }
@@ -229,21 +227,19 @@ export default function Users() {
           const last = (kyc?.user_kyc_last_name ?? "").trim();
           const fullName = `${first} ${last}`.trim() || u.users_email;
           return {
-            users_id: u.users_id,
-            users_full_name: fullName,
-            users_email: u.users_email,
-            users_role: u.users_role,
-            users_created_at: formatDate(u.users_created_at),
-          } as AdminUserPage;
+            id: u.users_id,
+            full_name: fullName,
+            email: u.users_email,
+            role: (u.users_role ?? "user") as UserRole,
+            created_at: new Date(u.users_created_at ?? Date.now())
+              .toISOString()
+              .slice(0, 10),
+          };
         });
         setUsers(mapped);
         setTotalRecords(json.count ?? mapped.length);
       } catch {
-        notifications.show({
-          title: "Error",
-          message: "Failed to load users.",
-          color: "red",
-        });
+        setLoadError("Failed to load users.");
       } finally {
         setLoading(false);
       }
@@ -265,10 +261,10 @@ export default function Users() {
   const isEditingBlocked =
     !!editUser &&
     !!currentUserRole &&
-    roleRank[editUser.users_role] > roleRank[currentUserRole];
+    roleRank[editUser.role] > roleRank[currentUserRole];
 
   const isSameRoleBlocked =
-    !!editUser && !!currentUserRole && editUser.users_role === currentUserRole;
+    !!editUser && !!currentUserRole && editUser.role === currentUserRole;
 
   const isRoleEditHidden = isEditingBlocked || isSameRoleBlocked;
 
@@ -294,30 +290,24 @@ export default function Users() {
 
   const openEdit = useCallback((u: AdminUserPage) => {
     setEditUser(u);
-    setEditRole(u.users_role);
+    setEditRole(u.role);
+    setEditError(null);
     setEditOpen(true);
   }, []);
 
   const handleEditSave = async () => {
     if (!editUser || !editRole) {
-      notifications.show({
-        title: "Error",
-        message: "Please select a role.",
-        color: "red",
-      });
+      setEditError("Please select a role.");
       return;
     }
     if (!currentUserId) {
-      notifications.show({
-        title: "Error",
-        message: "Missing current user id (session not loaded).",
-        color: "red",
-      });
+      setEditError("Missing current user id (session not loaded).");
       return;
     }
     setIsSaving(true);
+    setEditError(null);
     try {
-      const res = await fetch(`/api/admin/users/${editUser.users_id}`, {
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -327,33 +317,18 @@ export default function Users() {
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
-        notifications.show({
-          title: "Error",
-          message: json?.error ?? "Failed to update role.",
-          color: "red",
-        });
+        setEditError(json?.error ?? "Failed to update role.");
         return;
       }
       setUsers((prev) =>
-        prev.map((u) =>
-          u.users_id === editUser.users_id ? { ...u, users_role: editRole } : u,
-        ),
+        prev.map((u) => (u.id === editUser.id ? { ...u, role: editRole } : u)),
       );
-      notifications.show({
-        title: "Success",
-        message: `Role updated for ${editUser.users_full_name}`,
-        color: "green",
-        icon: <IconCheck size={16} />,
-      });
+      setGlobalSuccess(`Role updated for ${editUser.full_name}`);
       setEditOpen(false);
       setEditUser(null);
       setEditRole(null);
     } catch {
-      notifications.show({
-        title: "Error",
-        message: "Failed to update role.",
-        color: "red",
-      });
+      setEditError("Failed to update role.");
     } finally {
       setIsSaving(false);
     }
@@ -366,8 +341,9 @@ export default function Users() {
   const handleTransferConfirm = async () => {
     if (!editUser || !currentUserId) return;
     setIsTransferring(true);
+    setEditError(null);
     try {
-      const res = await fetch(`/api/admin/users/${editUser.users_id}`, {
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -377,42 +353,27 @@ export default function Users() {
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
-        notifications.show({
-          title: "Error",
-          message: json?.error ?? "Failed to transfer ownership.",
-          color: "red",
-        });
+        setEditError(json?.error ?? "Failed to transfer ownership.");
         return;
       }
 
       // update local list
       setUsers((prev) =>
         prev.map((u) => {
-          if (u.users_id === editUser.users_id)
-            return { ...u, users_role: "owner" };
-          if (u.users_id === currentUserId)
-            return { ...u, users_role: "admin" };
+          if (u.id === editUser.id) return { ...u, role: "owner" };
+          if (u.id === currentUserId) return { ...u, role: "admin" };
           return u;
         }),
       );
 
       setCurrentUserRole("admin");
-      notifications.show({
-        title: "Success",
-        message: `Ownership transferred to ${editUser.users_full_name}`,
-        color: "green",
-        icon: <IconCheck size={16} />,
-      });
+      setGlobalSuccess(`Ownership transferred to ${editUser.full_name}`);
       setTransferOpen(false);
       setEditOpen(false);
       setEditUser(null);
       setEditRole(null);
     } catch {
-      notifications.show({
-        title: "Error",
-        message: "Failed to transfer ownership.",
-        color: "red",
-      });
+      setEditError("Failed to transfer ownership.");
     } finally {
       setIsTransferring(false);
     }
@@ -459,45 +420,45 @@ export default function Users() {
   const tableColumns: DataTableColumn<AdminUserPage>[] = useMemo(
     () => [
       {
-        accessor: "users_full_name",
+        accessor: "full_name",
         title: "Full Name",
         width: 200,
         sortable: true,
-        render: ({ users_full_name }: AdminUserPage) => (
+        render: ({ full_name }: AdminUserPage) => (
           <Text fw={500} truncate>
-            {users_full_name}
+            {full_name}
           </Text>
         ),
       },
       {
-        accessor: "users_email",
+        accessor: "email",
         title: "Email",
         width: 220,
         sortable: true,
-        render: ({ users_email }: AdminUserPage) => (
+        render: ({ email }: AdminUserPage) => (
           <Text size="sm" truncate>
-            {users_email}
+            {email}
           </Text>
         ),
       },
       {
-        accessor: "users_role",
+        accessor: "role",
         title: "Role",
         width: 140,
         sortable: true,
-        render: ({ users_role }: AdminUserPage) => (
-          <Badge color={roleBadgeColor(users_role)} variant="filled" size="md">
-            {users_role}
+        render: ({ role }: AdminUserPage) => (
+          <Badge color={roleBadgeColor(role)} variant="filled" size="md">
+            {role}
           </Badge>
         ),
       },
       {
-        accessor: "users_created_at",
+        accessor: "created_at",
         title: "Created",
         width: 140,
         sortable: true,
-        render: ({ users_created_at }: AdminUserPage) => (
-          <Text size="sm">{users_created_at}</Text>
+        render: ({ created_at }: AdminUserPage) => (
+          <Text size="sm">{created_at}</Text>
         ),
       },
       {
@@ -512,7 +473,7 @@ export default function Users() {
                 variant="subtle"
                 color="gray.7"
                 onClick={() => openView(user)}
-                aria-label={`View details for ${user.users_full_name}`}
+                aria-label={`View details for ${user.full_name}`}
                 disabled={isModalBusy}
               >
                 <IconUser size={16} />
@@ -523,7 +484,7 @@ export default function Users() {
                 variant="subtle"
                 color="blue.8"
                 onClick={() => openEdit(user)}
-                aria-label={`Edit role for ${user.users_full_name}`}
+                aria-label={`Edit role for ${user.full_name}`}
                 disabled={isModalBusy}
               >
                 <IconEdit size={16} />
@@ -538,6 +499,32 @@ export default function Users() {
 
   return (
     <Stack align="center" gap="lg" w="100%">
+      {loadError && (
+        <Alert
+          variant="light"
+          color={getStatusFormat("REJECTED")}
+          title="Error"
+          withCloseButton
+          onClose={() => setLoadError(null)}
+          w="100%"
+        >
+          {loadError}
+        </Alert>
+      )}
+      {globalSuccess && (
+        <Alert
+          variant="light"
+          color={getStatusFormat("VERIFIED")}
+          title="Success"
+          icon={<IconCheck size={16} />}
+          withCloseButton
+          onClose={() => setGlobalSuccess(null)}
+          w="100%"
+        >
+          {globalSuccess}
+        </Alert>
+      )}
+
       <Paper p="xl" radius="lg" withBorder shadow="sm" w="100%">
         <Group
           justify="space-between"
@@ -630,7 +617,6 @@ export default function Users() {
           }}
         >
           <AdminTable<AdminUserPage>
-            idAccessor="users_id"
             records={isSearching ? [] : filteredUsers}
             fetching={loading || isSearching}
             totalRecords={totalRecords}
@@ -666,14 +652,14 @@ export default function Users() {
                   <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
                     Full Name
                   </Text>
-                  <Title order={3}>{viewUser.users_full_name}</Title>
+                  <Title order={3}>{viewUser.full_name}</Title>
                 </Box>
                 <Badge
                   size="lg"
                   variant="filled"
-                  color={roleBadgeColor(viewUser.users_role)}
+                  color={roleBadgeColor(viewUser.role)}
                 >
-                  {viewUser.users_role}
+                  {viewUser.role}
                 </Badge>
               </Group>
 
@@ -692,7 +678,7 @@ export default function Users() {
                       <ThemeIcon variant="light" color="blue" size="sm">
                         <IconMail size={14} />
                       </ThemeIcon>
-                      <Text size="sm">{viewUser.users_email}</Text>
+                      <Text size="sm">{viewUser.email}</Text>
                     </Group>
                   </Stack>
                 </Paper>
@@ -711,7 +697,7 @@ export default function Users() {
                       <ThemeIcon variant="light" color="gray" size="sm">
                         <IconCalendar size={14} />
                       </ThemeIcon>
-                      <Text size="sm">{viewUser.users_created_at}</Text>
+                      <Text size="sm">{viewUser.created_at}</Text>
                     </Group>
                   </Stack>
                 </Paper>
@@ -726,7 +712,7 @@ export default function Users() {
                     <ThemeIcon variant="light" color="violet" size="sm">
                       <IconId size={14} />
                     </ThemeIcon>
-                    <Text size="sm">User ID: {viewUser.users_id}</Text>
+                    <Text size="sm">User ID: {viewUser.id}</Text>
                   </Group>
                 </Stack>
               </Paper>
@@ -754,6 +740,18 @@ export default function Users() {
           withCloseButton={!isModalBusy}
         >
           <Stack gap="md">
+            {editError && (
+              <Alert
+                variant="filled"
+                color={getStatusFormat("REJECTED")}
+                title="Error"
+                withCloseButton
+                onClose={() => setEditError(null)}
+              >
+                {editError}
+              </Alert>
+            )}
+
             {isEditingBlocked && (
               <Alert
                 variant="light"
@@ -778,14 +776,14 @@ export default function Users() {
                 <Text size="xs" c="#2D3748" tt="uppercase" fw={700}>
                   Full Name
                 </Text>
-                <Title order={3}>{editUser?.users_full_name ?? "—"}</Title>
+                <Title order={3}>{editUser?.full_name ?? "—"}</Title>
               </Box>
               <Badge
                 size="lg"
                 variant="filled"
-                color={roleBadgeColor(editUser?.users_role ?? "user")}
+                color={roleBadgeColor(editUser?.role ?? "user")}
               >
-                {editUser?.users_role ?? "User"}
+                {editUser?.role ?? "User"}
               </Badge>
             </Group>
 
@@ -804,7 +802,7 @@ export default function Users() {
                     <ThemeIcon variant="light" color="blue" size="sm">
                       <IconMail size={14} />
                     </ThemeIcon>
-                    <Text size="sm">{editUser?.users_email ?? "—"}</Text>
+                    <Text size="sm">{editUser?.email ?? "—"}</Text>
                   </Group>
                 </Stack>
               </Paper>
@@ -823,7 +821,7 @@ export default function Users() {
                     <ThemeIcon variant="light" color="gray" size="sm">
                       <IconCalendar size={14} />
                     </ThemeIcon>
-                    <Text size="sm">{editUser?.users_created_at ?? "—"}</Text>
+                    <Text size="sm">{editUser?.created_at ?? "—"}</Text>
                   </Group>
                 </Stack>
               </Paper>
@@ -838,7 +836,7 @@ export default function Users() {
                   <ThemeIcon variant="light" color="violet" size="sm">
                     <IconId size={14} />
                   </ThemeIcon>
-                  <Text size="sm">User ID: {editUser?.users_id ?? "—"}</Text>
+                  <Text size="sm">User ID: {editUser?.id ?? "—"}</Text>
                 </Group>
               </Stack>
             </Paper>
@@ -911,10 +909,10 @@ export default function Users() {
 
             <Paper withBorder p="md" radius="md">
               <Text size="sm">
-                New Owner: <b>{editUser?.users_full_name ?? "—"}</b>
+                New Owner: <b>{editUser?.full_name ?? "—"}</b>
               </Text>
               <Text size="sm" c="dimmed">
-                {editUser?.users_email ?? "—"}
+                {editUser?.email ?? "—"}
               </Text>
             </Paper>
 

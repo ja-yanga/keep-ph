@@ -30,11 +30,8 @@ function PrivateMainLayoutComponent({
   const showSidebar = isAdmin || isApprover || isOwner;
   const showLinks = !pathname.startsWith("/onboarding");
 
-  const layoutKey = `${session?.user?.id ?? "anon"}-${role ?? "none"}`;
-
   return (
     <AppShell
-      key={layoutKey}
       navbar={
         showSidebar
           ? {
