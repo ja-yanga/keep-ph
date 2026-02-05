@@ -49,3 +49,11 @@ export const formatCurrency = (amount: number): string => {
     currency: "PHP",
   }).format(amount);
 };
+
+/**
+ * Formats a number as a count (e.g., "1,234")
+ * @param value - The value to format
+ * @returns Formatted count string (e.g., "1,234")
+ */
+export const formatCount = (value: number): string =>
+  new Intl.NumberFormat("en-US").format(value);
