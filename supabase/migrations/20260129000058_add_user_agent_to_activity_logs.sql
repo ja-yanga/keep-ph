@@ -103,40 +103,31 @@ DECLARE
     ELSE NULL 
   END;
 
-  return_data JSONB;
+
+  total_count_result INTEGER;
+  logs_result JSONB;
 BEGIN
-  SELECT
-    JSONB_BUILD_OBJECT(
-      'total_count', COALESCE(MAX(sub.total_count), 0),
-      'logs', COALESCE(JSONB_AGG(sub.log_entry), '[]'::JSONB)
-    )
-  INTO return_data
-  FROM (
+  -- Use CTE to ensure COUNT and data queries use identical filtering
+  WITH filtered_logs AS (
     SELECT
-      JSONB_BUILD_OBJECT(
-        'activity_log_id', al.activity_log_id,
-        'user_id', al.user_id,
-        'activity_action', al.activity_action,
-        'activity_type', al.activity_type,
-        'activity_entity_type', al.activity_entity_type,
-        'activity_entity_id', al.activity_entity_id,
-        'activity_details', al.activity_details,
-        'activity_ip_address', al.activity_ip_address,
-        'activity_user_agent', al.activity_user_agent,
-        'activity_created_at', al.activity_created_at,
-        'actor_email', u.users_email,
-        'actor_name',
-          COALESCE(
-            uk.user_kyc_first_name || ' ' || uk.user_kyc_last_name,
-            u.users_email
-          )
-      ) AS log_entry,
-      COUNT(*) OVER() AS total_count
+      al.activity_log_id,
+      al.user_id,
+      al.activity_action,
+      al.activity_type,
+      al.activity_entity_type,
+      al.activity_entity_id,
+      al.activity_details,
+      al.activity_ip_address,
+      al.activity_user_agent,
+      al.activity_created_at,
+      u.users_email,
+      COALESCE(
+        uk.user_kyc_first_name || ' ' || uk.user_kyc_last_name,
+        u.users_email
+      ) AS actor_name
     FROM public.activity_log_table al
-    LEFT JOIN public.users_table u
-      ON al.user_id = u.users_id
-    LEFT JOIN public.user_kyc_table uk
-      ON u.users_id = uk.user_id
+    LEFT JOIN public.users_table u ON al.user_id = u.users_id
+    LEFT JOIN public.user_kyc_table uk ON u.users_id = uk.user_id
     WHERE
       (input_user_id IS NULL OR al.user_id = input_user_id)
       AND (input_actor_id IS NULL OR al.user_id = input_actor_id)
@@ -153,36 +144,67 @@ BEGIN
         OR uk.user_kyc_first_name ILIKE '%' || input_search || '%'
         OR uk.user_kyc_last_name ILIKE '%' || input_search || '%'
       )
+  ),
+  sorted_logs AS (
+    SELECT *
+    FROM filtered_logs
     ORDER BY
       -- Handle Timestamp Sorting
-      CASE WHEN input_sort_direction = 'asc' AND input_sort_by = 'activity_created_at' THEN al.activity_created_at END ASC,
-      CASE WHEN input_sort_direction = 'desc' AND input_sort_by = 'activity_created_at' THEN al.activity_created_at END DESC,
+      CASE WHEN input_sort_direction = 'asc' AND input_sort_by = 'activity_created_at' THEN activity_created_at END ASC,
+      CASE WHEN input_sort_direction = 'desc' AND input_sort_by = 'activity_created_at' THEN activity_created_at END DESC,
       
       -- Handle Text/Enum Sorting
       CASE WHEN input_sort_direction = 'asc' THEN
         CASE 
-          WHEN input_sort_by = 'actor_email' THEN u.users_email
-          WHEN input_sort_by = 'activity_entity_type' THEN al.activity_entity_type::TEXT
-          WHEN input_sort_by = 'activity_action' THEN al.activity_action::TEXT
+          WHEN input_sort_by = 'actor_email' THEN users_email
+          WHEN input_sort_by = 'activity_entity_type' THEN activity_entity_type::TEXT
+          WHEN input_sort_by = 'activity_action' THEN activity_action::TEXT
           ELSE NULL 
         END
       END ASC,
       CASE WHEN input_sort_direction = 'desc' THEN
         CASE 
-          WHEN input_sort_by = 'actor_email' THEN u.users_email
-          WHEN input_sort_by = 'activity_entity_type' THEN al.activity_entity_type::TEXT
-          WHEN input_sort_by = 'activity_action' THEN al.activity_action::TEXT
+          WHEN input_sort_by = 'actor_email' THEN users_email
+          WHEN input_sort_by = 'activity_entity_type' THEN activity_entity_type::TEXT
+          WHEN input_sort_by = 'activity_action' THEN activity_action::TEXT
           ELSE NULL 
         END
       END DESC,
       
       -- tie-breaker
-      al.activity_log_id DESC
+      activity_log_id DESC
     LIMIT input_limit
     OFFSET input_offset
-  ) sub;
+  )
+  SELECT
+    (SELECT COUNT(*) FROM filtered_logs),
+    COALESCE(
+      JSONB_AGG(
+        JSONB_BUILD_OBJECT(
+          'activity_log_id', activity_log_id,
+          'user_id', user_id,
+          'activity_action', activity_action,
+          'activity_type', activity_type,
+          'activity_entity_type', activity_entity_type,
+          'activity_entity_id', activity_entity_id,
+          'activity_details', activity_details,
+          'activity_ip_address', activity_ip_address,
+          'activity_user_agent', activity_user_agent,
+          'activity_created_at', activity_created_at,
+          'actor_email', users_email,
+          'actor_name', actor_name
+        )
+      ),
+      '[]'::JSONB
+    )
+  INTO total_count_result, logs_result
+  FROM sorted_logs;
 
-  RETURN return_data;
+  -- Return combined results
+  RETURN JSONB_BUILD_OBJECT(
+    'total_count', COALESCE(total_count_result, 0),
+    'logs', logs_result
+  );
 END;
 $$;
 

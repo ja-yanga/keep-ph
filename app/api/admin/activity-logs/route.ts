@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminListActivityLogs } from "@/app/actions/get";
-import { logError } from "@/lib/error-log";
-import { resolveClientIp } from "@/lib/ip-utils";
 
 export async function GET(req: Request) {
   try {
@@ -50,30 +48,6 @@ export async function GET(req: Request) {
     return NextResponse.json(data);
   } catch (err: unknown) {
     console.error("API error fetching activity logs:", err);
-
-    const url = new URL(req.url);
-    const ipAddress = resolveClientIp(req.headers, null);
-    const userAgent = req.headers.get("user-agent") ?? null;
-
-    // Log the error directly (logApiError skips GET requests)
-    void logError({
-      errorType: "DATABASE_ERROR",
-      errorMessage: "Activity log query timed out",
-      errorCode: "SYSTEM_RATE_LIMIT_EXCEEDED",
-      errorStack: err instanceof Error ? (err.stack ?? null) : null,
-      requestPath: url.pathname,
-      requestMethod: req.method,
-      requestBody: null,
-      requestHeaders: null, // Don't log headers for GET requests
-      responseStatus: 408,
-      errorDetails:
-        err && typeof err === "object"
-          ? (err as Record<string, unknown>)
-          : null,
-      ipAddress,
-      userAgent,
-      userId: null,
-    });
 
     return NextResponse.json(
       {
