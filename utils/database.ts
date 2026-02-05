@@ -183,6 +183,7 @@ export type Database = {
           activity_log_id: string;
           activity_type: Database["public"]["Enums"]["activity_type"];
           activity_user_agent: string | null;
+          search_vector: unknown;
           user_id: string;
         };
         Insert: {
@@ -197,6 +198,7 @@ export type Database = {
           activity_log_id?: string;
           activity_type: Database["public"]["Enums"]["activity_type"];
           activity_user_agent?: string | null;
+          search_vector?: unknown;
           user_id: string;
         };
         Update: {
@@ -211,12 +213,58 @@ export type Database = {
           activity_log_id?: string;
           activity_type?: Database["public"]["Enums"]["activity_type"];
           activity_user_agent?: string | null;
+          search_vector?: unknown;
           user_id?: string;
         };
         Relationships: [
           {
             foreignKeyName: "activity_log_table_user_id_fkey";
             columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users_table";
+            referencedColumns: ["users_id"];
+          },
+        ];
+      };
+      admin_ip_whitelist_table: {
+        Row: {
+          admin_ip_whitelist_id: string;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          ip_cidr: unknown;
+          updated_at: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          admin_ip_whitelist_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          ip_cidr: unknown;
+          updated_at?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          admin_ip_whitelist_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          ip_cidr?: unknown;
+          updated_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "admin_ip_whitelist_table_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users_table";
+            referencedColumns: ["users_id"];
+          },
+          {
+            foreignKeyName: "admin_ip_whitelist_table_updated_by_fkey";
+            columns: ["updated_by"];
             isOneToOne: false;
             referencedRelation: "users_table";
             referencedColumns: ["users_id"];
@@ -310,8 +358,8 @@ export type Database = {
           location_locker_created_at: string | null;
           location_locker_deleted_at: string | null;
           location_locker_id: string;
-          location_locker_is_available: boolean | null;
           location_locker_is_assignable: boolean | null;
+          location_locker_is_available: boolean | null;
           mailroom_location_id: string;
         };
         Insert: {
@@ -319,8 +367,8 @@ export type Database = {
           location_locker_created_at?: string | null;
           location_locker_deleted_at?: string | null;
           location_locker_id?: string;
-          location_locker_is_available?: boolean | null;
           location_locker_is_assignable?: boolean | null;
+          location_locker_is_available?: boolean | null;
           mailroom_location_id: string;
         };
         Update: {
@@ -328,8 +376,8 @@ export type Database = {
           location_locker_created_at?: string | null;
           location_locker_deleted_at?: string | null;
           location_locker_id?: string;
-          location_locker_is_available?: boolean | null;
           location_locker_is_assignable?: boolean | null;
+          location_locker_is_available?: boolean | null;
           mailroom_location_id?: string;
         };
         Relationships: [
@@ -921,6 +969,7 @@ export type Database = {
       };
       user_address_table: {
         Row: {
+          user_address_barangay: string | null;
           user_address_city: string | null;
           user_address_created_at: string | null;
           user_address_id: string;
@@ -929,10 +978,12 @@ export type Database = {
           user_address_line1: string;
           user_address_line2: string | null;
           user_address_postal: string | null;
+          user_address_province: string | null;
           user_address_region: string | null;
           user_id: string;
         };
         Insert: {
+          user_address_barangay?: string | null;
           user_address_city?: string | null;
           user_address_created_at?: string | null;
           user_address_id?: string;
@@ -941,10 +992,12 @@ export type Database = {
           user_address_line1: string;
           user_address_line2?: string | null;
           user_address_postal?: string | null;
+          user_address_province?: string | null;
           user_address_region?: string | null;
           user_id: string;
         };
         Update: {
+          user_address_barangay?: string | null;
           user_address_city?: string | null;
           user_address_created_at?: string | null;
           user_address_id?: string;
@@ -953,6 +1006,7 @@ export type Database = {
           user_address_line1?: string;
           user_address_line2?: string | null;
           user_address_postal?: string | null;
+          user_address_province?: string | null;
           user_address_region?: string | null;
           user_id?: string;
         };
@@ -968,6 +1022,7 @@ export type Database = {
       };
       user_kyc_address_table: {
         Row: {
+          user_kyc_address_barangay: string | null;
           user_kyc_address_city: string | null;
           user_kyc_address_created_at: string | null;
           user_kyc_address_id: string;
@@ -975,11 +1030,13 @@ export type Database = {
           user_kyc_address_line_one: string | null;
           user_kyc_address_line_two: string | null;
           user_kyc_address_postal_code: number | null;
+          user_kyc_address_province: string | null;
           user_kyc_address_region: string | null;
           user_kyc_address_updated_at: string | null;
           user_kyc_id: string;
         };
         Insert: {
+          user_kyc_address_barangay?: string | null;
           user_kyc_address_city?: string | null;
           user_kyc_address_created_at?: string | null;
           user_kyc_address_id?: string;
@@ -987,11 +1044,13 @@ export type Database = {
           user_kyc_address_line_one?: string | null;
           user_kyc_address_line_two?: string | null;
           user_kyc_address_postal_code?: number | null;
+          user_kyc_address_province?: string | null;
           user_kyc_address_region?: string | null;
           user_kyc_address_updated_at?: string | null;
           user_kyc_id: string;
         };
         Update: {
+          user_kyc_address_barangay?: string | null;
           user_kyc_address_city?: string | null;
           user_kyc_address_created_at?: string | null;
           user_kyc_address_id?: string;
@@ -999,6 +1058,7 @@ export type Database = {
           user_kyc_address_line_one?: string | null;
           user_kyc_address_line_two?: string | null;
           user_kyc_address_postal_code?: number | null;
+          user_kyc_address_province?: string | null;
           user_kyc_address_region?: string | null;
           user_kyc_address_updated_at?: string | null;
           user_kyc_id?: string;
@@ -1119,8 +1179,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_approver_stats: { Args: never; Returns: Json };
       admin_create_assigned_locker: {
         Args: { input_data: Json };
+        Returns: Json;
+      };
+      admin_create_ip_whitelist: {
+        Args: {
+          input_created_by?: string;
+          input_description?: string;
+          input_ip_cidr: string;
+        };
         Returns: Json;
       };
       admin_create_mailroom_location: {
@@ -1151,21 +1220,68 @@ export type Database = {
         };
       };
       admin_dashboard_stats: { Args: never; Returns: Json };
+      admin_delete_ip_whitelist: { Args: { input_id: string }; Returns: Json };
       admin_delete_mailbox_item: { Args: { input_data: Json }; Returns: Json };
       admin_get_assigned_lockers: { Args: never; Returns: Json };
       admin_list_activity_logs: { Args: { input_data: Json }; Returns: Json };
-      admin_list_mailroom_plans: { Args: never; Returns: Json };
-      admin_list_reward_claims: { Args: never; Returns: Json };
-      admin_list_user_kyc: {
+      admin_list_error_logs: { Args: { input_data: Json }; Returns: Json };
+      admin_list_ip_whitelist: { Args: never; Returns: Json };
+      admin_list_lockers: {
         Args: {
+          input_active_tab?: string;
           input_limit?: number;
+          input_location_id?: string;
           input_offset?: number;
           input_search?: string;
-          input_status?: string;
+          input_sort_by?: string;
+          input_sort_order?: string;
+        };
+        Returns: Json;
+      };
+      admin_list_mailroom_plans: { Args: never; Returns: Json };
+      admin_list_reward_claims: { Args: never; Returns: Json };
+      admin_list_user_kyc:
+        | {
+            Args: {
+              input_limit?: number;
+              input_offset?: number;
+              input_search?: string;
+              input_status?: string;
+            };
+            Returns: Json;
+          }
+        | {
+            Args: {
+              input_limit?: number;
+              input_offset?: number;
+              input_search?: string;
+              input_sort_by?: string;
+              input_sort_order?: string;
+              input_status?: string;
+            };
+            Returns: Json;
+          };
+      admin_list_users: {
+        Args: {
+          input_direction?: string;
+          input_limit?: number;
+          input_offset?: number;
+          input_role?: string;
+          input_search?: string;
+          input_sort?: string;
         };
         Returns: Json;
       };
       admin_restore_mailbox_item: { Args: { input_data: Json }; Returns: Json };
+      admin_update_ip_whitelist: {
+        Args: {
+          input_description?: string;
+          input_id: string;
+          input_ip_cidr: string;
+          input_updated_by?: string;
+        };
+        Returns: Json;
+      };
       admin_update_mailbox_item: { Args: { input_data: Json }; Returns: Json };
       admin_update_mailroom_plan: {
         Args: { input_plan_id: string; input_updates: Json };
@@ -1198,6 +1314,14 @@ export type Database = {
         Args: { input_status: string; input_user_id: string };
         Returns: Json;
       };
+      admin_update_user_role: {
+        Args: {
+          input_actor_user_id: string;
+          input_new_role: string;
+          input_target_user_id: string;
+        };
+        Returns: Json;
+      };
       calculate_registration_amount: {
         Args: { input_data: Json };
         Returns: number;
@@ -1228,7 +1352,12 @@ export type Database = {
       };
       generate_mailroom_registration_code: { Args: never; Returns: Json };
       get_admin_archived_packages: {
-        Args: { input_limit?: number; input_offset?: number };
+        Args: {
+          input_limit?: number;
+          input_offset?: number;
+          input_sort_by?: string;
+          input_sort_order?: string;
+        };
         Returns: Json;
       };
       get_admin_mailroom_packages: {
@@ -1236,7 +1365,11 @@ export type Database = {
           input_compact?: boolean;
           input_limit?: number;
           input_offset?: number;
+          input_search?: string;
+          input_sort_by?: string;
+          input_sort_order?: string;
           input_status?: string[];
+          input_type?: string;
         };
         Returns: Json;
       };
@@ -1385,42 +1518,105 @@ export type Database = {
           zip: string;
         }[];
       };
+      rpc_update_mailroom_location: {
+        Args: {
+          p_barangay?: string;
+          p_city?: string;
+          p_code?: string;
+          p_id: string;
+          p_is_hidden?: boolean;
+          p_max_locker_limit?: number;
+          p_name?: string;
+          p_region?: string;
+          p_total_lockers?: number;
+          p_zip?: string;
+        };
+        Returns: {
+          barangay: string;
+          city: string;
+          code: string;
+          id: string;
+          is_hidden: boolean;
+          max_locker_limit: number;
+          name: string;
+          region: string;
+          total_lockers: number;
+          zip: string;
+        }[];
+      };
       search_mailroom_registrations: {
         Args: { result_limit?: number; search_query?: string };
         Returns: Json;
       };
       show_limit: { Args: never; Returns: number };
       show_trgm: { Args: { "": string }; Returns: string[] };
-      user_create_address: {
-        Args: {
-          input_city?: string;
-          input_is_default?: boolean;
-          input_label?: string;
-          input_line1: string;
-          input_line2?: string;
-          input_postal?: string;
-          input_region?: string;
-          input_user_id: string;
-        };
-        Returns: {
-          user_address_city: string | null;
-          user_address_created_at: string | null;
-          user_address_id: string;
-          user_address_is_default: boolean | null;
-          user_address_label: string | null;
-          user_address_line1: string;
-          user_address_line2: string | null;
-          user_address_postal: string | null;
-          user_address_region: string | null;
-          user_id: string;
-        };
-        SetofOptions: {
-          from: "*";
-          to: "user_address_table";
-          isOneToOne: true;
-          isSetofReturn: false;
-        };
-      };
+      user_create_address:
+        | {
+            Args: {
+              input_barangay?: string;
+              input_city?: string;
+              input_is_default?: boolean;
+              input_label?: string;
+              input_line1: string;
+              input_line2?: string;
+              input_postal?: string;
+              input_province?: string;
+              input_region?: string;
+              input_user_id: string;
+            };
+            Returns: {
+              user_address_barangay: string | null;
+              user_address_city: string | null;
+              user_address_created_at: string | null;
+              user_address_id: string;
+              user_address_is_default: boolean | null;
+              user_address_label: string | null;
+              user_address_line1: string;
+              user_address_line2: string | null;
+              user_address_postal: string | null;
+              user_address_province: string | null;
+              user_address_region: string | null;
+              user_id: string;
+            };
+            SetofOptions: {
+              from: "*";
+              to: "user_address_table";
+              isOneToOne: true;
+              isSetofReturn: false;
+            };
+          }
+        | {
+            Args: {
+              input_city?: string;
+              input_is_default?: boolean;
+              input_label?: string;
+              input_line1: string;
+              input_line2?: string;
+              input_postal?: string;
+              input_region?: string;
+              input_user_id: string;
+            };
+            Returns: {
+              user_address_barangay: string | null;
+              user_address_city: string | null;
+              user_address_created_at: string | null;
+              user_address_id: string;
+              user_address_is_default: boolean | null;
+              user_address_label: string | null;
+              user_address_line1: string;
+              user_address_line2: string | null;
+              user_address_postal: string | null;
+              user_address_province: string | null;
+              user_address_region: string | null;
+              user_id: string;
+            };
+            SetofOptions: {
+              from: "*";
+              to: "user_address_table";
+              isOneToOne: true;
+              isSetofReturn: false;
+            };
+          };
       user_delete_address: {
         Args: { input_user_address_id: string };
         Returns: boolean;
@@ -1432,41 +1628,77 @@ export type Database = {
         Returns: Json;
       };
       user_submit_kyc: { Args: { input_data: Json }; Returns: Json };
-      user_update_address: {
-        Args: {
-          input_city?: string;
-          input_is_default?: boolean;
-          input_label?: string;
-          input_line1: string;
-          input_line2?: string;
-          input_postal?: string;
-          input_region?: string;
-          input_user_address_id: string;
-        };
-        Returns: {
-          user_address_city: string | null;
-          user_address_created_at: string | null;
-          user_address_id: string;
-          user_address_is_default: boolean | null;
-          user_address_label: string | null;
-          user_address_line1: string;
-          user_address_line2: string | null;
-          user_address_postal: string | null;
-          user_address_region: string | null;
-          user_id: string;
-        };
-        SetofOptions: {
-          from: "*";
-          to: "user_address_table";
-          isOneToOne: true;
-          isSetofReturn: false;
-        };
-      };
+      user_update_address:
+        | {
+            Args: {
+              input_barangay?: string;
+              input_city?: string;
+              input_is_default?: boolean;
+              input_label?: string;
+              input_line1: string;
+              input_line2?: string;
+              input_postal?: string;
+              input_province?: string;
+              input_region?: string;
+              input_user_address_id: string;
+            };
+            Returns: {
+              user_address_barangay: string | null;
+              user_address_city: string | null;
+              user_address_created_at: string | null;
+              user_address_id: string;
+              user_address_is_default: boolean | null;
+              user_address_label: string | null;
+              user_address_line1: string;
+              user_address_line2: string | null;
+              user_address_postal: string | null;
+              user_address_province: string | null;
+              user_address_region: string | null;
+              user_id: string;
+            };
+            SetofOptions: {
+              from: "*";
+              to: "user_address_table";
+              isOneToOne: true;
+              isSetofReturn: false;
+            };
+          }
+        | {
+            Args: {
+              input_city?: string;
+              input_is_default?: boolean;
+              input_label?: string;
+              input_line1: string;
+              input_line2?: string;
+              input_postal?: string;
+              input_region?: string;
+              input_user_address_id: string;
+            };
+            Returns: {
+              user_address_barangay: string | null;
+              user_address_city: string | null;
+              user_address_created_at: string | null;
+              user_address_id: string;
+              user_address_is_default: boolean | null;
+              user_address_label: string | null;
+              user_address_line1: string;
+              user_address_line2: string | null;
+              user_address_postal: string | null;
+              user_address_province: string | null;
+              user_address_region: string | null;
+              user_id: string;
+            };
+            SetofOptions: {
+              from: "*";
+              to: "user_address_table";
+              isOneToOne: true;
+              isSetofReturn: false;
+            };
+          };
     };
     Enums: {
       activity_action:
         | "CREATE"
-        | "STORE"
         | "UPDATE"
         | "DELETE"
         | "VIEW"
@@ -1486,7 +1718,11 @@ export type Database = {
         | "RELEASE"
         | "DISPOSE"
         | "SCAN"
-        | "PURCHASE";
+        | "STORE"
+        | "PURCHASE"
+        | "PASSWORD_CHANGE"
+        | "RESET_REQUEST"
+        | "RESTORE";
       activity_entity_type:
         | "MAIL_ACTION_REQUEST"
         | "USER_KYC"
@@ -1500,7 +1736,10 @@ export type Database = {
         | "NOTIFICATION"
         | "MAILROOM_FILE"
         | "MAILROOM_ASSIGNED_LOCKER"
-        | "USER";
+        | "USER"
+        | "ADMIN_IP_WHITELIST"
+        | "ROLE"
+        | "ERROR_LOG";
       activity_type:
         | "USER_REQUEST_SCAN"
         | "USER_REQUEST_RELEASE"
@@ -1515,7 +1754,9 @@ export type Database = {
         | "USER_KYC_SUBMIT"
         | "USER_KYC_VERIFY"
         | "ADMIN_ACTION"
-        | "SYSTEM_EVENT";
+        | "SYSTEM_EVENT"
+        | "AUTH_FORGOT_PASSWORD"
+        | "AUTH_PASSWORD_CHANGE";
       billing_cycle: "MONTHLY" | "QUARTERLY" | "ANNUAL";
       error_code:
         | "AUTH_401_UNAUTHORIZED"
@@ -1777,7 +2018,6 @@ export const Constants = {
     Enums: {
       activity_action: [
         "CREATE",
-        "STORE",
         "UPDATE",
         "DELETE",
         "VIEW",
@@ -1797,7 +2037,11 @@ export const Constants = {
         "RELEASE",
         "DISPOSE",
         "SCAN",
+        "STORE",
         "PURCHASE",
+        "PASSWORD_CHANGE",
+        "RESET_REQUEST",
+        "RESTORE",
       ],
       activity_entity_type: [
         "MAIL_ACTION_REQUEST",
@@ -1813,6 +2057,9 @@ export const Constants = {
         "MAILROOM_FILE",
         "MAILROOM_ASSIGNED_LOCKER",
         "USER",
+        "ADMIN_IP_WHITELIST",
+        "ROLE",
+        "ERROR_LOG",
       ],
       activity_type: [
         "USER_REQUEST_SCAN",
@@ -1829,6 +2076,8 @@ export const Constants = {
         "USER_KYC_VERIFY",
         "ADMIN_ACTION",
         "SYSTEM_EVENT",
+        "AUTH_FORGOT_PASSWORD",
+        "AUTH_PASSWORD_CHANGE",
       ],
       billing_cycle: ["MONTHLY", "QUARTERLY", "ANNUAL"],
       error_code: [

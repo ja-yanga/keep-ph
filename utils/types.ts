@@ -1,6 +1,201 @@
 import { Database } from "./database";
 
-export type UserKycStatusEnum = "SUBMITTED" | "VERIFIED" | "REJECTED";
+//==========DATABASE TYPES==========//
+
+export type ActivityLogTableRow =
+  Database["public"]["Tables"]["activity_log_table"]["Row"];
+export type ActivityLogTableInsert =
+  Database["public"]["Tables"]["activity_log_table"]["Insert"];
+export type ActivityLogTableUpdate =
+  Database["public"]["Tables"]["activity_log_table"]["Update"];
+
+export type AdminIpWhitelistTableRow =
+  Database["public"]["Tables"]["admin_ip_whitelist_table"]["Row"];
+export type AdminIpWhitelistTableInsert =
+  Database["public"]["Tables"]["admin_ip_whitelist_table"]["Insert"];
+export type AdminIpWhitelistTableUpdate =
+  Database["public"]["Tables"]["admin_ip_whitelist_table"]["Update"];
+
+export type ErrorLogTableRow =
+  Database["public"]["Tables"]["error_log_table"]["Row"];
+export type ErrorLogTableInsert =
+  Database["public"]["Tables"]["error_log_table"]["Insert"];
+export type ErrorLogTableUpdate =
+  Database["public"]["Tables"]["error_log_table"]["Update"];
+
+export type LocationLockerRow =
+  Database["public"]["Tables"]["location_locker_table"]["Row"];
+export type LocationLockerInsert =
+  Database["public"]["Tables"]["location_locker_table"]["Insert"];
+export type LocationLockerUpdate =
+  Database["public"]["Tables"]["location_locker_table"]["Update"];
+
+export type MailActionRequestTableRow =
+  Database["public"]["Tables"]["mail_action_request_table"]["Row"];
+export type MailActionRequestTableInsert =
+  Database["public"]["Tables"]["mail_action_request_table"]["Insert"];
+export type MailActionRequestTableUpdate =
+  Database["public"]["Tables"]["mail_action_request_table"]["Update"];
+
+export type MailboxItemTableRow =
+  Database["public"]["Tables"]["mailbox_item_table"]["Row"];
+export type MailboxItemTableInsert =
+  Database["public"]["Tables"]["mailbox_item_table"]["Insert"];
+export type MailboxItemTableUpdate =
+  Database["public"]["Tables"]["mailbox_item_table"]["Update"];
+
+export type LocationLockerAssignedRow =
+  Database["public"]["Tables"]["mailroom_assigned_locker_table"]["Row"];
+export type LocationLockerAssignedInsert =
+  Database["public"]["Tables"]["mailroom_assigned_locker_table"]["Insert"];
+export type LocationLockerAssignedUpdate =
+  Database["public"]["Tables"]["mailroom_assigned_locker_table"]["Update"];
+
+export type MailroomFileTableRow =
+  Database["public"]["Tables"]["mailroom_file_table"]["Row"];
+export type MailroomFileTableInsert =
+  Database["public"]["Tables"]["mailroom_file_table"]["Insert"];
+export type MailroomFileTableUpdate =
+  Database["public"]["Tables"]["mailroom_file_table"]["Update"];
+
+export type MailroomLocationRow =
+  Database["public"]["Tables"]["mailroom_location_table"]["Row"];
+export type MailroomLocationInsert =
+  Database["public"]["Tables"]["mailroom_location_table"]["Insert"];
+export type MailroomLocationUpdate =
+  Database["public"]["Tables"]["mailroom_location_table"]["Update"];
+
+export type MailroomPlanTableRow =
+  Database["public"]["Tables"]["mailroom_plan_table"]["Row"];
+export type MailroomPlanTableInsert =
+  Database["public"]["Tables"]["mailroom_plan_table"]["Insert"];
+export type MailroomPlanTableUpdate =
+  Database["public"]["Tables"]["mailroom_plan_table"]["Update"];
+
+export type MailroomRegistrationTableRow =
+  Database["public"]["Tables"]["mailroom_registration_table"]["Row"];
+export type MailroomRegistrationTableInsert =
+  Database["public"]["Tables"]["mailroom_registration_table"]["Insert"];
+export type MailroomRegistrationTableUpdate =
+  Database["public"]["Tables"]["mailroom_registration_table"]["Update"];
+
+export type NotificationTableRow =
+  Database["public"]["Tables"]["notification_table"]["Row"];
+export type NotificationTableInsert =
+  Database["public"]["Tables"]["notification_table"]["Insert"];
+export type NotificationTableUpdate =
+  Database["public"]["Tables"]["notification_table"]["Update"];
+
+export type PaymentTransactionTableRow =
+  Database["public"]["Tables"]["payment_transaction_table"]["Row"];
+export type PaymentTransactionTableInsert =
+  Database["public"]["Tables"]["payment_transaction_table"]["Insert"];
+export type PaymentTransactionTableUpdate =
+  Database["public"]["Tables"]["payment_transaction_table"]["Update"];
+
+export type ReferralTableRow =
+  Database["public"]["Tables"]["referral_table"]["Row"];
+export type ReferralTableInsert =
+  Database["public"]["Tables"]["referral_table"]["Insert"];
+export type ReferralTableUpdate =
+  Database["public"]["Tables"]["referral_table"]["Update"];
+
+export type RewardsClaimTableRow =
+  Database["public"]["Tables"]["rewards_claim_table"]["Row"];
+export type RewardsClaimTableInsert =
+  Database["public"]["Tables"]["rewards_claim_table"]["Insert"];
+export type RewardsClaimTableUpdate =
+  Database["public"]["Tables"]["rewards_claim_table"]["Update"];
+
+export type SubscriptionTableRow =
+  Database["public"]["Tables"]["subscription_table"]["Row"];
+export type SubscriptionTableInsert =
+  Database["public"]["Tables"]["subscription_table"]["Insert"];
+export type SubscriptionTableUpdate =
+  Database["public"]["Tables"]["subscription_table"]["Update"];
+
+export type UserAddressTableRow =
+  Database["public"]["Tables"]["user_address_table"]["Row"];
+export type UserAddressTableInsert =
+  Database["public"]["Tables"]["user_address_table"]["Insert"];
+export type UserAddressTableUpdate =
+  Database["public"]["Tables"]["user_address_table"]["Update"];
+
+export type UserKYCAddressTableRow =
+  Database["public"]["Tables"]["user_kyc_address_table"]["Row"];
+export type UserKYCAddressTableInsert =
+  Database["public"]["Tables"]["user_kyc_address_table"]["Insert"];
+export type UserKYCAddressTableUpdate =
+  Database["public"]["Tables"]["user_kyc_address_table"]["Update"];
+
+export type UserKYCTableRow =
+  Database["public"]["Tables"]["user_kyc_table"]["Row"];
+export type UserKYCTableInsert =
+  Database["public"]["Tables"]["user_kyc_table"]["Insert"];
+export type UserKYCTableUpdate =
+  Database["public"]["Tables"]["user_kyc_table"]["Update"];
+
+export type UsersTableRow = Database["public"]["Tables"]["users_table"]["Row"];
+export type UsersTableInsert =
+  Database["public"]["Tables"]["users_table"]["Insert"];
+export type UsersTableUpdate =
+  Database["public"]["Tables"]["users_table"]["Update"];
+
+export type RegionTableRow =
+  Database["address_schema"]["Tables"]["region_table"]["Row"];
+export type ProvinceTableRow =
+  Database["address_schema"]["Tables"]["province_table"]["Row"];
+export type CityTableRow =
+  Database["address_schema"]["Tables"]["city_table"]["Row"];
+export type BarangayTableRow =
+  Database["address_schema"]["Tables"]["barangay_table"]["Row"];
+
+//==========DATABASE ENUMS==========//
+
+export type ACTIVITY_ACTION_ENUM =
+  Database["public"]["Enums"]["activity_action"];
+
+export type ACTIVITY_ENTITY_TYPE_ENUM =
+  Database["public"]["Enums"]["activity_entity_type"];
+
+export type ACTIVITY_TYPE_ENUM = Database["public"]["Enums"]["activity_type"];
+
+export type BILLING_CYCLE_ENUM = Database["public"]["Enums"]["billing_cycle"];
+
+export type ERROR_CODE_ENUM = Database["public"]["Enums"]["error_code"];
+
+export type ERROR_TYPE_ENUM = Database["public"]["Enums"]["error_type"];
+
+export type MAIL_ACTION_REQUEST_STATUS_ENUM =
+  Database["public"]["Enums"]["mail_action_request_status"];
+
+export type MAIL_ACTION_REQUEST_TYPE_ENUM =
+  Database["public"]["Enums"]["mail_action_request_type"];
+
+export type MAILROOM_ASSIGNED_LOCKER_STATUS_ENUM =
+  Database["public"]["Enums"]["mailroom_assigned_locker_status"];
+
+export type MAILROOM_FILE_TYPE_ENUM =
+  Database["public"]["Enums"]["mailroom_file_type"];
+
+export type MAILROOM_PACKAGE_STATUS_ENUM =
+  Database["public"]["Enums"]["mailroom_package_status"];
+
+export type MAILROOM_PACKAGE_TYPE_ENUM =
+  Database["public"]["Enums"]["mailroom_package_type"];
+
+export type NOTIFICATION_TYPE_ENUM =
+  Database["public"]["Enums"]["notification_type"];
+
+export type PAYMENT_STATUS_ENUM = Database["public"]["Enums"]["payment_status"];
+
+export type PAYMENT_TYPE_ENUM = Database["public"]["Enums"]["payment_type"];
+
+export type REWARDS_CLAIM_STATUS_ENUM =
+  Database["public"]["Enums"]["rewards_claim_status"];
+
+export type USER_KYC_STATUS_ENUM =
+  Database["public"]["Enums"]["user_kyc_status"];
 
 export type MailroomPlan = {
   id: string;
@@ -542,16 +737,6 @@ export type MailroomRegistrationStats = {
   released: number;
 };
 
-export type UserKYCTableRow =
-  Database["public"]["Tables"]["user_kyc_table"]["Row"];
-export type UserKYCTableInsert =
-  Database["public"]["Tables"]["user_kyc_table"]["Insert"];
-export type UserKYCTableUpdate =
-  Database["public"]["Tables"]["user_kyc_table"]["Update"];
-
-export type UserAddressTableRow =
-  Database["public"]["Tables"]["user_address_table"]["Row"];
-
 export type KycTableRow = Omit<
   UserKYCTableRow,
   "user_date_of_birth" | "user_kyc_agreements_accepted"
@@ -649,15 +834,6 @@ export type ApiResponse = {
 };
 
 export type MailroomStatus = "ACTIVE" | "EXPIRING" | "INACTIVE";
-
-export type RegionTableRow =
-  Database["address_schema"]["Tables"]["region_table"]["Row"];
-export type ProvinceTableRow =
-  Database["address_schema"]["Tables"]["province_table"]["Row"];
-export type CityTableRow =
-  Database["address_schema"]["Tables"]["city_table"]["Row"];
-export type BarangayTableRow =
-  Database["address_schema"]["Tables"]["barangay_table"]["Row"];
 
 export type CustomerKycAddress = Pick<RegionTableRow, "region_id" | "region"> &
   Pick<ProvinceTableRow, "province_id" | "province"> &
@@ -762,21 +938,6 @@ export type AdminIpWhitelistListResponse = {
   current_ip: string | null;
   current_match_ids: string[];
 };
-
-export type MailroomLocationRow =
-  Database["public"]["Tables"]["mailroom_location_table"]["Row"];
-export type MailroomLocationInsert =
-  Database["public"]["Tables"]["mailroom_location_table"]["Insert"];
-export type MailroomLocationUpdate =
-  Database["public"]["Tables"]["mailroom_location_table"]["Update"];
-export type LocationLockerRow =
-  Database["public"]["Tables"]["location_locker_table"]["Row"];
-export type LocationLockerAssignedRow =
-  Database["public"]["Tables"]["mailroom_assigned_locker_table"]["Row"];
-export type LocationLockerInsert =
-  Database["public"]["Tables"]["location_locker_table"]["Insert"];
-export type LocationLockerUpdate =
-  Database["public"]["Tables"]["location_locker_table"]["Update"];
 
 export type T_LocationLocker = LocationLockerRow & {
   location: Pick<
