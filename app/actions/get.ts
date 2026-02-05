@@ -13,6 +13,7 @@ import {
   AdminDashboardStats,
   AdminIpWhitelistEntry,
   AdminUsersRpcResult,
+  ErrorLogEntry,
   BarangayTableRow,
   CityTableRow,
   ClaimWithUrl,
@@ -1739,6 +1740,61 @@ export async function adminListActivityLogs(args: {
   const result = (typeof data === "string" ? JSON.parse(data) : data) as {
     total_count: number;
     logs: ActivityLogEntry[];
+  };
+
+  return {
+    total_count: Number(result?.total_count || 0),
+    logs: Array.isArray(result?.logs) ? result.logs : [],
+  };
+}
+
+/**
+ * Lists error logs for admin review using RPC.
+ *
+ * Used in:
+ * - app/api/admin/error-logs/route.ts
+ */
+export async function adminListErrorLogs(args: {
+  limit?: number;
+  offset?: number;
+  error_type?: string | null;
+  error_code?: string | null;
+  error_resolved?: boolean | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  request_path?: string | null;
+  user_id?: string | null;
+  sort_by?: string | null;
+  sort_direction?: string | null;
+}): Promise<{
+  total_count: number;
+  logs: ErrorLogEntry[];
+}> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_error_logs", {
+    input_data: {
+      limit: args.limit ?? 10,
+      offset: args.offset ?? 0,
+      error_type: args.error_type || null,
+      error_code: args.error_code || null,
+      error_resolved:
+        typeof args.error_resolved === "boolean" ? args.error_resolved : null,
+      date_from: args.date_from || null,
+      date_to: args.date_to || null,
+      request_path: args.request_path || null,
+      user_id: args.user_id || null,
+      sort_by: args.sort_by || null,
+      sort_direction: args.sort_direction || null,
+    },
+  });
+
+  if (error) {
+    console.error("Error fetching error logs action:", error);
+    throw error;
+  }
+
+  const result = (typeof data === "string" ? JSON.parse(data) : data) as {
+    total_count: number;
+    logs: ErrorLogEntry[];
   };
 
   return {

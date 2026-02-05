@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDashboardContent } from "@/app/actions/get";
+import { logApiError } from "@/lib/error-log";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const stats = await getDashboardContent();
     return NextResponse.json(stats ?? {}, {
@@ -17,6 +18,9 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Dashboard stats error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message: errorMessage, error });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

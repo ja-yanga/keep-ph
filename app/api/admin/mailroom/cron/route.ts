@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import dayjs from "dayjs";
+import { logApiError } from "@/lib/error-log";
 
 const supabaseAdmin = createSupabaseServiceClient();
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const nowIso = new Date().toISOString();
 
@@ -122,6 +123,11 @@ export async function POST() {
     });
   } catch (err: unknown) {
     console.error(err);
+    void logApiError(req, {
+      status: 500,
+      message: "Cron processing failed",
+      error: err,
+    });
     return NextResponse.json(
       { error: "Cron processing failed" },
       { status: 500 },

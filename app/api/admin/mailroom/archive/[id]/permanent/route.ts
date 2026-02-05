@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminPermanentDeleteMailboxItem } from "@/app/actions/post";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 
 export async function DELETE(
   request: NextRequest,
@@ -13,6 +14,7 @@ export async function DELETE(
     id = solvedParams.id;
     console.log("[PermanentDelete] ID from params:", id);
     if (!id) {
+      void logApiError(request, { status: 400, message: "ID is required" });
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
     }
 
@@ -51,6 +53,7 @@ export async function DELETE(
       `Error in DELETE /api/admin/mailroom/archive/${id}/permanent:`,
       error,
     );
+    void logApiError(request, { status: 500, message, error });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

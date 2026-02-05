@@ -4,6 +4,7 @@ import { adminListIpWhitelist, getUserRole } from "@/app/actions/get";
 import { adminUpdateIpWhitelist } from "@/app/actions/update";
 import { adminDeleteIpWhitelist } from "@/app/actions/delete";
 import { logActivity } from "@/lib/activity-log";
+import { logApiError } from "@/lib/error-log";
 import {
   invalidateAdminIpWhitelistCache,
   isIpWhitelisted,
@@ -45,6 +46,7 @@ export async function PUT(req: Request, { params }: RouteContext) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Invalid IP or CIDR.";
+      void logApiError(req, { status: 400, message });
       return NextResponse.json({ error: message }, { status: 400 });
     }
     const description =
@@ -58,6 +60,7 @@ export async function PUT(req: Request, { params }: RouteContext) {
     );
 
     if (!existing) {
+      void logApiError(req, { status: 404, message: "Entry not found." });
       return NextResponse.json({ error: "Entry not found." }, { status: 404 });
     }
 
@@ -72,6 +75,11 @@ export async function PUT(req: Request, { params }: RouteContext) {
       ]);
 
       if (!stillAllowed && !newAllows) {
+        void logApiError(req, {
+          status: 400,
+          message:
+            "Update would remove your current IP from the whitelist. Add another entry first.",
+        });
         return NextResponse.json(
           {
             error:
@@ -93,12 +101,17 @@ export async function PUT(req: Request, { params }: RouteContext) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Server error";
       if (message.toLowerCase().includes("duplicate")) {
+        void logApiError(req, {
+          status: 409,
+          message: "IP or CIDR already exists in the whitelist.",
+        });
         return NextResponse.json(
           { error: "IP or CIDR already exists in the whitelist." },
           { status: 409 },
         );
       }
       if (message.toLowerCase().includes("not found")) {
+        void logApiError(req, { status: 404, message: "Entry not found." });
         return NextResponse.json(
           { error: "Entry not found." },
           { status: 404 },
@@ -131,6 +144,7 @@ export async function PUT(req: Request, { params }: RouteContext) {
   } catch (err: unknown) {
     console.error("API error updating IP whitelist entry:", err);
     const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
@@ -158,6 +172,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
     );
 
     if (!existing) {
+      void logApiError(req, { status: 404, message: "Entry not found." });
       return NextResponse.json({ error: "Entry not found." }, { status: 404 });
     }
 
@@ -166,6 +181,10 @@ export async function DELETE(req: Request, { params }: RouteContext) {
     );
 
     if (remaining.length === 0) {
+      void logApiError(req, {
+        status: 400,
+        message: "Cannot remove the last whitelist entry.",
+      });
       return NextResponse.json(
         { error: "Cannot remove the last whitelist entry." },
         { status: 400 },
@@ -174,6 +193,11 @@ export async function DELETE(req: Request, { params }: RouteContext) {
 
     const clientIp = resolveClientIp(req.headers, null);
     if (clientIp && !isIpWhitelisted(clientIp, remaining)) {
+      void logApiError(req, {
+        status: 400,
+        message:
+          "Delete would remove your current IP from the whitelist. Add another entry first.",
+      });
       return NextResponse.json(
         {
           error:
@@ -188,6 +212,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Server error";
       if (message.toLowerCase().includes("not found")) {
+        void logApiError(req, { status: 404, message: "Entry not found." });
         return NextResponse.json(
           { error: "Entry not found." },
           { status: 404 },
@@ -214,6 +239,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
   } catch (err: unknown) {
     console.error("API error deleting IP whitelist entry:", err);
     const errorMessage = err instanceof Error ? err.message : "Server error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

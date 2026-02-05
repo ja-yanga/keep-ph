@@ -29,6 +29,7 @@ import {
   IconReceipt,
   IconFileTime,
   IconShieldLock,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 
 type PrivateAdminSidebarProps = {
@@ -80,6 +81,7 @@ export default function PrivateAdminSidebar({
       transactions: <IconReceipt size={20} />,
       "ip-whitelist": <IconShieldLock size={20} />,
       "activity-logs": <IconFileTime size={20} />,
+      "error-logs": <IconAlertTriangle size={20} />,
     };
     return iconMap[key] || null;
   };

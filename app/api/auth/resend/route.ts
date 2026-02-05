@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/client";
+import { logApiError } from "@/lib/error-log";
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +26,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Verification email resent" });
   } catch (err: unknown) {
     console.error("Resend error:", err);
+    const errorMessage =
+      err instanceof Error ? err.message : "Internal Server Error";
+    void logApiError(req, { status: 500, message: errorMessage, error: err });
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

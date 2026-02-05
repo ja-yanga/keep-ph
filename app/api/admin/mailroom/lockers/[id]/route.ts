@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminUpdateLocker } from "@/app/actions/update";
 import { adminDeleteLocker } from "@/app/actions/delete";
+import { logApiError } from "@/lib/error-log";
 
 export async function PUT(
   req: Request,
@@ -50,6 +51,22 @@ export async function PUT(
         ? String(body.assignment_status)
         : undefined;
 
+    if (
+      lockerCode === undefined &&
+      isAvailable === undefined &&
+      locationId === undefined &&
+      assignmentStatus === undefined
+    ) {
+      void logApiError(req, {
+        status: 400,
+        message: "No updatable fields provided",
+      });
+      return NextResponse.json(
+        { error: "No updatable fields provided" },
+        { status: 400 },
+      );
+    }
+
     const data = await adminUpdateLocker({
       id,
       lockerCode,
@@ -61,6 +78,11 @@ export async function PUT(
     return NextResponse.json({ data }, { status: 200 });
   } catch (err: unknown) {
     console.error("admin.mailroom.lockers.[id].PUT:", err);
+    void logApiError(req, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal Server Error" },
       { status: 500 },
@@ -69,7 +91,7 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -84,6 +106,7 @@ export async function DELETE(
 
     const { id } = await params;
     if (!id) {
+      void logApiError(req, { status: 400, message: "Missing id" });
       return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
@@ -92,6 +115,11 @@ export async function DELETE(
     return NextResponse.json({ message: "Locker deleted" }, { status: 200 });
   } catch (err: unknown) {
     console.error("admin.mailroom.lockers.[id].DELETE:", err);
+    void logApiError(req, {
+      status: 500,
+      message: "Internal Server Error",
+      error: err,
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal Server Error" },
       { status: 500 },
