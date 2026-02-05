@@ -90,10 +90,8 @@ export async function POST(req: Request) {
 
     const locationId = String(body.location_id ?? "").trim();
     const lockerCode = String(body.locker_code ?? "").trim();
-    const isAvailable =
-      body.is_available === null || body.is_available === undefined
-        ? true
-        : Boolean(body.is_available);
+    const isAvailable = parseBool(body.is_available, true);
+    const isAssignable = parseBool(body.is_assignable, true);
 
     if (!locationId || !lockerCode) {
       return NextResponse.json(
@@ -107,6 +105,7 @@ export async function POST(req: Request) {
       locationId,
       lockerCode,
       isAvailable,
+      isAssignable,
     });
 
     // increment total_lockers on location (best-effort)
@@ -149,3 +148,13 @@ export async function POST(req: Request) {
     );
   }
 }
+
+const parseBool = (val: unknown, fallback?: boolean): boolean | undefined => {
+  if (val === undefined || val === null) return fallback;
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    if (val.toLowerCase() === "true") return true;
+    if (val.toLowerCase() === "false") return false;
+  }
+  return fallback;
+};

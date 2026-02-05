@@ -311,6 +311,7 @@ export type Database = {
           location_locker_deleted_at: string | null;
           location_locker_id: string;
           location_locker_is_available: boolean | null;
+          location_locker_is_assignable: boolean | null;
           mailroom_location_id: string;
         };
         Insert: {
@@ -319,6 +320,7 @@ export type Database = {
           location_locker_deleted_at?: string | null;
           location_locker_id?: string;
           location_locker_is_available?: boolean | null;
+          location_locker_is_assignable?: boolean | null;
           mailroom_location_id: string;
         };
         Update: {
@@ -327,6 +329,7 @@ export type Database = {
           location_locker_deleted_at?: string | null;
           location_locker_id?: string;
           location_locker_is_available?: boolean | null;
+          location_locker_is_assignable?: boolean | null;
           mailroom_location_id?: string;
         };
         Relationships: [

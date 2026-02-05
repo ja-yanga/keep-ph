@@ -46,6 +46,7 @@ BEGIN
       ll.mailroom_location_id,
       ll.location_locker_code,
       ll.location_locker_is_available,
+      ll.location_locker_is_assignable,
       ll.location_locker_created_at,
       ml.mailroom_location_name,
       al.mailroom_assigned_locker_id,
@@ -88,12 +89,14 @@ BEGIN
       CASE WHEN sort_order_term = 'ASC' THEN
         CASE
           WHEN sort_by_term = 'is_available' OR sort_by_term = 'location_locker_is_available' THEN ll.location_locker_is_available::int::text
+          WHEN sort_by_term = 'is_assignable' OR sort_by_term = 'location_locker_is_assignable' THEN ll.location_locker_is_assignable::int::text
           ELSE NULL
         END
       END ASC,
       CASE WHEN sort_order_term = 'DESC' THEN
         CASE
           WHEN sort_by_term = 'is_available' OR sort_by_term = 'location_locker_is_available' THEN ll.location_locker_is_available::int::text
+          WHEN sort_by_term = 'is_assignable' OR sort_by_term = 'location_locker_is_assignable' THEN ll.location_locker_is_assignable::int::text
           ELSE NULL
         END
       END DESC,

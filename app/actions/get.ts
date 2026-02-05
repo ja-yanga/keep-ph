@@ -1933,6 +1933,7 @@ export async function adminListLockers(args: {
 
   const normalized = lockerRows.map((r): T_LocationLocker => {
     const isAvailable = r.location_locker_is_available ?? true;
+    const isAssignable = r.location_locker_is_assignable ?? true;
     const isAssigned =
       Boolean(r.mailroom_assigned_locker_id) || isAvailable === false;
 
@@ -1941,6 +1942,7 @@ export async function adminListLockers(args: {
       mailroom_location_id: r.mailroom_location_id,
       location_locker_code: r.location_locker_code || null,
       location_locker_is_available: isAvailable,
+      location_locker_is_assignable: isAssignable,
       location_locker_created_at: r.location_locker_created_at || null,
       location: {
         mailroom_location_id: r.mailroom_location_id,

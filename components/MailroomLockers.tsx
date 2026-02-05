@@ -19,6 +19,7 @@ import {
   SegmentedControl,
   Tabs,
   Alert,
+  Switch,
 } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useSearchParams } from "next/navigation";
@@ -138,12 +139,14 @@ const fetcherLockers = async (
     totalPages: number;
   };
 }> => {
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(txt || `Failed to fetch ${url}`);
   }
-  return res.json();
+  const json = await res.json();
+  console.log("admin lockers payload:", json);
+  return json;
 };
 
 export default function MailroomLockers() {
@@ -181,7 +184,7 @@ export default function MailroomLockers() {
   const [formData, setFormData] = useState({
     locker_code: "",
     location_id: "",
-    is_available: true,
+    is_assignable: true,
   });
 
   const [capacityStatus, setCapacityStatus] = useState<string>("Normal");
@@ -298,14 +301,20 @@ export default function MailroomLockers() {
       setFormData({
         locker_code: locker.location_locker_code || "",
         location_id: locker.mailroom_location_id || "",
-        is_available: locker.location_locker_is_available ?? true,
+
+        is_assignable: locker.location_locker_is_assignable ?? true,
       });
       setCapacityStatus(
         locker.assigned?.mailroom_assigned_locker_status ?? "Normal",
       );
     } else {
       setEditingLocker(null);
-      setFormData({ locker_code: "", location_id: "", is_available: true });
+      setFormData({
+        locker_code: "",
+        location_id: "",
+
+        is_assignable: true,
+      });
       setCapacityStatus("Normal");
     }
 
@@ -341,6 +350,49 @@ export default function MailroomLockers() {
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(txt || "Failed to save locker");
+      }
+
+      const result = (await res.json().catch(() => ({}))) as {
+        data?: Locker;
+      };
+
+      if (editingLocker && result?.data) {
+        // Optimistically update the current list so the table reflects changes immediately
+        await swrMutate(
+          lockersKey,
+          (
+            current:
+              | {
+                  data: Locker[];
+                  pagination: {
+                    page: number;
+                    pageSize: number;
+                    totalCount: number;
+                    totalPages: number;
+                  };
+                }
+              | undefined,
+          ) => {
+            if (!current) return current;
+            const merged = {
+              ...editingLocker,
+              ...result.data,
+              location_locker_code: formData.locker_code,
+              mailroom_location_id: formData.location_id,
+
+              location_locker_is_assignable: formData.is_assignable,
+            };
+            return {
+              ...current,
+              data: current.data.map((l) =>
+                l.location_locker_id === merged.location_locker_id
+                  ? { ...l, ...merged }
+                  : l,
+              ),
+            };
+          },
+          false,
+        );
       }
 
       setGlobalSuccess(
@@ -421,6 +473,19 @@ export default function MailroomLockers() {
           return (
             <Badge color={isAvail ? "teal" : "red"} variant="dot">
               {isAvail ? "Available" : "Occupied"}
+            </Badge>
+          );
+        },
+      },
+      {
+        accessor: "location_locker_is_assignable",
+        title: "Assignable",
+        sortable: true,
+        render: (locker: Locker) => {
+          const isAssignable = locker.location_locker_is_assignable ?? true;
+          return (
+            <Badge color={isAssignable ? "teal" : "gray"} variant="outline">
+              {isAssignable ? "Yes" : "No"}
             </Badge>
           );
         },
@@ -749,6 +814,20 @@ export default function MailroomLockers() {
             required
             // allow changing location in both add and edit flows
           />
+
+          <Group justify="space-between" align="center">
+            <Text size="sm">Assignable</Text>
+            <Switch
+              checked={formData.is_assignable}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  is_assignable: e.currentTarget.checked,
+                })
+              }
+              aria-label="Set locker assignable"
+            />
+          </Group>
 
           {activeAssignment && (
             <Paper

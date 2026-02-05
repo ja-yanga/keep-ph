@@ -4,6 +4,16 @@ import { adminUpdateLocker } from "@/app/actions/update";
 import { adminDeleteLocker } from "@/app/actions/delete";
 import { logApiError } from "@/lib/error-log";
 
+const parseBool = (val: unknown): boolean | undefined => {
+  if (val === undefined || val === null) return undefined;
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    if (val.toLowerCase() === "true") return true;
+    if (val.toLowerCase() === "false") return false;
+  }
+  return undefined;
+};
+
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -50,12 +60,17 @@ export async function PUT(
       has("assignment_status") && body.assignment_status != null
         ? String(body.assignment_status)
         : undefined;
+    const isAssignable =
+      has("is_assignable") && body.is_assignable != null
+        ? parseBool(body.is_assignable)
+        : undefined;
 
     if (
       lockerCode === undefined &&
       isAvailable === undefined &&
       locationId === undefined &&
-      assignmentStatus === undefined
+      assignmentStatus === undefined &&
+      isAssignable === undefined
     ) {
       void logApiError(req, {
         status: 400,
@@ -73,6 +88,7 @@ export async function PUT(
       isAvailable,
       locationId,
       assignmentStatus,
+      isAssignable,
     });
 
     return NextResponse.json({ data }, { status: 200 });
