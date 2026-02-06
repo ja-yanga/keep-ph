@@ -651,7 +651,7 @@ export type Plan = {
 export type MailroomPackageViewItem = AdminMailroomPackage;
 
 export type MailroomPackageViewProps = {
-  item: MailroomPackageViewItem;
+  item: MailroomPackageViewItem | null;
   loading: boolean;
   error: string | null;
   onRefreshAction?: () => Promise<void> | void;
