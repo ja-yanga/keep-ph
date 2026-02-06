@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { adminGetMailroomPackages } from "@/app/actions/get";
 import { adminCreateMailroomPackage } from "@/app/actions/post";
 import { logApiError } from "@/lib/error-log";
+import type { AdminCreateMailroomPackageArgs } from "@/utils/types";
 
 export async function GET(req?: Request) {
   try {
@@ -65,7 +66,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = (await request.json()) as Omit<
+      AdminCreateMailroomPackageArgs,
+      "userId"
+    >;
 
     // Require package_name
     const packageName = body.package_name ?? null;

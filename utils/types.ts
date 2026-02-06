@@ -540,6 +540,75 @@ export type AdminMailroomLocation = MailroomLocationRow & {
   mailroom_location_max_locker_limit?: number | null;
 };
 
+export type AdminMailroomRegistration = MailroomRegistrationTableRow & {
+  full_name?: string | null;
+  email?: string | null;
+  mobile?: string | null;
+  mailroom_plans?:
+    | {
+        name: string;
+        can_receive_mail: boolean;
+        can_receive_parcels: boolean;
+      }
+    | {
+        name: string;
+        can_receive_mail: boolean;
+        can_receive_parcels: boolean;
+      }[];
+};
+
+export type AdminMailroomPackage = MailboxItemTableRow & {
+  mailroom_file_table?: MailroomFileTableRow[] | null;
+  registration?: AdminMailroomRegistration | null;
+  locker?: LocationLockerRow | null;
+  mailbox_item_notes?: string | null;
+  package_name?: string | null; // Legacy field support
+  package_photo?: string | null; // Legacy field support
+  image_url?: string | null; // Legacy field support
+  package_type?: string | null; // Legacy field support
+  status?: string | null; // Legacy field support
+  release_address?: string | null;
+  release_to_name?: string | null;
+  notes?: string | null;
+};
+
+export type AdminCreateMailroomPackageArgs = {
+  userId: string;
+  package_name: string;
+  registration_id: string;
+  locker_id?: string | null;
+  package_type: MAILROOM_PACKAGE_TYPE_ENUM;
+  status: string;
+  notes?: string | null;
+  package_photo?: string | null;
+  locker_status?: string;
+};
+
+export type AdminUpdateMailroomPackageArgs = {
+  userId: string;
+  id: string;
+  package_name?: string;
+  registration_id?: string;
+  locker_id?: string | null;
+  package_type?: MAILROOM_PACKAGE_TYPE_ENUM;
+  status?: string;
+  package_photo?: string | null;
+  locker_status?: string;
+};
+
+export type AssignedLocker = LocationLockerAssignedRow & {
+  locker?: LocationLockerRow;
+};
+
+export type AdminMailroomPackagesResponse = {
+  packages: AdminMailroomPackage[];
+  registrations: AdminMailroomRegistration[];
+  lockers: LocationLockerRow[];
+  assignedLockers: AssignedLocker[];
+  totalCount: number;
+  counts?: Record<string, number>;
+};
+
 export type AdminCreateMailroomLocationArgs = {
   name: string;
   code?: string | null;
@@ -585,7 +654,7 @@ export type Plan = {
   can_digitize: boolean;
 };
 
-export type MailroomPackageViewItem = RawRow | null;
+export type MailroomPackageViewItem = AdminMailroomPackage;
 
 export type MailroomPackageViewProps = {
   item: MailroomPackageViewItem;

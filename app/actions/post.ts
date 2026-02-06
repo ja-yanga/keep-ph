@@ -6,8 +6,10 @@ import { logActivity } from "@/lib/activity-log";
 import { parseAddressRow } from "@/utils/helper";
 import {
   AdminCreateMailroomLocationArgs,
+  AdminCreateMailroomPackageArgs,
   AdminIpWhitelistEntry,
   AdminMailroomLocation,
+  AdminMailroomPackage,
   CreateUserAddressArgs,
   RequestRewardClaimArgs,
   RpcClaimResponse,
@@ -587,17 +589,9 @@ async function generateMailroomCode(): Promise<string> {
  * Used in:
  * - app/api/admin/mailroom/packages/route.ts - API endpoint for creating packages
  */
-export async function adminCreateMailroomPackage(args: {
-  userId: string;
-  package_name: string;
-  registration_id: string;
-  locker_id?: string | null;
-  package_type: "Document" | "Parcel";
-  status: string;
-  notes?: string | null;
-  package_photo?: string | null;
-  locker_status?: string;
-}): Promise<unknown> {
+export async function adminCreateMailroomPackage(
+  args: AdminCreateMailroomPackageArgs,
+): Promise<AdminMailroomPackage> {
   const supabaseAdmin = createSupabaseServiceClient();
 
   // Insert package into mailbox_item_table
@@ -686,7 +680,7 @@ export async function adminCreateMailroomPackage(args: {
     },
   });
 
-  return data;
+  return data as AdminMailroomPackage;
 }
 
 export async function upsertPaymentResource(payRes: {

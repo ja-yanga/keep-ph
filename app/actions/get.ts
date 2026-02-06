@@ -9,17 +9,24 @@ import {
 } from "@/utils/helper";
 import { T_RawTransaction } from "@/utils/transform/transaction";
 import {
+  ActivityLogEntry,
   AdminArchivedPackage,
   AdminClaim,
   AdminDashboardStats,
   AdminIpWhitelistEntry,
+  AdminMailroomPackage,
+  AdminMailroomPackagesResponse,
   AdminUsersRpcResult,
-  ErrorLogEntry,
   BarangayTableRow,
   CityTableRow,
   ClaimWithUrl,
+  ErrorLogEntry,
+  KycTableRow,
+  LocationLockerAssignedRow,
+  LocationLockerRow,
   MailroomPlanRow,
   MailroomRegistrationStats,
+  MailroomRegistrationTableRow,
   ProvinceTableRow,
   RegCounts,
   RegionTableRow,
@@ -27,11 +34,9 @@ import {
   RpcAdminClaim,
   RpcClaim,
   RpcMailroomPlan,
-  UserAddressRow,
-  ActivityLogEntry,
   T_LocationLocker,
   T_LockerData,
-  KycTableRow,
+  UserAddressRow,
 } from "@/utils/types";
 import {
   T_TransactionPaginationMeta,
@@ -938,14 +943,7 @@ export async function adminGetMailroomPackages(args: {
   sortOrder?: string;
   search?: string;
   type?: string;
-}): Promise<{
-  packages: unknown[];
-  registrations: unknown[];
-  lockers: unknown[];
-  assignedLockers: unknown[];
-  totalCount: number;
-  counts?: Record<string, number>;
-}> {
+}): Promise<AdminMailroomPackagesResponse> {
   const limit = Math.min(args.limit ?? 50, 200);
   const offset = args.offset ?? 0;
   const compact = args.compact ?? false;
@@ -985,14 +983,18 @@ export async function adminGetMailroomPackages(args: {
     throw new Error("Failed to parse response");
   }
 
-  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
-  const registrations = Array.isArray(rpcData.registrations)
-    ? rpcData.registrations
-    : [];
-  const lockers = Array.isArray(rpcData.lockers) ? rpcData.lockers : [];
-  const assignedLockers = Array.isArray(rpcData.assignedLockers)
-    ? rpcData.assignedLockers
-    : [];
+  const packages = (
+    Array.isArray(rpcData.packages) ? rpcData.packages : []
+  ) as AdminMailroomPackage[];
+  const registrations = (
+    Array.isArray(rpcData.registrations) ? rpcData.registrations : []
+  ) as MailroomRegistrationTableRow[];
+  const lockers = (
+    Array.isArray(rpcData.lockers) ? rpcData.lockers : []
+  ) as LocationLockerRow[];
+  const assignedLockers = (
+    Array.isArray(rpcData.assignedLockers) ? rpcData.assignedLockers : []
+  ) as LocationLockerAssignedRow[];
   const totalCount =
     typeof rpcData.total_count === "number"
       ? rpcData.total_count

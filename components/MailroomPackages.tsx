@@ -43,7 +43,6 @@ import {
   IconRestore,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import dayjs from "dayjs";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { AdminTable } from "./common/AdminTable";
 import { MailroomPackageStatsCards } from "./MailroomPackageStatsCards";
@@ -52,63 +51,29 @@ import {
   type DataTableSortStatus,
 } from "mantine-datatable";
 import { getStatusFormat } from "@/utils/helper";
+import type {
+  AdminMailroomPackage,
+  AdminMailroomRegistration,
+  LocationLockerRow,
+  AssignedLocker,
+  MAILROOM_ASSIGNED_LOCKER_STATUS_ENUM,
+} from "@/utils/types";
+import { formatDate } from "@/utils/format";
 
-type Registration = {
-  id: string;
-  full_name: string;
-  email: string;
-  mailroom_code?: string | null;
-  mobile?: string | null; // added so release modal can show phone from registrations API
-  // CHANGED: Added specific plan capabilities
-  mailroom_plans?: {
-    name: string;
-    can_receive_mail: boolean;
-    can_receive_parcels: boolean;
-  };
-};
-
-type Locker = {
-  id: string;
-  locker_code: string;
-  is_available: boolean;
-};
-
-// We need to know which locker is assigned to which user
-type AssignedLocker = {
-  id: string;
-  registration_id: string;
-  locker_id: string;
-  status?: "Empty" | "Normal" | "Near Full" | "Full";
-  locker?: Locker;
-};
-
-type Package = {
-  id: string;
-  package_name: string;
-  registration_id: string;
-  locker_id?: string | null;
-  package_type: "Document" | "Parcel";
-  status: string;
-  notes?: string;
-  image_url?: string;
-  package_photo?: string | null;
-  received_at: string;
-  registration?: Registration;
-  locker?: Locker;
-  // Release/address snapshot fields
-  release_address_id?: string | null;
-  release_address?: string | null;
-  release_to_name?: string | null;
-};
+type Locker = LocationLockerRow;
 
 const PACKAGE_TYPES = ["Document", "Parcel"];
 
 export default function MailroomPackages() {
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [packages, setPackages] = useState<AdminMailroomPackage[]>([]);
+  const [registrations, setRegistrations] = useState<
+    AdminMailroomRegistration[]
+  >([]);
   const [lockers, setLockers] = useState<Locker[]>([]);
   const [assignedLockers, setAssignedLockers] = useState<AssignedLocker[]>([]);
-  const [archivedPackages, setArchivedPackages] = useState<Package[]>([]);
+  const [archivedPackages, setArchivedPackages] = useState<
+    AdminMailroomPackage[]
+  >([]);
   const [archivedTotalCount, setArchivedTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -130,8 +95,10 @@ export default function MailroomPackages() {
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Package>>({
-    columnAccessor: "received_at",
+  const [sortStatus, setSortStatus] = useState<
+    DataTableSortStatus<AdminMailroomPackage>
+  >({
+    columnAccessor: "created_at",
     direction: "desc",
   });
 
@@ -143,7 +110,8 @@ export default function MailroomPackages() {
   ] = useDisclosure(false);
   const [packageToDelete, setPackageToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [editingPackage, setEditingPackage] = useState<Package | null>(null);
+  const [editingPackage, setEditingPackage] =
+    useState<AdminMailroomPackage | null>(null);
   const [formData, setFormData] = useState({
     package_name: "",
     registration_id: "",
@@ -168,13 +136,7 @@ export default function MailroomPackages() {
       return () => URL.revokeObjectURL(url);
     }
     if (editingPackage) {
-      setPreviewSrc(
-        (editingPackage as { package_photo?: string; image_url?: string })
-          .package_photo ||
-          (editingPackage as { package_photo?: string; image_url?: string })
-            .image_url ||
-          null,
-      );
+      setPreviewSrc(editingPackage.mailbox_item_photo || null);
     } else {
       setPreviewSrc(null);
     }
@@ -183,14 +145,14 @@ export default function MailroomPackages() {
   // Scan/Release States
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanFile, setScanFile] = useState<File | null>(null);
-  const [packageToScan, setPackageToScan] = useState<Package | null>(null);
+  const [packageToScan, setPackageToScan] =
+    useState<AdminMailroomPackage | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [releaseFile, setReleaseFile] = useState<File | null>(null);
-  const [packageToRelease, setPackageToRelease] = useState<Package | null>(
-    null,
-  );
+  const [packageToRelease, setPackageToRelease] =
+    useState<AdminMailroomPackage | null>(null);
   const [isReleasing, setIsReleasing] = useState(false);
   const [releaseNote, setReleaseNote] = useState<string>("");
   const [addresses, setAddresses] = useState<
@@ -212,18 +174,16 @@ export default function MailroomPackages() {
   );
 
   const [disposeModalOpen, setDisposeModalOpen] = useState(false);
-  const [packageToDispose, setPackageToDispose] = useState<Package | null>(
-    null,
-  );
+  const [packageToDispose, setPackageToDispose] =
+    useState<AdminMailroomPackage | null>(null);
   const [isDisposing, setIsDisposing] = useState(false);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<string>("active");
 
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
-  const [packageToRestore, setPackageToRestore] = useState<Package | null>(
-    null,
-  );
+  const [packageToRestore, setPackageToRestore] =
+    useState<AdminMailroomPackage | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
 
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
@@ -240,9 +200,8 @@ export default function MailroomPackages() {
   }, [searchParams]);
 
   // New state for locker capacity
-  const [lockerCapacity, setLockerCapacity] = useState<
-    "Empty" | "Normal" | "Near Full" | "Full"
-  >("Normal");
+  const [lockerCapacity, setLockerCapacity] =
+    useState<MAILROOM_ASSIGNED_LOCKER_STATUS_ENUM>("Normal");
 
   // Build SWR key with filters and pagination
   const packagesKey = useMemo(() => {
@@ -313,7 +272,7 @@ export default function MailroomPackages() {
   // sync SWR combined response into local state using useMemo to reduce main-thread work
   const normalizedData = useMemo(() => {
     const payload = combinedData ?? {};
-    let pkgs: Package[];
+    let pkgs: AdminMailroomPackage[];
     if (Array.isArray(payload.packages)) {
       pkgs = payload.packages;
     } else if (Array.isArray(payload.data)) {
@@ -432,19 +391,21 @@ export default function MailroomPackages() {
         }
 
         const json = await res.json();
-        const results = (json.data || []) as Registration[];
+        const results = (json.data || []) as AdminMailroomRegistration[];
 
-        const options = results.map((r) => {
-          const planName = Array.isArray(r.mailroom_plans)
-            ? r.mailroom_plans[0]?.name
-            : (r.mailroom_plans as { name?: string })?.name;
-          return {
-            value: r.id,
-            label: `${r.mailroom_code || "No Code"} - ${r.email} (${
-              planName || "Unknown Plan"
-            })`,
-          };
-        });
+        const options = results
+          .filter((r) => r.mailroom_registration_id)
+          .map((r) => {
+            const planName = Array.isArray(r.mailroom_plans)
+              ? r.mailroom_plans[0]?.name
+              : (r.mailroom_plans as { name?: string })?.name;
+            return {
+              value: r.mailroom_registration_id!,
+              label: `${r.mailroom_registration_code || "No Code"} - ${r.email} (${
+                planName || "Unknown Plan"
+              })`,
+            };
+          });
 
         setRecipientOptions(options);
       } catch (error) {
@@ -470,29 +431,37 @@ export default function MailroomPackages() {
     [search, filterStatus, filterType],
   );
 
-  const handleOpenModal = (pkg?: Package) => {
+  const handleOpenModal = (pkg?: AdminMailroomPackage) => {
     if (pkg) {
       setEditingPackage(pkg);
 
       // 2. Pre-fill locker capacity from existing assignment if available
       const assignment = assignedLockers.find(
-        (a) => a.registration_id === pkg.registration_id,
+        (a) => a.mailroom_registration_id === pkg.mailroom_registration_id,
       );
-      if (assignment && assignment.status) {
-        setLockerCapacity(assignment.status);
+      if (assignment && assignment.mailroom_assigned_locker_status) {
+        setLockerCapacity(
+          assignment.mailroom_assigned_locker_status as
+            | "Empty"
+            | "Normal"
+            | "Near Full"
+            | "Full",
+        );
       }
 
       setFormData({
-        package_name: pkg.package_name,
-        registration_id: pkg.registration_id,
-        locker_id: pkg.locker_id || "",
-        package_type: pkg.package_type,
-        status: pkg.status,
+        package_name: pkg.mailbox_item_name || pkg.package_name || "",
+        registration_id: pkg.mailroom_registration_id,
+        locker_id: pkg.location_locker_id || "",
+        package_type: pkg.mailbox_item_type || pkg.package_type || "",
+        status: pkg.mailbox_item_status || pkg.status || "STORED",
         recipient_email: pkg.registration?.email || "",
         recipient_name: pkg.registration?.full_name || "",
       });
       // Find registration to populate recipient search
-      const reg = registrations.find((r) => r.id === pkg.registration_id);
+      const reg = registrations.find(
+        (r) => r.mailroom_registration_id === pkg.mailroom_registration_id,
+      );
       let planName: string | undefined;
       if (reg?.mailroom_plans) {
         planName = Array.isArray(reg.mailroom_plans)
@@ -500,7 +469,7 @@ export default function MailroomPackages() {
           : (reg.mailroom_plans as { name?: string })?.name;
       }
       const regLabel = reg
-        ? `${reg.mailroom_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
+        ? `${reg.mailroom_registration_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
         : "";
       setRecipientSearch(regLabel);
       setSelectedRecipientLabel(regLabel);
@@ -508,7 +477,7 @@ export default function MailroomPackages() {
       if (reg) {
         setRecipientOptions([
           {
-            value: reg.id,
+            value: reg.mailroom_registration_id,
             label: regLabel,
           },
         ]);
@@ -550,12 +519,14 @@ export default function MailroomPackages() {
 
     // Find ALL assigned lockers for this recipient
     const assignments = assignedLockers.filter(
-      (a) => String(a.registration_id) === String(regId),
+      (a) => String(a.mailroom_registration_id) === String(regId),
     );
 
     // Find the registration to check plan capabilities
 
-    const _reg = registrations.find((r) => r.id === regId);
+    const _reg = registrations.find(
+      (r) => r.mailroom_registration_id === regId,
+    );
 
     // Determine default package type based on plan
     const defaultType = "Document";
@@ -563,7 +534,7 @@ export default function MailroomPackages() {
     // If there's exactly one assigned locker, auto-select it
     // Otherwise, leave locker_id empty so user can choose from dropdown
     const defaultLockerId =
-      assignments.length === 1 ? assignments[0].locker_id : "";
+      assignments.length === 1 ? assignments[0].location_locker_id : "";
 
     setFormData({
       ...formData,
@@ -579,12 +550,22 @@ export default function MailroomPackages() {
   const getAvailablePackageTypes = () => {
     if (!formData.registration_id) return [];
 
-    const reg = registrations.find((r) => r.id === formData.registration_id);
+    const reg = registrations.find(
+      (r) => r.mailroom_registration_id === formData.registration_id,
+    );
     if (!reg?.mailroom_plans) return PACKAGE_TYPES; // Fallback
 
     const types = [];
-    if (reg.mailroom_plans.can_receive_mail) types.push("Document");
-    if (reg.mailroom_plans.can_receive_parcels) types.push("Parcel");
+    const plans = reg.mailroom_plans;
+    const canMail = Array.isArray(plans)
+      ? plans[0]?.can_receive_mail
+      : plans.can_receive_mail;
+    const canParcels = Array.isArray(plans)
+      ? plans[0]?.can_receive_parcels
+      : plans.can_receive_parcels;
+
+    if (canMail) types.push("Document");
+    if (canParcels) types.push("Parcel");
 
     return types;
   };
@@ -618,7 +599,9 @@ export default function MailroomPackages() {
 
     // Status is always STORED for new packages
     // When editing, preserve the original status (status cannot be changed via edit modal)
-    const finalStatus = editingPackage ? editingPackage.status : "STORED";
+    const finalStatus = editingPackage
+      ? editingPackage.mailbox_item_status || editingPackage.status
+      : "STORED";
 
     // Photo is required (either newly selected or existing on editingPackage)
     if (
@@ -640,7 +623,9 @@ export default function MailroomPackages() {
         fd.append("file", packagePhoto);
         // send registration/user id so upload route can place file under that folder
         const userFolder =
-          formData.registration_id || editingPackage?.registration_id || "";
+          formData.registration_id ||
+          editingPackage?.mailroom_registration_id ||
+          "";
         if (userFolder) fd.append("user_id", userFolder);
         const up = await fetch("/api/admin/mailroom/packages/upload", {
           method: "POST",
@@ -655,7 +640,7 @@ export default function MailroomPackages() {
       }
 
       const url = editingPackage
-        ? `/api/admin/mailroom/packages/${editingPackage.id}`
+        ? `/api/admin/mailroom/packages/${editingPackage.mailbox_item_id}`
         : "/api/admin/mailroom/packages";
 
       const method = editingPackage ? "PUT" : "POST";
@@ -690,15 +675,18 @@ export default function MailroomPackages() {
 
       // optimistic local update: merge returned fields into existing package
       setPackages((cur) => {
-        if (!saved?.id) return cur;
+        const savedId = saved?.mailbox_item_id || saved?.id;
+        if (!savedId) return cur;
         try {
           if (editingPackage) {
             return cur.map((p) =>
-              p.id === saved.id ? { ...p, ...(saved as Partial<Package>) } : p,
+              p.mailbox_item_id === savedId
+                ? { ...p, ...(saved as Partial<AdminMailroomPackage>) }
+                : p,
             );
           } else {
             // prepend new package (server should return joined shape)
-            return [saved as Package, ...cur];
+            return [saved as AdminMailroomPackage, ...cur];
           }
         } catch {
           return cur;
@@ -711,11 +699,13 @@ export default function MailroomPackages() {
 
       // Trigger Email Notification for new arrivals
       if (!editingPackage && formData.recipient_email) {
-        const locker = lockers.find((l) => l.id === formData.locker_id);
+        const locker = lockers.find(
+          (l) => l.location_locker_id === formData.locker_id,
+        );
         triggerEmail(formData.recipient_email, "PACKAGE_ARRIVAL", {
           packageName: formData.package_name,
           recipientName: formData.recipient_name || "Recipient",
-          lockerCode: locker?.locker_code || "",
+          lockerCode: locker?.location_locker_code || "",
         });
       }
 
@@ -773,7 +763,7 @@ export default function MailroomPackages() {
   };
 
   // --- UPDATED HANDLER FOR DISPOSAL ---
-  const handleConfirmDisposal = (pkg: Package) => {
+  const handleConfirmDisposal = (pkg: AdminMailroomPackage) => {
     setPackageToDispose(pkg);
     // Default to "Empty" or "Normal" when disposing, as items are removed
     setLockerCapacity("Normal");
@@ -787,18 +777,19 @@ export default function MailroomPackages() {
 
     try {
       const payload = {
-        package_name: packageToDispose.package_name,
-        registration_id: packageToDispose.registration_id,
-        locker_id: packageToDispose.locker_id,
-        package_type: packageToDispose.package_type,
+        package_name: packageToDispose.mailbox_item_name,
+        registration_id: packageToDispose.mailroom_registration_id,
+        locker_id: packageToDispose.location_locker_id,
+        package_type:
+          packageToDispose.mailbox_item_type || packageToDispose.package_type,
         status: "DISPOSED",
-        notes: packageToDispose.notes,
+        // notes: packageToDispose.notes, // Removed as it might not be in DB or useless on update?
 
         locker_status: lockerCapacity, // <--- Send the new status
       };
 
       const res = await fetch(
-        `/api/admin/mailroom/packages/${packageToDispose.id}`,
+        `/api/admin/mailroom/packages/${packageToDispose.mailbox_item_id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -813,8 +804,10 @@ export default function MailroomPackages() {
       // Trigger Email Notification for disposal
       if (packageToDispose?.registration?.email) {
         triggerEmail(packageToDispose.registration.email, "PACKAGE_DISPOSED", {
-          packageName: packageToDispose.package_name,
-          recipientName: packageToDispose.registration.full_name || "Recipient",
+          packageName: String(packageToDispose.mailbox_item_name || ""),
+          recipientName: String(
+            packageToDispose.registration.full_name || "Recipient",
+          ),
         });
       }
 
@@ -830,7 +823,7 @@ export default function MailroomPackages() {
     }
   };
 
-  const handleOpenRestore = (pkg: Package) => {
+  const handleOpenRestore = (pkg: AdminMailroomPackage) => {
     setPackageToRestore(pkg);
     setRestoreModalOpen(true);
   };
@@ -840,7 +833,7 @@ export default function MailroomPackages() {
     setIsRestoring(true);
     try {
       const res = await fetch(
-        API_ENDPOINTS.admin.mailroom.restore(packageToRestore.id),
+        API_ENDPOINTS.admin.mailroom.restore(packageToRestore.mailbox_item_id),
         { method: "POST" },
       );
       if (!res.ok) throw new Error("Failed to restore package");
@@ -861,7 +854,7 @@ export default function MailroomPackages() {
   };
 
   // --- SCAN HANDLERS ---
-  const handleOpenScan = (pkg: Package) => {
+  const handleOpenScan = (pkg: AdminMailroomPackage) => {
     setPackageToScan(pkg);
     setScanFile(null);
     setScanModalOpen(true);
@@ -875,7 +868,7 @@ export default function MailroomPackages() {
     try {
       const formData = new FormData();
       formData.append("file", scanFile);
-      formData.append("packageId", packageToScan.id);
+      formData.append("packageId", packageToScan.mailbox_item_id);
 
       const res = await fetch("/api/admin/mailroom/scans", {
         method: "POST",
@@ -892,8 +885,10 @@ export default function MailroomPackages() {
       // Trigger Email Notification for scan
       if (packageToScan?.registration?.email) {
         triggerEmail(packageToScan.registration.email, "PACKAGE_SCANNED", {
-          packageName: packageToScan.package_name,
-          recipientName: packageToScan.registration.full_name || "Recipient",
+          packageName: String(packageToScan.mailbox_item_name || ""),
+          recipientName: String(
+            packageToScan.registration.full_name || "Recipient",
+          ),
         });
       }
 
@@ -909,18 +904,18 @@ export default function MailroomPackages() {
   };
 
   // --- RELEASE HANDLERS ---
-  const handleOpenRelease = async (pkg: Package) => {
+  const handleOpenRelease = async (pkg: AdminMailroomPackage) => {
     setPackageToRelease(pkg);
     setReleaseFile(null);
     setLockerCapacity("Normal");
-    setReleaseNote(pkg?.notes || "");
+    setReleaseNote("");
     setReleaseModalOpen(true);
 
     // fetch saved addresses for the registration's user
     try {
       setAddresses([]);
       setSelectedAddressId(null);
-      const userId = pkg?.registration_id; // adapt if registration maps to user_id differently
+      const userId = pkg?.mailroom_registration_id; // adapt if registration maps to user_id differently
       if (!userId) return;
       const res = await fetch(
         `/api/user/addresses?userId=${encodeURIComponent(userId)}`,
@@ -930,8 +925,8 @@ export default function MailroomPackages() {
       const arr = Array.isArray(json?.data) ? json.data : json || [];
       setAddresses(arr);
       // preselect package snapshot or default
-      if (pkg.release_address_id) {
-        setSelectedAddressId(pkg.release_address_id);
+      if (pkg.user_address_id) {
+        setSelectedAddressId(pkg.user_address_id);
       } else {
         const def = arr.find((a: { is_default?: boolean }) => a.is_default);
         setSelectedAddressId(def?.id ?? null);
@@ -947,7 +942,7 @@ export default function MailroomPackages() {
       return;
     }
 
-    if (!packageToRelease.id) {
+    if (!packageToRelease.mailbox_item_id) {
       setFormError("Package ID is missing. Please try refreshing the page.");
       return;
     }
@@ -956,7 +951,7 @@ export default function MailroomPackages() {
     // priority: selectedAddressId (if previously set) -> package snapshot -> user's default address
     const finalAddressId =
       selectedAddressId ??
-      packageToRelease?.release_address_id ??
+      // packageToRelease?.mailbox_item_release_address_id ?? // Commented out until key verified
       addresses.find((a) => a.is_default)?.id ??
       null;
 
@@ -965,15 +960,15 @@ export default function MailroomPackages() {
 
     try {
       console.log("[release] Submitting release:", {
-        packageId: packageToRelease.id,
-        packageName: packageToRelease.package_name,
+        packageId: packageToRelease.mailbox_item_id,
+        packageName: packageToRelease.mailbox_item_name,
         hasFile: !!releaseFile,
         lockerStatus: lockerCapacity,
       });
 
       const formData = new FormData();
       formData.append("file", releaseFile);
-      formData.append("packageId", packageToRelease.id);
+      formData.append("packageId", packageToRelease.mailbox_item_id);
       formData.append("lockerStatus", lockerCapacity);
       if (releaseNote) formData.append("notes", releaseNote);
       // Only append address if available (address is optional)
@@ -982,17 +977,14 @@ export default function MailroomPackages() {
         // send an explicit snapshot name: prefer package snapshot -> saved address contact_name -> registration full_name
         const sel = addresses.find((a) => a.id === finalAddressId);
         const snapshotName =
-          packageToRelease.release_to_name ??
-          sel?.contact_name ??
-          packageToRelease?.registration?.full_name ??
-          "";
+          // packageToRelease.mailbox_item_release_to_name ?? // Unverified key
+          sel?.contact_name ?? packageToRelease?.registration?.full_name ?? "";
         if (snapshotName) formData.append("release_to_name", snapshotName);
       } else {
         // If no address, still try to send the name from package snapshot or registration
         const snapshotName =
-          packageToRelease.release_to_name ??
-          packageToRelease?.registration?.full_name ??
-          "";
+          // packageToRelease.mailbox_item_release_to_name ?? // Unverified key
+          packageToRelease?.registration?.full_name ?? "";
         if (snapshotName) formData.append("release_to_name", snapshotName);
       }
 
@@ -1008,7 +1000,7 @@ export default function MailroomPackages() {
         console.error("[release] API error:", {
           status: res.status,
           error: err,
-          packageId: packageToRelease.id,
+          packageId: packageToRelease.mailbox_item_id,
         });
         throw new Error(`${errorMsg}${errorDetails}`);
       }
@@ -1018,8 +1010,10 @@ export default function MailroomPackages() {
       // Trigger Email Notification for release
       if (packageToRelease?.registration?.email) {
         triggerEmail(packageToRelease.registration.email, "PACKAGE_RELEASED", {
-          packageName: packageToRelease.package_name,
-          recipientName: packageToRelease.registration.full_name || "Recipient",
+          packageName: String(packageToRelease.mailbox_item_name || ""),
+          recipientName: String(
+            packageToRelease.registration.full_name || "Recipient",
+          ),
         });
       }
 
@@ -1039,11 +1033,11 @@ export default function MailroomPackages() {
     const q = (search || "").toLowerCase();
 
     return packages.filter((p) => {
-      const pkgName = (p.package_name ?? "").toLowerCase();
+      const pkgName = (p.mailbox_item_name ?? "").toLowerCase();
       const regName = (p.registration?.full_name ?? "").toLowerCase();
       const regEmail = (p.registration?.email ?? "").toLowerCase();
-      const status = (p.status ?? "").toLowerCase();
-      const lockerCode = (p.locker?.locker_code ?? "").toLowerCase();
+      const status = (p.mailbox_item_status || p.status || "").toLowerCase();
+      const lockerCode = (p.locker?.location_locker_code ?? "").toLowerCase();
 
       const matchesSearch =
         pkgName.includes(q) ||
@@ -1052,7 +1046,9 @@ export default function MailroomPackages() {
         status.includes(q) ||
         lockerCode.includes(q);
 
-      const matchesType = filterType ? p.package_type === filterType : true;
+      const matchesType = filterType
+        ? (p.mailbox_item_type || p.package_type) === filterType
+        : true;
 
       return matchesSearch && matchesType;
     });
@@ -1078,18 +1074,22 @@ export default function MailroomPackages() {
   }, []);
 
   // Memoize DataTable columns to prevent recreation on each render
-  const tableColumns: DataTableColumn<Package>[] = useMemo(
+  const tableColumns: DataTableColumn<AdminMailroomPackage>[] = useMemo(
     () => [
       {
-        accessor: "package_name",
+        accessor: "mailbox_item_name",
         title: "Package",
         width: 200,
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as Package;
+          const pkg = record as AdminMailroomPackage & {
+            package_name?: string;
+          };
+          // Fallback to package_name if mailbox_item_name is missing (handles legacy/different API shapes)
+          const displayText = pkg.mailbox_item_name || pkg.package_name || "";
           return (
             <Text fw={500} size="sm">
-              {pkg.package_name}
+              {displayText}
             </Text>
           );
         },
@@ -1099,7 +1099,7 @@ export default function MailroomPackages() {
         title: "Recipient",
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as Package;
+          const pkg = record as AdminMailroomPackage;
           return (
             <Stack gap={0}>
               <Text size="sm" fw={500}>
@@ -1113,19 +1113,19 @@ export default function MailroomPackages() {
         },
       },
       {
-        accessor: "locker.locker_code",
+        accessor: "locker.location_locker_code",
         title: "Locker",
         width: 120,
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as Package;
+          const pkg = record as AdminMailroomPackage;
           return pkg.locker ? (
             <Badge
               variant="outline"
               color="gray"
               leftSection={<IconLock size={12} aria-hidden="true" />}
             >
-              {pkg.locker.locker_code}
+              {pkg.locker.location_locker_code}
             </Badge>
           ) : (
             <Text size="sm" c="#4A5568">
@@ -1135,55 +1135,57 @@ export default function MailroomPackages() {
         },
       },
       {
-        accessor: "package_type",
+        accessor: "mailbox_item_type",
         title: "Type",
         width: 150,
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as Package;
+          const pkg = record as AdminMailroomPackage;
+          const displayType = pkg.mailbox_item_type || pkg.package_type || "";
           return (
             <Badge
               variant="filled"
-              color={`${getStatusFormat(pkg.package_type)}.9`}
+              color={`${getStatusFormat(displayType)}.9`}
               w={110}
               leftSection={
-                pkg.package_type === "Document" ? (
+                displayType === "Document" ? (
                   <IconFileText size={12} aria-hidden="true" />
                 ) : (
                   <IconPackage size={12} aria-hidden="true" />
                 )
               }
             >
-              {pkg.package_type}
+              {displayType}
             </Badge>
           );
         },
       },
       {
-        accessor: "status",
+        accessor: "mailbox_item_status",
         title: "Status",
         width: 180,
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as Package;
+          const pkg = record as AdminMailroomPackage;
+          const displayStatus = pkg.mailbox_item_status || pkg.status || "";
           return (
             <Badge
-              color={`${getPackageStatusColor(pkg.status)}.9`}
+              color={`${getPackageStatusColor(displayStatus)}.9`}
               variant="filled"
             >
-              {pkg.status.replace(/_/g, " ")}
+              {displayStatus}
             </Badge>
           );
         },
       },
       {
-        accessor: "received_at",
+        accessor: "created_at",
         title: activeTab === "archive" ? "Deleted At" : "Received",
-        width: 150,
+        width: 200,
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as Package;
-          return dayjs(pkg.received_at).format("MMM D, YYYY");
+          const pkg = record as AdminMailroomPackage;
+          return formatDate(pkg.mailbox_item_created_at);
         },
       },
       {
@@ -1192,7 +1194,7 @@ export default function MailroomPackages() {
         width: activeTab !== "requests" ? 120 : 165,
         textAlign: "right" as const,
         render: (record: unknown) => {
-          const pkg = record as Package;
+          const pkg = record as AdminMailroomPackage;
           return (
             <Group gap="xs" justify="flex-end">
               {/* Archive Actions */}
@@ -1205,7 +1207,7 @@ export default function MailroomPackages() {
                       variant="filled"
                       leftSection={<IconRestore size={14} aria-hidden="true" />}
                       onClick={() => handleOpenRestore(pkg)}
-                      aria-label={`Restore package ${pkg.package_name}`}
+                      aria-label={`Restore package ${pkg.mailbox_item_name}`}
                     >
                       Restore
                     </Button>
@@ -1217,7 +1219,7 @@ export default function MailroomPackages() {
               {activeTab !== "archive" && (
                 <>
                   {/* Action Buttons based on Status (Requests Only) */}
-                  {pkg.status === "REQUEST_TO_SCAN" && (
+                  {pkg.mailbox_item_status === "REQUEST_TO_SCAN" && (
                     <Tooltip label="Upload Scanned PDF">
                       <Button
                         size="compact-xs"
@@ -1225,13 +1227,13 @@ export default function MailroomPackages() {
                         color="violet"
                         leftSection={<IconScan size={14} aria-hidden="true" />}
                         onClick={() => handleOpenScan(pkg)}
-                        aria-label={`Upload scanned PDF for package ${pkg.package_name}`}
+                        aria-label={`Upload scanned PDF for package ${pkg.mailbox_item_name}`}
                       >
                         Scan
                       </Button>
                     </Tooltip>
                   )}
-                  {pkg.status === "REQUEST_TO_RELEASE" && (
+                  {pkg.mailbox_item_status === "REQUEST_TO_RELEASE" && (
                     <Tooltip label="Confirm Release">
                       <Button
                         size="compact-xs"
@@ -1241,13 +1243,13 @@ export default function MailroomPackages() {
                           <IconTruckDelivery size={14} aria-hidden="true" />
                         }
                         onClick={() => handleOpenRelease(pkg)}
-                        aria-label={`Release package ${pkg.package_name}`}
+                        aria-label={`Release package ${pkg.mailbox_item_name}`}
                       >
                         Release
                       </Button>
                     </Tooltip>
                   )}
-                  {pkg.status === "REQUEST_TO_DISPOSE" && (
+                  {pkg.mailbox_item_status === "REQUEST_TO_DISPOSE" && (
                     <Tooltip label="Confirm Disposal">
                       <Button
                         size="compact-xs"
@@ -1256,7 +1258,7 @@ export default function MailroomPackages() {
                         variant="filled"
                         leftSection={<IconTrash size={14} aria-hidden="true" />}
                         onClick={() => handleConfirmDisposal(pkg)}
-                        aria-label={`Dispose package ${pkg.package_name}`}
+                        aria-label={`Dispose package ${pkg.mailbox_item_name}`}
                       >
                         Dispose
                       </Button>
@@ -1270,7 +1272,7 @@ export default function MailroomPackages() {
                         variant="subtle"
                         color="blue"
                         onClick={() => handleOpenModal(pkg)}
-                        aria-label={`Edit package ${pkg.package_name}`}
+                        aria-label={`Edit package ${pkg.mailbox_item_name}`}
                       >
                         <IconEdit size={16} aria-hidden="true" />
                       </ActionIcon>
@@ -1280,8 +1282,8 @@ export default function MailroomPackages() {
                     <ActionIcon
                       variant="subtle"
                       color="red"
-                      onClick={() => handleDelete(pkg.id)}
-                      aria-label={`Delete package ${pkg.package_name}`}
+                      onClick={() => handleDelete(pkg.mailbox_item_id)}
+                      aria-label={`Delete package ${pkg.mailbox_item_name}`}
                     >
                       <IconTrash size={16} aria-hidden="true" />
                     </ActionIcon>
@@ -1297,7 +1299,7 @@ export default function MailroomPackages() {
   );
 
   // helper to extract phone for release snapshot
-  const getSnapshotPhone = (pkg: Package | null) => {
+  const getSnapshotPhone = (pkg: AdminMailroomPackage | null) => {
     if (!pkg) return null;
     // 1) explicit registration mobile
     const regPhone = pkg.registration?.mobile ?? null;
@@ -1309,7 +1311,7 @@ export default function MailroomPackages() {
     if (releasePhone) return releasePhone;
     // 3) parse notes JSON for pickup_on_behalf.mobile
     try {
-      const n = pkg.notes;
+      const n = pkg.mailbox_item_notes; // Accessing possible notes field
       if (typeof n === "string" && n.trim().startsWith("{")) {
         const parsed = JSON.parse(n);
         if (parsed?.pickup_on_behalf?.mobile)
@@ -1327,10 +1329,10 @@ export default function MailroomPackages() {
 
   // helper to extract pickup-on-behalf object from notes JSON
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future use
-  const getPickupOnBehalf = (pkg: Package | null) => {
+  const getPickupOnBehalf = (pkg: AdminMailroomPackage | null) => {
     if (!pkg) return null;
     try {
-      const n = pkg.notes;
+      const n = pkg.mailbox_item_notes;
       if (typeof n !== "string") return null;
       const trimmed = n.trim();
       if (!trimmed.startsWith("{")) return null;
@@ -1379,7 +1381,7 @@ export default function MailroomPackages() {
         containIntrinsicSize: "400px",
       }}
     >
-      <AdminTable<Package>
+      <AdminTable<AdminMailroomPackage>
         records={paginatedPackages}
         fetching={loading}
         totalRecords={totalRecords}
@@ -1678,34 +1680,33 @@ export default function MailroomPackages() {
             data={lockers
               .filter((l) => {
                 if (!formData.registration_id) return false;
-
-                // Find the assignment for this locker and user
-                // Use String() to ensure proper comparison (handles UUID string vs string)
                 const assignment = assignedLockers.find(
                   (a) =>
-                    String(a.locker_id) === String(l.id) &&
-                    String(a.registration_id) ===
+                    String(a.location_locker_id) ===
+                      String(l.location_locker_id) &&
+                    String(a.mailroom_registration_id) ===
                       String(formData.registration_id),
                 );
-
-                // Must be assigned to this user
                 return !!assignment;
               })
               .map((l) => {
                 const assignment = assignedLockers.find(
                   (a) =>
-                    String(a.locker_id) === String(l.id) &&
-                    String(a.registration_id) ===
+                    String(a.location_locker_id) ===
+                      String(l.location_locker_id) &&
+                    String(a.mailroom_registration_id) ===
                       String(formData.registration_id),
                 );
 
-                const isFull = assignment?.status === "Full";
-                const isCurrent = String(l.id) === String(formData.locker_id);
+                const isFull =
+                  assignment?.mailroom_assigned_locker_status === "Full";
+                const isCurrent =
+                  String(l.location_locker_id) === String(formData.locker_id);
 
                 return {
-                  value: l.id,
-                  label: `${l.locker_code}${isFull ? " (Full)" : ""}`,
-                  disabled: isFull && !isCurrent, // Show but disable if full (unless it's the one currently
+                  value: l.location_locker_id,
+                  label: `${l.location_locker_code}${isFull ? " (Full)" : ""}`,
+                  disabled: isFull && !isCurrent,
                 };
               })}
             value={formData.locker_id}
@@ -2057,8 +2058,8 @@ export default function MailroomPackages() {
               Locker
             </Text>
             <Text size="sm" fw={500}>
-              {packageToRelease?.locker?.locker_code ??
-                packageToRelease?.locker_id ??
+              {packageToRelease?.locker?.location_locker_code ??
+                packageToRelease?.location_locker_id ??
                 "—"}
             </Text>
           </Stack>

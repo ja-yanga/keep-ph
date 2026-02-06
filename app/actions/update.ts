@@ -14,6 +14,8 @@ import type {
   UpdateUserKycStatusArgs,
   LocationLockerUpdate,
   T_LocationLocker,
+  AdminMailroomPackage, // Added
+  AdminUpdateMailroomPackageArgs, // Added
 } from "@/utils/types";
 
 const supabaseAdmin = createSupabaseServiceClient();
@@ -223,17 +225,9 @@ export const adminUpdateMailroomPlan = async ({
  * Used in:
  * - app/api/admin/mailroom/packages/[id]/route.ts - API endpoint for updating packages
  */
-export async function adminUpdateMailroomPackage(args: {
-  userId: string;
-  id: string;
-  package_name?: string;
-  registration_id?: string;
-  locker_id?: string | null;
-  package_type?: "Document" | "Parcel";
-  status?: string;
-  package_photo?: string | null;
-  locker_status?: string;
-}): Promise<unknown> {
+export async function adminUpdateMailroomPackage(
+  args: AdminUpdateMailroomPackageArgs,
+): Promise<AdminMailroomPackage> {
   const { data, error } = await supabaseAdmin.rpc("admin_update_mailbox_item", {
     input_data: {
       user_id: args.userId,
@@ -267,8 +261,12 @@ export async function adminUpdateMailroomPackage(args: {
     .eq("mailbox_item_id", args.id)
     .single();
 
+  // Cast existing item if no fresh fetch
+  let finalItem = result.item as AdminMailroomPackage;
+
   if (itemWithFiles) {
-    result.item = itemWithFiles as Record<string, unknown>;
+    result.item = itemWithFiles as Record<string, unknown>; // update reference
+    finalItem = itemWithFiles as AdminMailroomPackage;
   }
 
   // Send notification if status changed
@@ -321,7 +319,7 @@ export async function adminUpdateMailroomPackage(args: {
     const { data: lockerData } = await supabaseAdmin
       .from("location_locker_table")
       .select("location_locker_code")
-      .eq("location_locker_id", locker_id)
+      .eq("location_locker_id", locker_id as string)
       .single();
     locker_code = lockerData?.location_locker_code || null;
   }
@@ -343,7 +341,7 @@ export async function adminUpdateMailroomPackage(args: {
     },
   });
 
-  return result.item;
+  return finalItem;
 }
 
 export const updateMailboxItem = async (args: {
