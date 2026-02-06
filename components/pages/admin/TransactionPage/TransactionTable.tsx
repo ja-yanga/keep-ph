@@ -11,10 +11,9 @@ import {
   Badge,
   Group,
   ActionIcon,
-  Loader,
   Center,
   Tooltip,
-  Skeleton,
+  Flex,
 } from "@mantine/core";
 import {
   IconArrowUp,
@@ -24,10 +23,10 @@ import {
   IconTrendingUp,
   IconCheck,
   IconEye,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { AdminTable } from "@/components/common/AdminTable";
 import { type DataTableColumn } from "mantine-datatable";
-import { StatCard } from "@/components/pages/admin/DashboardPage/StatCard";
 import { API_ENDPOINTS } from "@/utils/constants/endpoints";
 import { fetcher } from "@/utils/helper";
 import { ViewTransactionDetailsModal } from "./ViewTransactionDetailsModal";
@@ -42,6 +41,8 @@ import {
   transformTransaction,
   type T_RawTransaction,
 } from "@/utils/transform/transaction";
+import { StatCard } from "@/components/common/StatsCard";
+import { Search } from "@/components/common/Search";
 
 type SortBy =
   | "payment_transaction_date"
@@ -61,6 +62,7 @@ const TransactionTable = () => {
   const [selectedTransaction, setSelectedTransaction] =
     useState<T_Transaction | null>(null);
   const [modalOpened, setModalOpened] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
 
   // Build API URL with query parameters
   const apiUrl = useMemo(() => {
@@ -69,9 +71,10 @@ const TransactionTable = () => {
       limit: ITEMS_PER_PAGE.toString(),
       sortBy,
       sortDir,
+      search: searchInput,
     });
     return `${API_ENDPOINTS.admin.transactions}?${params.toString()}`;
-  }, [page, sortBy, sortDir]);
+  }, [page, sortBy, sortDir, searchInput]);
 
   const { data, error, isLoading } = useSWR<{
     data: T_RawTransaction[];
@@ -117,6 +120,10 @@ const TransactionTable = () => {
     [sortBy, sortDir],
   );
 
+  const handleRefreshTransactions = useCallback(() => {
+    setPage(1);
+  }, []);
+
   const handleViewTransaction = useCallback((transaction: T_Transaction) => {
     setSelectedTransaction(transaction);
     setModalOpened(true);
@@ -125,6 +132,24 @@ const TransactionTable = () => {
   const handleCloseModal = useCallback(() => {
     setModalOpened(false);
     setSelectedTransaction(null);
+  }, []);
+
+  const handleSearchSubmit = useCallback(() => {
+    setPage(1);
+  }, [searchInput]);
+
+  const handleSearchKeyPress = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        handleSearchSubmit();
+      }
+    },
+    [handleSearchSubmit],
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput("");
+    setPage(1);
   }, []);
 
   // Memoized render functions for better performance
@@ -292,31 +317,6 @@ const TransactionTable = () => {
     ],
   );
 
-  if (isLoading) {
-    return (
-      <Stack
-        gap="xl"
-        role="status"
-        aria-live="polite"
-        aria-label="Loading dashboard data"
-      >
-        <Skeleton h={32} w={200} mb="xs" />
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} h={120} radius="lg" />
-          ))}
-        </SimpleGrid>
-
-        {/* Use a lighter skeleton for the table container initially */}
-        <Paper withBorder p="lg" radius="md" h={300}>
-          <Center h="100%">
-            <Loader size="sm" color="gray" />
-          </Center>
-        </Paper>
-      </Stack>
-    );
-  }
-
   if (error) {
     return (
       <Center h={400}>
@@ -379,34 +379,47 @@ const TransactionTable = () => {
       </SimpleGrid>
 
       {/* Transactions Table */}
-      <Paper withBorder radius="md" p="md">
-        {isLoading && (
-          <Center h={400}>
-            <Loader size="lg" />
-          </Center>
-        )}
-        {!isLoading && transactions.length === 0 && (
-          <Center h={400}>
-            <Stack align="center" gap="md">
-              <IconReceipt size={48} color="gray" />
-              <Text style={{ color: TEXT_SECONDARY_COLOR }}>
-                No transactions found.
-              </Text>
-            </Stack>
-          </Center>
-        )}
-        {!isLoading && transactions.length > 0 && (
-          <Stack gap="md">
-            <AdminTable
-              records={transactions}
-              columns={columns}
-              totalRecords={pagination?.total ?? 0}
-              recordsPerPage={ITEMS_PER_PAGE}
-              page={page}
-              onPageChange={setPage}
+      <Paper withBorder radius="md" p={{ base: "md", sm: "xl" }}>
+        <Stack gap="md">
+          <Flex
+            gap={{ base: "xs", sm: "sm" }}
+            role="search"
+            aria-label="Transaction table search"
+            align="center"
+            wrap="wrap"
+          >
+            <Search
+              searchInput={searchInput}
+              setSearchInput={setSearchInput}
+              handleClearSearch={handleClearSearch}
+              handleSearchSubmit={handleSearchSubmit}
+              handleSearchKeyPress={handleSearchKeyPress}
             />
-          </Stack>
-        )}
+            <ActionIcon
+              variant="filled"
+              color="#26316e"
+              size="lg"
+              radius="md"
+              onClick={handleRefreshTransactions}
+              loading={false}
+              aria-label="Refresh transactions"
+              title="Refresh"
+            >
+              <IconRefresh size={18} aria-hidden="true" />
+            </ActionIcon>
+          </Flex>
+          <AdminTable
+            idAccessor="transaction_id"
+            fetching={isLoading}
+            records={transactions}
+            columns={columns}
+            totalRecords={pagination?.total ?? 0}
+            recordsPerPage={ITEMS_PER_PAGE}
+            page={page}
+            onPageChange={setPage}
+            noRecordsText="No Transactions Found"
+          />
+        </Stack>
       </Paper>
 
       {/* Transaction Details Modal */}

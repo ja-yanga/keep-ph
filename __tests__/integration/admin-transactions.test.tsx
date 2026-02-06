@@ -576,6 +576,105 @@ describe("Admin Transactions Page (admin/transactions)", () => {
   });
 
   // ============================================
+  // SEARCH
+  // ============================================
+
+  it("sends search query to API when user types and submits search", async () => {
+    renderComponent();
+
+    await screen.findByRole("table");
+
+    const searchInput = screen.getByTestId("search-input");
+    expect(searchInput).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.type(searchInput, "TX-001");
+    });
+
+    const submitButton = screen.getByTestId("submit-search-button");
+    await act(async () => {
+      await userEvent.click(submitButton);
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchCalls.some(
+          (c) =>
+            c.url.includes("/api/admin/transactions?") &&
+            c.url.includes("search=TX-001") &&
+            c.url.includes("page=1"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("sends search on Enter key in search input", async () => {
+    renderComponent();
+
+    await screen.findByRole("table");
+
+    const searchInput = screen.getByTestId("search-input");
+    await act(async () => {
+      await userEvent.type(searchInput, "alice");
+    });
+    await act(async () => {
+      await userEvent.keyboard("{Enter}");
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchCalls.some(
+          (c) =>
+            c.url.includes("/api/admin/transactions?") &&
+            c.url.includes("search=alice") &&
+            c.url.includes("page=1"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("clears search and resets to page 1 when clicking clear search button", async () => {
+    renderComponent();
+
+    await screen.findByRole("table");
+
+    const searchInput = screen.getByTestId("search-input");
+    await act(async () => {
+      await userEvent.type(searchInput, "TX-001");
+    });
+
+    const submitButton = screen.getByTestId("submit-search-button");
+    await act(async () => {
+      await userEvent.click(submitButton);
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchCalls.some(
+          (c) =>
+            c.url.includes("/api/admin/transactions?") &&
+            c.url.includes("search=TX-001"),
+        ),
+      ).toBe(true);
+    });
+
+    const clearButton = screen.getByTestId("clear-search-button");
+    await act(async () => {
+      await userEvent.click(clearButton);
+    });
+
+    await waitFor(() => {
+      const withEmptySearch = fetchCalls.filter((c) => {
+        if (!c.url.includes("/api/admin/transactions?")) return false;
+        const m = c.url.match(/search=([^&]*)/);
+        return m ? m[1] === "" : false;
+      });
+      expect(withEmptySearch.length).toBeGreaterThan(0);
+    });
+    expect(searchInput).toHaveValue("");
+  });
+
+  // ============================================
   // VIEW DETAILS MODAL
   // ============================================
 

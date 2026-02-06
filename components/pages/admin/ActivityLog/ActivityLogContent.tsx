@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import {
   Stack,
   Group,
-  TextInput,
   Button,
   Paper,
   Text,
@@ -17,13 +16,7 @@ import {
   VisuallyHidden,
   Flex,
 } from "@mantine/core";
-import {
-  IconSearch,
-  IconRefresh,
-  IconFilter,
-  IconX,
-  IconArrowRight,
-} from "@tabler/icons-react";
+import { IconRefresh, IconFilter } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { AdminTable } from "@/components/common/AdminTable";
 import { type DataTableSortStatus } from "mantine-datatable";
@@ -36,6 +29,7 @@ import {
 } from "@/utils/types";
 import { LogDescription, LogActor } from "./ActivityLogCells";
 import { ACTIONS, ENTITY_TYPES } from "@/utils/constants";
+import { Search } from "@/components/common/Search";
 
 const LogDetailsModal = dynamic(() => import("./LogDetailsModal"), {
   ssr: false,
@@ -46,76 +40,6 @@ const FilterPopoverContent = dynamic(() => import("./FilterPopoverContent"), {
 });
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
-
-const SearchSection = memo(
-  ({
-    searchInput,
-    setSearchInput,
-    handleClearSearch,
-    handleSearchSubmit,
-    handleSearchKeyPress,
-  }: {
-    searchInput: string;
-    setSearchInput: (v: string) => void;
-    handleClearSearch: () => void;
-    handleSearchSubmit: () => void;
-    handleSearchKeyPress: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  }) => (
-    <TextInput
-      placeholder="Search..."
-      aria-label="Search activity logs"
-      data-testid="search-input"
-      leftSection={<IconSearch size={16} aria-hidden="true" />}
-      rightSectionWidth={searchInput ? 70 : 42}
-      rightSection={
-        searchInput ? (
-          <Group gap={4}>
-            <ActionIcon
-              size="sm"
-              variant="transparent"
-              c="gray.7"
-              onClick={handleClearSearch}
-              aria-label="Clear search"
-              title="Clear search"
-              data-testid="clear-search-button"
-            >
-              <IconX size={16} aria-hidden="true" />
-            </ActionIcon>
-            <ActionIcon
-              size="sm"
-              variant="transparent"
-              c="indigo"
-              onClick={handleSearchSubmit}
-              aria-label="Submit search"
-              title="Submit search"
-              data-testid="submit-search-button"
-            >
-              <IconArrowRight size={16} aria-hidden="true" />
-            </ActionIcon>
-          </Group>
-        ) : (
-          <ActionIcon
-            size="sm"
-            variant="transparent"
-            c="gray.7"
-            onClick={handleSearchSubmit}
-            aria-label="Submit search"
-            title="Submit search"
-            data-testid="submit-search-button"
-          >
-            <IconArrowRight size={16} aria-hidden="true" />
-          </ActionIcon>
-        )
-      }
-      value={searchInput}
-      onChange={(e) => setSearchInput(e.currentTarget.value)}
-      onKeyDown={handleSearchKeyPress}
-      style={{ flex: "1 1 300px" }}
-    />
-  ),
-);
-
-SearchSection.displayName = "SearchSection";
 
 const ActiveFiltersDisplay = memo(
   ({
@@ -399,7 +323,7 @@ export default function ActivityLogContent() {
               align="center"
               wrap="wrap"
             >
-              <SearchSection
+              <Search
                 searchInput={searchInput}
                 setSearchInput={setSearchInput}
                 handleClearSearch={handleClearSearch}
