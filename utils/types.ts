@@ -435,31 +435,6 @@ export type RawRow = {
   [key: string]: unknown;
 };
 
-// export type AdminUserKyc = {
-//   user_kyc_id: string;
-//   user_id: string;
-//   user_kyc_status: string | null;
-//   user_kyc_id_document_type: string | null;
-//   user_kyc_id_number: string | null;
-//   user_kyc_id_front_url: string | null;
-//   user_kyc_id_back_url: string | null;
-//   user_kyc_first_name: string | null;
-//   user_kyc_last_name: string | null;
-//   user_kyc_submitted_at: string | null;
-//   user_kyc_verified_at: string | null;
-//   user_kyc_created_at: string | null;
-//   user_kyc_updated_at: string | null;
-//   address: {
-//     line1?: string | null;
-//     line2?: string | null;
-//     city?: string | null;
-//     province?: string | null;
-//     region?: string | null;
-//     barangay?: string | null;
-//     postal?: number | string | null;
-//   } | null;
-// };
-
 export type UpdateRewardClaimArgs = {
   claimId: string;
   status: "PROCESSING" | "PAID";
@@ -991,3 +966,10 @@ export type T_LocationLockerUpdate = Pick<
   MailroomLocationUpdate,
   "mailroom_location_prefix" | "mailroom_location_total_lockers"
 >;
+
+export type AdminArchivedPackage = MailboxItemTableRow & {
+  mailroom_registration_table?: MailroomRegistrationTableRow | null;
+  location_locker_table?: LocationLockerRow | null;
+  users_table?: Pick<UsersTableRow, "users_email"> | null;
+  deleted_at?: string | null;
+};

@@ -9,6 +9,7 @@ import {
 } from "@/utils/helper";
 import { T_RawTransaction } from "@/utils/transform/transaction";
 import {
+  AdminArchivedPackage,
   AdminClaim,
   AdminDashboardStats,
   AdminIpWhitelistEntry,
@@ -1015,7 +1016,7 @@ export async function adminGetArchivedPackages(args: {
   sortBy?: string;
   sortOrder?: string;
 }): Promise<{
-  packages: unknown[];
+  packages: AdminArchivedPackage[];
   totalCount: number;
 }> {
   const limit = Math.min(args.limit ?? 50, 200);
@@ -1048,7 +1049,9 @@ export async function adminGetArchivedPackages(args: {
     throw new Error("Failed to parse response");
   }
 
-  const packages = Array.isArray(rpcData.packages) ? rpcData.packages : [];
+  const packages = (
+    Array.isArray(rpcData.packages) ? rpcData.packages : []
+  ) as AdminArchivedPackage[];
   const totalCount =
     typeof rpcData.total_count === "number"
       ? rpcData.total_count
