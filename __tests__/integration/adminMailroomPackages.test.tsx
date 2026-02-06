@@ -403,6 +403,12 @@ beforeEach(() => {
             page: 1,
             limit: 50,
           },
+          counts: {
+            active: 1111,
+            requests: 2222,
+            released: 3333,
+            disposed: 4444,
+          },
         });
       }
 
@@ -622,10 +628,121 @@ const waitForRowWithText = async (text: string) => {
   });
 };
 
+// helper: get the numeric value rendered under a stats card label (p tag)
+const getStatsValueByLabel = (label: string) => {
+  const labelEls = screen
+    .getAllByText(label)
+    .filter((el) => el.tagName.toLowerCase() === "p");
+  const labelEl = labelEls[0];
+  const container = labelEl?.parentElement ?? null;
+  if (!container) return "";
+  const texts = container.querySelectorAll("p");
+  if (texts.length < 2) return "";
+  return texts[1].textContent ?? "";
+};
+
 describe("AdminPackages (admin/packages)", () => {
   // Reset mocks before each test to ensure clean state
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  // ============================================
+  // STATS CARDS TESTS
+  // ============================================
+  describe("Stats Cards", () => {
+    it("renders stats labels and formatted counts", async () => {
+      renderComponent();
+
+      expect(
+        (await screen.findAllByText("Items in Storage")).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getAllByText("Pending Requests").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Total Released").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Disposed").length).toBeGreaterThan(0);
+
+      expect(getStatsValueByLabel("Items in Storage")).toBe("1,111");
+      expect(getStatsValueByLabel("Pending Requests")).toBe("2,222");
+      expect(getStatsValueByLabel("Total Released")).toBe("3,333");
+      expect(getStatsValueByLabel("Disposed")).toBe("4,444");
+    });
+
+    it("requests stats counts from packages endpoint", async () => {
+      renderComponent();
+
+      await waitFor(() => {
+        expect(
+          fetchCalls.some(
+            (c) =>
+              c.url.includes("/api/admin/mailroom/packages") &&
+              c.url.includes("page=1") &&
+              c.url.includes("limit=1"),
+          ),
+        ).toBe(true);
+      });
+    });
+
+    it("shows 0s when counts are missing", async () => {
+      const prevFetch = global.fetch;
+      global.fetch = jest.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          fetchCalls.push({ url, init });
+
+          const makeResponse = (body: unknown, ok = true, status = 200) => {
+            const bodyStr =
+              typeof body === "string" ? body : JSON.stringify(body);
+            return {
+              ok,
+              status,
+              json: async () =>
+                typeof body === "string" ? JSON.parse(body) : body,
+              text: async () => bodyStr,
+              clone: () => ({ text: async () => bodyStr }),
+            } as unknown as Response;
+          };
+
+          if (url.includes("/api/admin/mailroom/packages")) {
+            return makeResponse({
+              packages: mockPackages,
+              registrations: mockRegistrations,
+              lockers: mockLockers,
+              assignedLockers: mockAssignedLockers,
+              meta: {
+                total: mockPackages.length,
+                page: 1,
+                limit: 50,
+              },
+            });
+          }
+
+          if (url.includes("/api/session")) {
+            return makeResponse({
+              ok: true,
+              user: { id: "admin-user-id", email: "admin1@example.com" },
+              profile: { id: "admin-profile-id", email: "admin1@example.com" },
+              role: "admin",
+              kyc: { status: "VERIFIED" },
+              needs_onboarding: false,
+            });
+          }
+
+          return makeResponse({ error: "not found" }, false, 404);
+        },
+      ) as jest.Mock;
+
+      renderComponent();
+
+      expect(
+        (await screen.findAllByText("Items in Storage")).length,
+      ).toBeGreaterThan(0);
+      expect(getStatsValueByLabel("Items in Storage")).toBe("0");
+      expect(getStatsValueByLabel("Pending Requests")).toBe("0");
+      expect(getStatsValueByLabel("Total Released")).toBe("0");
+      expect(getStatsValueByLabel("Disposed")).toBe("0");
+
+      global.fetch = prevFetch;
+    });
   });
 
   // ============================================

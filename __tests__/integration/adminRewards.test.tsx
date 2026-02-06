@@ -13,6 +13,11 @@ import { SWRConfig } from "swr";
 import { Notifications } from "@mantine/notifications";
 import AdminRewardsPage from "@/app/admin/rewards/page";
 
+// Mock number formatter so we can assert formatted output deterministically
+jest.mock("@/utils/format", () => ({
+  formatCount: jest.fn((value: number) => `f:${value}`),
+}));
+
 type DataTableColumn = {
   accessor?: string;
   title?: React.ReactNode;
@@ -278,7 +283,84 @@ const waitForRowWithText = async (text: string) => {
   });
 };
 
+// helper: get the numeric value rendered under a stats card label (p tag)
+const getStatsValueByLabel = (label: string) => {
+  const labelEls = screen
+    .getAllByText(label)
+    .filter((el) => el.tagName.toLowerCase() === "p");
+  const labelEl = labelEls[0];
+  const container = labelEl?.parentElement ?? null;
+  if (!container) return "";
+  const texts = container.querySelectorAll("p");
+  if (texts.length < 2) return "";
+  return texts[1].textContent ?? "";
+};
+
 describe("AdminRewards (admin)", () => {
+  describe("Stats Cards", () => {
+    it("renders stats labels and formatted counts", async () => {
+      renderComponent();
+
+      expect((await screen.findAllByText("Pending")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Processing").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+
+      // For 25 claims with alternating statuses:
+      // PENDING = 13, PAID = 12, PROCESSING = 0
+      expect(getStatsValueByLabel("Pending")).toBe("f:13");
+      expect(getStatsValueByLabel("Processing")).toBe("f:0");
+      expect(getStatsValueByLabel("Paid")).toBe("f:12");
+    });
+
+    it("calls formatCount with the computed counts", async () => {
+      const { formatCount } = await import("@/utils/format");
+      const formatSpy = formatCount as unknown as jest.Mock;
+
+      renderComponent();
+
+      await waitFor(() => {
+        expect(formatSpy).toHaveBeenCalledWith(13);
+        expect(formatSpy).toHaveBeenCalledWith(0);
+        expect(formatSpy).toHaveBeenCalledWith(12);
+      });
+    });
+
+    it("updates stats when data changes", async () => {
+      // Force all claims to PROCESSING
+      mockClaims = Array.from({ length: 5 }, (_, i) => ({
+        id: `claim-${i + 1}`,
+        user: { email: `user${i + 1}@example.com`, users_email: null },
+        referral_count: i,
+        total_referrals: i,
+        amount: 100 * (i + 1),
+        payment_method: "GCash",
+        account_details: `0917000000${i}`,
+        created_at: new Date().toISOString(),
+        status: "PROCESSING",
+        proof_url: null,
+      }));
+
+      renderComponent();
+
+      expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(
+        0,
+      );
+      expect(getStatsValueByLabel("Pending")).toBe("f:0");
+      expect(getStatsValueByLabel("Processing")).toBe("f:5");
+      expect(getStatsValueByLabel("Paid")).toBe("f:0");
+    });
+
+    it("shows 0s when there are no claims", async () => {
+      mockClaims = [];
+      renderComponent();
+
+      expect((await screen.findAllByText("Pending")).length).toBeGreaterThan(0);
+      expect(getStatsValueByLabel("Pending")).toBe("f:0");
+      expect(getStatsValueByLabel("Processing")).toBe("f:0");
+      expect(getStatsValueByLabel("Paid")).toBe("f:0");
+    });
+  });
+
   it("displays the title 'Reward Claims'", async () => {
     renderComponent();
     expect(
