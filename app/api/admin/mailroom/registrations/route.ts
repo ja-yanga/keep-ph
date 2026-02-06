@@ -4,6 +4,16 @@ import {
   createClient,
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
+import {
+  MailroomRegistrationTableRow,
+  UsersTableRow,
+  UserKYCTableRow,
+  LocationLockerRow,
+  LocationLockerAssignedRow,
+  MailroomPlanTableRow,
+  MailroomLocationRow,
+  SubscriptionTableRow,
+} from "@/utils/types";
 
 export async function GET() {
   try {
@@ -101,35 +111,31 @@ export async function GET() {
       );
     }
 
-    const regs = Array.isArray(regsRes.data) ? regsRes.data : [];
-    const users = Array.isArray(usersRes.data) ? usersRes.data : [];
-    const kycRows = Array.isArray(kycRes.data) ? kycRes.data : [];
-    const lockers = Array.isArray(lockersRes.data) ? lockersRes.data : [];
-    const assigned = Array.isArray(assignedRes.data) ? assignedRes.data : [];
-    const plans = Array.isArray(plansRes.data) ? plansRes.data : [];
-    const locations = Array.isArray(locationsRes.data) ? locationsRes.data : [];
-    const subs = Array.isArray(subsRes.data) ? subsRes.data : [];
+    const regs = (regsRes.data as MailroomRegistrationTableRow[]) ?? [];
+    const users = (usersRes.data as UsersTableRow[]) ?? [];
+    const kycRows = (kycRes.data as UserKYCTableRow[]) ?? [];
+    const lockers = (lockersRes.data as LocationLockerRow[]) ?? [];
+    const assigned = (assignedRes.data as LocationLockerAssignedRow[]) ?? [];
+    const plans = (plansRes.data as MailroomPlanTableRow[]) ?? [];
+    const locations = (locationsRes.data as MailroomLocationRow[]) ?? [];
+    const subs = (subsRes.data as SubscriptionTableRow[]) ?? [];
 
     const userMap: Record<string, { email?: string; mobile?: string | null }> =
       {};
     for (const u of users) {
-      const rec = u as Record<string, unknown>;
-      const id = String(rec.users_id ?? "");
-      if (!id) continue;
-      userMap[id] = {
-        email: String(rec.users_email ?? ""),
-        mobile: (rec.mobile_number as string | null) ?? null,
+      if (!u.users_id) continue;
+      userMap[u.users_id] = {
+        email: u.users_email ?? "",
+        mobile: u.mobile_number ?? null,
       };
     }
 
     const kycMap: Record<string, { first?: string; last?: string }> = {};
     for (const k of kycRows) {
-      const rec = k as Record<string, unknown>;
-      const uid = String(rec.user_id ?? "");
-      if (!uid) continue;
-      kycMap[uid] = {
-        first: rec.user_kyc_first_name as string | undefined,
-        last: rec.user_kyc_last_name as string | undefined,
+      if (!k.user_id) continue;
+      kycMap[k.user_id] = {
+        first: k.user_kyc_first_name ?? undefined,
+        last: k.user_kyc_last_name ?? undefined,
       };
     }
 
@@ -142,58 +148,54 @@ export async function GET() {
       }
     > = {};
     for (const s of subs) {
-      const rec = s as Record<string, unknown>;
-      const key = String(rec.mailroom_registration_id ?? "");
-      if (!key) continue;
-      subsMap[key] = {
-        started: rec.subscription_started_at as string | undefined,
-        expires: rec.subscription_expires_at as string | undefined,
-        billing_cycle: (rec.subscription_billing_cycle as string) ?? null,
+      if (!s.mailroom_registration_id) continue;
+      subsMap[s.mailroom_registration_id] = {
+        started: s.subscription_started_at,
+        expires: s.subscription_expires_at,
+        billing_cycle: s.subscription_billing_cycle,
       };
     }
 
     const assignedCountMap: Record<string, number> = {};
     for (const a of assigned) {
-      const rec = a as Record<string, unknown>;
-      const regId = String(rec.mailroom_registration_id ?? "");
-      if (!regId) continue;
+      if (!a.mailroom_registration_id) continue;
+      const regId = a.mailroom_registration_id;
       assignedCountMap[regId] = (assignedCountMap[regId] ?? 0) + 1;
     }
 
-    const plansMap: Record<string, string> = {};
+    const plansMap: Record<string, { name: string }> = {};
     for (const p of plans) {
-      const rec = p as Record<string, unknown>;
-      const id = String(rec.mailroom_plan_id ?? "");
-      if (id) plansMap[id] = String(rec.mailroom_plan_name ?? "");
+      if (p.mailroom_plan_id)
+        plansMap[p.mailroom_plan_id] = { name: p.mailroom_plan_name };
     }
 
-    const locationsMap: Record<string, string> = {};
+    const locationsMap: Record<string, { name: string }> = {};
     for (const l of locations) {
-      const rec = l as Record<string, unknown>;
-      const id = String(rec.mailroom_location_id ?? "");
-      if (id) locationsMap[id] = String(rec.mailroom_location_name ?? "");
+      if (l.mailroom_location_id)
+        locationsMap[l.mailroom_location_id] = {
+          name: l.mailroom_location_name,
+        };
     }
 
     const normalizedRegs = regs.map((r) => {
-      const row = r as Record<string, unknown>;
-      const id = String(row.mailroom_registration_id ?? "");
-      const uid = String(row.user_id ?? "");
+      const id = r.mailroom_registration_id;
+      const uid = r.user_id;
       const email = userMap[uid]?.email ?? "";
       const mobile = userMap[uid]?.mobile ?? null;
       const kycRec = kycMap[uid] ?? null;
       let fullName = "";
       if (kycRec && (kycRec.first || kycRec.last)) {
-        fullName = `${String(kycRec.first ?? "").trim()} ${String(
-          kycRec.last ?? "",
+        fullName = `${(kycRec.first ?? "").trim()} ${(
+          kycRec.last ?? ""
         ).trim()}`.trim();
       } else if (email) {
-        fullName = String(email).split("@")[0] ?? "";
+        fullName = email.split("@")[0] ?? "";
       }
-      const createdAt = String(row.mailroom_registration_created_at ?? "");
+      const createdAt = r.mailroom_registration_created_at ?? "";
       const sub = subsMap[id];
       let months = 0;
       if (sub?.billing_cycle) {
-        const bc = String(sub.billing_cycle).toUpperCase().trim();
+        const bc = sub.billing_cycle.toUpperCase().trim();
         if (bc === "MONTHLY") months = 1;
         else if (bc === "QUARTERLY") months = 3;
         else if (bc === "ANNUAL") months = 12;
@@ -203,23 +205,17 @@ export async function GET() {
         months = Math.max(0, expires.diff(started, "month"));
       }
 
-      const plan_id = row.mailroom_plan_id
-        ? String(row.mailroom_plan_id)
-        : null;
-      const location_id = row.mailroom_location_id
-        ? String(row.mailroom_location_id)
-        : null;
+      const plan_id = r.mailroom_plan_id ?? null;
+      const location_id = r.mailroom_location_id ?? null;
 
-      const mailroom_status = Boolean(row.mailroom_registration_status ?? true);
+      const mailroom_status = Boolean(r.mailroom_registration_status ?? true);
       const expiresAt = dayjs(createdAt).add(months, "month");
       const is_active = mailroom_status && dayjs().isBefore(expiresAt);
 
       return {
         id,
         user_id: uid,
-        mailroom_code: row.mailroom_registration_code
-          ? String(row.mailroom_registration_code)
-          : null,
+        mailroom_code: r.mailroom_registration_code ?? null,
         full_name: fullName,
         phone_number: mobile,
         kyc_first_name: kycRec?.first ?? null,
@@ -232,52 +228,48 @@ export async function GET() {
         plan_id,
         mailroom_status,
         is_active,
-        plan_name: plan_id ? plansMap[plan_id] : null,
-        location_name: location_id ? locationsMap[location_id] : null,
+        plan_name: plan_id ? plansMap[plan_id]?.name : null,
+        location_name: location_id ? locationsMap[location_id]?.name : null,
       };
     });
 
     const normalizedLockers = lockers.map((l) => {
-      const row = l as Record<string, unknown>;
       return {
-        id: String(row.location_locker_id ?? ""),
-        locker_code: String(row.location_locker_code ?? ""),
-        is_available: Boolean(row.location_locker_is_available ?? true),
-        location_id: String(row.mailroom_location_id ?? ""),
-        created_at: String(row.location_locker_created_at ?? ""),
+        id: l.location_locker_id,
+        locker_code: l.location_locker_code ?? "",
+        is_available: Boolean(l.location_locker_is_available ?? true),
+        location_id: l.mailroom_location_id ?? "",
+        created_at: l.location_locker_created_at ?? "",
       };
     });
 
     const normalizedAssigned = assigned.map((a) => {
-      const row = a as Record<string, unknown>;
       return {
-        id: String(row.mailroom_assigned_locker_id ?? ""),
-        registration_id: String(row.mailroom_registration_id ?? ""),
-        locker_id: String(row.location_locker_id ?? ""),
-        status: String(row.mailroom_assigned_locker_status ?? "Empty"),
-        assigned_at: String(row.mailroom_assigned_locker_assigned_at ?? ""),
+        id: a.mailroom_assigned_locker_id,
+        registration_id: a.mailroom_registration_id,
+        locker_id: a.location_locker_id ?? "",
+        status: a.mailroom_assigned_locker_status ?? "Empty",
+        assigned_at: a.mailroom_assigned_locker_assigned_at ?? "",
       };
     });
 
     const normalizedPlans = plans.map((p) => {
-      const row = p as Record<string, unknown>;
       return {
-        id: String(row.mailroom_plan_id ?? ""),
-        name: String(row.mailroom_plan_name ?? ""),
-        price: Number(row.mailroom_plan_price ?? 0),
+        id: p.mailroom_plan_id,
+        name: p.mailroom_plan_name,
+        price: Number(p.mailroom_plan_price ?? 0),
       };
     });
 
     const normalizedLocations = locations.map((loc) => {
-      const row = loc as Record<string, unknown>;
       return {
-        id: String(row.mailroom_location_id ?? ""),
-        name: String(row.mailroom_location_name ?? ""),
-        region: row.mailroom_location_region ?? null,
-        city: row.mailroom_location_city ?? null,
-        barangay: row.mailroom_location_barangay ?? null,
-        zip: row.mailroom_location_zip ?? null,
-        total_lockers: Number(row.mailroom_location_total_lockers ?? 0),
+        id: loc.mailroom_location_id,
+        name: loc.mailroom_location_name,
+        region: loc.mailroom_location_region ?? null,
+        city: loc.mailroom_location_city ?? null,
+        barangay: loc.mailroom_location_barangay ?? null,
+        zip: loc.mailroom_location_zip ?? null,
+        total_lockers: Number(loc.mailroom_location_total_lockers ?? 0),
       };
     });
 
