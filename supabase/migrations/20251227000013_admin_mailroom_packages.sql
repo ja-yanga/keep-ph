@@ -10,7 +10,7 @@ SECURITY DEFINER
 SET search_path TO ''
 AS $$
 DECLARE
-  result JSON;
+  return_data JSON;
   packages_json JSON;
   registrations_json JSON;
   lockers_json JSON;
@@ -65,16 +65,16 @@ BEGIN
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(
-        'id', pi.mailbox_item_id,
-        'package_name', pi.mailbox_item_name,
-        'registration_id', pi.mailroom_registration_id,
-        'locker_id', pi.location_locker_id,
-        'package_type', pi.mailbox_item_type,
-        'status', pi.mailbox_item_status,
-        'package_photo', pi.mailbox_item_photo,
-        'release_address', pi.mailbox_item_release_address,
-        'release_address_id', pi.user_address_id,
-        'received_at', pi.mailbox_item_received_at,
+        'mailbox_item_id', pi.mailbox_item_id,
+        'mailbox_item_name', pi.mailbox_item_name,
+        'mailroom_registration_id', pi.mailroom_registration_id,
+        'location_locker_id', pi.location_locker_id,
+        'mailbox_item_type', pi.mailbox_item_type,
+        'mailbox_item_status', pi.mailbox_item_status,
+        'mailbox_item_photo', pi.mailbox_item_photo,
+        'mailbox_item_release_address', pi.mailbox_item_release_address,
+        'user_address_id', pi.user_address_id,
+        'mailbox_item_received_at', pi.mailbox_item_received_at,
         'mailbox_item_created_at', pi.mailbox_item_created_at,
         'mailbox_item_updated_at', pi.mailbox_item_updated_at,
         'mailroom_file_table', (
@@ -84,20 +84,20 @@ BEGIN
         ),
         'registration', CASE
           WHEN pi.reg_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-            'id', pi.reg_id,
+            'mailroom_registration_id', pi.reg_id,
             'full_name', COALESCE(
               CONCAT_WS(' ', pi.user_kyc_first_name, pi.user_kyc_last_name),
               pi.mailroom_location_name,
               'Unknown'
             ),
-            'email', pi.users_email,
-            'mobile', pi.mobile_number,
-            'mailroom_code', pi.mailroom_registration_code,
+            'users_email', pi.users_email,
+            'mobile_number', pi.mobile_number,
+            'mailroom_registration_code', pi.mailroom_registration_code,
             'mailroom_plans', CASE
               WHEN pi.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-                'name', pi.mailroom_plan_name,
-                'can_receive_mail', pi.mailroom_plan_can_receive_mail,
-                'can_receive_parcels', pi.mailroom_plan_can_receive_parcels
+                'mailroom_plan_name', pi.mailroom_plan_name,
+                'mailroom_plan_can_receive_mail', pi.mailroom_plan_can_receive_mail,
+                'mailroom_plan_can_receive_parcels', pi.mailroom_plan_can_receive_parcels
               )
               ELSE NULL
             END
@@ -106,8 +106,8 @@ BEGIN
         END,
         'locker', CASE
           WHEN pi.locker_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-            'id', pi.locker_id,
-            'locker_code', pi.location_locker_code
+            'location_locker_id', pi.locker_id,
+            'location_locker_code', pi.location_locker_code
           )
           ELSE NULL
         END
@@ -128,14 +128,14 @@ BEGIN
           ml.mailroom_location_name,
           'Unknown'
         ),
-        'email', u.users_email,
-        'mobile', u.mobile_number,
-        'mailroom_code', mr.mailroom_registration_code,
+        'users_email', u.users_email,
+        'mobile_number', u.mobile_number,
+        'mailroom_registration_code', mr.mailroom_registration_code,
         'mailroom_plans', CASE
           WHEN p.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-            'name', p.mailroom_plan_name,
-            'can_receive_mail', p.mailroom_plan_can_receive_mail,
-            'can_receive_parcels', p.mailroom_plan_can_receive_parcels
+            'mailroom_plan_name', p.mailroom_plan_name,
+            'mailroom_plan_can_receive_mail', p.mailroom_plan_can_receive_mail,
+            'mailroom_plan_can_receive_parcels', p.mailroom_plan_can_receive_parcels
           )
           ELSE NULL
         END
@@ -187,8 +187,8 @@ BEGIN
   FROM public.mailroom_assigned_locker_table mal
   LEFT JOIN public.location_locker_table ll ON ll.location_locker_id = mal.location_locker_id;
 
-  -- Build final result
-  result := JSON_BUILD_OBJECT(
+  -- Build final return_data
+  return_data := JSON_BUILD_OBJECT(
     'packages', packages_json,
     'registrations', registrations_json,
     'lockers', lockers_json,
@@ -196,7 +196,7 @@ BEGIN
     'total_count', total_count
   );
 
-  RETURN result;
+  RETURN return_data;
 END;
 $$;
 

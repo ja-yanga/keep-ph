@@ -232,13 +232,13 @@ export async function adminUpdateMailroomPackage(
     input_data: {
       user_id: args.userId,
       id: args.id,
-      package_name: args.package_name,
-      registration_id: args.registration_id,
-      locker_id: args.locker_id,
-      package_type: args.package_type,
-      status: args.status,
-      package_photo: args.package_photo,
-      locker_status: args.locker_status,
+      mailbox_item_name: args.mailbox_item_name,
+      mailroom_registration_id: args.mailroom_registration_id,
+      location_locker_id: args.location_locker_id,
+      mailroom_item_type: args.mailroom_item_type,
+      mailroom_item_status: args.mailroom_item_status,
+      mailbox_item_photo: args.mailbox_item_photo,
+      location_locker_status: args.location_locker_status,
     },
   });
 
@@ -270,7 +270,10 @@ export async function adminUpdateMailroomPackage(
   }
 
   // Send notification if status changed
-  if (args.status && result.old_status !== args.status) {
+  if (
+    args.mailroom_item_status &&
+    result.old_status !== args.mailroom_item_status
+  ) {
     const { data: registration } = await supabaseAdmin
       .from("mailroom_registration_table")
       .select("user_id, mailroom_registration_code")
@@ -284,14 +287,14 @@ export async function adminUpdateMailroomPackage(
       const packageName = result.item.mailbox_item_name as string;
 
       let title = "Package Update";
-      let message = `Your package (${packageName}) at Mailroom ${code} status is now: ${args.status}`;
+      let message = `Your package (${packageName}) at Mailroom ${code} status is now: ${args.mailroom_item_status}`;
       let type: T_NotificationType = "SYSTEM";
 
-      if (args.status === "RELEASED") {
+      if (args.mailroom_item_status === "RELEASED") {
         title = "Package Released";
         message = `Package (${packageName}) from Mailroom ${code} has been picked up/released.`;
         type = "PACKAGE_RELEASED";
-      } else if (args.status === "DISPOSED") {
+      } else if (args.mailroom_item_status === "DISPOSED") {
         title = "Package Disposed";
         message = `Package (${packageName}) from Mailroom ${code} has been disposed.`;
         type = "PACKAGE_DISPOSED";
@@ -309,12 +312,12 @@ export async function adminUpdateMailroomPackage(
 
   // Log activity
   let activityAction: "UPDATE" | "RELEASE" | "DISPOSE" = "UPDATE";
-  if (args.status === "RELEASED") activityAction = "RELEASE";
-  if (args.status === "DISPOSED") activityAction = "DISPOSE";
+  if (args.mailroom_item_status === "RELEASED") activityAction = "RELEASE";
+  if (args.mailroom_item_status === "DISPOSED") activityAction = "DISPOSE";
 
   // Fetch locker code if locker_id exists
   let locker_code: string | null = null;
-  const locker_id = args.locker_id ?? result.item.location_locker_id;
+  const locker_id = args.location_locker_id ?? result.item.location_locker_id;
   if (locker_id) {
     const { data: lockerData } = await supabaseAdmin
       .from("location_locker_table")
@@ -331,10 +334,10 @@ export async function adminUpdateMailroomPackage(
     entityType: "MAILBOX_ITEM",
     entityId: args.id,
     details: {
-      package_status: args.status ?? result.old_status,
-      package_name: (args.package_name ??
+      package_status: args.mailroom_item_status ?? result.old_status,
+      package_name: (args.mailbox_item_name ??
         result.item.mailbox_item_name) as string,
-      package_type: (args.package_type ??
+      package_type: (args.mailroom_item_type ??
         result.item.mailbox_item_type ??
         "Parcel") as string,
       ...(locker_code && { package_locker_code: locker_code }),

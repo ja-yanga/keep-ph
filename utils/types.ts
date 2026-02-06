@@ -542,8 +542,9 @@ export type AdminMailroomLocation = MailroomLocationRow & {
 
 export type AdminMailroomRegistration = MailroomRegistrationTableRow & {
   full_name?: string | null;
-  email?: string | null;
-  mobile?: string | null;
+  users_email?: string | null;
+  mobile_number?: string | null;
+  mailroom_registration_code?: string | null;
   mailroom_plans?:
     | {
         name: string;
@@ -562,38 +563,31 @@ export type AdminMailroomPackage = MailboxItemTableRow & {
   registration?: AdminMailroomRegistration | null;
   locker?: LocationLockerRow | null;
   mailbox_item_notes?: string | null;
-  package_name?: string | null; // Legacy field support
-  package_photo?: string | null; // Legacy field support
-  image_url?: string | null; // Legacy field support
-  package_type?: string | null; // Legacy field support
-  status?: string | null; // Legacy field support
-  release_address?: string | null;
-  release_to_name?: string | null;
-  notes?: string | null;
+  mailbox_item_release_to_name?: string | null;
 };
 
 export type AdminCreateMailroomPackageArgs = {
   userId: string;
-  package_name: string;
-  registration_id: string;
-  locker_id?: string | null;
-  package_type: MAILROOM_PACKAGE_TYPE_ENUM;
-  status: string;
-  notes?: string | null;
-  package_photo?: string | null;
-  locker_status?: string;
+  mailbox_item_name: string;
+  mailroom_registration_id: string;
+  location_locker_id?: string | null;
+  mailroom_item_type: MAILROOM_PACKAGE_TYPE_ENUM;
+  mailroom_item_status: string;
+  mailbox_item_notes?: string | null;
+  mailbox_item_photo?: string | null;
+  location_locker_status?: string;
 };
 
 export type AdminUpdateMailroomPackageArgs = {
   userId: string;
   id: string;
-  package_name?: string;
-  registration_id?: string;
-  locker_id?: string | null;
-  package_type?: MAILROOM_PACKAGE_TYPE_ENUM;
-  status?: string;
-  package_photo?: string | null;
-  locker_status?: string;
+  mailbox_item_name?: string;
+  mailroom_registration_id?: string;
+  location_locker_id?: string | null;
+  mailroom_item_type?: MAILROOM_PACKAGE_TYPE_ENUM;
+  mailroom_item_status?: string;
+  mailbox_item_photo?: string | null;
+  location_locker_status?: string;
 };
 
 export type AssignedLocker = LocationLockerAssignedRow & {

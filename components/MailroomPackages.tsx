@@ -136,7 +136,11 @@ export default function MailroomPackages() {
       return () => URL.revokeObjectURL(url);
     }
     if (editingPackage) {
-      setPreviewSrc(editingPackage.mailbox_item_photo || null);
+      setPreviewSrc(
+        editingPackage.mailbox_item_photo ||
+          editingPackage.mailbox_item_photo ||
+          null,
+      );
     } else {
       setPreviewSrc(null);
     }
@@ -235,15 +239,7 @@ export default function MailroomPackages() {
     }
 
     return `${baseUrl}?${params.toString()}`;
-  }, [
-    page,
-    pageSize,
-    debouncedSearch,
-    activeTab,
-    filterStatus,
-    filterType,
-    sortStatus,
-  ]);
+  }, [page, pageSize, activeTab, filterStatus, filterType, sortStatus]);
 
   const fetcher = async (url: string) => {
     // avoid stale cached responses when revalidating
@@ -401,7 +397,7 @@ export default function MailroomPackages() {
               : (r.mailroom_plans as { name?: string })?.name;
             return {
               value: r.mailroom_registration_id!,
-              label: `${r.mailroom_registration_code || "No Code"} - ${r.email} (${
+              label: `${r.mailroom_registration_code || "No Code"} - ${r.users_email} (${
                 planName || "Unknown Plan"
               })`,
             };
@@ -450,12 +446,12 @@ export default function MailroomPackages() {
       }
 
       setFormData({
-        package_name: pkg.mailbox_item_name || pkg.package_name || "",
+        package_name: pkg.mailbox_item_name || "",
         registration_id: pkg.mailroom_registration_id,
         locker_id: pkg.location_locker_id || "",
-        package_type: pkg.mailbox_item_type || pkg.package_type || "",
-        status: pkg.mailbox_item_status || pkg.status || "STORED",
-        recipient_email: pkg.registration?.email || "",
+        package_type: pkg.mailbox_item_type || "",
+        status: pkg.mailbox_item_status || "STORED",
+        recipient_email: pkg.registration?.users_email || "",
         recipient_name: pkg.registration?.full_name || "",
       });
       // Find registration to populate recipient search
@@ -469,7 +465,7 @@ export default function MailroomPackages() {
           : (reg.mailroom_plans as { name?: string })?.name;
       }
       const regLabel = reg
-        ? `${reg.mailroom_registration_code || "No Code"} - ${reg.email} (${planName || "Unknown Plan"})`
+        ? `${reg.mailroom_registration_code || "No Code"} - ${reg.users_email} (${planName || "Unknown Plan"})`
         : "";
       setRecipientSearch(regLabel);
       setSelectedRecipientLabel(regLabel);
@@ -541,7 +537,7 @@ export default function MailroomPackages() {
       registration_id: regId,
       locker_id: defaultLockerId,
       package_type: defaultType,
-      recipient_email: _reg?.email || "",
+      recipient_email: _reg?.users_email || "",
       recipient_name: _reg?.full_name || "",
     });
   };
@@ -600,14 +596,11 @@ export default function MailroomPackages() {
     // Status is always STORED for new packages
     // When editing, preserve the original status (status cannot be changed via edit modal)
     const finalStatus = editingPackage
-      ? editingPackage.mailbox_item_status || editingPackage.status
+      ? editingPackage.mailbox_item_status || "STORED"
       : "STORED";
 
     // Photo is required (either newly selected or existing on editingPackage)
-    if (
-      !packagePhoto &&
-      !(editingPackage?.package_photo || editingPackage?.image_url)
-    ) {
+    if (!packagePhoto && !editingPackage?.mailbox_item_photo) {
       setFormError("Package photo is required");
       return;
     }
@@ -777,11 +770,10 @@ export default function MailroomPackages() {
 
     try {
       const payload = {
-        package_name: packageToDispose.mailbox_item_name,
+        package_name: packageToDispose.mailbox_item_name || "",
         registration_id: packageToDispose.mailroom_registration_id,
         locker_id: packageToDispose.location_locker_id,
-        package_type:
-          packageToDispose.mailbox_item_type || packageToDispose.package_type,
+        package_type: packageToDispose.mailbox_item_type || "",
         status: "DISPOSED",
         // notes: packageToDispose.notes, // Removed as it might not be in DB or useless on update?
 
@@ -802,13 +794,17 @@ export default function MailroomPackages() {
       setGlobalSuccess("Package marked as DISPOSED and locker status updated");
 
       // Trigger Email Notification for disposal
-      if (packageToDispose?.registration?.email) {
-        triggerEmail(packageToDispose.registration.email, "PACKAGE_DISPOSED", {
-          packageName: String(packageToDispose.mailbox_item_name || ""),
-          recipientName: String(
-            packageToDispose.registration.full_name || "Recipient",
-          ),
-        });
+      if (packageToDispose?.registration?.users_email) {
+        triggerEmail(
+          packageToDispose.registration.users_email,
+          "PACKAGE_DISPOSED",
+          {
+            packageName: String(packageToDispose.mailbox_item_name || ""),
+            recipientName: String(
+              packageToDispose.registration.full_name || "Recipient",
+            ),
+          },
+        );
       }
 
       setDisposeModalOpen(false);
@@ -883,13 +879,17 @@ export default function MailroomPackages() {
       setGlobalSuccess("Document scanned and uploaded successfully");
 
       // Trigger Email Notification for scan
-      if (packageToScan?.registration?.email) {
-        triggerEmail(packageToScan.registration.email, "PACKAGE_SCANNED", {
-          packageName: String(packageToScan.mailbox_item_name || ""),
-          recipientName: String(
-            packageToScan.registration.full_name || "Recipient",
-          ),
-        });
+      if (packageToScan?.registration?.users_email) {
+        triggerEmail(
+          packageToScan.registration.users_email,
+          "PACKAGE_SCANNED",
+          {
+            packageName: String(packageToScan.mailbox_item_name || ""),
+            recipientName: String(
+              packageToScan.registration.full_name || "Recipient",
+            ),
+          },
+        );
       }
 
       setScanModalOpen(false);
@@ -1008,13 +1008,17 @@ export default function MailroomPackages() {
       setGlobalSuccess("Package released and locker status updated");
 
       // Trigger Email Notification for release
-      if (packageToRelease?.registration?.email) {
-        triggerEmail(packageToRelease.registration.email, "PACKAGE_RELEASED", {
-          packageName: String(packageToRelease.mailbox_item_name || ""),
-          recipientName: String(
-            packageToRelease.registration.full_name || "Recipient",
-          ),
-        });
+      if (packageToRelease?.registration?.users_email) {
+        triggerEmail(
+          packageToRelease.registration.users_email,
+          "PACKAGE_RELEASED",
+          {
+            packageName: String(packageToRelease.mailbox_item_name || ""),
+            recipientName: String(
+              packageToRelease.registration.full_name || "Recipient",
+            ),
+          },
+        );
       }
 
       setReleaseModalOpen(false);
@@ -1033,11 +1037,11 @@ export default function MailroomPackages() {
     const q = (search || "").toLowerCase();
 
     return packages.filter((p) => {
-      const pkgName = (p.mailbox_item_name ?? "").toLowerCase();
-      const regName = (p.registration?.full_name ?? "").toLowerCase();
-      const regEmail = (p.registration?.email ?? "").toLowerCase();
-      const status = (p.mailbox_item_status || p.status || "").toLowerCase();
-      const lockerCode = (p.locker?.location_locker_code ?? "").toLowerCase();
+      const pkgName = (p.mailbox_item_name || "").toLowerCase();
+      const regName = (p.registration?.full_name || "").toLowerCase();
+      const regEmail = (p.registration?.users_email || "").toLowerCase();
+      const status = (p.mailbox_item_status || "").toLowerCase();
+      const lockerCode = (p.locker?.location_locker_code || "").toLowerCase();
 
       const matchesSearch =
         pkgName.includes(q) ||
@@ -1047,7 +1051,7 @@ export default function MailroomPackages() {
         lockerCode.includes(q);
 
       const matchesType = filterType
-        ? (p.mailbox_item_type || p.package_type) === filterType
+        ? p.mailbox_item_type === filterType
         : true;
 
       return matchesSearch && matchesType;
@@ -1082,11 +1086,8 @@ export default function MailroomPackages() {
         width: 200,
         sortable: true,
         render: (record: unknown) => {
-          const pkg = record as AdminMailroomPackage & {
-            package_name?: string;
-          };
-          // Fallback to package_name if mailbox_item_name is missing (handles legacy/different API shapes)
-          const displayText = pkg.mailbox_item_name || pkg.package_name || "";
+          const pkg = record as AdminMailroomPackage;
+          const displayText = pkg.mailbox_item_name || "";
           return (
             <Text fw={500} size="sm">
               {displayText}
@@ -1106,7 +1107,7 @@ export default function MailroomPackages() {
                 {pkg.registration?.full_name || "Unknown"}
               </Text>
               <Text size="xs" c="#4A5568">
-                {pkg.registration?.email}
+                {pkg.registration?.users_email}
               </Text>
             </Stack>
           );
@@ -1141,11 +1142,11 @@ export default function MailroomPackages() {
         sortable: true,
         render: (record: unknown) => {
           const pkg = record as AdminMailroomPackage;
-          const displayType = pkg.mailbox_item_type || pkg.package_type || "";
+          const displayType = pkg.mailbox_item_type || "";
           return (
             <Badge
               variant="filled"
-              color={`${getStatusFormat(displayType)}.9`}
+              color={getStatusFormat(displayType)}
               w={110}
               leftSection={
                 displayType === "Document" ? (
@@ -1167,13 +1168,13 @@ export default function MailroomPackages() {
         sortable: true,
         render: (record: unknown) => {
           const pkg = record as AdminMailroomPackage;
-          const displayStatus = pkg.mailbox_item_status || pkg.status || "";
+          const displayStatus = pkg.mailbox_item_status || "";
           return (
             <Badge
-              color={`${getPackageStatusColor(displayStatus)}.9`}
+              color={getPackageStatusColor(displayStatus)}
               variant="filled"
             >
-              {displayStatus}
+              {displayStatus.replaceAll("_", " ")}
             </Badge>
           );
         },
@@ -1302,7 +1303,7 @@ export default function MailroomPackages() {
   const getSnapshotPhone = (pkg: AdminMailroomPackage | null) => {
     if (!pkg) return null;
     // 1) explicit registration mobile
-    const regPhone = pkg.registration?.mobile ?? null;
+    const regPhone = pkg.registration?.mobile_number ?? null;
     if (regPhone) return regPhone;
     // 2) explicit release snapshot field (if any)
     // use bracket access in case field not declared in interface
@@ -1391,6 +1392,7 @@ export default function MailroomPackages() {
         recordsPerPageOptions={[10, 20, 50]}
         onRecordsPerPageChange={setPageSize}
         columns={tableColumns}
+        idAccessor="mailbox_item_id"
         sortStatus={sortStatus}
         onSortStatusChange={setSortStatus}
         aria-label="Packages data table"
@@ -1530,8 +1532,8 @@ export default function MailroomPackages() {
         <Stack>
           <Text>
             Are you sure you want to restore{" "}
-            <b>{packageToRestore?.package_name}</b>? It will be returned to its
-            previous state (Active or Disposed).
+            <b>{packageToRestore?.mailbox_item_name}</b>? It will be returned to
+            its previous state (Active or Disposed).
           </Text>
           <Group justify="flex-end" mt="md">
             <Button
@@ -1821,7 +1823,7 @@ export default function MailroomPackages() {
           )}
 
           <Text size="sm">
-            Upload the PDF scan for <b>{packageToScan?.package_name}</b>.
+            Upload the PDF scan for <b>{packageToScan?.mailbox_item_name}</b>.
           </Text>
           <FileInput
             label="Select PDF"
@@ -1870,7 +1872,7 @@ export default function MailroomPackages() {
 
           <Text size="sm">
             Upload Proof of Release (Photo/Signature) for{" "}
-            <b>{packageToRelease?.package_name}</b>.
+            <b>{packageToRelease?.mailbox_item_name}</b>.
           </Text>
           <FileInput
             label="Proof Image"
@@ -1883,10 +1885,12 @@ export default function MailroomPackages() {
 
           {/* Show saved release snapshot if available, otherwise show user's default address (read-only preview) */}
           <Box mt="sm">
-            {packageToRelease?.release_address
+            {packageToRelease?.mailbox_item_release_address
               ? // --- PATH 1: Saved Release Snapshot (Confirmed/Historical Details)
                 (() => {
-                  const pickup = parsePickupFromNotes(packageToRelease?.notes);
+                  const pickup = parsePickupFromNotes(
+                    packageToRelease?.mailbox_item_notes,
+                  );
                   const phone = getSnapshotPhone(packageToRelease);
                   return (
                     <Paper withBorder p="md" radius="md" bg="gray.0">
@@ -1903,19 +1907,19 @@ export default function MailroomPackages() {
                             Delivery Address
                           </Text>
                           <Text size="sm" fw={500}>
-                            {packageToRelease.release_address}
+                            {packageToRelease.mailbox_item_release_address}
                           </Text>
                         </Stack>
 
                         {/* Recipient and Phone (Side by side) */}
                         <Group grow mt="xs">
-                          {packageToRelease.release_to_name && (
+                          {packageToRelease.mailbox_item_release_to_name && (
                             <Stack gap={2}>
                               <Text fw={700} size="sm" c="#4A5568">
                                 Recipient Name
                               </Text>
                               <Text size="sm" fw={500}>
-                                {packageToRelease.release_to_name}
+                                {packageToRelease.mailbox_item_release_to_name}
                               </Text>
                             </Stack>
                           )}
@@ -2134,8 +2138,8 @@ export default function MailroomPackages() {
 
           <Alert color="red" icon={<IconTrash size={16} />}>
             Are you sure you want to mark{" "}
-            <b>{packageToDispose?.package_name}</b> as DISPOSED? This action
-            cannot be undone.
+            <b>{packageToDispose?.mailbox_item_name}</b> as DISPOSED? This
+            action cannot be undone.
           </Alert>
 
           {/* NEW: Locker Status Selector */}
