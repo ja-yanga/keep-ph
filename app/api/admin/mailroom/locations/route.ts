@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { adminCreateMailroomLocation } from "@/app/actions/post";
 import { adminListMailroomLocationsPaginated } from "@/app/actions/get";
 import { logApiError } from "@/lib/error-log";
-import type { LocationRow } from "@/utils/types";
+import type { AdminMailroomLocation } from "@/utils/types";
 
-const normalizeLocation = (row: LocationRow) => ({
+const normalizeLocation = (row: AdminMailroomLocation) => ({
   id: row.mailroom_location_id,
   name: row.mailroom_location_name,
   code: row.mailroom_location_prefix ?? null,
@@ -14,8 +14,8 @@ const normalizeLocation = (row: LocationRow) => ({
   barangay: row.mailroom_location_barangay ?? null,
   zip: row.mailroom_location_zip ?? null,
   total_lockers: row.mailroom_location_total_lockers ?? 0,
-  is_hidden: row.mailroom_location_is_hidden,
-  max_locker_limit: row.mailroom_location_max_locker_limit,
+  is_hidden: row.mailroom_location_is_hidden ?? false,
+  max_locker_limit: row.mailroom_location_max_locker_limit ?? null,
 });
 
 export async function GET(req: Request) {

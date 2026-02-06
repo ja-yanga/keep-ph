@@ -533,15 +533,9 @@ export type T_NotificationType =
   | "REWARD_PROCESSING"
   | "REWARD_PAID";
 
-export type LocationRow = {
-  mailroom_location_id: string;
-  mailroom_location_name: string;
-  mailroom_location_region?: string | null;
-  mailroom_location_city?: string | null;
-  mailroom_location_barangay?: string | null;
-  mailroom_location_zip?: string | null;
-  mailroom_location_total_lockers?: number | null;
-  mailroom_location_prefix?: string | null;
+export type LocationRow = MailroomLocationRow;
+
+export type AdminMailroomLocation = MailroomLocationRow & {
   mailroom_location_is_hidden?: boolean;
   mailroom_location_max_locker_limit?: number | null;
 };

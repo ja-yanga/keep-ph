@@ -7,8 +7,8 @@ import { parseAddressRow } from "@/utils/helper";
 import {
   AdminCreateMailroomLocationArgs,
   AdminIpWhitelistEntry,
+  AdminMailroomLocation,
   CreateUserAddressArgs,
-  LocationRow,
   RequestRewardClaimArgs,
   RpcClaimResponse,
   T_LocationLockerInsert,
@@ -516,7 +516,7 @@ export async function listReferrals(userId: string) {
  */
 export async function adminCreateMailroomLocation(
   args: AdminCreateMailroomLocationArgs & { userId?: string },
-): Promise<LocationRow> {
+): Promise<AdminMailroomLocation> {
   const payload = {
     input_name: args.name,
     input_code: args.code ?? null,
@@ -537,7 +537,9 @@ export async function adminCreateMailroomLocation(
   }
 
   const row =
-    typeof data === "string" ? (JSON.parse(data) as LocationRow) : data;
+    typeof data === "string"
+      ? (JSON.parse(data) as AdminMailroomLocation)
+      : (data as AdminMailroomLocation);
 
   // Log activity if userId provided
   if (args.userId) {
@@ -561,7 +563,7 @@ export async function adminCreateMailroomLocation(
     });
   }
 
-  return row as LocationRow;
+  return row;
 }
 
 /**
