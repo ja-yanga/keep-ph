@@ -30,20 +30,20 @@ BEGIN
     -- Filter out deleted lockers
     SELECT JSONB_AGG(
         JSONB_BUILD_OBJECT(
-            'id', malt.mailroom_assigned_locker_id::text,
-            'registration_id', malt.mailroom_registration_id::text,
-            'locker_id', malt.location_locker_id::text,
-            'status', malt.mailroom_assigned_locker_status,
-            'assigned_at', malt.mailroom_assigned_locker_assigned_at,
+            'mailroom_assigned_locker_id', malt.mailroom_assigned_locker_id::text,
+            'mailroom_registration_id', malt.mailroom_registration_id::text,
+            'location_locker_id', malt.location_locker_id::text,
+            'mailroom_assigned_locker_status', malt.mailroom_assigned_locker_status,
+            'mailroom_assigned_locker_assigned_at', malt.mailroom_assigned_locker_assigned_at,
             'registration', JSONB_BUILD_OBJECT(
-                'id', mrt.mailroom_registration_id::text,
+                'mailroom_registration_id', mrt.mailroom_registration_id::text,
                 'user_id', mrt.user_id::text,
-                'email', ut.users_email
+                'users_email', ut.users_email
             ),
             'locker', JSONB_BUILD_OBJECT(
-                'id', llt.location_locker_id::text,
-                'code', llt.location_locker_code,
-                'is_available', llt.location_locker_is_available
+                'location_locker_id', llt.location_locker_id::text,
+                'location_locker_code', llt.location_locker_code,
+                'location_locker_is_available', llt.location_locker_is_available
             )
         )
         ORDER BY malt.mailroom_assigned_locker_assigned_at DESC
@@ -75,7 +75,7 @@ CREATE OR REPLACE FUNCTION public.get_admin_mailroom_packages(
   input_offset INTEGER DEFAULT 0,
   input_compact BOOLEAN DEFAULT false,
   input_status TEXT[] DEFAULT NULL,
-  input_sort_by TEXT DEFAULT 'received_at',
+  input_sort_by TEXT DEFAULT 'mailbox_item_received_at',
   input_sort_order TEXT DEFAULT 'DESC',
   input_search TEXT DEFAULT NULL,
   input_type TEXT DEFAULT NULL
@@ -86,7 +86,7 @@ SECURITY DEFINER
 SET search_path TO ''
 AS $$
 DECLARE
-  result JSON;
+  return_data JSON;
   packages_json JSON;
   registrations_json JSON;
   lockers_json JSON;
@@ -162,18 +162,18 @@ BEGIN
   paginated_items AS (
     SELECT * FROM filtered_items
     ORDER BY
-      CASE WHEN input_sort_by = 'received_at' AND input_sort_order = 'ASC' THEN mailbox_item_received_at END ASC NULLS LAST,
-      CASE WHEN input_sort_by = 'received_at' AND input_sort_order = 'DESC' THEN mailbox_item_received_at END DESC NULLS LAST,
-      CASE WHEN input_sort_by = 'package_name' AND input_sort_order = 'ASC' THEN mailbox_item_name END ASC NULLS LAST,
-      CASE WHEN input_sort_by = 'package_name' AND input_sort_order = 'DESC' THEN mailbox_item_name END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_received_at' AND input_sort_order = 'ASC' THEN mailbox_item_received_at END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_received_at' AND input_sort_order = 'DESC' THEN mailbox_item_received_at END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_name' AND input_sort_order = 'ASC' THEN mailbox_item_name END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_name' AND input_sort_order = 'DESC' THEN mailbox_item_name END DESC NULLS LAST,
       CASE WHEN input_sort_by = 'registration.full_name' AND input_sort_order = 'ASC' THEN COALESCE(user_kyc_first_name, '') || ' ' || COALESCE(user_kyc_last_name, '') END ASC NULLS LAST,
       CASE WHEN input_sort_by = 'registration.full_name' AND input_sort_order = 'DESC' THEN COALESCE(user_kyc_first_name, '') || ' ' || COALESCE(user_kyc_last_name, '') END DESC NULLS LAST,
-      CASE WHEN input_sort_by = 'locker.locker_code' AND input_sort_order = 'ASC' THEN location_locker_code END ASC NULLS LAST,
-      CASE WHEN input_sort_by = 'locker.locker_code' AND input_sort_order = 'DESC' THEN location_locker_code END DESC NULLS LAST,
-      CASE WHEN input_sort_by = 'package_type' AND input_sort_order = 'ASC' THEN mailbox_item_type END ASC NULLS LAST,
-      CASE WHEN input_sort_by = 'package_type' AND input_sort_order = 'DESC' THEN mailbox_item_type END DESC NULLS LAST,
-      CASE WHEN input_sort_by = 'status' AND input_sort_order = 'ASC' THEN mailbox_item_status END ASC NULLS LAST,
-      CASE WHEN input_sort_by = 'status' AND input_sort_order = 'DESC' THEN mailbox_item_status END DESC NULLS LAST
+      CASE WHEN input_sort_by = 'locker.location_locker_code' AND input_sort_order = 'ASC' THEN location_locker_code END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'locker.location_locker_code' AND input_sort_order = 'DESC' THEN location_locker_code END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_type' AND input_sort_order = 'ASC' THEN mailbox_item_type END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_type' AND input_sort_order = 'DESC' THEN mailbox_item_type END DESC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_status' AND input_sort_order = 'ASC' THEN mailbox_item_status END ASC NULLS LAST,
+      CASE WHEN input_sort_by = 'mailbox_item_status' AND input_sort_order = 'DESC' THEN mailbox_item_status END DESC NULLS LAST
     LIMIT input_limit
     OFFSET input_offset
   )
@@ -182,16 +182,16 @@ BEGIN
     COALESCE(
       JSON_AGG(
         JSON_BUILD_OBJECT(
-          'id', pi.mailbox_item_id,
-          'package_name', pi.mailbox_item_name,
-          'registration_id', pi.mailroom_registration_id,
-          'locker_id', pi.location_locker_id,
-          'package_type', pi.mailbox_item_type,
-          'status', pi.mailbox_item_status,
-          'package_photo', pi.mailbox_item_photo,
-          'release_address', pi.mailbox_item_release_address,
-          'release_address_id', pi.user_address_id,
-          'received_at', pi.mailbox_item_received_at,
+          'mailbox_item_id', pi.mailbox_item_id,
+          'mailbox_item_name', pi.mailbox_item_name,
+          'mailroom_registration_id', pi.mailroom_registration_id,
+          'location_locker_id', pi.location_locker_id,
+          'mailbox_item_type', pi.mailbox_item_type,
+          'mailbox_item_status', pi.mailbox_item_status,
+          'mailbox_item_photo', pi.mailbox_item_photo,
+          'mailbox_item_release_address', pi.mailbox_item_release_address,
+          'user_address_id', pi.user_address_id,
+          'mailbox_item_received_at', pi.mailbox_item_received_at,
           'mailbox_item_created_at', pi.mailbox_item_created_at,
           'mailbox_item_updated_at', pi.mailbox_item_updated_at,
           'mailroom_file_table', (
@@ -201,20 +201,20 @@ BEGIN
           ),
           'registration', CASE
             WHEN pi.reg_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-              'id', pi.reg_id,
+              'mailroom_registration_id', pi.reg_id,
               'full_name', COALESCE(
                 CONCAT_WS(' ', pi.user_kyc_first_name, pi.user_kyc_last_name),
                 pi.mailroom_location_name,
                 'Unknown'
               ),
-              'email', pi.users_email,
-              'mobile', pi.mobile_number,
-              'mailroom_code', pi.mailroom_registration_code,
+              'users_email', pi.users_email,
+              'mobile_number', pi.mobile_number,
+              'mailroom_registration_code', pi.mailroom_registration_code,
               'mailroom_plans', CASE
                 WHEN pi.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-                  'name', pi.mailroom_plan_name,
-                  'can_receive_mail', pi.mailroom_plan_can_receive_mail,
-                  'can_receive_parcels', pi.mailroom_plan_can_receive_parcels
+                  'mailroom_plan_name', pi.mailroom_plan_name,
+                  'mailroom_plan_can_receive_mail', pi.mailroom_plan_can_receive_mail,
+                  'mailroom_plan_can_receive_parcels', pi.mailroom_plan_can_receive_parcels
                 )
                 ELSE NULL
               END
@@ -223,8 +223,8 @@ BEGIN
           END,
           'locker', CASE
             WHEN pi.locker_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-              'id', pi.locker_id,
-              'locker_code', pi.location_locker_code
+              'location_locker_id', pi.locker_id,
+              'location_locker_code', pi.location_locker_code
             )
             ELSE NULL
           END
@@ -239,20 +239,20 @@ BEGIN
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(
-        'id', mr.mailroom_registration_id,
+        'mailroom_registration_id', mr.mailroom_registration_id,
         'full_name', COALESCE(
           CONCAT_WS(' ', uk.user_kyc_first_name, uk.user_kyc_last_name),
           ml.mailroom_location_name,
           'Unknown'
         ),
-        'email', u.users_email,
-        'mobile', u.mobile_number,
-        'mailroom_code', mr.mailroom_registration_code,
+        'users_email', u.users_email,
+        'mobile_number', u.mobile_number,
+        'mailroom_registration_code', mr.mailroom_registration_code,
         'mailroom_plans', CASE
           WHEN p.mailroom_plan_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-            'name', p.mailroom_plan_name,
-            'can_receive_mail', p.mailroom_plan_can_receive_mail,
-            'can_receive_parcels', p.mailroom_plan_can_receive_parcels
+            'mailroom_plan_name', p.mailroom_plan_name,
+            'mailroom_plan_can_receive_mail', p.mailroom_plan_can_receive_mail,
+            'mailroom_plan_can_receive_parcels', p.mailroom_plan_can_receive_parcels
           )
           ELSE NULL
         END
@@ -271,9 +271,9 @@ BEGIN
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(
-        'id', ll.location_locker_id,
-        'locker_code', ll.location_locker_code,
-        'is_available', ll.location_locker_is_available
+        'location_locker_id', ll.location_locker_id,
+        'location_locker_code', ll.location_locker_code,
+        'location_locker_is_available', ll.location_locker_is_available
       )
     ),
     '[]'::JSON
@@ -286,14 +286,14 @@ BEGIN
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(
-        'id', mal.mailroom_assigned_locker_id::text,
-        'registration_id', mal.mailroom_registration_id::text,
-        'locker_id', mal.location_locker_id::text,
-        'status', mal.mailroom_assigned_locker_status,
+        'mailroom_assigned_locker_id', mal.mailroom_assigned_locker_id::text,
+        'mailroom_registration_id', mal.mailroom_registration_id::text,
+        'location_locker_id', mal.location_locker_id::text,
+        'mailroom_assigned_locker_status', mal.mailroom_assigned_locker_status,
         'locker', CASE
           WHEN ll.location_locker_id IS NOT NULL THEN JSON_BUILD_OBJECT(
-            'id', ll.location_locker_id::text,
-            'locker_code', ll.location_locker_code
+            'location_locker_id', ll.location_locker_id::text,
+            'location_locker_code', ll.location_locker_code
           )
           ELSE NULL
         END
@@ -306,8 +306,8 @@ BEGIN
   LEFT JOIN public.location_locker_table ll ON ll.location_locker_id = mal.location_locker_id
   WHERE ll.location_locker_deleted_at IS NULL;
 
-  -- Build final result
-  result := JSON_BUILD_OBJECT(
+  -- Build final return_data
+  return_data := JSON_BUILD_OBJECT(
     'packages', packages_json,
     'registrations', registrations_json,
     'lockers', lockers_json,
@@ -316,7 +316,7 @@ BEGIN
     'counts', counts_json
   );
 
-  RETURN result;
+  RETURN return_data;
 END;
 $$;
 

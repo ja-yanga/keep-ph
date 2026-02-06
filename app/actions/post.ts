@@ -6,9 +6,11 @@ import { logActivity } from "@/lib/activity-log";
 import { parseAddressRow } from "@/utils/helper";
 import {
   AdminCreateMailroomLocationArgs,
+  AdminCreateMailroomPackageArgs,
   AdminIpWhitelistEntry,
+  AdminMailroomLocation,
+  AdminMailroomPackage,
   CreateUserAddressArgs,
-  LocationRow,
   RequestRewardClaimArgs,
   RpcClaimResponse,
   T_LocationLockerInsert,
@@ -516,7 +518,7 @@ export async function listReferrals(userId: string) {
  */
 export async function adminCreateMailroomLocation(
   args: AdminCreateMailroomLocationArgs & { userId?: string },
-): Promise<LocationRow> {
+): Promise<AdminMailroomLocation> {
   const payload = {
     input_name: args.name,
     input_code: args.code ?? null,
@@ -537,7 +539,9 @@ export async function adminCreateMailroomLocation(
   }
 
   const row =
-    typeof data === "string" ? (JSON.parse(data) as LocationRow) : data;
+    typeof data === "string"
+      ? (JSON.parse(data) as AdminMailroomLocation)
+      : (data as AdminMailroomLocation);
 
   // Log activity if userId provided
   if (args.userId) {
@@ -561,7 +565,7 @@ export async function adminCreateMailroomLocation(
     });
   }
 
-  return row as LocationRow;
+  return row;
 }
 
 /**
@@ -585,29 +589,21 @@ async function generateMailroomCode(): Promise<string> {
  * Used in:
  * - app/api/admin/mailroom/packages/route.ts - API endpoint for creating packages
  */
-export async function adminCreateMailroomPackage(args: {
-  userId: string;
-  package_name: string;
-  registration_id: string;
-  locker_id?: string | null;
-  package_type: "Document" | "Parcel";
-  status: string;
-  notes?: string | null;
-  package_photo?: string | null;
-  locker_status?: string;
-}): Promise<unknown> {
+export async function adminCreateMailroomPackage(
+  args: AdminCreateMailroomPackageArgs,
+): Promise<AdminMailroomPackage> {
   const supabaseAdmin = createSupabaseServiceClient();
 
   // Insert package into mailbox_item_table
   const { data, error } = await supabaseAdmin
     .from("mailbox_item_table")
     .insert({
-      mailbox_item_name: args.package_name,
-      mailroom_registration_id: args.registration_id,
-      location_locker_id: args.locker_id || null,
-      mailbox_item_type: args.package_type,
-      mailbox_item_status: args.status,
-      mailbox_item_photo: args.package_photo ?? null,
+      mailbox_item_name: args.mailbox_item_name,
+      mailroom_registration_id: args.mailroom_registration_id,
+      location_locker_id: args.location_locker_id || null,
+      mailbox_item_type: args.mailroom_item_type,
+      mailbox_item_status: args.mailroom_item_status,
+      mailbox_item_photo: args.mailbox_item_photo ?? null,
     })
     .select(
       `
@@ -622,12 +618,12 @@ export async function adminCreateMailroomPackage(args: {
   }
 
   // Update locker status if provided
-  if (args.locker_id && args.locker_status) {
+  if (args.location_locker_id && args.location_locker_status) {
     const { error: lockerError } = await supabaseAdmin
       .from("mailroom_assigned_locker_table")
-      .update({ mailroom_assigned_locker_status: args.locker_status })
-      .eq("location_locker_id", args.locker_id)
-      .eq("mailroom_registration_id", args.registration_id);
+      .update({ mailroom_assigned_locker_status: args.location_locker_status })
+      .eq("location_locker_id", args.location_locker_id)
+      .eq("mailroom_registration_id", args.mailroom_registration_id);
 
     if (lockerError) {
       console.error("Failed to update locker status:", lockerError);
@@ -639,7 +635,7 @@ export async function adminCreateMailroomPackage(args: {
   const { data: registration } = await supabaseAdmin
     .from("mailroom_registration_table")
     .select("user_id, mailroom_registration_code")
-    .eq("mailroom_registration_id", args.registration_id)
+    .eq("mailroom_registration_id", args.mailroom_registration_id)
     .single();
 
   if (registration) {
@@ -650,9 +646,9 @@ export async function adminCreateMailroomPackage(args: {
     await sendNotification(
       userId,
       "Package Arrived",
-      `A new ${args.package_type} (${args.package_name}) has arrived at Mailroom ${code}.`,
+      `A new ${args.mailroom_item_type} (${args.mailbox_item_name}) has arrived at Mailroom ${code}.`,
       "PACKAGE_ARRIVED",
-      `/mailroom/${args.registration_id}`,
+      `/mailroom/${args.mailroom_registration_id}`,
     );
   }
 
@@ -661,11 +657,11 @@ export async function adminCreateMailroomPackage(args: {
 
   // Fetch locker code if locker_id is provided
   let locker_code: string | null = null;
-  if (args.locker_id) {
+  if (args.location_locker_id) {
     const { data: lockerData } = await supabaseAdmin
       .from("location_locker_table")
       .select("location_locker_code")
-      .eq("location_locker_id", args.locker_id)
+      .eq("location_locker_id", args.location_locker_id)
       .single();
     locker_code = lockerData?.location_locker_code || null;
   }
@@ -677,14 +673,14 @@ export async function adminCreateMailroomPackage(args: {
     entityType: "MAILBOX_ITEM",
     entityId: packageData.mailbox_item_id as string,
     details: {
-      package_status: args.status,
-      package_name: args.package_name,
-      package_type: args.package_type,
+      package_status: args.mailroom_item_status,
+      package_name: args.mailbox_item_name,
+      package_type: args.mailroom_item_type,
       ...(locker_code && { package_locker_code: locker_code }),
     },
   });
 
-  return data;
+  return data as AdminMailroomPackage;
 }
 
 export async function upsertPaymentResource(payRes: {

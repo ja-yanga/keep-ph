@@ -435,31 +435,6 @@ export type RawRow = {
   [key: string]: unknown;
 };
 
-// export type AdminUserKyc = {
-//   user_kyc_id: string;
-//   user_id: string;
-//   user_kyc_status: string | null;
-//   user_kyc_id_document_type: string | null;
-//   user_kyc_id_number: string | null;
-//   user_kyc_id_front_url: string | null;
-//   user_kyc_id_back_url: string | null;
-//   user_kyc_first_name: string | null;
-//   user_kyc_last_name: string | null;
-//   user_kyc_submitted_at: string | null;
-//   user_kyc_verified_at: string | null;
-//   user_kyc_created_at: string | null;
-//   user_kyc_updated_at: string | null;
-//   address: {
-//     line1?: string | null;
-//     line2?: string | null;
-//     city?: string | null;
-//     province?: string | null;
-//     region?: string | null;
-//     barangay?: string | null;
-//     postal?: number | string | null;
-//   } | null;
-// };
-
 export type UpdateRewardClaimArgs = {
   claimId: string;
   status: "PROCESSING" | "PAID";
@@ -558,17 +533,74 @@ export type T_NotificationType =
   | "REWARD_PROCESSING"
   | "REWARD_PAID";
 
-export type LocationRow = {
-  mailroom_location_id: string;
-  mailroom_location_name: string;
-  mailroom_location_region?: string | null;
-  mailroom_location_city?: string | null;
-  mailroom_location_barangay?: string | null;
-  mailroom_location_zip?: string | null;
-  mailroom_location_total_lockers?: number | null;
-  mailroom_location_prefix?: string | null;
+export type LocationRow = MailroomLocationRow;
+
+export type AdminMailroomLocation = MailroomLocationRow & {
   mailroom_location_is_hidden?: boolean;
   mailroom_location_max_locker_limit?: number | null;
+};
+
+export type AdminMailroomRegistration = MailroomRegistrationTableRow & {
+  full_name?: string | null;
+  users_email?: string | null;
+  mobile_number?: string | null;
+  mailroom_registration_code?: string | null;
+  mailroom_plans?:
+    | {
+        name: string;
+        can_receive_mail: boolean;
+        can_receive_parcels: boolean;
+      }
+    | {
+        name: string;
+        can_receive_mail: boolean;
+        can_receive_parcels: boolean;
+      }[];
+};
+
+export type AdminMailroomPackage = MailboxItemTableRow & {
+  mailroom_file_table?: MailroomFileTableRow[] | null;
+  registration?: AdminMailroomRegistration | null;
+  locker?: LocationLockerRow | null;
+  mailbox_item_notes?: string | null;
+  mailbox_item_release_to_name?: string | null;
+};
+
+export type AdminCreateMailroomPackageArgs = {
+  userId: string;
+  mailbox_item_name: string;
+  mailroom_registration_id: string;
+  location_locker_id?: string | null;
+  mailroom_item_type: MAILROOM_PACKAGE_TYPE_ENUM;
+  mailroom_item_status: string;
+  mailbox_item_notes?: string | null;
+  mailbox_item_photo?: string | null;
+  location_locker_status?: string;
+};
+
+export type AdminUpdateMailroomPackageArgs = {
+  userId: string;
+  id: string;
+  mailbox_item_name?: string;
+  mailroom_registration_id?: string;
+  location_locker_id?: string | null;
+  mailroom_item_type?: MAILROOM_PACKAGE_TYPE_ENUM;
+  mailroom_item_status?: string;
+  mailbox_item_photo?: string | null;
+  location_locker_status?: string;
+};
+
+export type AssignedLocker = LocationLockerAssignedRow & {
+  locker?: LocationLockerRow;
+};
+
+export type AdminMailroomPackagesResponse = {
+  packages: AdminMailroomPackage[];
+  registrations: AdminMailroomRegistration[];
+  lockers: LocationLockerRow[];
+  assignedLockers: AssignedLocker[];
+  totalCount: number;
+  counts?: Record<string, number>;
 };
 
 export type AdminCreateMailroomLocationArgs = {
@@ -616,10 +648,10 @@ export type Plan = {
   can_digitize: boolean;
 };
 
-export type MailroomPackageViewItem = RawRow | null;
+export type MailroomPackageViewItem = AdminMailroomPackage;
 
 export type MailroomPackageViewProps = {
-  item: MailroomPackageViewItem;
+  item: MailroomPackageViewItem | null;
   loading: boolean;
   error: string | null;
   onRefreshAction?: () => Promise<void> | void;
@@ -991,3 +1023,10 @@ export type T_LocationLockerUpdate = Pick<
   MailroomLocationUpdate,
   "mailroom_location_prefix" | "mailroom_location_total_lockers"
 >;
+
+export type AdminArchivedPackage = MailboxItemTableRow & {
+  mailroom_registration_table?: MailroomRegistrationTableRow | null;
+  location_locker_table?: LocationLockerRow | null;
+  users_table?: Pick<UsersTableRow, "users_email"> | null;
+  deleted_at?: string | null;
+};

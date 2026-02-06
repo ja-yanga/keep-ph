@@ -2,7 +2,7 @@
 -- Efficiently searches registrations by email, name, or mailroom code
 -- Uses database-level filtering for better performance with large datasets
 
-CREATE OR REPLACE FUNCTION search_mailroom_registrations(
+CREATE OR REPLACE FUNCTION public.search_mailroom_registrations(
   search_query TEXT DEFAULT '',
   result_limit INTEGER DEFAULT 50
 )
@@ -55,10 +55,10 @@ BEGIN
         WHEN (uk.user_kyc_first_name || ' ' || uk.user_kyc_last_name) ILIKE search_pattern THEN 3
         ELSE 4
       END as match_priority
-    FROM mailroom_registration_table r
-    INNER JOIN users_table u ON r.user_id = u.users_id
-    LEFT JOIN user_kyc_table uk ON u.users_id = uk.user_id
-    LEFT JOIN mailroom_plan_table p ON r.mailroom_plan_id = p.mailroom_plan_id
+    FROM public.mailroom_registration_table r
+    INNER JOIN public.users_table u ON r.user_id = u.users_id
+    LEFT JOIN public.user_kyc_table uk ON u.users_id = uk.user_id
+    LEFT JOIN public.mailroom_plan_table p ON r.mailroom_plan_id = p.mailroom_plan_id
     WHERE 
       -- Search across multiple fields (handle NULLs properly)
       (
@@ -79,16 +79,16 @@ BEGIN
   SELECT COALESCE(
     JSON_AGG(
       JSON_BUILD_OBJECT(
-        'id', mailroom_registration_id,
+        'mailroom_registration_id', mailroom_registration_id,
         'full_name', full_name,
-        'email', users_email,
-        'mobile', mobile_number,
-        'mailroom_code', mailroom_registration_code,
+        'users_email', users_email,
+        'mobile_number', mobile_number,
+        'mailroom_registration_code', mailroom_registration_code,
         'mailroom_plans', CASE
           WHEN mailroom_plan_name IS NOT NULL THEN JSON_BUILD_OBJECT(
-            'name', mailroom_plan_name,
-            'can_receive_mail', mailroom_plan_can_receive_mail,
-            'can_receive_parcels', mailroom_plan_can_receive_parcels
+            'mailroom_plan_name', mailroom_plan_name,
+            'mailroom_plan_can_receive_mail', mailroom_plan_can_receive_mail,
+            'mailroom_plan_can_receive_parcels', mailroom_plan_can_receive_parcels
           )
           ELSE NULL
         END
@@ -104,11 +104,11 @@ END;
 $$;
 
 -- Grant execute permissions
-GRANT EXECUTE ON FUNCTION search_mailroom_registrations(TEXT, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION search_mailroom_registrations(TEXT, INTEGER) TO service_role;
+GRANT EXECUTE ON FUNCTION public.search_mailroom_registrations(TEXT, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.search_mailroom_registrations(TEXT, INTEGER) TO service_role;
 
 -- Add comment
-COMMENT ON FUNCTION search_mailroom_registrations(TEXT, INTEGER) IS 
+COMMENT ON FUNCTION public.search_mailroom_registrations(TEXT, INTEGER) IS 
 'Efficiently searches mailroom registrations by email, name, or mailroom code. 
 Uses database-level ILIKE filtering for better performance with large datasets.
 Returns JSON array of matching registrations with related user and plan data.';

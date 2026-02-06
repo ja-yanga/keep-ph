@@ -45,13 +45,13 @@ export default function MailroomPackageView({
   const [selectedLockerId, setSelectedLockerId] = useState<string | null>(null);
   const [isStorageFull, setIsStorageFull] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [localItem, setLocalItem] = useState<MailroomPackageViewItem>(
+  const [localItem, setLocalItem] = useState<MailroomPackageViewItem | null>(
     item ?? null,
   );
 
   useEffect(() => {
     setLocalItem(item ?? null);
-  }, [item?.id, item]);
+  }, [item?.mailbox_item_id, item]);
 
   const source = localItem ?? item;
   const src = (source as Record<string, unknown> | null) ?? null;

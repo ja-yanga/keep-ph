@@ -10,7 +10,7 @@ export default function MailroomPackagePage() {
   const params = useParams();
   // const router = useRouter();
   const id = params?.id ?? "";
-  const [item, setItem] = useState<MailroomPackageViewItem>(null);
+  const [item, setItem] = useState<MailroomPackageViewItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +41,7 @@ export default function MailroomPackagePage() {
           if (!mounted) return;
           if (!found) {
             setError("Mailroom registration not found");
-            setItem(null);
+            setItem({} as MailroomPackageViewItem);
             return;
           }
           setItem(found);

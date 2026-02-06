@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { adminGetMailroomPackages } from "@/app/actions/get";
 import { adminCreateMailroomPackage } from "@/app/actions/post";
 import { logApiError } from "@/lib/error-log";
+import type { AdminCreateMailroomPackageArgs } from "@/utils/types";
 
 export async function GET(req?: Request) {
   try {
@@ -65,10 +66,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = (await request.json()) as Omit<
+      AdminCreateMailroomPackageArgs,
+      "userId"
+    >;
 
     // Require package_name
-    const packageName = body.package_name ?? null;
+    const packageName = body.mailbox_item_name ?? null;
     if (!packageName) {
       void logApiError(request, {
         status: 400,
@@ -82,14 +86,14 @@ export async function POST(request: Request) {
 
     const data = await adminCreateMailroomPackage({
       userId: user.id,
-      package_name: packageName,
-      registration_id: body.registration_id,
-      locker_id: body.locker_id || null,
-      package_type: body.package_type,
-      status: body.status,
-      notes: body.notes,
-      package_photo: body.package_photo ?? null,
-      locker_status: body.locker_status,
+      mailbox_item_name: packageName,
+      mailroom_registration_id: body.mailroom_registration_id,
+      location_locker_id: body.location_locker_id || null,
+      mailroom_item_type: body.mailroom_item_type,
+      mailroom_item_status: body.mailroom_item_status,
+      mailbox_item_notes: body.mailbox_item_notes,
+      mailbox_item_photo: body.mailbox_item_photo ?? null,
+      location_locker_status: body.location_locker_status,
     });
 
     return NextResponse.json(data);
